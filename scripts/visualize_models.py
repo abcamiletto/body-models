@@ -44,6 +44,63 @@ DEFAULT_PATHS = {
 
 AXES = ("X", "Y", "Z")
 
+# Configuration constants for pose/shape controls
+SMPL_POSE_JOINTS = [
+    ("Spine1", 2),
+    ("Spine2", 5),
+    ("Spine3", 8),
+    ("Neck", 11),
+    ("L_Shoulder", 15),
+    ("R_Shoulder", 16),
+]
+
+SKEL_POSE_DOFS = [
+    ("Hip R flex", 3, (-1.5, 1.5)),
+    ("Hip R abd", 4, (-0.8, 0.8)),
+    ("Hip R rot", 5, (-0.8, 0.8)),
+    ("Knee R", 6, (-2.5, 0.1)),
+    ("Hip L flex", 7, (-1.5, 1.5)),
+    ("Hip L abd", 8, (-0.8, 0.8)),
+    ("Hip L rot", 9, (-0.8, 0.8)),
+    ("Knee L", 10, (-2.5, 0.1)),
+    ("Lumbar flex", 17, (-0.8, 0.8)),
+    ("Lumbar bend", 18, (-0.5, 0.5)),
+    ("Thorax flex", 20, (-0.5, 0.5)),
+    ("Shoulder R", 28, (-1.5, 1.5)),
+    ("Shoulder L", 38, (-1.5, 1.5)),
+]
+
+ANNY_PHENOTYPE_PARAMS = ["Gender", "Age", "Muscle", "Weight", "Height", "Proportions"]
+ANNY_POSE_BONES = [
+    ("Spine", 1),
+    ("Spine1", 2),
+    ("Spine2", 3),
+    ("Neck", 4),
+    ("L Shoulder", 8),
+    ("L Arm", 9),
+    ("R Shoulder", 13),
+    ("R Arm", 14),
+    ("L UpLeg", 18),
+    ("R UpLeg", 23),
+]
+
+# Pastel colors for each model (RGB tuples)
+MODEL_COLORS: dict[str, tuple[int, int, int]] = {
+    "SMPL": (173, 216, 230),  # Light blue
+    "SMPLX": (255, 182, 193),  # Light pink
+    "SKEL": (144, 238, 144),  # Light green
+    "ANNY": (255, 218, 185),  # Peach
+    "MHR": (221, 160, 221),  # Plum/lavender
+}
+
+
+@dataclass
+class ResetGroup:
+    """Group of handles to reset together."""
+
+    keys: list[str]
+    value: float
+
 
 @dataclass
 class ModelState:
@@ -134,68 +191,214 @@ def _reset_handles(handles: dict[str, viser.GuiInputHandle], keys: Iterable[str]
         handles[key].value = value
 
 
+def create_indexed_sliders(
+    server: viser.ViserServer,
+    state: ModelState,
+    handles: dict[str, viser.GuiInputHandle],
+    *,
+    param_key: str,
+    count: int,
+    prefix: str,
+    label_prefix: str,
+    min_val: float,
+    max_val: float,
+    step: float,
+    initial: float,
+) -> list[str]:
+    """Create sliders for indexed parameters (shape betas, expressions)."""
+    keys = []
+    for i in range(count):
+        key = f"{prefix}_{i}"
+        keys.append(key)
+        handles[key] = _add_slider(
+            server,
+            f"{label_prefix}{i}",
+            min=min_val,
+            max=max_val,
+            step=step,
+            initial=initial,
+            on_update=lambda value, idx=i: _set_param(state, param_key, value, index=idx),
+        )
+    return keys
+
+
+def create_joint_pose_sliders(
+    server: viser.ViserServer,
+    state: ModelState,
+    handles: dict[str, viser.GuiInputHandle],
+    *,
+    param_key: str,
+    joints: list[tuple[str, int]],
+    min_val: float = -1.5,
+    max_val: float = 1.5,
+    step: float = 0.05,
+    max_joints: int | None = None,
+) -> list[str]:
+    """Create XYZ sliders for each joint (axis-angle pose)."""
+    keys = []
+    for joint_name, joint_idx in joints:
+        if max_joints is not None and joint_idx >= max_joints:
+            continue
+        for axis, axis_name in enumerate(AXES):
+            key = f"pose_{joint_idx}_{axis}"
+            keys.append(key)
+            handles[key] = _add_slider(
+                server,
+                f"{joint_name} {axis_name}",
+                min=min_val,
+                max=max_val,
+                step=step,
+                initial=0.0,
+                on_update=lambda value, idx=joint_idx, ax=axis: _set_param(
+                    state, param_key, value, index=idx, axis=ax
+                ),
+            )
+    return keys
+
+
+def create_dof_sliders(
+    server: viser.ViserServer,
+    state: ModelState,
+    handles: dict[str, viser.GuiInputHandle],
+    *,
+    param_key: str,
+    dofs: list[tuple[str, int, tuple[float, float]]],
+    step: float = 0.05,
+) -> list[str]:
+    """Create sliders for flat DOF vector (SKEL-style)."""
+    keys = []
+    for name, idx, (min_val, max_val) in dofs:
+        key = f"pose_{idx}"
+        keys.append(key)
+        handles[key] = _add_slider(
+            server,
+            name,
+            min=min_val,
+            max=max_val,
+            step=step,
+            initial=0.0,
+            on_update=lambda value, pose_idx=idx: _set_param(state, param_key, value, index=pose_idx),
+        )
+    return keys
+
+
+def create_phenotype_sliders(
+    server: viser.ViserServer,
+    state: ModelState,
+    handles: dict[str, viser.GuiInputHandle],
+    *,
+    params: list[str],
+    min_val: float = 0.0,
+    max_val: float = 1.0,
+    step: float = 0.05,
+    initial: float = 0.5,
+) -> list[str]:
+    """Create sliders for phenotype parameters (0-1 range)."""
+    keys = []
+    for param in params:
+        param_key = param.lower()
+        keys.append(param_key)
+        handles[param_key] = _add_slider(
+            server,
+            param,
+            min=min_val,
+            max=max_val,
+            step=step,
+            initial=initial,
+            on_update=lambda value, key=param_key: _set_param(state, key, value),
+        )
+    return keys
+
+
+def add_reset_button(
+    server: viser.ViserServer,
+    state: ModelState,
+    handles: dict[str, viser.GuiInputHandle],
+    reset_groups: list[ResetGroup],
+) -> None:
+    """Add a reset button that resets all specified handle groups."""
+    reset_btn = server.gui.add_button("Reset")
+
+    @reset_btn.on_click
+    def _(_):
+        state.params = state.model.get_rest_pose()
+        for group in reset_groups:
+            _reset_handles(handles, group.keys, group.value)
+        state.changed = True
+
+
+def create_smpl_family_tab(
+    server: viser.ViserServer,
+    tab_group: viser.GuiTabGroupHandle,
+    state: ModelState,
+    *,
+    tab_name: str,
+    num_shape: int = 10,
+    num_expr: int | None = None,
+    pose_joints: list[tuple[str, int]],
+) -> dict[str, viser.GuiInputHandle]:
+    """Shared implementation for SMPL/SMPLX tabs with optional expression folder."""
+    handles: dict[str, viser.GuiInputHandle] = {}
+    reset_groups: list[ResetGroup] = []
+
+    with tab_group.add_tab(tab_name, viser.Icon.USER):
+        with server.gui.add_folder("Shape"):
+            shape_keys = create_indexed_sliders(
+                server,
+                state,
+                handles,
+                param_key="shape",
+                count=num_shape,
+                prefix="shape",
+                label_prefix="β",
+                min_val=-3.0,
+                max_val=3.0,
+                step=0.1,
+                initial=0.0,
+            )
+            reset_groups.append(ResetGroup(keys=shape_keys, value=0.0))
+
+        if num_expr is not None:
+            with server.gui.add_folder("Expression"):
+                expr_keys = create_indexed_sliders(
+                    server,
+                    state,
+                    handles,
+                    param_key="expression",
+                    count=num_expr,
+                    prefix="expr",
+                    label_prefix="ψ",
+                    min_val=-2.0,
+                    max_val=2.0,
+                    step=0.1,
+                    initial=0.0,
+                )
+                reset_groups.append(ResetGroup(keys=expr_keys, value=0.0))
+
+        with server.gui.add_folder("Body Pose"):
+            pose_keys = create_joint_pose_sliders(
+                server,
+                state,
+                handles,
+                param_key="body_pose",
+                joints=pose_joints,
+            )
+            reset_groups.append(ResetGroup(keys=pose_keys, value=0.0))
+
+        add_reset_button(server, state, handles, reset_groups)
+
+    return handles
+
+
 def create_smpl_tab(
     server: viser.ViserServer,
     tab_group: viser.GuiTabGroupHandle,
     state: ModelState,
 ) -> dict[str, viser.GuiInputHandle]:
     """Create GUI controls for SMPL model."""
-    handles: dict[str, viser.GuiInputHandle] = {}
-    model = state.model
-    assert isinstance(model, SMPL)
-
-    num_shape = 10
-    pose_joints = [
-        ("Spine1", 2),
-        ("Spine2", 5),
-        ("Spine3", 8),
-        ("Neck", 11),
-        ("L_Shoulder", 15),
-        ("R_Shoulder", 16),
-    ]
-
-    with tab_group.add_tab("SMPL", viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            for i in range(num_shape):
-                handles[f"shape_{i}"] = _add_slider(
-                    server,
-                    f"β{i}",
-                    min=-3.0,
-                    max=3.0,
-                    step=0.1,
-                    initial=0.0,
-                    on_update=lambda value, idx=i: _set_param(state, "shape", value, index=idx),
-                )
-
-        with server.gui.add_folder("Body Pose"):
-            for joint_name, joint_idx in pose_joints:
-                for axis, axis_name in enumerate(AXES):
-                    handles[f"pose_{joint_idx}_{axis}"] = _add_slider(
-                        server,
-                        f"{joint_name} {axis_name}",
-                        min=-1.5,
-                        max=1.5,
-                        step=0.05,
-                        initial=0.0,
-                        on_update=lambda value, idx=joint_idx, ax=axis: _set_param(
-                            state, "body_pose", value, index=idx, axis=ax
-                        ),
-                    )
-
-        reset_btn = server.gui.add_button("Reset")
-
-        @reset_btn.on_click
-        def _(_):
-            state.params = model.get_rest_pose()
-            _reset_handles(handles, [f"shape_{i}" for i in range(num_shape)], 0.0)
-            _reset_handles(
-                handles,
-                [f"pose_{joint_idx}_{axis}" for _, joint_idx in pose_joints for axis in range(3)],
-                0.0,
-            )
-            state.changed = True
-
-    return handles
+    return create_smpl_family_tab(
+        server, tab_group, state, tab_name="SMPL", pose_joints=SMPL_POSE_JOINTS
+    )
 
 
 def create_smplx_tab(
@@ -204,76 +407,9 @@ def create_smplx_tab(
     state: ModelState,
 ) -> dict[str, viser.GuiInputHandle]:
     """Create GUI controls for SMPLX model."""
-    handles: dict[str, viser.GuiInputHandle] = {}
-    model = state.model
-    assert isinstance(model, SMPLX)
-
-    num_shape = 10
-    num_expr = 10
-    pose_joints = [
-        ("Spine1", 2),
-        ("Spine2", 5),
-        ("Spine3", 8),
-        ("Neck", 11),
-        ("L_Shoulder", 15),
-        ("R_Shoulder", 16),
-    ]
-
-    with tab_group.add_tab("SMPLX", viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            for i in range(num_shape):
-                handles[f"shape_{i}"] = _add_slider(
-                    server,
-                    f"β{i}",
-                    min=-3.0,
-                    max=3.0,
-                    step=0.1,
-                    initial=0.0,
-                    on_update=lambda value, idx=i: _set_param(state, "shape", value, index=idx),
-                )
-
-        with server.gui.add_folder("Expression"):
-            for i in range(num_expr):
-                handles[f"expr_{i}"] = _add_slider(
-                    server,
-                    f"ψ{i}",
-                    min=-2.0,
-                    max=2.0,
-                    step=0.1,
-                    initial=0.0,
-                    on_update=lambda value, idx=i: _set_param(state, "expression", value, index=idx),
-                )
-
-        with server.gui.add_folder("Body Pose"):
-            for joint_name, joint_idx in pose_joints:
-                for axis, axis_name in enumerate(AXES):
-                    handles[f"pose_{joint_idx}_{axis}"] = _add_slider(
-                        server,
-                        f"{joint_name} {axis_name}",
-                        min=-1.5,
-                        max=1.5,
-                        step=0.05,
-                        initial=0.0,
-                        on_update=lambda value, idx=joint_idx, ax=axis: _set_param(
-                            state, "body_pose", value, index=idx, axis=ax
-                        ),
-                    )
-
-        reset_btn = server.gui.add_button("Reset")
-
-        @reset_btn.on_click
-        def _(_):
-            state.params = model.get_rest_pose()
-            _reset_handles(handles, [f"shape_{i}" for i in range(num_shape)], 0.0)
-            _reset_handles(handles, [f"expr_{i}" for i in range(num_expr)], 0.0)
-            _reset_handles(
-                handles,
-                [f"pose_{joint_idx}_{axis}" for _, joint_idx in pose_joints for axis in range(3)],
-                0.0,
-            )
-            state.changed = True
-
-    return handles
+    return create_smpl_family_tab(
+        server, tab_group, state, tab_name="SMPLX", num_expr=10, pose_joints=SMPL_POSE_JOINTS
+    )
 
 
 def create_skel_tab(
@@ -283,59 +419,33 @@ def create_skel_tab(
 ) -> dict[str, viser.GuiInputHandle]:
     """Create GUI controls for SKEL model."""
     handles: dict[str, viser.GuiInputHandle] = {}
-    model = state.model
-    assert isinstance(model, SKEL)
-
+    reset_groups: list[ResetGroup] = []
     num_shape = 10
-    pose_dofs = [
-        ("Hip R flex", 3, (-1.5, 1.5)),
-        ("Hip R abd", 4, (-0.8, 0.8)),
-        ("Hip R rot", 5, (-0.8, 0.8)),
-        ("Knee R", 6, (-2.5, 0.1)),
-        ("Hip L flex", 7, (-1.5, 1.5)),
-        ("Hip L abd", 8, (-0.8, 0.8)),
-        ("Hip L rot", 9, (-0.8, 0.8)),
-        ("Knee L", 10, (-2.5, 0.1)),
-        ("Lumbar flex", 17, (-0.8, 0.8)),
-        ("Lumbar bend", 18, (-0.5, 0.5)),
-        ("Thorax flex", 20, (-0.5, 0.5)),
-        ("Shoulder R", 28, (-1.5, 1.5)),
-        ("Shoulder L", 38, (-1.5, 1.5)),
-    ]
 
     with tab_group.add_tab("SKEL", viser.Icon.USER):
         with server.gui.add_folder("Shape"):
-            for i in range(num_shape):
-                handles[f"shape_{i}"] = _add_slider(
-                    server,
-                    f"β{i}",
-                    min=-3.0,
-                    max=3.0,
-                    step=0.1,
-                    initial=0.0,
-                    on_update=lambda value, idx=i: _set_param(state, "shape", value, index=idx),
-                )
+            shape_keys = create_indexed_sliders(
+                server,
+                state,
+                handles,
+                param_key="shape",
+                count=num_shape,
+                prefix="shape",
+                label_prefix="β",
+                min_val=-3.0,
+                max_val=3.0,
+                step=0.1,
+                initial=0.0,
+            )
+            reset_groups.append(ResetGroup(keys=shape_keys, value=0.0))
 
         with server.gui.add_folder("Pose"):
-            for name, idx, (min_val, max_val) in pose_dofs:
-                handles[f"pose_{idx}"] = _add_slider(
-                    server,
-                    name,
-                    min=min_val,
-                    max=max_val,
-                    step=0.05,
-                    initial=0.0,
-                    on_update=lambda value, pose_idx=idx: _set_param(state, "pose", value, index=pose_idx),
-                )
+            pose_keys = create_dof_sliders(
+                server, state, handles, param_key="pose", dofs=SKEL_POSE_DOFS
+            )
+            reset_groups.append(ResetGroup(keys=pose_keys, value=0.0))
 
-        reset_btn = server.gui.add_button("Reset")
-
-        @reset_btn.on_click
-        def _(_):
-            state.params = model.get_rest_pose()
-            _reset_handles(handles, [f"shape_{i}" for i in range(num_shape)], 0.0)
-            _reset_handles(handles, [f"pose_{idx}" for _, idx, _ in pose_dofs], 0.0)
-            state.changed = True
+        add_reset_button(server, state, handles, reset_groups)
 
     return handles
 
@@ -349,69 +459,27 @@ def create_anny_tab(
     handles: dict[str, viser.GuiInputHandle] = {}
     model = state.model
     assert isinstance(model, ANNY)
-
-    phenotype_params = ["Gender", "Age", "Muscle", "Weight", "Height", "Proportions"]
-    pose_bones = [
-        ("Spine", 1),
-        ("Spine1", 2),
-        ("Spine2", 3),
-        ("Neck", 4),
-        ("L Shoulder", 8),
-        ("L Arm", 9),
-        ("R Shoulder", 13),
-        ("R Arm", 14),
-        ("L UpLeg", 18),
-        ("R UpLeg", 23),
-    ]
+    reset_groups: list[ResetGroup] = []
 
     with tab_group.add_tab("ANNY", viser.Icon.USER):
         with server.gui.add_folder("Phenotype"):
-            for param in phenotype_params:
-                param_key = param.lower()
-                handles[param_key] = _add_slider(
-                    server,
-                    param,
-                    min=0.0,
-                    max=1.0,
-                    step=0.05,
-                    initial=0.5,
-                    on_update=lambda value, key=param_key: _set_param(state, key, value),
-                )
+            pheno_keys = create_phenotype_sliders(
+                server, state, handles, params=ANNY_PHENOTYPE_PARAMS
+            )
+            reset_groups.append(ResetGroup(keys=pheno_keys, value=0.5))
 
         with server.gui.add_folder("Pose"):
-            for bone_name, bone_idx in pose_bones:
-                if bone_idx >= model.num_joints:
-                    continue
-                for axis, axis_name in enumerate(AXES):
-                    handles[f"pose_{bone_idx}_{axis}"] = _add_slider(
-                        server,
-                        f"{bone_name} {axis_name}",
-                        min=-1.5,
-                        max=1.5,
-                        step=0.05,
-                        initial=0.0,
-                        on_update=lambda value, idx=bone_idx, ax=axis: _set_param(
-                            state, "pose", value, index=idx, axis=ax
-                        ),
-                    )
-
-        reset_btn = server.gui.add_button("Reset")
-
-        @reset_btn.on_click
-        def _(_):
-            state.params = model.get_rest_pose()
-            _reset_handles(handles, [param.lower() for param in phenotype_params], 0.5)
-            _reset_handles(
+            pose_keys = create_joint_pose_sliders(
+                server,
+                state,
                 handles,
-                [
-                    f"pose_{bone_idx}_{axis}"
-                    for _, bone_idx in pose_bones
-                    if bone_idx < model.num_joints
-                    for axis in range(3)
-                ],
-                0.0,
+                param_key="pose",
+                joints=ANNY_POSE_BONES,
+                max_joints=model.num_joints,
             )
-            state.changed = True
+            reset_groups.append(ResetGroup(keys=pose_keys, value=0.0))
+
+        add_reset_button(server, state, handles, reset_groups)
 
     return handles
 
@@ -423,45 +491,42 @@ def create_mhr_tab(
 ) -> dict[str, viser.GuiInputHandle]:
     """Create GUI controls for MHR model."""
     handles: dict[str, viser.GuiInputHandle] = {}
-    model = state.model
-    assert isinstance(model, MHR)
-
-    num_shape = 10
-    num_expr = 15
+    reset_groups: list[ResetGroup] = []
 
     with tab_group.add_tab("MHR", viser.Icon.USER):
         with server.gui.add_folder("Shape"):
-            for i in range(num_shape):
-                handles[f"shape_{i}"] = _add_slider(
-                    server,
-                    f"β{i}",
-                    min=-3.0,
-                    max=3.0,
-                    step=0.1,
-                    initial=0.0,
-                    on_update=lambda value, idx=i: _set_param(state, "shape", value, index=idx),
-                )
+            shape_keys = create_indexed_sliders(
+                server,
+                state,
+                handles,
+                param_key="shape",
+                count=10,
+                prefix="shape",
+                label_prefix="β",
+                min_val=-3.0,
+                max_val=3.0,
+                step=0.1,
+                initial=0.0,
+            )
+            reset_groups.append(ResetGroup(keys=shape_keys, value=0.0))
 
         with server.gui.add_folder("Expression"):
-            for i in range(num_expr):
-                handles[f"expr_{i}"] = _add_slider(
-                    server,
-                    f"ψ{i}",
-                    min=-2.0,
-                    max=2.0,
-                    step=0.1,
-                    initial=0.0,
-                    on_update=lambda value, idx=i: _set_param(state, "expression", value, index=idx),
-                )
+            expr_keys = create_indexed_sliders(
+                server,
+                state,
+                handles,
+                param_key="expression",
+                count=15,
+                prefix="expr",
+                label_prefix="ψ",
+                min_val=-2.0,
+                max_val=2.0,
+                step=0.1,
+                initial=0.0,
+            )
+            reset_groups.append(ResetGroup(keys=expr_keys, value=0.0))
 
-        reset_btn = server.gui.add_button("Reset")
-
-        @reset_btn.on_click
-        def _(_):
-            state.params = model.get_rest_pose()
-            _reset_handles(handles, [f"shape_{i}" for i in range(num_shape)], 0.0)
-            _reset_handles(handles, [f"expr_{i}" for i in range(num_expr)], 0.0)
-            state.changed = True
+        add_reset_button(server, state, handles, reset_groups)
 
     return handles
 
@@ -480,12 +545,13 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
         faces_np = np.concatenate([tri1, tri2], axis=0)
 
     position = (state.x_offset, 0.0, 0.0)
+    color = MODEL_COLORS.get(name, (200, 200, 200))
     if state.mesh_handle is None:
         state.mesh_handle = server.scene.add_mesh_simple(
             f"/{name}",
             vertices=verts_np,
             faces=faces_np,
-            color=(90, 200, 255),
+            color=color,
             position=position,
         )
     else:
