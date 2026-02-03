@@ -40,7 +40,7 @@ def _load_outputs(path: Path) -> dict[str, torch.Tensor]:
 
 def test_smpl_matches_reference() -> None:
     """Test that our SMPL implementation matches the official smplx package."""
-    model = SMPL()
+    model = SMPL(ground_plane=False)  # Use native coordinates for comparison
     model.eval()
 
     for idx in range(NUM_CASES):
@@ -55,8 +55,8 @@ def test_smpl_matches_reference() -> None:
             verts = model.forward_vertices(**args)  # type: ignore[arg-type]
             transforms = model.forward_skeleton(**args)  # type: ignore[arg-type]
 
-        # Convert to native outputs (no feet offset, joint positions)
-        result = to_native_outputs(verts, transforms, model.gender)
+        # Convert to native outputs (joint positions instead of transforms)
+        result = to_native_outputs(verts, transforms)
 
         ref_vertices = outputs["vertices"]
         ref_joints = outputs["joints"]

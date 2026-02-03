@@ -10,13 +10,6 @@ from torch import Tensor
 from ..base import BodyModel
 from .io import get_model_path
 
-# Feet offset (Y) for floor alignment, per gender.
-# Currently using neutral values for all genders.
-_FEET_OFFSET_Y = {
-    "neutral": 1.3018264770507812,
-    "male": 1.3018264770507812,
-    "female": 1.3018264770507812,
-}
 
 
 class SMPLX(BodyModel):
@@ -27,6 +20,8 @@ class SMPLX(BodyModel):
         gender: One of "neutral", "male", or "female".
         flat_hand_mean: If True, mean hand pose is zero (flat hands).
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
+        ground_plane: If True (default), dynamically offset mesh so feet are at Y=0
+            regardless of body shape. If False, use native SMPL-X coordinates.
 
     Forward API:
         forward_vertices(shape, body_pose, hand_pose, head_pose, expression, ...)
@@ -52,7 +47,6 @@ class SMPLX(BodyModel):
     hand_mean: Float[Tensor, "2 45"]
     parents: Int[Tensor, "55"]
     _faces: Int[Tensor, "F 3"]
-    _feet_offset: Float[Tensor, "3"]
     _shape_expr_dirs_flat_T: Float[Tensor, "20 V*3"]
     _shape_expr_dirs_full_flat_T: Float[Tensor, "20 V_full*3"]
     _kinematic_fronts: list[tuple[list[int], list[int]]]
@@ -63,12 +57,14 @@ class SMPLX(BodyModel):
         gender: str = "neutral",
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
+        ground_plane: bool = True,
         use_hand_pca: bool = False,  # Accepted for compatibility, not used
     ):
         assert gender in ("neutral", "male", "female")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
         super().__init__()
         self.gender = gender
+        self.ground_plane = ground_plane
 
         resolved_path = get_model_path(model_path, gender)
         data = np.load(resolved_path, allow_pickle=True)
@@ -144,10 +140,6 @@ class SMPLX(BodyModel):
             hand_mean.zero_()
         self.register_buffer("hand_mean", hand_mean)
 
-        # Feet offset for floor alignment
-        y_offset = _FEET_OFFSET_Y[gender]
-        self.register_buffer("_feet_offset", torch.tensor([0.0, y_offset, 0.0], dtype=torch.float32))
-
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
         return self._faces
@@ -166,7 +158,13 @@ class SMPLX(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.v_template + self._feet_offset
+        if self.ground_plane:
+            # Compute feet offset for identity shape
+            min_y = self.v_template_full[:, 1].min()
+            offset = torch.zeros(3, device=self.v_template.device, dtype=self.v_template.dtype)
+            offset[1] = -min_y
+            return self.v_template + offset
+        return self.v_template
 
     def forward_vertices(
         self,
@@ -187,7 +185,7 @@ class SMPLX(BodyModel):
         if expression is None:
             expression = torch.zeros((B, 10), device=device, dtype=dtype)
 
-        v_t, j_t, pose_matrices, T_world = self._forward_core(
+        v_t, j_t, pose_matrices, T_world, feet_offset = self._forward_core(
             shape,
             expression,
             body_pose.reshape(B, -1),
@@ -214,7 +212,9 @@ class SMPLX(BodyModel):
 
         # Apply global transform (post-transform around origin)
         v_posed = self._apply_global_transform(v_posed, global_rotation, global_translation)
-        return v_posed + self._feet_offset
+
+        # Apply dynamic feet offset (per-batch element)
+        return v_posed + feet_offset[:, None]
 
     def forward_skeleton(
         self,
@@ -235,7 +235,7 @@ class SMPLX(BodyModel):
         if expression is None:
             expression = torch.zeros((B, 10), device=device, dtype=dtype)
 
-        _, _, _, T_world = self._forward_core(
+        _, _, _, T_world, feet_offset = self._forward_core(
             shape,
             expression,
             body_pose.reshape(B, -1),
@@ -252,7 +252,9 @@ class SMPLX(BodyModel):
 
         # Apply global transform (post-transform around origin)
         T_world = self._apply_global_transform_to_skeleton(T_world, global_rotation, global_translation)
-        T_world[..., :3, 3] = T_world[..., :3, 3] + self._feet_offset
+
+        # Apply dynamic feet offset (per-batch element)
+        T_world[..., :3, 3] = T_world[..., :3, 3] + feet_offset[:, None]
         return T_world
 
     def _forward_core(
@@ -264,8 +266,8 @@ class SMPLX(BodyModel):
         head_pose: Float[Tensor, "B 9"],
         pelvis_rotation: Float[Tensor, "B 3"] | None = None,
         skeleton_only: bool = False,
-    ) -> tuple[Tensor | None, Tensor, Tensor, Tensor]:
-        """Core forward pass: returns (v_t, j_t, pose_matrices, T_world).
+    ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
+        """Core forward pass: returns (v_t, j_t, pose_matrices, T_world, feet_offset).
 
         Args:
             skeleton_only: If True, skip simplified mesh computation (v_t=None).
@@ -299,6 +301,15 @@ class SMPLX(BodyModel):
             v_t_full = self.v_template_full + torch.einsum("bi,vdi->bvd", shape_comps, sd_full)
         j_t = torch.einsum("bvd,jv->bjd", v_t_full, self.J_regressor)
 
+        # Compute dynamic feet offset from shaped vertices (rest pose)
+        # This ensures feet are at Y=0 regardless of body shape
+        if self.ground_plane:
+            min_y = v_t_full[..., 1].min(dim=-1).values  # [B]
+            feet_offset = torch.zeros((B, 3), device=device, dtype=dtype)
+            feet_offset[:, 1] = -min_y
+        else:
+            feet_offset = torch.zeros((B, 3), device=device, dtype=dtype)
+
         # Shape blend shapes (simplified mesh for output) - skip if skeleton_only
         if skeleton_only:
             v_t = None
@@ -315,7 +326,7 @@ class SMPLX(BodyModel):
 
         T_world = _batched_forward_kinematics(pose_matrices, t_local, self._kinematic_fronts)
 
-        return v_t, j_t, pose_matrices, T_world
+        return v_t, j_t, pose_matrices, T_world, feet_offset
 
     def _apply_global_transform(
         self,
@@ -391,16 +402,20 @@ def from_native_args(
 def to_native_outputs(
     vertices: Float[Tensor, "B V 3"],
     transforms: Float[Tensor, "B J 4 4"],
-    gender: str = "neutral",
 ) -> dict[str, Tensor]:
     """Convert forward_* outputs to native SMPLX format.
 
-    Native format returns joint positions (not transforms) and doesn't include feet offset.
+    Native format returns joint positions instead of transforms.
+    Use ground_plane=False in the SMPLX constructor if you need outputs
+    compatible with the official smplx library.
+
+    Args:
+        vertices: [B, V, 3] mesh vertices.
+        transforms: [B, J, 4, 4] joint transforms.
     """
-    feet_offset = torch.tensor([0.0, _FEET_OFFSET_Y[gender], 0.0], device=vertices.device, dtype=vertices.dtype)
     return {
-        "vertices": vertices - feet_offset,
-        "joints": transforms[..., :3, 3] - feet_offset,
+        "vertices": vertices,
+        "joints": transforms[..., :3, 3],
     }
 
 
