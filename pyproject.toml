@@ -1,0 +1,57 @@
+[project]
+name = "body-models"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "jaxtyping>=0.3.5",
+    "nanomanifold==0.1.6",
+    "numpy>=2.4.1",
+    "platformdirs>=4.0",
+    "pyfqmr>=0.5.0",
+    "roma>=1.5.4",
+    "scipy>=1.15.1",
+    "torch>=2.9.1",
+    "typer>=0.15",
+]
+
+[project.scripts]
+body-models = "body_models:main"
+convert-smpl-pkl = "body_models.smpl.convert:main"
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "viser>=1.0.21",
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.ty.src]
+exclude = ["scripts/"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+ignore = [
+    "F722",  # jaxtyping annotations use syntax ruff doesn't understand
+    "F821",  # jaxtyping dimension names appear as undefined
+    "E741",  # ambiguous variable names (I, l, O) are standard in math notation
+]
