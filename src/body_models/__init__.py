@@ -1,6 +1,7 @@
-from . import anny, mhr, skel, smpl, smplx
+from . import anny, flame, mhr, skel, smpl, smplx
 from .anny import ANNY
 from .base import BodyModel
+from .flame import FLAME
 from .mhr import MHR
 from .skel import SKEL
 from .smpl import SMPL
@@ -9,6 +10,7 @@ from .smplx import SMPLX
 __all__ = [
     # Submodules (for bm.smplx.pack_pose, etc.)
     "anny",
+    "flame",
     "mhr",
     "skel",
     "smpl",
@@ -16,6 +18,7 @@ __all__ = [
     # Model classes
     "ANNY",
     "BodyModel",
+    "FLAME",
     "MHR",
     "SKEL",
     "SMPL",
@@ -30,7 +33,7 @@ def main() -> None:
 
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
 
-    Model = Literal["smpl", "smplx", "skel", "anny", "mhr"]
+    Model = Literal["smpl", "smplx", "skel", "anny", "mhr", "flame"]
     app = typer.Typer(add_completion=False)
 
     @app.callback(invoke_without_command=True)
