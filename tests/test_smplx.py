@@ -1,97 +1,247 @@
-from __future__ import annotations
+"""Tests for the SMPL-X body model.
+
+- Numerical precision: parametrized across torch/numpy/jax backends
+- Gradient correctness: torch backend with gradcheck
+- Feature tests: mesh simplification, etc.
+"""
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import pytest
 import torch
 
-from body_models.smplx import SMPLX, from_native_args, to_native_outputs
+from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "smplx"
+MODEL_PATH = ASSET_DIR / "model"
 INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
+RTOL, ATOL = 1e-4, 1e-4
 
 
-def _load_inputs(path: Path) -> dict[str, torch.Tensor]:
-    """Load inputs from JSON and convert to tensors matching our SMPLX interface."""
-    data = json.loads(path.read_text())
+# ============================================================================
+# Test data loading
+# ============================================================================
 
-    shape = torch.as_tensor(data["shape"], dtype=torch.float32).unsqueeze(0)
-    expression = torch.as_tensor(data["expression"], dtype=torch.float32).unsqueeze(0)
-    body_pose = torch.as_tensor(data["body_pose"], dtype=torch.float32).unsqueeze(0)
 
-    # Concatenate hand poses (left + right)
-    left_hand = torch.as_tensor(data["left_hand_pose"], dtype=torch.float32)
-    right_hand = torch.as_tensor(data["right_hand_pose"], dtype=torch.float32)
-    hand_pose = torch.cat([left_hand, right_hand], dim=-1).unsqueeze(0)
-
-    # Concatenate head poses (jaw + leye + reye)
-    jaw = torch.as_tensor(data["jaw_pose"], dtype=torch.float32)
-    leye = torch.as_tensor(data["leye_pose"], dtype=torch.float32)
-    reye = torch.as_tensor(data["reye_pose"], dtype=torch.float32)
-    head_pose = torch.cat([jaw, leye, reye], dim=-1).unsqueeze(0)
-
-    # The official smplx uses global_orient as the root/pelvis rotation
-    pelvis_rotation = torch.as_tensor(data["global_orient"], dtype=torch.float32).unsqueeze(0)
-    pelvis_translation = torch.as_tensor(data["transl"], dtype=torch.float32).unsqueeze(0)
-
-    return {
-        "shape": shape,
-        "expression": expression,
-        "body_pose": body_pose,
-        "hand_pose": hand_pose,
-        "head_pose": head_pose,
-        "pelvis_rotation": pelvis_rotation,
-        "pelvis_translation": pelvis_translation,
+def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
+    """Load inputs and reference outputs for a test case."""
+    data = json.loads((INPUTS_DIR / f"{idx}.json").read_text())
+    inputs = {
+        "shape": np.array(data["shape"], dtype=np.float32),
+        "expression": np.array(data["expression"], dtype=np.float32),
+        "body_pose": np.array(data["body_pose"], dtype=np.float32).reshape(21, 3),
+        "hand_pose": np.concatenate([data["left_hand_pose"], data["right_hand_pose"]], axis=-1)
+        .astype(np.float32)
+        .reshape(30, 3),
+        "head_pose": np.concatenate([data["jaw_pose"], data["leye_pose"], data["reye_pose"]], axis=-1)
+        .astype(np.float32)
+        .reshape(3, 3),
+        "pelvis_rotation": np.array(data["global_orient"], dtype=np.float32),
+        "global_translation": np.array(data["transl"], dtype=np.float32),
     }
+    outputs = {
+        "vertices": np.load(OUTPUTS_DIR / str(idx) / "vertices.npy"),
+        "joints": np.load(OUTPUTS_DIR / str(idx) / "joints.npy"),
+    }
+    return inputs, outputs
 
 
-def _load_outputs(path: Path) -> dict[str, torch.Tensor]:
-    """Load reference outputs from numpy files."""
-    vertices = torch.from_numpy(np.load(path / "vertices.npy"))
-    joints = torch.from_numpy(np.load(path / "joints.npy"))
-    return {"vertices": vertices, "joints": joints}
+# ============================================================================
+# Numerical precision tests (all backends)
+# ============================================================================
 
 
-def test_smplx_matches_reference() -> None:
-    """Test that our SMPLX implementation matches the official smplx package."""
-    model = SMPLX(flat_hand_mean=False, use_hand_pca=False, ground_plane=False)  # Use native coordinates
-    model.eval()
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_vertices_torch(idx: int) -> None:
+    """Test PyTorch forward_vertices matches reference."""
+    from body_models.smplx.torch import SMPLX
 
-    for idx in range(NUM_CASES):
-        input_path = INPUTS_DIR / f"{idx}.json"
-        inputs = _load_inputs(input_path)
-        outputs = _load_outputs(OUTPUTS_DIR / str(idx))
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    inputs, ref = load_test_case(idx)
 
-        # Convert native args to API format
-        args = from_native_args(**inputs)
+    with torch.no_grad():
+        verts = model.forward_vertices(
+            shape=torch.as_tensor(inputs["shape"])[None],
+            expression=torch.as_tensor(inputs["expression"])[None],
+            body_pose=torch.as_tensor(inputs["body_pose"])[None],
+            hand_pose=torch.as_tensor(inputs["hand_pose"])[None],
+            head_pose=torch.as_tensor(inputs["head_pose"])[None],
+            pelvis_rotation=torch.as_tensor(inputs["pelvis_rotation"])[None],
+            global_translation=torch.as_tensor(inputs["global_translation"])[None],
+        )
 
-        with torch.no_grad():
-            verts = model.forward_vertices(**args)  # type: ignore[arg-type]
-            transforms = model.forward_skeleton(**args)  # type: ignore[arg-type]
-
-        # Convert to native outputs (joint positions instead of transforms)
-        result = to_native_outputs(verts, transforms)
-
-        ref_vertices = outputs["vertices"]
-        ref_joints = outputs["joints"]
-
-        torch.testing.assert_close(result["vertices"][0], ref_vertices, rtol=1e-4, atol=1e-4)
-        # Note: joint count may differ (official smplx has extra regressed joints)
-        # Compare only the first NUM_JOINTS joints
-        joints = result["joints"][0]
-        num_joints = min(joints.shape[0], ref_joints.shape[0])
-        torch.testing.assert_close(joints[:num_joints], ref_joints[:num_joints], rtol=1e-4, atol=1e-4)
-        print(f"Test case {idx} passed.")
+    np.testing.assert_allclose(verts[0].numpy(), ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
-def test_smplx_simplify() -> None:
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_vertices_numpy(idx: int) -> None:
+    """Test NumPy forward_vertices matches reference."""
+    from body_models.smplx.numpy import SMPLX
+
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    inputs, ref = load_test_case(idx)
+
+    verts = model.forward_vertices(
+        shape=inputs["shape"][None],
+        expression=inputs["expression"][None],
+        body_pose=inputs["body_pose"][None],
+        hand_pose=inputs["hand_pose"][None],
+        head_pose=inputs["head_pose"][None],
+        pelvis_rotation=inputs["pelvis_rotation"][None],
+        global_translation=inputs["global_translation"][None],
+    )
+
+    np.testing.assert_allclose(verts[0], ref["vertices"], rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_vertices_jax(idx: int) -> None:
+    """Test JAX forward_vertices matches reference."""
+    jnp = pytest.importorskip("jax.numpy")
+    from body_models.smplx.jax import SMPLX
+
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    inputs, ref = load_test_case(idx)
+
+    verts = model.forward_vertices(
+        shape=jnp.array(inputs["shape"])[None],
+        expression=jnp.array(inputs["expression"])[None],
+        body_pose=jnp.array(inputs["body_pose"])[None],
+        hand_pose=jnp.array(inputs["hand_pose"])[None],
+        head_pose=jnp.array(inputs["head_pose"])[None],
+        pelvis_rotation=jnp.array(inputs["pelvis_rotation"])[None],
+        global_translation=jnp.array(inputs["global_translation"])[None],
+    )
+
+    np.testing.assert_allclose(np.asarray(verts[0]), ref["vertices"], rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_skeleton_torch(idx: int) -> None:
+    """Test PyTorch forward_skeleton matches reference joint positions."""
+    from body_models.smplx.torch import SMPLX
+
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    inputs, ref = load_test_case(idx)
+
+    with torch.no_grad():
+        transforms = model.forward_skeleton(
+            shape=torch.as_tensor(inputs["shape"])[None],
+            expression=torch.as_tensor(inputs["expression"])[None],
+            body_pose=torch.as_tensor(inputs["body_pose"])[None],
+            hand_pose=torch.as_tensor(inputs["hand_pose"])[None],
+            head_pose=torch.as_tensor(inputs["head_pose"])[None],
+            pelvis_rotation=torch.as_tensor(inputs["pelvis_rotation"])[None],
+            global_translation=torch.as_tensor(inputs["global_translation"])[None],
+        )
+
+    joints = transforms[0, :, :3, 3].numpy()
+    num_joints = min(joints.shape[0], ref["joints"].shape[0])
+    np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_skeleton_numpy(idx: int) -> None:
+    """Test NumPy forward_skeleton matches reference joint positions."""
+    from body_models.smplx.numpy import SMPLX
+
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    inputs, ref = load_test_case(idx)
+
+    transforms = model.forward_skeleton(
+        shape=inputs["shape"][None],
+        expression=inputs["expression"][None],
+        body_pose=inputs["body_pose"][None],
+        hand_pose=inputs["hand_pose"][None],
+        head_pose=inputs["head_pose"][None],
+        pelvis_rotation=inputs["pelvis_rotation"][None],
+        global_translation=inputs["global_translation"][None],
+    )
+
+    joints = transforms[0, :, :3, 3]
+    num_joints = min(joints.shape[0], ref["joints"].shape[0])
+    np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_skeleton_jax(idx: int) -> None:
+    """Test JAX forward_skeleton matches reference joint positions."""
+    jnp = pytest.importorskip("jax.numpy")
+    from body_models.smplx.jax import SMPLX
+
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    inputs, ref = load_test_case(idx)
+
+    transforms = model.forward_skeleton(
+        shape=jnp.array(inputs["shape"])[None],
+        expression=jnp.array(inputs["expression"])[None],
+        body_pose=jnp.array(inputs["body_pose"])[None],
+        hand_pose=jnp.array(inputs["hand_pose"])[None],
+        head_pose=jnp.array(inputs["head_pose"])[None],
+        pelvis_rotation=jnp.array(inputs["pelvis_rotation"])[None],
+        global_translation=jnp.array(inputs["global_translation"])[None],
+    )
+
+    joints = np.asarray(transforms[0, :, :3, 3])
+    num_joints = min(joints.shape[0], ref["joints"].shape[0])
+    np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
+
+
+# ============================================================================
+# Gradient tests (torch only)
+# ============================================================================
+
+
+@pytest.fixture
+def model_float64():
+    """Create SMPLX model in float64 for gradient checking."""
+    from body_models.smplx.torch import SMPLX
+
+    model = SMPLX(model_path=MODEL_PATH)
+    return model.to(torch.float64).eval()
+
+
+def test_gradients_forward_vertices(model_float64) -> None:
+    """Test gradients flow correctly through forward_vertices."""
+    params = prepare_params(model_float64.get_rest_pose(batch_size=1))
+    inputs = tuple(params.values())
+
+    def fn(*tensors):
+        kwargs = dict(zip(params.keys(), tensors))
+        return model_float64.forward_vertices(**kwargs)
+
+    assert sampled_gradcheck(fn, inputs, n_samples=64)
+
+
+def test_gradients_forward_skeleton(model_float64) -> None:
+    """Test gradients flow correctly through forward_skeleton."""
+    params = prepare_params(model_float64.get_rest_pose(batch_size=1))
+    inputs = tuple(params.values())
+
+    def fn(*tensors):
+        kwargs = dict(zip(params.keys(), tensors))
+        return model_float64.forward_skeleton(**kwargs)
+
+    assert sampled_gradcheck(fn, inputs, n_samples=64)
+
+
+# ============================================================================
+# Feature tests
+# ============================================================================
+
+
+def test_simplify() -> None:
     """Test mesh simplification reduces vertex/face count and forward pass works."""
-    model_orig = SMPLX(simplify=1.0)
-    model_2x = SMPLX(simplify=2.0)
-    model_4x = SMPLX(simplify=4.0)
+    from body_models.smplx.torch import SMPLX
+
+    model_orig = SMPLX(model_path=MODEL_PATH, simplify=1.0)
+    model_2x = SMPLX(model_path=MODEL_PATH, simplify=2.0)
+    model_4x = SMPLX(model_path=MODEL_PATH, simplify=4.0)
 
     # Check vertex/face counts are reduced
     assert model_2x.num_vertices < model_orig.num_vertices

@@ -6,7 +6,18 @@ from platformdirs import user_config_dir
 CONFIG_DIR = Path(user_config_dir("body-models"))
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
-MODELS = ["smpl", "smplx", "skel", "anny", "mhr", "flame"]
+MODELS = [
+    "smpl-male",
+    "smpl-female",
+    "smpl-neutral",
+    "smplx-male",
+    "smplx-female",
+    "smplx-neutral",
+    "skel",
+    "anny",
+    "mhr",
+    "flame",
+]
 
 
 def get_config() -> dict:

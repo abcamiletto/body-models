@@ -1,14 +1,21 @@
 from abc import ABC, abstractmethod
-
-import torch.nn as nn
-from jaxtyping import Float, Int
-from torch import Tensor
+from typing import Any
 
 
-class BodyModel(ABC, nn.Module):
+class BodyModel(ABC):
+    """Abstract base class for body models.
+
+    Framework-agnostic interface that all backends (torch, numpy, jax) implement.
+    Array types are left as Any to support different frameworks.
+
+    PyTorch backends should inherit from both BodyModel and nn.Module:
+        class SMPL(BodyModel, nn.Module):
+            ...
+    """
+
     @property
     @abstractmethod
-    def faces(self) -> Int[Tensor, "F K"]:
+    def faces(self) -> Any:
         """Mesh face indices. Shape [F, 3] for triangles or [F, 4] for quads."""
 
     @property
@@ -23,16 +30,16 @@ class BodyModel(ABC, nn.Module):
 
     @property
     @abstractmethod
-    def skin_weights(self) -> Float[Tensor, "V J"]:
+    def skin_weights(self) -> Any:
         """Skinning weights mapping vertices to joints. Shape [V, J]."""
 
     @property
     @abstractmethod
-    def rest_vertices(self) -> Float[Tensor, "V 3"]:
+    def rest_vertices(self) -> Any:
         """Mesh vertices in rest pose. Shape [V, 3]."""
 
     @abstractmethod
-    def forward_vertices(self, *args, **kwargs) -> Float[Tensor, "B V 3"]:
+    def forward_vertices(self, *args, **kwargs) -> Any:
         """
         Compute mesh vertices.
 
@@ -44,7 +51,7 @@ class BodyModel(ABC, nn.Module):
         """
 
     @abstractmethod
-    def forward_skeleton(self, *args, **kwargs) -> Float[Tensor, "B J 4 4"]:
+    def forward_skeleton(self, *args, **kwargs) -> Any:
         """
         Compute skeleton joint transforms.
 
@@ -56,7 +63,7 @@ class BodyModel(ABC, nn.Module):
         """
 
     @abstractmethod
-    def get_rest_pose(self, batch_size: int = 1) -> dict[str, Tensor]:
+    def get_rest_pose(self, batch_size: int = 1) -> dict[str, Any]:
         """
         Get default rest pose parameters for this model.
 
@@ -64,6 +71,6 @@ class BodyModel(ABC, nn.Module):
             batch_size: Number of instances in the batch.
 
         Returns:
-            Dictionary with model-specific parameter keys. All tensors are
+            Dictionary with model-specific parameter keys. All arrays are
             zero-initialized or set to identity poses.
         """

@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -8,20 +8,28 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "array-api-compat>=1.11.2",
     "jaxtyping>=0.3.5",
     "nanomanifold==0.1.6",
     "numpy>=2.4.1",
     "platformdirs>=4.0",
     "pyfqmr>=0.5.0",
-    "roma>=1.5.4",
     "scipy>=1.15.1",
-    "torch>=2.9.1",
     "typer>=0.15",
 ]
 
 [project.scripts]
 body-models = "body_models:main"
 convert-smpl-pkl = "body_models.smpl.convert:main"
+
+[project.optional-dependencies]
+torch = [
+    "torch>=2.0.0",
+]
+jax = [
+    "jax>=0.9.0",
+    "flax>=0.10.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.26,<0.10.0"]

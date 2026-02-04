@@ -1,87 +1,188 @@
-from __future__ import annotations
+"""Tests for the SKEL body model.
+
+- Numerical precision: parametrized across torch/numpy/jax backends
+- Gradient correctness: torch backend with gradcheck
+- Feature tests: mesh simplification, etc.
+"""
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import pytest
 import torch
 
-from body_models.skel import SKEL, from_native_args, to_native_outputs
+from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "skel"
+MODEL_PATH = ASSET_DIR / "model"
 INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
+RTOL, ATOL = 1e-4, 1e-4
+
+requires_model = pytest.mark.skipif(
+    not MODEL_PATH.exists(),
+    reason=f"SKEL model not found at {MODEL_PATH}",
+)
 
 
-def _load_inputs(path: Path) -> tuple[str, dict[str, torch.Tensor]]:
-    """Load inputs from JSON and convert to tensors matching our SKEL interface."""
-    data = json.loads(path.read_text())
+# ============================================================================
+# Test data loading
+# ============================================================================
 
-    gender = data["gender"]
-    shape = torch.as_tensor(data["shape"], dtype=torch.float32).unsqueeze(0)
-    body_pose = torch.as_tensor(data["body_pose"], dtype=torch.float32).unsqueeze(0)
-    trans = torch.as_tensor(data["trans"], dtype=torch.float32).unsqueeze(0)
 
-    return gender, {
-        "shape": shape,
-        "body_pose": body_pose,
-        "pelvis_translation": trans,
+def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
+    """Load inputs and reference outputs for a test case."""
+    data = json.loads((INPUTS_DIR / f"{idx}.json").read_text())
+    inputs = {
+        "gender": data["gender"],
+        "shape": np.array(data["shape"], dtype=np.float32),
+        "body_pose": np.array(data["body_pose"], dtype=np.float32),
+        "global_translation": np.array(data["trans"], dtype=np.float32),
     }
-
-
-def _load_outputs(path: Path) -> dict[str, torch.Tensor]:
-    """Load reference outputs from numpy files."""
-    vertices = torch.from_numpy(np.load(path / "vertices.npy"))
-    skeleton_vertices = torch.from_numpy(np.load(path / "skeleton_vertices.npy"))
-    joints = torch.from_numpy(np.load(path / "joints.npy"))
-    return {
-        "vertices": vertices,
-        "skeleton_vertices": skeleton_vertices,
-        "joints": joints,
+    outputs = {
+        "vertices": np.load(OUTPUTS_DIR / str(idx) / "vertices.npy"),
+        "joints": np.load(OUTPUTS_DIR / str(idx) / "joints.npy"),
     }
+    return inputs, outputs
 
 
-def test_skel_matches_reference() -> None:
-    """Test that our SKEL implementation matches the official skel package."""
-    models: dict[str, SKEL] = {}
-
-    for idx in range(NUM_CASES):
-        input_path = INPUTS_DIR / f"{idx}.json"
-        gender, inputs = _load_inputs(input_path)
-        outputs = _load_outputs(OUTPUTS_DIR / str(idx))
-
-        if gender not in models:
-            models[gender] = SKEL(gender=gender)
-            models[gender].eval()
-        model = models[gender]
-
-        # Convert native args to API format
-        args = from_native_args(**inputs)
-
-        with torch.no_grad():
-            verts = model.forward_vertices(**args)  # type: ignore[arg-type]
-            transforms = model.forward_skeleton(**args)  # type: ignore[arg-type]
-            skel_mesh = model.forward_skeleton_mesh(**args)  # type: ignore[arg-type]
-
-        # Convert to native outputs (no feet offset)
-        result = to_native_outputs(verts, transforms, skel_mesh, model._feet_offset)
-
-        ref_vertices = outputs["vertices"]
-        ref_skel_vertices = outputs["skeleton_vertices"]
-        ref_joints = outputs["joints"]
-
-        torch.testing.assert_close(result["vertices"][0], ref_vertices, rtol=1e-4, atol=1e-4)
-        torch.testing.assert_close(result["skeleton_vertices"][0], ref_skel_vertices, rtol=1e-4, atol=1e-4)
-        torch.testing.assert_close(result["joints"][0], ref_joints, rtol=1e-4, atol=1e-4)
-        print(f"Test case {idx} passed.")
+# ============================================================================
+# Numerical precision tests (all backends)
+# ============================================================================
 
 
-def test_skel_simplify() -> None:
+@requires_model
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_vertices_torch(idx: int) -> None:
+    """Test PyTorch forward_vertices matches reference."""
+    from body_models.skel.torch import SKEL, from_native_args, to_native_outputs
+
+    inputs, ref = load_test_case(idx)
+    model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
+    model.eval()
+
+    args = from_native_args(
+        shape=torch.tensor(inputs["shape"])[None],
+        body_pose=torch.tensor(inputs["body_pose"])[None],
+        global_translation=torch.tensor(inputs["global_translation"])[None],
+    )
+
+    with torch.no_grad():
+        verts = model.forward_vertices(**args)
+        transforms = model.forward_skeleton(**args)
+        skel_mesh = model.forward_skeleton_mesh(**args)
+
+    result = to_native_outputs(verts, transforms, skel_mesh, model._feet_offset)
+    np.testing.assert_allclose(result["vertices"][0].numpy(), ref["vertices"], rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(result["joints"][0].numpy(), ref["joints"], rtol=RTOL, atol=ATOL)
+
+
+@requires_model
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_vertices_numpy(idx: int) -> None:
+    """Test NumPy forward_vertices matches reference."""
+    from body_models.skel.numpy import SKEL, from_native_args, to_native_outputs
+
+    inputs, ref = load_test_case(idx)
+    model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
+
+    args = from_native_args(
+        shape=inputs["shape"][None],
+        body_pose=inputs["body_pose"][None],
+        global_translation=inputs["global_translation"][None],
+    )
+
+    verts = model.forward_vertices(**args)
+    transforms = model.forward_skeleton(**args)
+    result = to_native_outputs(verts, transforms, model._feet_offset)
+
+    np.testing.assert_allclose(result["vertices"][0], ref["vertices"], rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(result["joints"][0], ref["joints"], rtol=RTOL, atol=ATOL)
+
+
+@requires_model
+@pytest.mark.parametrize("idx", range(NUM_CASES))
+def test_forward_vertices_jax(idx: int) -> None:
+    """Test JAX forward_vertices matches reference."""
+    jnp = pytest.importorskip("jax.numpy")
+    from body_models.skel.jax import SKEL, from_native_args, to_native_outputs
+
+    inputs, ref = load_test_case(idx)
+    model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
+
+    args = from_native_args(
+        shape=jnp.array(inputs["shape"])[None],
+        body_pose=jnp.array(inputs["body_pose"])[None],
+        global_translation=jnp.array(inputs["global_translation"])[None],
+    )
+
+    verts = model.forward_vertices(**args)
+    transforms = model.forward_skeleton(**args)
+    result = to_native_outputs(verts, transforms, model._feet_offset[...])
+
+    np.testing.assert_allclose(np.asarray(result["vertices"][0]), ref["vertices"], rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(np.asarray(result["joints"][0]), ref["joints"], rtol=RTOL, atol=ATOL)
+
+
+# ============================================================================
+# Gradient tests (torch only)
+# ============================================================================
+
+
+@pytest.fixture
+def model_float64():
+    """Create SKEL model in float64 for gradient checking."""
+    from body_models.skel.torch import SKEL
+
+    if not MODEL_PATH.exists():
+        pytest.skip(f"SKEL model not found at {MODEL_PATH}")
+
+    model = SKEL(model_path=MODEL_PATH, gender="male")
+    return model.to(torch.float64).eval()
+
+
+@requires_model
+def test_gradients_forward_vertices(model_float64) -> None:
+    """Test gradients flow correctly through forward_vertices."""
+    params = prepare_params(model_float64.get_rest_pose(batch_size=1))
+    inputs = tuple(params.values())
+
+    def fn(*tensors):
+        kwargs = dict(zip(params.keys(), tensors))
+        return model_float64.forward_vertices(**kwargs)
+
+    assert sampled_gradcheck(fn, inputs, n_samples=64)
+
+
+@requires_model
+def test_gradients_forward_skeleton(model_float64) -> None:
+    """Test gradients flow correctly through forward_skeleton."""
+    params = prepare_params(model_float64.get_rest_pose(batch_size=1))
+    inputs = tuple(params.values())
+
+    def fn(*tensors):
+        kwargs = dict(zip(params.keys(), tensors))
+        return model_float64.forward_skeleton(**kwargs)
+
+    assert sampled_gradcheck(fn, inputs, n_samples=64)
+
+
+# ============================================================================
+# Feature tests
+# ============================================================================
+
+
+@requires_model
+def test_simplify() -> None:
     """Test mesh simplification reduces vertex/face count and forward pass works."""
-    model_orig = SKEL("male", simplify=1.0)
-    model_2x = SKEL("male", simplify=2.0)
-    model_4x = SKEL("male", simplify=4.0)
+    from body_models.skel.torch import SKEL
+
+    model_orig = SKEL(model_path=MODEL_PATH, gender="male", simplify=1.0)
+    model_2x = SKEL(model_path=MODEL_PATH, gender="male", simplify=2.0)
+    model_4x = SKEL(model_path=MODEL_PATH, gender="male", simplify=4.0)
 
     # Check vertex/face counts are reduced
     assert model_2x.num_vertices < model_orig.num_vertices

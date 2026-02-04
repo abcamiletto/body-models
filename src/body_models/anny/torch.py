@@ -16,28 +16,11 @@ from torch import Tensor
 
 from ..base import BodyModel
 from ..utils import get_cache_dir
-from .io import get_model_path
-
-# Coordinate transform constants (Z-up to Y-up)
-_COORD_ROTATION = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
-_COORD_TRANSLATION = torch.tensor([0.0, 0.852, 0.0])
-
-PHENOTYPE_VARIATIONS = {
-    "race": ["african", "asian", "caucasian"],
-    "gender": ["male", "female"],
-    "age": ["newborn", "baby", "child", "young", "old"],
-    "muscle": ["minmuscle", "averagemuscle", "maxmuscle"],
-    "weight": ["minweight", "averageweight", "maxweight"],
-    "height": ["minheight", "maxheight"],
-    "proportions": ["idealproportions", "uncommonproportions"],
-    "cupsize": ["mincup", "averagecup", "maxcup"],
-    "firmness": ["minfirmness", "averagefirmness", "maxfirmness"],
-}
-PHENOTYPE_LABELS = [k for k in PHENOTYPE_VARIATIONS if k != "race"] + PHENOTYPE_VARIATIONS["race"]
-EXCLUDED_PHENOTYPES = ["cupsize", "firmness"] + PHENOTYPE_VARIATIONS["race"]
+from . import core
+from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
 
 
-class ANNY(BodyModel):
+class ANNY(BodyModel, nn.Module):
     """ANNY body model with phenotype-based morphology.
 
     Args:
@@ -233,36 +216,33 @@ class ANNY(BodyModel):
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
-        pose_T = self._axis_angle_to_transform(pose)
-        coeffs, rest_poses, bone_transforms = self._forward_core(
-            gender,
-            age,
-            muscle,
-            weight,
-            height,
-            proportions,
-            pose_T,
+        return core.forward_vertices(
+            template_vertices=self.template_vertices,
+            blendshapes=self.blendshapes,
+            template_bone_heads=self.template_bone_heads,
+            template_bone_tails=self.template_bone_tails,
+            bone_heads_blendshapes=self.bone_heads_blendshapes,
+            bone_tails_blendshapes=self.bone_tails_blendshapes,
+            bone_rolls_rotmat=self.bone_rolls_rotmat,
+            lbs_weights=self.lbs_weights,
+            phenotype_mask=self.phenotype_mask,
+            anchors=self._get_anchors_dict(),
+            kinematic_fronts=self._kinematic_fronts,
+            coord_rotation=self._coord_rotation,
+            coord_translation=self._coord_translation,
+            y_axis=self._y_axis,
+            degenerate_rotation=self._degenerate_rotation,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
+            gender=gender,
+            age=age,
+            muscle=muscle,
+            weight=weight,
+            height=height,
+            proportions=proportions,
+            pose=pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
         )
-
-        # Vertex blendshapes
-        rest_verts = self.template_vertices + torch.einsum("bs,svd->bvd", coeffs, self.blendshapes)
-
-        # Linear blend skinning (optimized: compute weighted transforms via einsum)
-        R = bone_transforms[..., :3, :3]  # [B, J, 3, 3]
-        t = bone_transforms[..., :3, 3]  # [B, J, 3]
-        W_R = torch.einsum("vj,bjkl->bvkl", self.lbs_weights, R)  # [B, V, 3, 3]
-        W_t = torch.einsum("vj,bjk->bvk", self.lbs_weights, t)  # [B, V, 3]
-        vertices = (W_R @ rest_verts[..., None]).squeeze(-1) + W_t
-
-        # Coordinate transform + global
-        vertices = vertices @ self._coord_rotation.T + self._coord_translation
-        if global_rotation is not None:
-            global_rotation = global_rotation.to(vertices.dtype)
-            vertices = vertices @ SO3.to_matrix(SO3.from_axis_angle(global_rotation)).mT
-        if global_translation is not None:
-            global_translation = global_translation.to(vertices.dtype)
-            vertices = vertices + global_translation[:, None]
-        return vertices
 
     def forward_skeleton(
         self,
@@ -277,33 +257,30 @@ class ANNY(BodyModel):
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4]."""
-        pose_T = self._axis_angle_to_transform(pose)
-        _, bone_poses, _ = self._forward_core(
-            gender,
-            age,
-            muscle,
-            weight,
-            height,
-            proportions,
-            pose_T,
+        return core.forward_skeleton(
+            template_bone_heads=self.template_bone_heads,
+            template_bone_tails=self.template_bone_tails,
+            bone_heads_blendshapes=self.bone_heads_blendshapes,
+            bone_tails_blendshapes=self.bone_tails_blendshapes,
+            bone_rolls_rotmat=self.bone_rolls_rotmat,
+            phenotype_mask=self.phenotype_mask,
+            anchors=self._get_anchors_dict(),
+            kinematic_fronts=self._kinematic_fronts,
+            coord_rotation=self._coord_rotation,
+            coord_translation=self._coord_translation,
+            y_axis=self._y_axis,
+            degenerate_rotation=self._degenerate_rotation,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
+            gender=gender,
+            age=age,
+            muscle=muscle,
+            weight=weight,
+            height=height,
+            proportions=proportions,
+            pose=pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
         )
-
-        # Coordinate transform
-        coord_T = torch.eye(4, device=bone_poses.device, dtype=bone_poses.dtype)
-        coord_T[:3, :3] = self._coord_rotation
-        coord_T[:3, 3] = self._coord_translation
-        transforms = coord_T @ bone_poses
-
-        # Global transform
-        if global_rotation is not None or global_translation is not None:
-            B = transforms.shape[0]
-            G = torch.eye(4, device=transforms.device, dtype=transforms.dtype).expand(B, 4, 4).clone()
-            if global_rotation is not None:
-                G[:, :3, :3] = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
-            if global_translation is not None:
-                G[:, :3, 3] = global_translation
-            transforms = G[:, None] @ transforms
-        return transforms
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         """Get rest pose parameters."""
@@ -318,184 +295,9 @@ class ANNY(BodyModel):
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 
-    def _axis_angle_to_transform(self, pose: Float[Tensor, "B J 3"]) -> Float[Tensor, "B J 4 4"]:
-        """Convert axis-angle pose to 4x4 transforms."""
-        R = SO3.to_matrix(SO3.from_axis_angle(pose))
-        T = torch.zeros(R.shape[:-2] + (4, 4), device=R.device, dtype=R.dtype)
-        T[..., :3, :3] = R
-        T[..., 3, 3] = 1.0
-        return T
-
-    def _forward_core(
-        self,
-        gender: Float[Tensor, "B"],
-        age: Float[Tensor, "B"],
-        muscle: Float[Tensor, "B"],
-        weight: Float[Tensor, "B"],
-        height: Float[Tensor, "B"],
-        proportions: Float[Tensor, "B"],
-        pose_T: Float[Tensor, "B J 4 4"],
-    ) -> tuple[Float[Tensor, "B S"], Float[Tensor, "B J 4 4"], Float[Tensor, "B J 4 4"]]:
-        """Core forward: returns (blendshape_coeffs, bone_poses, bone_transforms)."""
-        dtype = self.dtype
-        pose_T = pose_T.to(dtype)
-
-        # Phenotype -> blendshape coefficients
-        coeffs = self._phenotype_to_coeffs(
-            gender.to(dtype),
-            age.to(dtype),
-            muscle.to(dtype),
-            weight.to(dtype),
-            height.to(dtype),
-            proportions.to(dtype),
-        )
-
-        # Rest bone poses from blendshapes
-        heads = self.template_bone_heads + torch.einsum("bs,sjd->bjd", coeffs, self.bone_heads_blendshapes)
-        tails = self.template_bone_tails + torch.einsum("bs,sjd->bjd", coeffs, self.bone_tails_blendshapes)
-        rest_poses = _bone_poses_from_heads_tails(
-            heads, tails, self.bone_rolls_rotmat, self._y_axis, self._degenerate_rotation
-        )
-
-        # Root parameterization
-        root_rest = rest_poses[:, 0]
-        base_T = _invert_transform(root_rest)
-        delta_T = pose_T.clone()
-        root_rot = torch.zeros_like(root_rest)
-        root_rot[:, :3, :3] = root_rest[:, :3, :3]
-        root_rot[:, 3, 3] = 1.0
-        delta_T[:, 0] = pose_T[:, 0] @ root_rot
-
-        # Forward kinematics
-        bone_poses, bone_transforms = _forward_kinematics(self._kinematic_fronts, rest_poses, delta_T, base_T)
-        return coeffs, bone_poses, bone_transforms
-
-    def _phenotype_to_coeffs(
-        self,
-        gender: Float[Tensor, "B"],
-        age: Float[Tensor, "B"],
-        muscle: Float[Tensor, "B"],
-        weight: Float[Tensor, "B"],
-        height: Float[Tensor, "B"],
-        proportions: Float[Tensor, "B"],
-        cupsize: float = 0.5,
-        firmness: float = 0.5,
-        african: float = 0.5,
-        asian: float = 0.5,
-        caucasian: float = 0.5,
-    ) -> Float[Tensor, "B S"]:
-        """Convert phenotype parameters to blendshape coefficients."""
-        device, dtype = self.phenotype_mask.device, self.phenotype_mask.dtype
-
-        def to_batch(v):
-            v = torch.as_tensor(v, device=device, dtype=dtype)
-            return v.unsqueeze(0) if v.dim() == 0 else v
-
-        # Interpolation weights for each phenotype
-        weights = {}
-        batch_size = 1
-        for name, val in [
-            ("gender", gender),
-            ("age", age),
-            ("muscle", muscle),
-            ("weight", weight),
-            ("height", height),
-            ("proportions", proportions),
-            ("cupsize", cupsize),
-            ("firmness", firmness),
-        ]:
-            val = to_batch(val)
-            batch_size = max(batch_size, len(val))
-            anchors = self._anchors[name]
-            idx = torch.searchsorted(anchors, val, side="left").clamp(1, len(anchors) - 1)
-            alpha = (val - anchors[idx - 1]) / (anchors[idx] - anchors[idx - 1])
-            if not self.extrapolate_phenotypes:
-                alpha = alpha.clamp(0, 1)
-            w = torch.zeros(len(val), len(anchors), device=device, dtype=dtype)
-            w.scatter_(1, (idx - 1).unsqueeze(1), (1 - alpha).unsqueeze(1))
-            w.scatter_(1, idx.unsqueeze(1), alpha.unsqueeze(1))
-            weights[name] = {k: w[:, i] for i, k in enumerate(PHENOTYPE_VARIATIONS[name])}
-
-        # Race weights (normalized)
-        race = torch.stack([to_batch(v) for v in (african, asian, caucasian)], dim=1)
-        race = torch.nan_to_num(race / race.sum(dim=1, keepdim=True), 1 / 3, 1 / 3, 1 / 3)
-
-        # Stack all phenotype weights
-        all_weights = {k: v for d in weights.values() for k, v in d.items()}
-        all_weights.update(african=race[:, 0], asian=race[:, 1], caucasian=race[:, 2])
-        phens = torch.stack(
-            [all_weights[k].expand(batch_size) for vs in PHENOTYPE_VARIATIONS.values() for k in vs], dim=1
-        )
-
-        # Compute blendshape coefficients via masked product
-        masked = phens.unsqueeze(1) * self.phenotype_mask.unsqueeze(0)
-        return torch.prod(masked + (1 - self.phenotype_mask.unsqueeze(0)), dim=-1)
-
-
-# Conversion functions (native Z-up <-> API Y-up)
-
-
-def from_native_args(
-    pose: Float[Tensor, "B J 4 4"],
-) -> dict[str, Tensor]:
-    """Convert native ANNY args (4x4 transforms) to API format (axis-angle).
-
-    Args:
-        pose: Per-joint 4x4 rotation transforms [B, J, 4, 4] in Z-up coords
-
-    Returns:
-        Dict with 'pose' as axis-angle [B, J, 3]
-    """
-    R = pose[..., :3, :3]
-    axis_angle = SO3.to_axis_angle(SO3.from_matrix(R))
-    return {"pose": axis_angle}
-
-
-def to_native_outputs(
-    vertices: Float[Tensor, "B V 3"],
-    transforms: Float[Tensor, "B J 4 4"],
-) -> dict[str, Tensor]:
-    """Convert API outputs (Y-up) to native ANNY format (Z-up).
-
-    Args:
-        vertices: Mesh vertices [B, V, 3] in Y-up coords
-        transforms: Joint transforms [B, J, 4, 4] in Y-up coords
-
-    Returns:
-        Dict with 'vertices' and 'bone_poses' in Z-up coords
-    """
-    device, dtype = vertices.device, vertices.dtype
-    coord_rot = _COORD_ROTATION.to(device=device, dtype=dtype)
-    coord_trans = _COORD_TRANSLATION.to(device=device, dtype=dtype)
-
-    # Inverse transform: Y-up -> Z-up
-    # Forward was: v_yup = v_zup @ R.T + t
-    # Inverse: v_zup = (v_yup - t) @ R
-    native_verts = (vertices - coord_trans) @ coord_rot
-
-    # For transforms: T_yup = coord @ T_zup
-    # Inverse: T_zup = coord_inv @ T_yup
-    coord_T = torch.eye(4, device=device, dtype=dtype)
-    coord_T[:3, :3] = coord_rot
-    coord_T[:3, 3] = coord_trans
-    coord_T_inv = _invert_transform(coord_T)
-    native_transforms = coord_T_inv @ transforms
-
-    return {"vertices": native_verts, "bone_poses": native_transforms}
-
-
-def _invert_transform(T: Float[Tensor, "*batch 4 4"]) -> Float[Tensor, "*batch 4 4"]:
-    R = T[..., :3, :3]
-    t = T[..., :3, 3]
-    R_t = R.transpose(-1, -2)
-    inv = torch.zeros_like(T)
-    inv[..., :3, :3] = R_t
-    inv[..., :3, 3] = -(R_t @ t.unsqueeze(-1)).squeeze(-1)
-    inv[..., 3, 3] = 1.0
-    return inv
-
-
-# Kinematics
+    def _get_anchors_dict(self) -> dict[str, Tensor]:
+        """Get anchors as a plain dict for core functions."""
+        return {name: self._anchors[name].data for name in self._anchors}
 
 
 def _build_kinematic_fronts(parents: list[int]) -> tuple[list[list[int]], list[list[int]]]:
@@ -513,78 +315,6 @@ def _build_kinematic_fronts(parents: list[int]) -> tuple[list[list[int]], list[l
         level = [i for i in range(n) if not assigned[i] and parents[i] in level]
 
     return indices, parent_ids
-
-
-def _forward_kinematics(
-    fronts: tuple[list[list[int]], list[list[int]]],
-    rest_poses: Float[Tensor, "B J 4 4"],
-    delta_T: Float[Tensor, "B J 4 4"],
-    base_T: Float[Tensor, "B 4 4"],
-) -> tuple[Float[Tensor, "B J 4 4"], Float[Tensor, "B J 4 4"]]:
-    """Parallel forward kinematics (autograd-compatible)."""
-    B, J = rest_poses.shape[:2]
-
-    T = rest_poses @ delta_T
-    rest_inv = _invert_transform(rest_poses)
-
-    poses = [None] * J
-    transforms = [None] * J
-
-    for joint_ids, parent_ids in zip(*fronts):
-        roots = [(j, p) for j, p in zip(joint_ids, parent_ids) if p == -1]
-        children_list = [(j, p) for j, p in zip(joint_ids, parent_ids) if p >= 0]
-
-        if roots:
-            root_ids = [j for j, _ in roots]
-            root_poses = base_T[:, None] @ T[:, root_ids]
-            root_transforms = root_poses @ rest_inv[:, root_ids]
-            for idx, joint_id in enumerate(root_ids):
-                poses[joint_id] = root_poses[:, idx]
-                transforms[joint_id] = root_transforms[:, idx]
-
-        if children_list:
-            child_ids = [j for j, _ in children_list]
-            parent_ids_list = [p for _, p in children_list]
-            parent_transforms = torch.stack([transforms[p] for p in parent_ids_list], dim=1)
-            child_poses = parent_transforms @ T[:, child_ids]
-            child_transforms = child_poses @ rest_inv[:, child_ids]
-            for idx, joint_id in enumerate(child_ids):
-                poses[joint_id] = child_poses[:, idx]
-                transforms[joint_id] = child_transforms[:, idx]
-
-    poses_tensor = torch.stack(poses, dim=1)
-    transforms_tensor = torch.stack(transforms, dim=1)
-    return poses_tensor, transforms_tensor
-
-
-def _bone_poses_from_heads_tails(
-    heads: Float[Tensor, "B J 3"],
-    tails: Float[Tensor, "B J 3"],
-    rolls: Float[Tensor, "J 3 3"],
-    y_axis: Float[Tensor, "3"],
-    degen_rot: Float[Tensor, "3 3"],
-    eps: float = 0.1,
-) -> Float[Tensor, "B J 4 4"]:
-    """Compute bone poses from head/tail positions."""
-    vec = tails - heads
-    y = vec / torch.linalg.norm(vec, dim=-1, keepdim=True)
-    cross = torch.linalg.cross(y, y_axis.expand_as(y))
-    dot = (y * y_axis).sum(dim=-1)
-    cross_norm = torch.linalg.norm(cross, dim=-1)
-
-    axis = cross / cross_norm.unsqueeze(-1)
-    angle = torch.atan2(cross_norm, dot)
-    R = SO3.to_matrix(SO3.from_axis_angle(-angle.unsqueeze(-1) * axis))
-
-    valid = (torch.abs((axis**2).sum(-1) - 1) < eps)[..., None, None]
-    R = torch.where(valid, R, degen_rot.expand_as(R))
-    R = R @ rolls
-
-    H = torch.zeros(R.shape[:-2] + (4, 4), device=R.device, dtype=R.dtype)
-    H[..., :3, :3] = R
-    H[..., :3, 3] = heads
-    H[..., 3, 3] = 1.0
-    return H
 
 
 # Data loading
@@ -605,7 +335,7 @@ def _load_data(data_dir: Path, cache_dir: Path, rig: str, eyes: bool, tongue: bo
     if cache_file.exists():
         return torch.load(cache_file, weights_only=True)
 
-    dtype = torch.float64
+    dtype = torch.float32
     world_T = (
         0.1 * SO3.to_matrix(SO3.from_euler(torch.tensor([[torch.pi / 2, 0, 0]], dtype=dtype), convention="xyz"))[0]
     )

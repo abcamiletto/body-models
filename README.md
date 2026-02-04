@@ -1,6 +1,6 @@
 # body-models
 
-A unified Python library for parametric human body models. Provides a common interface across SMPL, SMPL-X, SKEL, ANNY, and MHR body models.
+A unified Python library for parametric human body models. Provides a common interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, and MHR body models.
 
 ## Installation
 
@@ -14,6 +14,20 @@ Or with uv:
 uv add body-models
 ```
 
+### Optional backends
+
+PyTorch and JAX are optional dependencies. Install them for the corresponding backends:
+
+```bash
+# For PyTorch backend
+pip install body-models[torch]
+
+# For JAX backend
+pip install body-models[jax]
+```
+
+Note: MHR model requires PyTorch for loading the model file (stored in .pt format).
+
 ## Model Setup
 
 ### Auto-download models
@@ -21,7 +35,8 @@ uv add body-models
 ANNY and MHR models are automatically downloaded on first use:
 
 ```python
-from body_models import ANNY, MHR
+from body_models.anny.torch import ANNY
+from body_models.mhr.torch import MHR
 
 model = ANNY()  # Downloads automatically (CC0 license)
 model = MHR()   # Downloads automatically (Apache 2.0)
@@ -29,10 +44,11 @@ model = MHR()   # Downloads automatically (Apache 2.0)
 
 ### Registration-required models
 
-SMPL, SMPL-X, and SKEL require registration. Download from:
+SMPL, SMPL-X, SKEL, and FLAME require registration. Download from:
 - SMPL: https://smpl.is.tue.mpg.de/
 - SMPL-X: https://smpl-x.is.tue.mpg.de/
 - SKEL: https://skel.is.tue.mpg.de/
+- FLAME: https://flame.is.tue.mpg.de/
 
 For SMPL, convert the pkl file to npz format (the pkl files use chumpy):
 
@@ -40,18 +56,27 @@ For SMPL, convert the pkl file to npz format (the pkl files use chumpy):
 convert-smpl-pkl /path/to/model.pkl /path/to/model.npz
 ```
 
-Then configure the paths:
+Then configure the paths (per gender):
 
 ```bash
-body-models set smpl /path/to/smpl
-body-models set smplx /path/to/smplx
+body-models set smpl-neutral /path/to/SMPL_NEUTRAL.npz
+body-models set smpl-male /path/to/SMPL_MALE.npz
+body-models set smpl-female /path/to/SMPL_FEMALE.npz
+body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel
+body-models set flame /path/to/flame
 ```
 
-Or pass paths directly:
+Or pass file paths directly:
 
 ```python
-model = SMPLX("/path/to/smplx", gender="neutral")
+from body_models.smpl.torch import SMPL
+
+# Direct file path (no gender needed)
+model = SMPL(model_path="/path/to/SMPL_NEUTRAL.npz")
+
+# From config using gender
+model = SMPL(gender="neutral")  # Uses smpl-neutral config key
 ```
 
 ### Configuration
@@ -63,9 +88,14 @@ $ body-models
 Config file: /path/to/config.toml  # Platform-dependent location
 
 Current settings:
-  smpl: /data/models/smpl
-  smplx: (not set)
+  smpl-male: /data/models/smpl/SMPL_MALE.npz
+  smpl-female: /data/models/smpl/SMPL_FEMALE.npz
+  smpl-neutral: /data/models/smpl/SMPL_NEUTRAL.npz
+  smplx-male: (not set)
+  smplx-female: (not set)
+  smplx-neutral: (not set)
   skel: (not set)
+  flame: (not set)
   anny: (not set)
   mhr: (not set)
 ```
@@ -80,11 +110,14 @@ body-models unset <model>        # Remove from config
 ## Quick Start
 
 ```python
-import torch
-from body_models import SMPL, SMPLX, SKEL, ANNY, MHR
+# Import from specific backend (torch, numpy, or jax)
+from body_models.smplx.torch import SMPLX
 
-# Load any model
-model = SMPLX(gender="neutral")  # Uses configured path
+# Load model from config
+model = SMPLX(gender="neutral")  # Uses smplx-neutral config key
+
+# Or load from direct file path
+model = SMPLX(model_path="/path/to/SMPLX_NEUTRAL.npz")
 
 # Get default parameters
 params = model.get_rest_pose(batch_size=4)
@@ -95,6 +128,11 @@ vertices = model.forward_vertices(**params)  # [4, V, 3]
 # Get skeleton transforms
 skeleton = model.forward_skeleton(**params)  # [4, J, 4, 4]
 ```
+
+Available backends:
+- `body_models.<model>.torch` - PyTorch (differentiable)
+- `body_models.<model>.numpy` - NumPy
+- `body_models.<model>.jax` - JAX/Flax (differentiable)
 
 ## Common Properties
 
@@ -128,7 +166,7 @@ transforms = model.forward_skeleton(**params)
 The original parametric body model with 6890 vertices and 24 joints.
 
 ```python
-from body_models import SMPL
+from body_models.smpl.torch import SMPL  # or .numpy, .jax
 
 model = SMPL(gender="neutral")  # "neutral", "male", or "female"
 
@@ -136,9 +174,8 @@ vertices = model.forward_vertices(
     shape,               # [B, 10] body shape betas
     body_pose,           # [B, 23, 3] axis-angle per joint
     pelvis_rotation,     # [B, 3] root joint rotation (optional)
-    pelvis_translation,  # [B, 3] root translation (optional)
     global_rotation,     # [B, 3] post-transform rotation (optional)
-    global_translation,  # [B, 3] post-transform translation (optional)
+    global_translation,  # [B, 3] translation (optional)
 )
 ```
 
@@ -148,7 +185,7 @@ Conversion functions for working with the official smplx library format:
 from body_models import smpl
 
 # Convert flat tensors to API format
-args = smpl.from_native_args(shape, body_pose, pelvis_rotation, pelvis_translation)
+args = smpl.from_native_args(shape, body_pose, pelvis_rotation, global_translation)
 vertices = model.forward_vertices(**args)
 transforms = model.forward_skeleton(**args)
 
@@ -161,7 +198,7 @@ result = smpl.to_native_outputs(vertices, transforms, model._feet_offset)
 Expressive body model with articulated hands and facial expressions.
 
 ```python
-from body_models import SMPLX
+from body_models.smplx.torch import SMPLX  # or .numpy, .jax
 
 model = SMPLX(
     gender="neutral",     # "neutral", "male", or "female"
@@ -175,9 +212,8 @@ vertices = model.forward_vertices(
     head_pose,           # [B, 3, 3] jaw + left eye + right eye
     expression,          # [B, 10] facial expression (optional)
     pelvis_rotation,     # [B, 3] root joint rotation (optional)
-    pelvis_translation,  # [B, 3] root translation (optional)
     global_rotation,     # [B, 3] post-transform rotation (optional)
-    global_translation,  # [B, 3] post-transform translation (optional)
+    global_translation,  # [B, 3] translation (optional)
 )
 ```
 
@@ -188,7 +224,7 @@ from body_models import smplx
 
 # Convert flat tensors to API format
 args = smplx.from_native_args(shape, expression, body_pose, hand_pose, head_pose,
-                              pelvis_rotation, pelvis_translation)
+                              pelvis_rotation, global_translation)
 vertices = model.forward_vertices(**args)
 transforms = model.forward_skeleton(**args)
 
@@ -201,7 +237,7 @@ result = smplx.to_native_outputs(vertices, transforms, model._feet_offset)
 Anatomically realistic skeletal articulation based on OpenSim. Only "male" and "female" genders are supported (no "neutral").
 
 ```python
-from body_models import SKEL
+from body_models.skel.torch import SKEL  # or .numpy, .jax
 
 model = SKEL(gender="male")  # "male" or "female" (no neutral)
 
@@ -213,12 +249,45 @@ vertices = model.forward_vertices(
 )
 ```
 
+### FLAME
+
+FLAME (Faces Learned with an Articulated Model and Expressions) head model.
+
+```python
+from body_models.flame.torch import FLAME  # or .numpy, .jax
+
+model = FLAME()  # Uses configured path
+
+vertices = model.forward_vertices(
+    shape,               # [B, 300] shape betas (can use fewer)
+    expression,          # [B, 100] expression coefficients (optional)
+    pose,                # [B, 4, 3] axis-angle for neck, jaw, left_eye, right_eye (optional)
+    head_rotation,       # [B, 3] root joint rotation (optional)
+    global_rotation,     # [B, 3] post-transform rotation (optional)
+    global_translation,  # [B, 3] translation (optional)
+)
+```
+
+Conversion functions for working with the official FLAME/smplx library format:
+
+```python
+from body_models import flame
+
+# Convert native args to API format
+args = flame.from_native_args(shape, expression, pose, head_rotation, global_rotation, global_translation)
+vertices = model.forward_vertices(**args)
+transforms = model.forward_skeleton(**args)
+
+# Convert outputs back to native format
+result = flame.to_native_outputs(vertices, transforms)
+```
+
 ### ANNY
 
 Phenotype-based body model with intuitive shape parameters.
 
 ```python
-from body_models import ANNY
+from body_models.anny.torch import ANNY  # or .numpy, .jax
 
 model = ANNY(
     rig="default",                # "default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"
@@ -242,10 +311,10 @@ vertices = model.forward_vertices(
 
 ### MHR
 
-Meta Human Renderer with neural pose correctives.
+Meta Human Renderer with neural pose correctives. Requires PyTorch for model loading.
 
 ```python
-from body_models import MHR
+from body_models.mhr.torch import MHR  # or .numpy, .jax (all require torch for loading)
 
 model = MHR(lod=1)  # Level of detail
 
@@ -295,5 +364,6 @@ See individual model licenses for usage terms:
 - SMPL: https://smpl.is.tue.mpg.de/
 - SMPL-X: https://smpl-x.is.tue.mpg.de/
 - SKEL: https://skel.is.tue.mpg.de/
+- FLAME: https://flame.is.tue.mpg.de/
 - ANNY: CC0 (MakeHuman data)
 - MHR: Apache 2.0 (Meta Platforms, Inc.)
