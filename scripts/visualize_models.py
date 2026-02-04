@@ -30,7 +30,7 @@ import numpy as np
 import torch
 import viser
 
-from body_models import ANNY, MHR, SKEL, SMPL, SMPLX, BodyModel
+from body_models import ANNY, FLAME, MHR, SKEL, SMPL, SMPLX, BodyModel
 
 # Default paths relative to project root
 ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets"
@@ -40,6 +40,7 @@ DEFAULT_PATHS = {
     "skel": ASSETS_DIR / "skel" / "model",
     "anny": ASSETS_DIR / "anny" / "model",
     "mhr": ASSETS_DIR / "mhr" / "model",
+    "flame": ASSETS_DIR / "flame" / "model" / "FLAME2023",
 }
 
 AXES = ("X", "Y", "Z")
@@ -70,6 +71,13 @@ SKEL_POSE_DOFS = [
     ("Shoulder L", 38, (-1.5, 1.5)),
 ]
 
+FLAME_POSE_JOINTS = [
+    ("Neck", 0),
+    ("Jaw", 1),
+    ("L_Eye", 2),
+    ("R_Eye", 3),
+]
+
 ANNY_PHENOTYPE_PARAMS = ["Gender", "Age", "Muscle", "Weight", "Height", "Proportions"]
 ANNY_POSE_BONES = [
     ("Spine", 1),
@@ -91,6 +99,7 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "SKEL": (144, 238, 144),  # Light green
     "ANNY": (255, 218, 185),  # Peach
     "MHR": (221, 160, 221),  # Plum/lavender
+    "FLAME": (255, 239, 186),  # Light yellow/cream
 }
 
 
@@ -144,6 +153,10 @@ def load_models(args: argparse.Namespace) -> dict[str, BodyModel]:
     if args.mhr and Path(args.mhr).exists():
         print(f"Loading MHR from {args.mhr}", flush=True)
         models["MHR"] = MHR(Path(args.mhr))
+
+    if args.flame and Path(args.flame).exists():
+        print(f"Loading FLAME from {args.flame}", flush=True)
+        models["FLAME"] = FLAME(Path(args.flame))
 
     return models
 
@@ -531,6 +544,65 @@ def create_mhr_tab(
     return handles
 
 
+def create_flame_tab(
+    server: viser.ViserServer,
+    tab_group: viser.GuiTabGroupHandle,
+    state: ModelState,
+) -> dict[str, viser.GuiInputHandle]:
+    """Create GUI controls for FLAME model."""
+    handles: dict[str, viser.GuiInputHandle] = {}
+    reset_groups: list[ResetGroup] = []
+
+    with tab_group.add_tab("FLAME", viser.Icon.USER):
+        with server.gui.add_folder("Shape"):
+            shape_keys = create_indexed_sliders(
+                server,
+                state,
+                handles,
+                param_key="shape",
+                count=10,
+                prefix="shape",
+                label_prefix="β",
+                min_val=-3.0,
+                max_val=3.0,
+                step=0.1,
+                initial=0.0,
+            )
+            reset_groups.append(ResetGroup(keys=shape_keys, value=0.0))
+
+        with server.gui.add_folder("Expression"):
+            expr_keys = create_indexed_sliders(
+                server,
+                state,
+                handles,
+                param_key="expression",
+                count=10,
+                prefix="expr",
+                label_prefix="ψ",
+                min_val=-2.0,
+                max_val=2.0,
+                step=0.1,
+                initial=0.0,
+            )
+            reset_groups.append(ResetGroup(keys=expr_keys, value=0.0))
+
+        with server.gui.add_folder("Head Pose"):
+            pose_keys = create_joint_pose_sliders(
+                server,
+                state,
+                handles,
+                param_key="head_pose",
+                joints=FLAME_POSE_JOINTS,
+                min_val=-0.5,
+                max_val=0.5,
+            )
+            reset_groups.append(ResetGroup(keys=pose_keys, value=0.0))
+
+        add_reset_button(server, state, handles, reset_groups)
+
+    return handles
+
+
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
     with torch.no_grad():
         vertices = state.model.forward_vertices(**state.params)
@@ -577,6 +649,7 @@ def main() -> None:
     )
     parser.add_argument("--anny", type=str, default=str(DEFAULT_PATHS["anny"]), help="Path to ANNY model directory")
     parser.add_argument("--mhr", type=str, default=str(DEFAULT_PATHS["mhr"]), help="Path to MHR model directory")
+    parser.add_argument("--flame", type=str, default=str(DEFAULT_PATHS["flame"]), help="Path to FLAME model directory")
     args = parser.parse_args()
 
     server = viser.ViserServer()
@@ -594,11 +667,12 @@ def main() -> None:
 
     gui_state = GuiState()
     x_positions = {
-        "SMPL": -2.0,
-        "SMPLX": -1.0,
-        "SKEL": 0.0,
-        "ANNY": 1.0,
-        "MHR": 2.0,
+        "SMPL": -2.5,
+        "SMPLX": -1.5,
+        "SKEL": -0.5,
+        "ANNY": 0.5,
+        "MHR": 1.5,
+        "FLAME": 2.5,
     }
 
     for name, model in models.items():
@@ -616,6 +690,7 @@ def main() -> None:
         "SKEL": create_skel_tab,
         "ANNY": create_anny_tab,
         "MHR": create_mhr_tab,
+        "FLAME": create_flame_tab,
     }
     for name, state in gui_state.model_states.items():
         if name in tab_creators:
