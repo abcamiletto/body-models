@@ -124,10 +124,10 @@ def compute_kinematic_fronts(parents: Int[Tensor, "J"] | np.ndarray) -> list[tup
 
 
 def simplify_mesh(
-    vertices: np.ndarray,
-    faces: np.ndarray,
+    vertices: Float[np.ndarray, "V 3"],
+    faces: Int[np.ndarray, "F 3"],
     target_faces: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[Float[np.ndarray, "V2 3"], Int[np.ndarray, "F2 3"], Int[np.ndarray, "V2"]]:
     """Simplify mesh using quadric decimation.
 
     Args:

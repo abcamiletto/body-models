@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from . import core
 from .io import get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
@@ -64,7 +65,7 @@ class SMPL:
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
     @property
-    def faces(self) -> np.ndarray:
+    def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
 
     @property
@@ -75,14 +76,22 @@ class SMPL:
     def num_vertices(self) -> int:
         return self.v_template.shape[0]
 
+    @property
+    def skin_weights(self) -> Float[np.ndarray, "V 24"]:
+        return self.lbs_weights
+
+    @property
+    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
+        return self.v_template
+
     def forward_vertices(
         self,
-        shape: np.ndarray,
-        body_pose: np.ndarray,
-        pelvis_rotation: np.ndarray | None = None,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 10"],
+        body_pose: Float[np.ndarray, "B 23 3"],
+        pelvis_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template,
             v_template_full=self.v_template_full,
@@ -103,12 +112,12 @@ class SMPL:
 
     def forward_skeleton(
         self,
-        shape: np.ndarray,
-        body_pose: np.ndarray,
-        pelvis_rotation: np.ndarray | None = None,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 10"],
+        body_pose: Float[np.ndarray, "B 23 3"],
+        pelvis_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B 24 4 4"]:
         return core.forward_skeleton(
             v_template_full=self.v_template_full,
             shapedirs_full=self.shapedirs_full,

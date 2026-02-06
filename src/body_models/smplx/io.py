@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from .. import config
 
@@ -63,7 +64,7 @@ def load_model_data(path: Path) -> dict:
     return dict(np.load(path, allow_pickle=True))
 
 
-def compute_kinematic_fronts(parents: np.ndarray) -> list[tuple[list[int], list[int]]]:
+def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[int], list[int]]]:
     """Compute kinematic fronts for batched FK.
 
     Returns list of (joint_indices, parent_indices) tuples, one per depth level.
@@ -99,10 +100,10 @@ def compute_kinematic_fronts(parents: np.ndarray) -> list[tuple[list[int], list[
 
 
 def simplify_mesh(
-    vertices: np.ndarray,
-    faces: np.ndarray,
+    vertices: Float[np.ndarray, "V 3"],
+    faces: Int[np.ndarray, "F 3"],
     target_faces: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[Float[np.ndarray, "V2 3"], Int[np.ndarray, "F2 3"], Int[np.ndarray, "V2"]]:
     """Simplify mesh using quadric decimation.
 
     Args:

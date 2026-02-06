@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from .. import config
 
@@ -83,7 +84,7 @@ def load_model_data(model_path: Path) -> dict:
     return model_data
 
 
-def compute_kinematic_fronts(parents: np.ndarray) -> list[tuple[list[int], list[int]]]:
+def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[int], list[int]]]:
     """Compute kinematic fronts for batched FK."""
     n_joints = len(parents)
     depths = [-1] * n_joints
@@ -111,10 +112,10 @@ def compute_kinematic_fronts(parents: np.ndarray) -> list[tuple[list[int], list[
 
 
 def simplify_mesh(
-    vertices: np.ndarray,
-    faces: np.ndarray,
+    vertices: Float[np.ndarray, "V 3"],
+    faces: Int[np.ndarray, "F 3"],
     target_faces: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[Float[np.ndarray, "V2 3"], Int[np.ndarray, "F2 3"], Int[np.ndarray, "V2"]]:
     """Simplify mesh using quadric decimation."""
     import pyfqmr
     from scipy.spatial import KDTree
