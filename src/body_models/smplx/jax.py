@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from flax import nnx
+from jaxtyping import Float, Int
 
 from . import core
 from .io import compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
@@ -87,7 +89,7 @@ class SMPLX(nnx.Module):
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
     @property
-    def faces(self) -> jnp.ndarray:
+    def faces(self) -> Int[jax.Array, "F 3"]:
         return self._faces[...]
 
     @property
@@ -98,17 +100,25 @@ class SMPLX(nnx.Module):
     def num_vertices(self) -> int:
         return self.v_template[...].shape[0]
 
+    @property
+    def skin_weights(self) -> Float[jax.Array, "V 55"]:
+        return self.lbs_weights[...]
+
+    @property
+    def rest_vertices(self) -> Float[jax.Array, "V 3"]:
+        return self.v_template[...]
+
     def forward_vertices(
         self,
-        shape: jnp.ndarray,
-        body_pose: jnp.ndarray,
-        hand_pose: jnp.ndarray,
-        head_pose: jnp.ndarray,
-        expression: jnp.ndarray | None = None,
-        pelvis_rotation: jnp.ndarray | None = None,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 10"],
+        body_pose: Float[jax.Array, "B 21 3"],
+        hand_pose: Float[jax.Array, "B 30 3"],
+        head_pose: Float[jax.Array, "B 3 3"],
+        expression: Float[jax.Array, "B 10"] | None = None,
+        pelvis_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template[...],
             v_template_full=self.v_template_full[...],
@@ -135,15 +145,15 @@ class SMPLX(nnx.Module):
 
     def forward_skeleton(
         self,
-        shape: jnp.ndarray,
-        body_pose: jnp.ndarray,
-        hand_pose: jnp.ndarray,
-        head_pose: jnp.ndarray,
-        expression: jnp.ndarray | None = None,
-        pelvis_rotation: jnp.ndarray | None = None,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 10"],
+        body_pose: Float[jax.Array, "B 21 3"],
+        hand_pose: Float[jax.Array, "B 30 3"],
+        head_pose: Float[jax.Array, "B 3 3"],
+        expression: Float[jax.Array, "B 10"] | None = None,
+        pelvis_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B 55 4 4"]:
         return core.forward_skeleton(
             v_template_full=self.v_template_full[...],
             shapedirs_full=self.shapedirs_full[...],
@@ -163,7 +173,7 @@ class SMPLX(nnx.Module):
             ground_plane=self.ground_plane,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         return {
             "shape": jnp.zeros((1, 10), dtype=dtype),
             "body_pose": jnp.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype),
