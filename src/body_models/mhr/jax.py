@@ -6,9 +6,11 @@ Use the PyTorch backend for full accuracy with pose correctives.
 
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from flax import nnx
+from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from . import core
@@ -97,7 +99,7 @@ class MHR(nnx.Module):
         self._pose_dim = data["parameter_transform"].shape[1] - self.SHAPE_DIM
 
     @property
-    def faces(self) -> jnp.ndarray:
+    def faces(self) -> Int[jax.Array, "F 3"]:
         return self._faces[...]
 
     @property
@@ -113,17 +115,17 @@ class MHR(nnx.Module):
         return self._pose_dim
 
     @property
-    def rest_vertices(self) -> jnp.ndarray:
+    def rest_vertices(self) -> Float[jax.Array, "V 3"]:
         return self.base_vertices[...] * 0.01
 
     def forward_vertices(
         self,
-        shape: jnp.ndarray,
-        pose: jnp.ndarray,
-        expression: jnp.ndarray | None = None,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 45"],
+        pose: Float[jax.Array, "B 204"],
+        expression: Float[jax.Array, "B 72"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B V 3"]:
         """Compute mesh vertices [B, V, 3] in meters.
 
         Note: Pose correctives are NOT applied in this backend.
@@ -152,12 +154,12 @@ class MHR(nnx.Module):
 
     def forward_skeleton(
         self,
-        shape: jnp.ndarray,
-        pose: jnp.ndarray,
-        expression: jnp.ndarray | None = None,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 45"],
+        pose: Float[jax.Array, "B 204"],
+        expression: Float[jax.Array, "B 72"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4] in meters."""
         return core.forward_skeleton(
             joint_offsets=self.joint_offsets[...],
@@ -171,7 +173,7 @@ class MHR(nnx.Module):
             global_translation=global_translation,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         return {
             "shape": jnp.zeros((1, self.SHAPE_DIM), dtype=dtype),
             "pose": jnp.zeros((batch_size, self.pose_dim), dtype=dtype),

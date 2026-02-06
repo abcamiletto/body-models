@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from flax import nnx
+from jaxtyping import Float, Int
 
 from . import core
 from .io import get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
@@ -89,7 +91,7 @@ class FLAME(nnx.Module):
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
     @property
-    def faces(self) -> jnp.ndarray:
+    def faces(self) -> Int[jax.Array, "F 3"]:
         return self._faces[...]
 
     @property
@@ -101,18 +103,22 @@ class FLAME(nnx.Module):
         return self.v_template[...].shape[0]
 
     @property
-    def skin_weights(self) -> jnp.ndarray:
+    def skin_weights(self) -> Float[jax.Array, "V 5"]:
         return self.lbs_weights[...]
+
+    @property
+    def rest_vertices(self) -> Float[jax.Array, "V 3"]:
+        return self.v_template[...]
 
     def forward_vertices(
         self,
-        shape: jnp.ndarray,
-        expression: jnp.ndarray | None = None,
-        pose: jnp.ndarray | None = None,
-        head_rotation: jnp.ndarray | None = None,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 N_shape"],
+        expression: Float[jax.Array, "B N_expr"] | None = None,
+        pose: Float[jax.Array, "B 4 3"] | None = None,
+        head_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         B = shape.shape[0] if shape.ndim > 1 and shape.shape[0] > 1 else (pose.shape[0] if pose is not None else 1)
 
@@ -144,13 +150,13 @@ class FLAME(nnx.Module):
 
     def forward_skeleton(
         self,
-        shape: jnp.ndarray,
-        expression: jnp.ndarray | None = None,
-        pose: jnp.ndarray | None = None,
-        head_rotation: jnp.ndarray | None = None,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 N_shape"],
+        expression: Float[jax.Array, "B N_expr"] | None = None,
+        pose: Float[jax.Array, "B 4 3"] | None = None,
+        head_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B 5 4 4"]:
         """Compute skeleton joint transforms [B, 5, 4, 4]."""
         B = shape.shape[0] if shape.ndim > 1 and shape.shape[0] > 1 else (pose.shape[0] if pose is not None else 1)
 
@@ -175,7 +181,7 @@ class FLAME(nnx.Module):
             ground_plane=self.ground_plane,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         """Get rest pose parameters."""
         return {
             "shape": jnp.zeros((1, 300), dtype=dtype),

@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from flax import nnx
+from jaxtyping import Float, Int
 
 from . import core
 from .io import (
@@ -100,7 +102,7 @@ class ANNY(nnx.Module):
         )
 
     @property
-    def faces(self) -> jnp.ndarray:
+    def faces(self) -> Int[jax.Array, "F _"]:
         """Face indices. Shape [F, 4] for quads (original) or [F, 3] for triangles (simplified)."""
         return self._faces[...]
 
@@ -113,8 +115,12 @@ class ANNY(nnx.Module):
         return self.template_vertices[...].shape[0]
 
     @property
-    def skin_weights(self) -> jnp.ndarray:
+    def skin_weights(self) -> Float[jax.Array, "V J"]:
         return self.lbs_weights[...]
+
+    @property
+    def rest_vertices(self) -> Float[jax.Array, "V 3"]:
+        return self.template_vertices[...] @ self._coord_rotation[...].T + self._coord_translation[...]
 
     def _get_anchors_dict(self) -> dict[str, jnp.ndarray]:
         """Get anchors as plain arrays for core functions."""
@@ -131,16 +137,16 @@ class ANNY(nnx.Module):
 
     def forward_vertices(
         self,
-        gender: jnp.ndarray,
-        age: jnp.ndarray,
-        muscle: jnp.ndarray,
-        weight: jnp.ndarray,
-        height: jnp.ndarray,
-        proportions: jnp.ndarray,
-        pose: jnp.ndarray,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        gender: Float[jax.Array, "B"],
+        age: Float[jax.Array, "B"],
+        muscle: Float[jax.Array, "B"],
+        weight: Float[jax.Array, "B"],
+        height: Float[jax.Array, "B"],
+        proportions: Float[jax.Array, "B"],
+        pose: Float[jax.Array, "B J 3"],
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         return core.forward_vertices(
             template_vertices=self.template_vertices[...],
@@ -172,16 +178,16 @@ class ANNY(nnx.Module):
 
     def forward_skeleton(
         self,
-        gender: jnp.ndarray,
-        age: jnp.ndarray,
-        muscle: jnp.ndarray,
-        weight: jnp.ndarray,
-        height: jnp.ndarray,
-        proportions: jnp.ndarray,
-        pose: jnp.ndarray,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        gender: Float[jax.Array, "B"],
+        age: Float[jax.Array, "B"],
+        muscle: Float[jax.Array, "B"],
+        weight: Float[jax.Array, "B"],
+        height: Float[jax.Array, "B"],
+        proportions: Float[jax.Array, "B"],
+        pose: Float[jax.Array, "B J 3"],
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4]."""
         return core.forward_skeleton(
             template_bone_heads=self.template_bone_heads[...],
@@ -208,7 +214,7 @@ class ANNY(nnx.Module):
             global_translation=global_translation,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         """Get rest pose parameters."""
         return {
             **{

@@ -3,9 +3,11 @@
 import pickle as pkl
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from flax import nnx
+from jaxtyping import Float, Int
 from scipy import sparse
 
 from . import core
@@ -180,7 +182,7 @@ class SKEL(nnx.Module):
     # -------------------------------------------------------------------------
 
     @property
-    def faces(self) -> jnp.ndarray:
+    def faces(self) -> Int[jax.Array, "F 3"]:
         return self._faces[...]
 
     @property
@@ -192,11 +194,11 @@ class SKEL(nnx.Module):
         return self._v_template[...].shape[0]
 
     @property
-    def skin_weights(self) -> jnp.ndarray:
+    def skin_weights(self) -> Float[jax.Array, "V 24"]:
         return self._skin_weights[...]
 
     @property
-    def rest_vertices(self) -> jnp.ndarray:
+    def rest_vertices(self) -> Float[jax.Array, "V 3"]:
         return self._v_template[...] + self._feet_offset[...]
 
     # -------------------------------------------------------------------------
@@ -205,11 +207,11 @@ class SKEL(nnx.Module):
 
     def forward_vertices(
         self,
-        shape: jnp.ndarray,
-        pose: jnp.ndarray,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 10"],
+        pose: Float[jax.Array, "B 46"],
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         return core.forward_vertices(
             v_template=self._v_template[...],
@@ -240,11 +242,11 @@ class SKEL(nnx.Module):
 
     def forward_skeleton(
         self,
-        shape: jnp.ndarray,
-        pose: jnp.ndarray,
-        global_rotation: jnp.ndarray | None = None,
-        global_translation: jnp.ndarray | None = None,
-    ) -> jnp.ndarray:
+        shape: Float[jax.Array, "B|1 10"],
+        pose: Float[jax.Array, "B 46"],
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+    ) -> Float[jax.Array, "B 24 4 4"]:
         """Compute skeleton joint transforms [B, 24, 4, 4]."""
         return core.forward_skeleton(
             v_template_full=self._v_template_full[...],
@@ -268,7 +270,7 @@ class SKEL(nnx.Module):
             global_translation=global_translation,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         return {
             "shape": jnp.zeros((1, self.NUM_BETAS), dtype=dtype),
             "pose": jnp.zeros((batch_size, self.NUM_POSE_PARAMS), dtype=dtype),
@@ -285,20 +287,20 @@ def _sparse_to_dense(arr_coo) -> np.ndarray:
 
 
 def from_native_args(
-    shape: jnp.ndarray,
-    body_pose: jnp.ndarray,
-    root_rotation: jnp.ndarray | None = None,
-    global_rotation: jnp.ndarray | None = None,
-    global_translation: jnp.ndarray | None = None,
-) -> dict[str, jnp.ndarray | None]:
+    shape: jax.Array,
+    body_pose: jax.Array,
+    root_rotation: jax.Array | None = None,
+    global_rotation: jax.Array | None = None,
+    global_translation: jax.Array | None = None,
+) -> dict[str, jax.Array | None]:
     """Convert native SKEL args to forward_* kwargs."""
     return core.from_native_args(shape, body_pose, root_rotation, global_rotation, global_translation)
 
 
 def to_native_outputs(
-    vertices: jnp.ndarray,
-    transforms: jnp.ndarray,
-    feet_offset: jnp.ndarray,
-) -> dict[str, jnp.ndarray]:
+    vertices: jax.Array,
+    transforms: jax.Array,
+    feet_offset: jax.Array,
+) -> dict[str, jax.Array]:
     """Convert forward_* outputs to native SKEL format."""
     return core.to_native_outputs(vertices, transforms, feet_offset)
