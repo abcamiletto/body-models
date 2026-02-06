@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from . import core
 from .io import (
@@ -88,7 +89,7 @@ class ANNY:
         )
 
     @property
-    def faces(self) -> np.ndarray:
+    def faces(self) -> Int[np.ndarray, "F _"]:
         """Face indices. Shape [F, 4] for quads (original) or [F, 3] for triangles (simplified)."""
         return self._faces
 
@@ -101,21 +102,21 @@ class ANNY:
         return self.template_vertices.shape[0]
 
     @property
-    def skin_weights(self) -> np.ndarray:
+    def skin_weights(self) -> Float[np.ndarray, "V J"]:
         return self.lbs_weights
 
     def forward_vertices(
         self,
-        gender: np.ndarray,
-        age: np.ndarray,
-        muscle: np.ndarray,
-        weight: np.ndarray,
-        height: np.ndarray,
-        proportions: np.ndarray,
-        pose: np.ndarray,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        gender: Float[np.ndarray, "B"],
+        age: Float[np.ndarray, "B"],
+        muscle: Float[np.ndarray, "B"],
+        weight: Float[np.ndarray, "B"],
+        height: Float[np.ndarray, "B"],
+        proportions: Float[np.ndarray, "B"],
+        pose: Float[np.ndarray, "B J 3"],
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         return core.forward_vertices(
             template_vertices=self.template_vertices,
@@ -147,16 +148,16 @@ class ANNY:
 
     def forward_skeleton(
         self,
-        gender: np.ndarray,
-        age: np.ndarray,
-        muscle: np.ndarray,
-        weight: np.ndarray,
-        height: np.ndarray,
-        proportions: np.ndarray,
-        pose: np.ndarray,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        gender: Float[np.ndarray, "B"],
+        age: Float[np.ndarray, "B"],
+        muscle: Float[np.ndarray, "B"],
+        weight: Float[np.ndarray, "B"],
+        height: Float[np.ndarray, "B"],
+        proportions: Float[np.ndarray, "B"],
+        pose: Float[np.ndarray, "B J 3"],
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4]."""
         return core.forward_skeleton(
             template_bone_heads=self.template_bone_heads,

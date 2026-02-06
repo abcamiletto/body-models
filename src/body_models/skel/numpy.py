@@ -4,6 +4,7 @@ import pickle as pkl
 from pathlib import Path
 
 import numpy as np
+from jaxtyping import Float, Int
 from scipy import sparse
 
 from . import core
@@ -178,7 +179,7 @@ class SKEL:
     # -------------------------------------------------------------------------
 
     @property
-    def faces(self) -> np.ndarray:
+    def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
 
     @property
@@ -190,11 +191,11 @@ class SKEL:
         return self._v_template.shape[0]
 
     @property
-    def skin_weights(self) -> np.ndarray:
+    def skin_weights(self) -> Float[np.ndarray, "V 24"]:
         return self._skin_weights
 
     @property
-    def rest_vertices(self) -> np.ndarray:
+    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
         return self._v_template + self._feet_offset
 
     # -------------------------------------------------------------------------
@@ -203,11 +204,11 @@ class SKEL:
 
     def forward_vertices(
         self,
-        shape: np.ndarray,
-        pose: np.ndarray,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 10"],
+        pose: Float[np.ndarray, "B 46"],
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         return core.forward_vertices(
             v_template=self._v_template,
@@ -238,11 +239,11 @@ class SKEL:
 
     def forward_skeleton(
         self,
-        shape: np.ndarray,
-        pose: np.ndarray,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 10"],
+        pose: Float[np.ndarray, "B 46"],
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B 24 4 4"]:
         """Compute skeleton joint transforms [B, 24, 4, 4]."""
         return core.forward_skeleton(
             v_template_full=self._v_template_full,
@@ -283,20 +284,20 @@ def _sparse_to_dense(arr_coo) -> np.ndarray:
 
 
 def from_native_args(
-    shape: np.ndarray,
-    body_pose: np.ndarray,
-    root_rotation: np.ndarray | None = None,
-    global_rotation: np.ndarray | None = None,
-    global_translation: np.ndarray | None = None,
+    shape: Float[np.ndarray, "B|1 10"],
+    body_pose: Float[np.ndarray, "B 46"],
+    root_rotation: Float[np.ndarray, "B 3"] | None = None,
+    global_rotation: Float[np.ndarray, "B 3"] | None = None,
+    global_translation: Float[np.ndarray, "B 3"] | None = None,
 ) -> dict[str, np.ndarray | None]:
     """Convert native SKEL args to forward_* kwargs."""
     return core.from_native_args(shape, body_pose, root_rotation, global_rotation, global_translation)
 
 
 def to_native_outputs(
-    vertices: np.ndarray,
-    transforms: np.ndarray,
-    feet_offset: np.ndarray,
+    vertices: Float[np.ndarray, "B V 3"],
+    transforms: Float[np.ndarray, "B 24 4 4"],
+    feet_offset: Float[np.ndarray, "3"],
 ) -> dict[str, np.ndarray]:
     """Convert forward_* outputs to native SKEL format."""
     return core.to_native_outputs(vertices, transforms, feet_offset)

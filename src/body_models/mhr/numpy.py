@@ -7,6 +7,7 @@ Use the PyTorch backend for full accuracy with pose correctives.
 from pathlib import Path
 
 import numpy as np
+from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from . import core
@@ -85,7 +86,7 @@ class MHR:
         self._kinematic_fronts = compute_kinematic_fronts(data["joint_parents"])
 
     @property
-    def faces(self) -> np.ndarray:
+    def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
 
     @property
@@ -101,17 +102,17 @@ class MHR:
         return self.parameter_transform.shape[1] - self.SHAPE_DIM
 
     @property
-    def rest_vertices(self) -> np.ndarray:
+    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
         return self.base_vertices * 0.01
 
     def forward_vertices(
         self,
-        shape: np.ndarray,
-        pose: np.ndarray,
-        expression: np.ndarray | None = None,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 45"],
+        pose: Float[np.ndarray, "B 204"],
+        expression: Float[np.ndarray, "B 72"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B V 3"]:
         """Compute mesh vertices [B, V, 3] in meters.
 
         Note: Pose correctives are NOT applied in this backend.
@@ -140,12 +141,12 @@ class MHR:
 
     def forward_skeleton(
         self,
-        shape: np.ndarray,
-        pose: np.ndarray,
-        expression: np.ndarray | None = None,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 45"],
+        pose: Float[np.ndarray, "B 204"],
+        expression: Float[np.ndarray, "B 72"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4] in meters."""
         return core.forward_skeleton(
             joint_offsets=self.joint_offsets,

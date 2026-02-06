@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from . import core
 from .io import get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
@@ -87,7 +88,7 @@ class FLAME:
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
     @property
-    def faces(self) -> np.ndarray:
+    def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
 
     @property
@@ -99,18 +100,22 @@ class FLAME:
         return self.v_template.shape[0]
 
     @property
-    def skin_weights(self) -> np.ndarray:
+    def skin_weights(self) -> Float[np.ndarray, "V 5"]:
         return self.lbs_weights
+
+    @property
+    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
+        return self.v_template
 
     def forward_vertices(
         self,
-        shape: np.ndarray,
-        expression: np.ndarray | None = None,
-        pose: np.ndarray | None = None,
-        head_rotation: np.ndarray | None = None,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 N_shape"],
+        expression: Float[np.ndarray, "B N_expr"] | None = None,
+        pose: Float[np.ndarray, "B 4 3"] | None = None,
+        head_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         B = shape.shape[0] if shape.ndim > 1 and shape.shape[0] > 1 else (pose.shape[0] if pose is not None else 1)
 
@@ -142,13 +147,13 @@ class FLAME:
 
     def forward_skeleton(
         self,
-        shape: np.ndarray,
-        expression: np.ndarray | None = None,
-        pose: np.ndarray | None = None,
-        head_rotation: np.ndarray | None = None,
-        global_rotation: np.ndarray | None = None,
-        global_translation: np.ndarray | None = None,
-    ) -> np.ndarray:
+        shape: Float[np.ndarray, "B|1 N_shape"],
+        expression: Float[np.ndarray, "B N_expr"] | None = None,
+        pose: Float[np.ndarray, "B 4 3"] | None = None,
+        head_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+    ) -> Float[np.ndarray, "B 5 4 4"]:
         """Compute skeleton joint transforms [B, 5, 4, 4]."""
         B = shape.shape[0] if shape.ndim > 1 and shape.shape[0] > 1 else (pose.shape[0] if pose is not None else 1)
 
