@@ -30,7 +30,13 @@ import numpy as np
 import torch
 import viser
 
-from body_models import ANNY, FLAME, MHR, SKEL, SMPL, SMPLX, BodyModel
+from body_models.anny.torch import ANNY
+from body_models.base import BodyModel
+from body_models.flame.torch import FLAME
+from body_models.mhr.torch import MHR
+from body_models.skel.torch import SKEL
+from body_models.smpl.torch import SMPL
+from body_models.smplx.torch import SMPLX
 
 # Default paths relative to project root
 ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets"
