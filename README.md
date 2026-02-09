@@ -146,6 +146,20 @@ All models inherit from `BodyModel` and share these properties:
 | `skin_weights` | `[V, J]` | Skinning weights |
 | `rest_vertices` | `[V, 3]` | Vertices in rest pose |
 
+### Mesh Simplification
+
+All models support mesh simplification via the `simplify` constructor argument:
+
+```python
+# Reduce face count by half (2x simplification)
+model = SMPL(gender="neutral", simplify=2.0)
+
+# Reduce to ~1/4 of original faces
+model = SMPLX(gender="neutral", simplify=4.0)
+```
+
+The `simplify` parameter is a divisor for the face count. A value of `2.0` produces a mesh with half the faces, `4.0` produces quarter, etc. Default is `1.0` (no simplification). Skinning weights and blend shapes are automatically mapped to the simplified mesh.
+
 ### Common Methods
 
 ```python
