@@ -84,9 +84,7 @@ def test_torch_compile_forward_vertices(model_name: str) -> None:
         result_compiled = compiled_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(
-        result_compiled.numpy(), result_eager.numpy(), rtol=1e-5, atol=1e-5
-    )
+    np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
@@ -138,9 +136,7 @@ def test_torch_compile_forward_skeleton(model_name: str) -> None:
         result_compiled = compiled_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(
-        result_compiled.numpy(), result_eager.numpy(), rtol=1e-5, atol=1e-5
-    )
+    np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=1e-5, atol=1e-5)
 
 
 # ============================================================================
@@ -197,12 +193,8 @@ def test_jax_jit_forward_vertices(model_name: str) -> None:
     result_jitted_2 = jitted_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(
-        np.asarray(result_jitted), np.asarray(result_eager), rtol=1e-5, atol=1e-5
-    )
-    np.testing.assert_allclose(
-        np.asarray(result_jitted_2), np.asarray(result_eager), rtol=1e-5, atol=1e-5
-    )
+    np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
@@ -254,9 +246,5 @@ def test_jax_jit_forward_skeleton(model_name: str) -> None:
     result_jitted_2 = jitted_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(
-        np.asarray(result_jitted), np.asarray(result_eager), rtol=1e-5, atol=1e-5
-    )
-    np.testing.assert_allclose(
-        np.asarray(result_jitted_2), np.asarray(result_eager), rtol=1e-5, atol=1e-5
-    )
+    np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
