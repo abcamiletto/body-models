@@ -7,7 +7,6 @@ The torch.py backend adds forward_skeleton_mesh on top of this core computation.
 import math
 from typing import Any
 
-import numpy as np
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -103,7 +102,7 @@ def forward_vertices(
     eye3 = xp.eye(3, dtype=dtype)
     R_smpl = xp.broadcast_to(eye3, (B, num_joints_smpl, 3, 3))
     # Set SKEL rotations into SMPL positions (copy=True handles broadcast->contiguous)
-    R_smpl = common.set(R_smpl, np.index_exp[:, SMPL_JOINT_MAP], G_local[:, :, :3, :3], copy=True)
+    R_smpl = common.set(R_smpl, (slice(None), SMPL_JOINT_MAP), G_local[:, :, :3, :3], copy=True)
     pose_feat = (R_smpl[:, 1:] - eye3).reshape(B, -1)
     pose_offsets = (pose_feat @ posedirs).reshape(B, Nv, 3)
     v_posed = v_shaped + pose_offsets
@@ -349,7 +348,7 @@ def _compute_bone_orientation(
     eye3 = xp.eye(3, dtype=dtype)
     fixed = xp.broadcast_to(eye3, (B, NUM_JOINTS, 3, 3))
     mask = xp.zeros(NUM_JOINTS, dtype=xp.bool)
-    mask = common.set(mask, np.index_exp[fixed_orientation_joints], xp.asarray(True))
+    mask = common.set(mask, (fixed_orientation_joints,), xp.asarray(True))
     mask = xp.broadcast_to(mask[None, :, None, None], Gk.shape)
     Gk = xp.where(mask, fixed, Gk)
 

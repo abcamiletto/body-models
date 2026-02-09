@@ -2,7 +2,6 @@
 
 from typing import Any
 
-import numpy as np
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -309,9 +308,9 @@ def _build_transform_matrix(
     dtype = R.dtype
 
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, np.index_exp[..., :3, :3], R)
-    T = common.set(T, np.index_exp[..., :3, 3], t)
-    T = common.set(T, np.index_exp[..., 3, 3], xp.asarray(1.0, dtype=dtype))
+    T = common.set(T, (..., slice(None, 3), slice(None, 3)), R)
+    T = common.set(T, (..., slice(None, 3), 3), t)
+    T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype))
     return T
 
 

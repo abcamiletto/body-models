@@ -49,7 +49,7 @@ def set(array: Array, slices: tuple, values: Array, *, copy: bool = True) -> Arr
 
     Args:
         array: The array to modify.
-        slices: Index/slice tuple. Use `np.index_exp` for readable syntax.
+        slices: Index/slice tuple (e.g., `(..., slice(None, 3), 3)` for `[..., :3, 3]`).
         values: Values to set at the specified indices.
         copy: If True (default), copy the array before modifying (NumPy/PyTorch only).
               JAX always returns a new array regardless of this flag.
@@ -58,10 +58,9 @@ def set(array: Array, slices: tuple, values: Array, *, copy: bool = True) -> Arr
         The modified array (new array for JAX, possibly same array for NumPy/PyTorch if copy=False).
 
     Examples:
-        >>> import numpy as np
         >>> from body_models import common
-        >>> arr = common.set(arr, np.index_exp[..., :3, :3], rotation)  # arr[..., :3, :3] = R
-        >>> arr = common.set(arr, np.index_exp[:, 0], first_row)        # arr[:, 0] = first_row
+        >>> arr = common.set(arr, (..., slice(None, 3), slice(None, 3)), R)  # arr[..., :3, :3] = R
+        >>> arr = common.set(arr, (slice(None), 0), first_row)               # arr[:, 0] = first_row
     """
     # JAX arrays use functional update API via .at attribute
     if "jax" in type(array).__module__:

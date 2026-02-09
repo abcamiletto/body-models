@@ -7,7 +7,6 @@ The torch.py backend adds pose correctives on top of this core computation.
 import math
 from typing import Any, Callable
 
-import numpy as np
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -156,17 +155,17 @@ def forward_skeleton(
         B = T.shape[0]
         dtype = T.dtype
         global_T = xp.zeros((B, 4, 4), dtype=dtype)
-        global_T = common.set(global_T, np.index_exp[:, 3, 3], xp.asarray(1.0, dtype=dtype))
+        global_T = common.set(global_T, (slice(None), 3, 3), xp.asarray(1.0, dtype=dtype))
 
         if global_rotation is not None:
             R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
-            global_T = common.set(global_T, np.index_exp[:, :3, :3], R_global)
+            global_T = common.set(global_T, (slice(None), slice(None, 3), slice(None, 3)), R_global)
         else:
             eye3 = xp.eye(3, dtype=dtype)
-            global_T = common.set(global_T, np.index_exp[:, :3, :3], eye3)
+            global_T = common.set(global_T, (slice(None), slice(None, 3), slice(None, 3)), eye3)
 
         if global_translation is not None:
-            global_T = common.set(global_T, np.index_exp[:, :3, 3], global_translation)
+            global_T = common.set(global_T, (slice(None), slice(None, 3), 3), global_translation)
 
         # global_T: [B, 4, 4], T: [B, J, 4, 4] -> broadcast global_T @ T for each joint
         T = xp.einsum("bij,bnjk->bnik", global_T, T)
@@ -270,9 +269,9 @@ def _trs_to_transforms(
     dtype = t.dtype
 
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, np.index_exp[..., :3, :3], R)
-    T = common.set(T, np.index_exp[..., :3, 3], t)
-    T = common.set(T, np.index_exp[..., 3, 3], xp.asarray(1.0, dtype=dtype))
+    T = common.set(T, (..., slice(None, 3), slice(None, 3)), R)
+    T = common.set(T, (..., slice(None, 3), 3), t)
+    T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype))
     return T
 
 
