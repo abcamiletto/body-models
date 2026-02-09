@@ -52,6 +52,8 @@ def forward_vertices(
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
     assert shape.ndim == 2 and shape.shape[1] >= 1
@@ -59,7 +61,8 @@ def forward_vertices(
     assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
-    xp = get_namespace(pose)
+    if xp is None:
+        xp = get_namespace(pose)
     B = pose.shape[0]
     dtype = pose.dtype
     Nv = v_template.shape[0]
@@ -145,6 +148,8 @@ def forward_skeleton(
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B 24 4 4"]:
     """Compute skeleton joint transforms [B, 24, 4, 4]."""
     assert shape.ndim == 2 and shape.shape[1] >= 1
@@ -152,7 +157,8 @@ def forward_skeleton(
     assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
-    xp = get_namespace(pose)
+    if xp is None:
+        xp = get_namespace(pose)
     B = pose.shape[0]
     dtype = pose.dtype
 

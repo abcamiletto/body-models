@@ -289,6 +289,7 @@ class SKEL(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            xp=torch,
         )
 
     def forward_skeleton(
@@ -319,6 +320,7 @@ class SKEL(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            xp=torch,
         )
 
     def forward_skeleton_mesh(

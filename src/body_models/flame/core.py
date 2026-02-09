@@ -25,6 +25,7 @@ def forward_vertices(
     J_regressor: Float[Array, "5 V_full"],
     parents: Int[Array, "5"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
+    rest_pose_y_offset: float,
     # Inputs
     shape: Float[Array, "B N_shape"],
     expression: Float[Array, "B N_expr"],
@@ -33,6 +34,8 @@ def forward_vertices(
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     ground_plane: bool = True,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
     assert shape.ndim == 2 and shape.shape[1] >= 1
@@ -42,10 +45,11 @@ def forward_vertices(
     assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
-    xp = get_namespace(shape)
+    if xp is None:
+        xp = get_namespace(shape)
     B = pose.shape[0]
 
-    v_t, j_t, pose_matrices, T_world, ground_offset = _forward_core(
+    v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
         v_template=v_template,
         v_template_full=v_template_full,
@@ -60,10 +64,12 @@ def forward_vertices(
         expression=expression,
         pose=pose.reshape(B, -1),
         head_rotation=head_rotation,
-        ground_plane=ground_plane,
         skeleton_only=False,
     )
     assert v_t is not None  # guaranteed when skeleton_only=False
+
+    # Precomputed offset to place on ground plane
+    y_offset = rest_pose_y_offset if ground_plane else 0.0
 
     # Pose blend shapes
     eye3 = xp.eye(3, dtype=shape.dtype)
@@ -80,8 +86,13 @@ def forward_vertices(
     # Apply global transform
     v_posed = _apply_global_transform(xp, v_posed, global_rotation, global_translation)
 
-    # Apply ground offset
-    return v_posed + ground_offset[:, None]
+    # Apply ground plane offset (shift Y up by precomputed amount)
+    if y_offset != 0.0:
+        offset = xp.zeros((1, 1, 3), dtype=v_posed.dtype)
+        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=v_posed.dtype))
+        v_posed = v_posed + offset
+
+    return v_posed
 
 
 def forward_skeleton(
@@ -92,6 +103,7 @@ def forward_skeleton(
     J_regressor: Float[Array, "5 V_full"],
     parents: Int[Array, "5"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
+    rest_pose_y_offset: float,
     # Inputs
     shape: Float[Array, "B N_shape"],
     expression: Float[Array, "B N_expr"],
@@ -100,6 +112,8 @@ def forward_skeleton(
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     ground_plane: bool = True,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B 5 4 4"]:
     """Compute skeleton joint transforms [B, 5, 4, 4]."""
     assert shape.ndim == 2 and shape.shape[1] >= 1
@@ -109,10 +123,11 @@ def forward_skeleton(
     assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
-    xp = get_namespace(shape)
+    if xp is None:
+        xp = get_namespace(shape)
     B = pose.shape[0]
 
-    _, _, _, T_world, ground_offset = _forward_core(
+    _, _, _, T_world = _forward_core(
         xp=xp,
         v_template=None,
         v_template_full=v_template_full,
@@ -127,9 +142,11 @@ def forward_skeleton(
         expression=expression,
         pose=pose.reshape(B, -1),
         head_rotation=head_rotation,
-        ground_plane=ground_plane,
         skeleton_only=True,
     )
+
+    # Precomputed offset to place on ground plane
+    y_offset = rest_pose_y_offset if ground_plane else 0.0
 
     # Extract R and t from T_world
     R_world = T_world[..., :3, :3]
@@ -139,8 +156,11 @@ def forward_skeleton(
     if global_rotation is not None or global_translation is not None:
         R_world, t_world = _apply_global_transform_to_rt(xp, R_world, t_world, global_rotation, global_translation)
 
-    # Apply ground offset
-    t_world = t_world + ground_offset[:, None]
+    # Apply ground plane offset (shift Y up by precomputed amount)
+    if y_offset != 0.0:
+        offset = xp.zeros((1, 1, 3), dtype=t_world.dtype)
+        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=t_world.dtype))
+        t_world = t_world + offset
 
     # Reconstruct T from R and t
     return _build_transform_matrix(xp, R_world, t_world)
@@ -161,14 +181,12 @@ def _forward_core(
     expression: Float[Array, "B N_expr"],
     pose: Float[Array, "B 12"],  # 4 joints * 3
     head_rotation: Float[Array, "B 3"] | None,
-    ground_plane: bool,
     skeleton_only: bool,
 ) -> tuple[
     Float[Array, "B V 3"] | None,
     Float[Array, "B 5 3"],
     Float[Array, "B 5 3 3"],
     Float[Array, "B 5 4 4"],
-    Float[Array, "B 3"],
 ]:
     """Core forward pass."""
     B = pose.shape[0]
@@ -190,14 +208,6 @@ def _forward_core(
     v_t_full = v_t_full + xp.einsum("bi,vdi->bvd", expression[:, :expr_dim], exprdirs_full[:, :, :expr_dim])
     j_t = xp.einsum("bvd,jv->bjd", v_t_full, J_regressor)
 
-    # Compute ground offset
-    if ground_plane:
-        min_y = xp.min(v_t_full[..., 1], axis=-1)
-        zeros = xp.zeros((B,), dtype=dtype)
-        ground_offset = xp.stack([zeros, -min_y, zeros], axis=-1)
-    else:
-        ground_offset = xp.zeros((B, 3), dtype=dtype)
-
     # Shape blend shapes for mesh output
     if skeleton_only:
         v_t = None
@@ -214,7 +224,7 @@ def _forward_core(
 
     T_world = _batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts)
 
-    return v_t, j_t, pose_matrices, T_world, ground_offset
+    return v_t, j_t, pose_matrices, T_world
 
 
 def _batched_forward_kinematics(
