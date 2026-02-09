@@ -254,7 +254,7 @@ class MHR(BodyModel, nn.Module):
 
         # Apply global transform
         if global_rotation is not None:
-            R = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
+            R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=torch), xp=torch)
             verts = verts @ R.mT
         if global_translation is not None:
             verts = verts + global_translation[:, None]

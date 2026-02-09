@@ -8,6 +8,7 @@ import numpy as np
 from flax import nnx
 from jaxtyping import Float, Int
 
+from ..base import BodyModel
 from . import core
 from .io import (
     EXCLUDED_PHENOTYPES,
@@ -23,7 +24,7 @@ to_native_outputs = core.to_native_outputs
 __all__ = ["ANNY", "from_native_args", "to_native_outputs"]
 
 
-class ANNY(nnx.Module):
+class ANNY(BodyModel, nnx.Module):
     """ANNY body model with JAX/Flax NNX backend.
 
     Args:

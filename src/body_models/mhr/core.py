@@ -7,7 +7,6 @@ The torch.py backend adds pose correctives on top of this core computation.
 import math
 from typing import Any, Callable
 
-import numpy as np
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -42,9 +41,18 @@ def forward_vertices(
     global_translation: Float[Array, "B 3"] | None = None,
     # Optional pose correctives callback (PyTorch only)
     pose_correctives_fn: Callable[[Float[Array, "B J 7"]], Float[Array, "B V 3"]] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
-    xp = get_namespace(shape)
+    assert shape.ndim == 2 and shape.shape[1] == shape_dim
+    assert pose.ndim == 2 and pose.shape[1] == 204
+    assert expression is None or (expression.ndim == 2 and expression.shape[1] == expr_dim)
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
+    if xp is None:
+        xp = get_namespace(shape)
     B = pose.shape[0]
     dtype = shape.dtype
 
@@ -97,7 +105,7 @@ def forward_vertices(
 
     # Apply global transform
     if global_rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
+        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
         verts = xp.einsum("bij,bvj->bvi", R, verts)
     if global_translation is not None:
         verts = verts + global_translation[:, None]
@@ -117,9 +125,16 @@ def forward_skeleton(
     pose: Float[Array, "B 204"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
-    xp = get_namespace(pose)
+    assert pose.ndim == 2 and pose.shape[1] == 204
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
+    if xp is None:
+        xp = get_namespace(pose)
 
     t_g, r_g, s_g, _ = _forward_skeleton_core(
         xp=xp,
@@ -139,18 +154,20 @@ def forward_skeleton(
     if global_rotation is not None or global_translation is not None:
         B = T.shape[0]
         dtype = T.dtype
+        idx_R = (slice(None), slice(None, 3), slice(None, 3))
+        idx_t = (slice(None), slice(None, 3), 3)
         global_T = xp.zeros((B, 4, 4), dtype=dtype)
-        global_T = common.set(global_T, np.index_exp[:, 3, 3], xp.asarray(1.0, dtype=dtype))
+        global_T = common.set(global_T, (slice(None), 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
 
         if global_rotation is not None:
-            R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
-            global_T = common.set(global_T, np.index_exp[:, :3, :3], R_global)
+            R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
+            global_T = common.set(global_T, idx_R, R_global, xp=xp)
         else:
             eye3 = xp.eye(3, dtype=dtype)
-            global_T = common.set(global_T, np.index_exp[:, :3, :3], eye3)
+            global_T = common.set(global_T, idx_R, eye3, xp=xp)
 
         if global_translation is not None:
-            global_T = common.set(global_T, np.index_exp[:, :3, 3], global_translation)
+            global_T = common.set(global_T, idx_t, global_translation, xp=xp)
 
         # global_T: [B, 4, 4], T: [B, J, 4, 4] -> broadcast global_T @ T for each joint
         T = xp.einsum("bij,bnjk->bnik", global_T, T)
@@ -180,8 +197,8 @@ def _forward_skeleton_core(
     euler = j_p[..., 3:6]  # [B, J, 3]
 
     # Convert euler to quaternion and apply pre-rotation
-    q_local = SO3.to_quat_xyzw(SO3.canonicalize(SO3.from_euler(euler, convention="xyz")))
-    q_l = SO3.canonicalize(SO3.multiply(joint_pre_rotations, q_local, xyzw=True), xyzw=True)
+    q_local = SO3.to_quat_xyzw(SO3.canonicalize(SO3.from_euler(euler, convention="xyz", xp=xp), xp=xp), xp=xp)
+    q_l = SO3.canonicalize(SO3.multiply(joint_pre_rotations, q_local, xyzw=True, xp=xp), xyzw=True, xp=xp)
 
     # Scale from joint params
     s_l = xp.exp(_LN2 * j_p[..., 6:7])  # [B, J, 1]
@@ -216,7 +233,7 @@ def _compose_global_trs(
     num_joints: int,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"]]:
     """Compose local TRS transforms into global via batched FK."""
-    r_l = SO3.to_matrix(q_l, xyzw=True)  # [B, J, 3, 3]
+    r_l = SO3.to_matrix(q_l, xyzw=True, xp=xp)  # [B, J, 3, 3]
 
     t_results: list[Float[Array, "B 3"] | None] = [None] * num_joints
     s_results: list[Float[Array, "B 1"] | None] = [None] * num_joints
@@ -254,9 +271,11 @@ def _trs_to_transforms(
     dtype = t.dtype
 
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, np.index_exp[..., :3, :3], R)
-    T = common.set(T, np.index_exp[..., :3, 3], t)
-    T = common.set(T, np.index_exp[..., 3, 3], xp.asarray(1.0, dtype=dtype))
+    idx_R = (..., slice(None, 3), slice(None, 3))
+    idx_t = (..., slice(None, 3), 3)
+    T = common.set(T, idx_R, R, xp=xp)
+    T = common.set(T, idx_t, t, xp=xp)
+    T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
 
 
@@ -302,7 +321,7 @@ def extract_skeleton_state(
 
     # Extract pure rotation and convert to quaternion
     R_pure = R / s[..., None]
-    q = SO3.to_quat_xyzw(SO3.from_matrix(R_pure))
+    q = SO3.to_quat_xyzw(SO3.from_matrix(R_pure, xp=xp), xp=xp)
 
     return xp.concat([t, q, s], axis=-1)
 

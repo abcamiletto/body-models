@@ -45,9 +45,22 @@ def forward_vertices(
     pose: Float[Array, "B J 3"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
-    xp = get_namespace(gender)
+    assert gender.ndim == 1
+    assert age.ndim == 1
+    assert muscle.ndim == 1
+    assert weight.ndim == 1
+    assert height.ndim == 1
+    assert proportions.ndim == 1
+    assert pose.ndim == 3 and pose.shape[2] == 3
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
+    if xp is None:
+        xp = get_namespace(gender)
 
     pose_T = _axis_angle_to_transform(xp, pose)
     coeffs, _, bone_transforms = _forward_core(
@@ -83,11 +96,11 @@ def forward_vertices(
     vertices = xp.squeeze(W_R @ rest_verts[..., None], axis=-1) + W_t
 
     # Coordinate transform + global
-    vertices = vertices @ xp.permute_dims(coord_rotation, (1, 0)) + coord_translation
+    vertices = vertices @ coord_rotation.T + coord_translation
     if global_rotation is not None:
         global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
-        R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
-        vertices = xp.permute_dims(R_global @ xp.permute_dims(vertices, (0, 2, 1)), (0, 2, 1))
+        R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
+        vertices = (R_global @ vertices.mT).mT
     if global_translation is not None:
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
         vertices = vertices + global_translation[:, None]
@@ -119,9 +132,22 @@ def forward_skeleton(
     pose: Float[Array, "B J 3"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4]."""
-    xp = get_namespace(gender)
+    assert gender.ndim == 1
+    assert age.ndim == 1
+    assert muscle.ndim == 1
+    assert weight.ndim == 1
+    assert height.ndim == 1
+    assert proportions.ndim == 1
+    assert pose.ndim == 3 and pose.shape[2] == 3
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
+    if xp is None:
+        xp = get_namespace(gender)
 
     pose_T = _axis_angle_to_transform(xp, pose)
     _, bone_poses, _ = _forward_core(
@@ -148,23 +174,27 @@ def forward_skeleton(
 
     # Coordinate transform
     B = bone_poses.shape[0]
+    idx_R = (slice(None, 3), slice(None, 3))
+    idx_t = (slice(None, 3), 3)
     coord_T = xp.zeros((4, 4), dtype=bone_poses.dtype)
-    coord_T = common.set(coord_T, np.index_exp[:3, :3], coord_rotation)
-    coord_T = common.set(coord_T, np.index_exp[:3, 3], coord_translation)
-    coord_T = common.set(coord_T, np.index_exp[3, 3], xp.asarray(1.0, dtype=bone_poses.dtype))
+    coord_T = common.set(coord_T, idx_R, coord_rotation, xp=xp)
+    coord_T = common.set(coord_T, idx_t, coord_translation, xp=xp)
+    coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=bone_poses.dtype), xp=xp)
     transforms = coord_T @ bone_poses
 
     # Global transform
     if global_rotation is not None or global_translation is not None:
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
+        idx_R = (slice(None), slice(None, 3), slice(None, 3))
+        idx_t = (slice(None), slice(None, 3), 3)
         G = xp.stack([xp.eye(4, dtype=transforms.dtype)] * B, axis=0)
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
-            R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
-            G = common.set(G, np.index_exp[:, :3, :3], R_global, copy=False)
+            R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
+            G = common.set(G, idx_R, R_global, copy=False, xp=xp)
         if global_translation is not None:
             global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
-            G = common.set(G, np.index_exp[:, :3, 3], global_translation, copy=False)
+            G = common.set(G, idx_t, global_translation, copy=False, xp=xp)
         transforms = G[:, None] @ transforms
     return transforms
 
@@ -214,12 +244,13 @@ def _forward_core(
     root_rest = rest_poses[:, 0]
     base_T = _invert_transform(xp, root_rest)
 
+    idx_R = (slice(None), slice(None, 3), slice(None, 3))
     root_rot = xp.zeros_like(root_rest)
-    root_rot = common.set(root_rot, np.index_exp[:, :3, :3], root_rest[:, :3, :3], copy=False)
-    root_rot = common.set(root_rot, np.index_exp[:, 3, 3], xp.asarray(1.0, dtype=root_rot.dtype), copy=False)
+    root_rot = common.set(root_rot, idx_R, root_rest[:, :3, :3], copy=False, xp=xp)
+    root_rot = common.set(root_rot, (slice(None), 3, 3), xp.asarray(1.0, dtype=root_rot.dtype), copy=False, xp=xp)
     new_root = pose_T[:, 0] @ root_rot
     # copy=True handles clone/copy for NumPy/PyTorch, creates new array for JAX
-    delta_T = common.set(pose_T, np.index_exp[:, 0], new_root, copy=True)
+    delta_T = common.set(pose_T, (slice(None), 0), new_root, copy=True, xp=xp)
 
     # Forward kinematics
     bone_poses, bone_transforms = _forward_kinematics(xp, kinematic_fronts, rest_poses, delta_T, base_T)
@@ -283,8 +314,8 @@ def _phenotype_to_coeffs(
         w = xp.zeros((val.shape[0], n_anchors), dtype=dtype)
         # Scatter 1-alpha at idx-1 and alpha at idx
         batch_indices = xp.arange(val.shape[0])
-        w = common.set(w, (batch_indices, idx_m1), 1 - alpha, copy=False)
-        w = common.set(w, (batch_indices, idx), alpha, copy=False)
+        w = common.set(w, (batch_indices, idx_m1), 1 - alpha, copy=False, xp=xp)
+        w = common.set(w, (batch_indices, idx), alpha, copy=False, xp=xp)
 
         weights[name] = {k: w[:, i] for i, k in enumerate(PHENOTYPE_VARIATIONS[name])}
 
@@ -331,7 +362,7 @@ def _bone_poses_from_heads_tails(
 
     axis = cross / cross_norm[..., None]
     angle = xp.atan2(cross_norm, dot)
-    R = SO3.to_matrix(SO3.from_axis_angle(-angle[..., None] * axis))
+    R = SO3.to_matrix(SO3.from_axis_angle(-angle[..., None] * axis, xp=xp), xp=xp)
 
     valid = (xp.abs(xp.sum(axis**2, axis=-1) - 1) < eps)[..., None, None]
     degen_expanded = xp.broadcast_to(degen_rot, R.shape)
@@ -340,10 +371,12 @@ def _bone_poses_from_heads_tails(
 
     B, J = R.shape[:2]
     dtype = R.dtype
+    idx_R = (..., slice(None, 3), slice(None, 3))
+    idx_t = (..., slice(None, 3), 3)
     H = xp.zeros((B, J, 4, 4), dtype=dtype)
-    H = common.set(H, np.index_exp[..., :3, :3], R)
-    H = common.set(H, np.index_exp[..., :3, 3], heads)
-    H = common.set(H, np.index_exp[..., 3, 3], xp.asarray(1.0, dtype=dtype))
+    H = common.set(H, idx_R, R, xp=xp)
+    H = common.set(H, idx_t, heads, xp=xp)
+    H = common.set(H, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return H
 
 
@@ -351,11 +384,13 @@ def _invert_transform(xp, T: Float[Array, "*batch 4 4"]) -> Float[Array, "*batch
     """Invert a 4x4 rigid transform."""
     R = T[..., :3, :3]
     t = T[..., :3, 3]
-    R_t = xp.permute_dims(R, (*range(R.ndim - 2), R.ndim - 1, R.ndim - 2))
+    R_t = R.mT
+    idx_R = (..., slice(None, 3), slice(None, 3))
+    idx_t = (..., slice(None, 3), 3)
     inv = xp.zeros_like(T)
-    inv = common.set(inv, np.index_exp[..., :3, :3], R_t)
-    inv = common.set(inv, np.index_exp[..., :3, 3], -xp.squeeze(R_t @ t[..., None], axis=-1))
-    inv = common.set(inv, np.index_exp[..., 3, 3], xp.asarray(1.0, dtype=T.dtype))
+    inv = common.set(inv, idx_R, R_t, xp=xp)
+    inv = common.set(inv, idx_t, -xp.squeeze(R_t @ t[..., None], axis=-1), xp=xp)
+    inv = common.set(inv, (..., 3, 3), xp.asarray(1.0, dtype=T.dtype), xp=xp)
     return inv
 
 
@@ -405,12 +440,13 @@ def _forward_kinematics(
 
 def _axis_angle_to_transform(xp, pose: Float[Array, "B J 3"]) -> Float[Array, "B J 4 4"]:
     """Convert axis-angle pose to 4x4 transforms."""
-    R = SO3.to_matrix(SO3.from_axis_angle(pose))
+    R = SO3.to_matrix(SO3.from_axis_angle(pose, xp=xp), xp=xp)
     B, J = R.shape[:2]
     dtype = R.dtype
+    idx_R = (..., slice(None, 3), slice(None, 3))
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, np.index_exp[..., :3, :3], R)
-    T = common.set(T, np.index_exp[..., 3, 3], xp.asarray(1.0, dtype=dtype))
+    T = common.set(T, idx_R, R, xp=xp)
+    T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
 
 
@@ -423,8 +459,9 @@ def from_native_args(pose: Float[Array, "B J 4 4"]) -> dict[str, Array]:
     Returns:
         Dict with 'pose' as axis-angle [B, J, 3]
     """
+    xp = get_namespace(pose)
     R = pose[..., :3, :3]
-    axis_angle = SO3.to_axis_angle(SO3.from_matrix(R))
+    axis_angle = SO3.to_axis_angle(SO3.from_matrix(R, xp=xp), xp=xp)
     return {"pose": axis_angle}
 
 
@@ -454,10 +491,12 @@ def to_native_outputs(
 
     # For transforms: T_yup = coord @ T_zup
     # Inverse: T_zup = coord_inv @ T_yup
+    idx_R = (slice(None, 3), slice(None, 3))
+    idx_t = (slice(None, 3), 3)
     coord_T = xp.zeros((4, 4), dtype=dtype)
-    coord_T = common.set(coord_T, np.index_exp[:3, :3], coord_rot)
-    coord_T = common.set(coord_T, np.index_exp[:3, 3], coord_trans)
-    coord_T = common.set(coord_T, np.index_exp[3, 3], xp.asarray(1.0, dtype=dtype))
+    coord_T = common.set(coord_T, idx_R, coord_rot, xp=xp)
+    coord_T = common.set(coord_T, idx_t, coord_trans, xp=xp)
+    coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     coord_T_inv = _invert_transform(xp, coord_T)
     native_transforms = coord_T_inv @ transforms
 

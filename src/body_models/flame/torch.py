@@ -104,6 +104,9 @@ class FLAME(BodyModel, nn.Module):
 
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
+        # Precompute Y offset for ground plane (min Y of rest pose mesh)
+        self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
+
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
         return self._faces
@@ -154,6 +157,7 @@ class FLAME(BodyModel, nn.Module):
             J_regressor=self.J_regressor,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             expression=expression,
             pose=pose,
@@ -161,6 +165,7 @@ class FLAME(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            xp=torch,
         )
 
     def forward_skeleton(
@@ -188,6 +193,7 @@ class FLAME(BodyModel, nn.Module):
             J_regressor=self.J_regressor,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             expression=expression,
             pose=pose,
@@ -195,6 +201,7 @@ class FLAME(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            xp=torch,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:

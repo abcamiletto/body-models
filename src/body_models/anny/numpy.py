@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from jaxtyping import Float, Int
 
+from ..base import BodyModel
 from . import core
 from .io import (
     EXCLUDED_PHENOTYPES,
@@ -20,7 +21,7 @@ to_native_outputs = core.to_native_outputs
 __all__ = ["ANNY", "from_native_args", "to_native_outputs"]
 
 
-class ANNY:
+class ANNY(BodyModel):
     """ANNY body model with NumPy backend.
 
     Args:
@@ -104,6 +105,10 @@ class ANNY:
     @property
     def skin_weights(self) -> Float[np.ndarray, "V J"]:
         return self.lbs_weights
+
+    @property
+    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
+        return self.template_vertices @ self._coord_rotation.T + self._coord_translation
 
     def forward_vertices(
         self,

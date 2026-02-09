@@ -10,7 +10,17 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from .. import config
+from ..common import simplify_mesh
 from ..utils import download_and_extract, get_cache_dir
+
+__all__ = [
+    "get_model_path",
+    "download_model",
+    "load_model_data",
+    "compute_kinematic_fronts",
+    "simplify_mesh",
+    "load_pose_correctives",
+]
 
 MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
 
@@ -123,42 +133,6 @@ def compute_kinematic_fronts(parents: Int[Tensor, "J"] | np.ndarray) -> list[tup
     return fronts
 
 
-def simplify_mesh(
-    vertices: Float[np.ndarray, "V 3"],
-    faces: Int[np.ndarray, "F 3"],
-    target_faces: int,
-) -> tuple[Float[np.ndarray, "V2 3"], Int[np.ndarray, "F2 3"], Int[np.ndarray, "V2"]]:
-    """Simplify mesh using quadric decimation.
-
-    Args:
-        vertices: [V, 3] vertex positions
-        faces: [F, 3] face indices
-        target_faces: target number of faces
-
-    Returns:
-        new_vertices: [V', 3] simplified vertex positions
-        new_faces: [F', 3] simplified face indices
-        vertex_map: [V'] index of nearest original vertex for each new vertex
-    """
-    import pyfqmr
-    from scipy.spatial import KDTree
-
-    simplifier = pyfqmr.Simplify()
-    simplifier.setMesh(vertices, faces)
-    simplifier.simplify_mesh(target_count=target_faces, aggressiveness=7, preserve_border=True)
-    new_vertices, new_faces, _ = simplifier.getMesh()
-
-    new_vertices = np.asarray(new_vertices, dtype=np.float32)
-    new_faces = np.asarray(new_faces, dtype=np.int32)
-
-    # Find nearest original vertex for each new vertex (for attribute mapping)
-    tree = KDTree(vertices)
-    _, vertex_map = tree.query(new_vertices)
-    vertex_map = np.asarray(vertex_map, dtype=np.int64)
-
-    return new_vertices, new_faces, vertex_map
-
-
 # ============================================================================
 # Pose correctives (PyTorch only)
 # ============================================================================
@@ -199,7 +173,7 @@ class _PoseCorrectivesModel(nn.Module):
 
     def forward(self, joint_params: Float[Tensor, "B J 7"]) -> Float[Tensor, "B V 3"]:
         euler = joint_params[:, 2:, 3:6]
-        rot = SO3.to_matrix(SO3.from_euler(euler, convention="xyz"))
+        rot = SO3.to_matrix(SO3.from_euler(euler, convention="xyz", xp=torch), xp=torch)
         feat = torch.cat([rot[..., 0], rot[..., 1]], dim=-1)
         feat[:, :, 0] -= 1
         feat[:, :, 4] -= 1
