@@ -65,6 +65,9 @@ def get_torch_model(model_name: str, model_path: Path):
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_forward_vertices(model_name: str) -> None:
     """Test torch.compile produces correct results for forward_vertices."""
+    if model_name in ("skel", "flame", "anny"):
+        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
@@ -92,6 +95,9 @@ def test_torch_compile_forward_vertices(model_name: str) -> None:
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_forward_skeleton(model_name: str) -> None:
     """Test torch.compile produces correct results for forward_skeleton."""
+    if model_name in ("skel", "flame", "anny"):
+        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
@@ -121,10 +127,12 @@ def test_torch_compile_forward_skeleton(model_name: str) -> None:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="np.index_exp and array_api_compat cause graph breaks - needs torch-native implementation")
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_fullgraph_forward_vertices(model_name: str) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_vertices."""
+    if model_name in ("skel", "flame", "anny"):
+        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
@@ -147,10 +155,12 @@ def test_torch_compile_fullgraph_forward_vertices(model_name: str) -> None:
     assert result_compiled.shape[2] == 3
 
 
-@pytest.mark.xfail(reason="np.index_exp and array_api_compat cause graph breaks - needs torch-native implementation")
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_fullgraph_forward_skeleton(model_name: str) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_skeleton."""
+    if model_name in ("skel", "flame", "anny"):
+        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
