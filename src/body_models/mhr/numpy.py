@@ -106,6 +106,10 @@ class MHR(BodyModel):
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
         return self.base_vertices * 0.01
 
+    @property
+    def skin_weights(self) -> Float[np.ndarray, "V K"]:
+        return self._skin_weights
+
     def forward_vertices(
         self,
         shape: Float[np.ndarray, "B|1 45"],

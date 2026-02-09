@@ -100,6 +100,14 @@ class SMPLX(BodyModel):
     def num_vertices(self) -> int:
         return self.v_template.shape[0]
 
+    @property
+    def skin_weights(self) -> Float[Array, "V J"]:
+        return self.lbs_weights
+
+    @property
+    def rest_vertices(self) -> Float[Array, "V 3"]:
+        return self.v_template
+
     def forward_vertices(
         self,
         shape: Float[Array, "B|1 10"],
