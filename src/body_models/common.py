@@ -44,7 +44,7 @@ def simplify_mesh(
     return new_vertices, new_faces, vertex_map
 
 
-def set(array: Array, slices: tuple, values: Array, *, copy: bool = True) -> Array:
+def set(array: Array, slices: tuple, values: Array, *, copy: bool = True, xp: Any = None) -> Array:
     """Set elements of an array in a backend-independent way.
 
     Args:
@@ -53,6 +53,7 @@ def set(array: Array, slices: tuple, values: Array, *, copy: bool = True) -> Arr
         values: Values to set at the specified indices.
         copy: If True (default), copy the array before modifying (NumPy/PyTorch only).
               JAX always returns a new array regardless of this flag.
+        xp: Array namespace (optional). Pass to avoid get_namespace() call for torch.compile.
 
     Returns:
         The modified array (new array for JAX, possibly same array for NumPy/PyTorch if copy=False).
@@ -68,7 +69,8 @@ def set(array: Array, slices: tuple, values: Array, *, copy: bool = True) -> Arr
 
     # NumPy/PyTorch: use classic item assignment
     if copy:
-        xp = get_namespace(array)
+        if xp is None:
+            xp = get_namespace(array)
         # PyTorch: clone() preserves gradients, asarray() does not
         if "torch" in xp.__name__:
             array = array.clone()

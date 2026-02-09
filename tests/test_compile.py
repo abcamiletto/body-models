@@ -65,8 +65,8 @@ def get_torch_model(model_name: str, model_path: Path):
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_forward_vertices(model_name: str) -> None:
     """Test torch.compile produces correct results for forward_vertices."""
-    if model_name in ("skel", "flame", "anny"):
-        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+    if model_name == "anny":
+        pytest.skip("ANNY triggers PyTorch Inductor C++ codegen bug")
 
     model_path = get_model_file(model_name)
     if not model_path.exists():
@@ -95,8 +95,8 @@ def test_torch_compile_forward_vertices(model_name: str) -> None:
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_forward_skeleton(model_name: str) -> None:
     """Test torch.compile produces correct results for forward_skeleton."""
-    if model_name in ("skel", "flame", "anny"):
-        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+    if model_name == "anny":
+        pytest.skip("ANNY triggers PyTorch Inductor C++ codegen bug")
 
     model_path = get_model_file(model_name)
     if not model_path.exists():
@@ -130,8 +130,8 @@ def test_torch_compile_forward_skeleton(model_name: str) -> None:
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_fullgraph_forward_vertices(model_name: str) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_vertices."""
-    if model_name in ("skel", "flame", "anny"):
-        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+    if model_name == "anny":
+        pytest.skip("ANNY triggers PyTorch Inductor C++ codegen bug")
 
     model_path = get_model_file(model_name)
     if not model_path.exists():
@@ -158,8 +158,8 @@ def test_torch_compile_fullgraph_forward_vertices(model_name: str) -> None:
 @pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
 def test_torch_compile_fullgraph_forward_skeleton(model_name: str) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_skeleton."""
-    if model_name in ("skel", "flame", "anny"):
-        pytest.skip("Uses xp.permute_dims which torch doesn't support")
+    if model_name == "anny":
+        pytest.skip("ANNY triggers PyTorch Inductor C++ codegen bug")
 
     model_path = get_model_file(model_name)
     if not model_path.exists():
