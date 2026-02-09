@@ -3,7 +3,6 @@
 # dependencies = [
 #   "body-models",
 #   "numpy>=2.4.1",
-#   "torch>=2.9.1",
 #   "viser>=0.2.32",
 # ]
 # [tool.uv.sources]
@@ -27,16 +26,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-import torch
 import viser
 
-from body_models.anny.torch import ANNY
+from body_models.anny.numpy import ANNY
 from body_models.base import BodyModel
-from body_models.flame.torch import FLAME
-from body_models.mhr.torch import MHR
-from body_models.skel.torch import SKEL
-from body_models.smpl.torch import SMPL
-from body_models.smplx.torch import SMPLX
+from body_models.flame.numpy import FLAME
+from body_models.mhr.numpy import MHR
+from body_models.skel.numpy import SKEL
+from body_models.smpl.numpy import SMPL
+from body_models.smplx.numpy import SMPLX
 
 # Default paths relative to project root
 ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets"
@@ -122,7 +120,7 @@ class ModelState:
     """State for a single model."""
 
     model: BodyModel
-    params: dict[str, torch.Tensor]
+    params: dict[str, np.ndarray]
     mesh_handle: viser.MeshHandle | None = None
     changed: bool = True
     x_offset: float = 0.0
@@ -600,11 +598,10 @@ def create_flame_tab(
 
 
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
-    with torch.no_grad():
-        vertices = state.model.forward_vertices(**state.params)
+    vertices = state.model.forward_vertices(**state.params)
 
-    verts_np = vertices[0].cpu().numpy()
-    faces_np = state.model.faces.cpu().numpy()
+    verts_np = vertices[0]
+    faces_np = state.model.faces
 
     # Triangulate quads
     if faces_np.shape[1] == 4:
@@ -693,9 +690,8 @@ def main() -> None:
             gui_state.gui_handles[name] = tab_creators[name](server, tab_group, state)
 
     for name, state in gui_state.model_states.items():
-        with torch.no_grad():
-            verts = state.model.forward_vertices(**state.params)
-            label_y = float(verts[..., 1].max()) + 0.1  # 10cm above head
+        verts = state.model.forward_vertices(**state.params)
+        label_y = float(verts[..., 1].max()) + 0.1  # 10cm above head
         server.scene.add_label(
             f"/labels/{name}",
             text=name,
