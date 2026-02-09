@@ -154,18 +154,20 @@ def forward_skeleton(
     if global_rotation is not None or global_translation is not None:
         B = T.shape[0]
         dtype = T.dtype
+        idx_R = (slice(None), slice(None, 3), slice(None, 3))
+        idx_t = (slice(None), slice(None, 3), 3)
         global_T = xp.zeros((B, 4, 4), dtype=dtype)
         global_T = common.set(global_T, (slice(None), 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
 
         if global_rotation is not None:
             R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
-            global_T = common.set(global_T, (slice(None), slice(None, 3), slice(None, 3)), R_global, xp=xp)
+            global_T = common.set(global_T, idx_R, R_global, xp=xp)
         else:
             eye3 = xp.eye(3, dtype=dtype)
-            global_T = common.set(global_T, (slice(None), slice(None, 3), slice(None, 3)), eye3, xp=xp)
+            global_T = common.set(global_T, idx_R, eye3, xp=xp)
 
         if global_translation is not None:
-            global_T = common.set(global_T, (slice(None), slice(None, 3), 3), global_translation, xp=xp)
+            global_T = common.set(global_T, idx_t, global_translation, xp=xp)
 
         # global_T: [B, 4, 4], T: [B, J, 4, 4] -> broadcast global_T @ T for each joint
         T = xp.einsum("bij,bnjk->bnik", global_T, T)
@@ -269,8 +271,10 @@ def _trs_to_transforms(
     dtype = t.dtype
 
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, (..., slice(None, 3), slice(None, 3)), R, xp=xp)
-    T = common.set(T, (..., slice(None, 3), 3), t, xp=xp)
+    idx_R = (..., slice(None, 3), slice(None, 3))
+    idx_t = (..., slice(None, 3), 3)
+    T = common.set(T, idx_R, R, xp=xp)
+    T = common.set(T, idx_t, t, xp=xp)
     T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
 

@@ -102,7 +102,8 @@ def forward_vertices(
     eye3 = xp.eye(3, dtype=dtype)
     R_smpl = xp.broadcast_to(eye3, (B, num_joints_smpl, 3, 3))
     # Set SKEL rotations into SMPL positions (copy=True handles broadcast->contiguous)
-    R_smpl = common.set(R_smpl, (slice(None), SMPL_JOINT_MAP), G_local[:, :, :3, :3], copy=True, xp=xp)
+    idx_smpl = (slice(None), SMPL_JOINT_MAP)
+    R_smpl = common.set(R_smpl, idx_smpl, G_local[:, :, :3, :3], copy=True, xp=xp)
     pose_feat = (R_smpl[:, 1:] - eye3).reshape(B, -1)
     pose_offsets = (pose_feat @ posedirs).reshape(B, Nv, 3)
     v_posed = v_shaped + pose_offsets

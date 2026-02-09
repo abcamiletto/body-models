@@ -60,8 +60,8 @@ def set(array: Array, slices: tuple, values: Array, *, copy: bool = True, xp: An
 
     Examples:
         >>> from body_models import common
-        >>> arr = common.set(arr, (..., slice(None, 3), slice(None, 3)), R)  # arr[..., :3, :3] = R
-        >>> arr = common.set(arr, (slice(None), 0), first_row)               # arr[:, 0] = first_row
+        >>> idx_R = (..., slice(None, 3), slice(None, 3))
+        >>> arr = common.set(arr, idx_R, R)  # arr[..., :3, :3] = R
     """
     # JAX arrays use functional update API via .at attribute
     if "jax" in type(array).__module__:
