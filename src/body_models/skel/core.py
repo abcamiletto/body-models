@@ -102,7 +102,7 @@ def forward_vertices(
     eye3 = xp.eye(3, dtype=dtype)
     R_smpl = xp.broadcast_to(eye3, (B, num_joints_smpl, 3, 3))
     # Set SKEL rotations into SMPL positions (copy=True handles broadcast->contiguous)
-    R_smpl = common.set(R_smpl, (slice(None), SMPL_JOINT_MAP), G_local[:, :, :3, :3], copy=True)
+    R_smpl = common.set(R_smpl, (slice(None), SMPL_JOINT_MAP), G_local[:, :, :3, :3], copy=True, xp=xp)
     pose_feat = (R_smpl[:, 1:] - eye3).reshape(B, -1)
     pose_offsets = (pose_feat @ posedirs).reshape(B, Nv, 3)
     v_posed = v_shaped + pose_offsets
@@ -120,7 +120,7 @@ def forward_vertices(
     v_out = v_out + global_translation[:, None]
     if global_rotation is not None:
         R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
-        v_out = xp.permute_dims(R @ xp.permute_dims(v_out, (0, 2, 1)), (0, 2, 1))
+        v_out = (R @ v_out.mT).mT
 
     return v_out + feet_offset
 
@@ -196,7 +196,7 @@ def forward_skeleton(
     if global_rotation is not None:
         R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
         rot = R[:, None] @ rot
-        trans = xp.permute_dims(R @ xp.permute_dims(trans, (0, 2, 1)), (0, 2, 1))
+        trans = (R @ trans.mT).mT
     trans = trans + global_translation[:, None]
 
     # Add feet offset
@@ -264,8 +264,8 @@ def _compute_local_transforms(
     Rp = R2 @ (R1 @ R0)
 
     # Compose rotations: R = Rk @ Ra.T @ Rp @ Ra @ Rk.T
-    Ra_T = xp.permute_dims(Ra, (0, 1, 3, 2))
-    Rk_T = xp.permute_dims(Rk, (0, 1, 3, 2))
+    Ra_T = Ra.mT
+    Rk_T = Rk.mT
     R = Rk @ (Ra_T @ (Rp @ (Ra @ Rk_T)))
 
     # Translation with anatomical adjustments
@@ -348,7 +348,7 @@ def _compute_bone_orientation(
     eye3 = xp.eye(3, dtype=dtype)
     fixed = xp.broadcast_to(eye3, (B, NUM_JOINTS, 3, 3))
     mask = xp.zeros(NUM_JOINTS, dtype=xp.bool)
-    mask = common.set(mask, (fixed_orientation_joints,), xp.asarray(True))
+    mask = common.set(mask, (fixed_orientation_joints,), xp.asarray(True), xp=xp)
     mask = xp.broadcast_to(mask[None, :, None, None], Gk.shape)
     Gk = xp.where(mask, fixed, Gk)
 

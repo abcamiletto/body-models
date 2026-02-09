@@ -100,7 +100,7 @@ def forward_vertices(
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
         offset = xp.zeros((1, 1, 3), dtype=v_posed.dtype)
-        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=v_posed.dtype))
+        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=v_posed.dtype), xp=xp)
         v_posed = v_posed + offset
 
     return v_posed
@@ -182,7 +182,7 @@ def forward_skeleton(
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
         offset = xp.zeros((1, 1, 3), dtype=t_world.dtype)
-        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=t_world.dtype))
+        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=t_world.dtype), xp=xp)
         t_world = t_world + offset
 
     # Reconstruct T from R and t
@@ -308,9 +308,9 @@ def _build_transform_matrix(
     dtype = R.dtype
 
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, (..., slice(None, 3), slice(None, 3)), R)
-    T = common.set(T, (..., slice(None, 3), 3), t)
-    T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype))
+    T = common.set(T, (..., slice(None, 3), slice(None, 3)), R, xp=xp)
+    T = common.set(T, (..., slice(None, 3), 3), t, xp=xp)
+    T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
 
 
@@ -323,7 +323,7 @@ def _apply_global_transform(
     """Apply global rotation and translation to points [B, N, 3]."""
     if rotation is not None:
         R = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
-        points = xp.permute_dims(R @ xp.permute_dims(points, (0, 2, 1)), (0, 2, 1))
+        points = (R @ points.mT).mT
     if translation is not None:
         points = points + translation[:, None]
     return points
@@ -340,7 +340,7 @@ def _apply_global_transform_to_rt(
     if rotation is not None:
         R_global = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
         # Transform t: R_global @ t
-        t = xp.permute_dims(R_global @ xp.permute_dims(t, (0, 2, 1)), (0, 2, 1))
+        t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)
         R = R_global[:, None] @ R
     if translation is not None:
