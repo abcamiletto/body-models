@@ -1,16 +1,16 @@
 [project]
 name = "body-models"
-version = "0.3.1"
-description = "Add your description here"
+version = "0.4.0"
+description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
     { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "array-api-compat>=1.11.2",
     "jaxtyping>=0.3.5",
-    "nanomanifold==0.1.6",
+    "nanomanifold>=0.2.0",
     "numpy>=2.4.1",
     "platformdirs>=4.0",
     "pyfqmr>=0.5.0",
@@ -38,8 +38,13 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "ruff>=0.9.0",
     "ty>=0.0.1a13",
     "viser>=1.0.21",
+    # Include optional backends for type checking
+    "torch>=2.0.0",
+    "jax>=0.9.0",
+    "flax>=0.10.0",
 ]
 
 [tool.uv.sources]

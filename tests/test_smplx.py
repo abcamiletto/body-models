@@ -16,7 +16,7 @@ import torch
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "smplx"
-MODEL_PATH = ASSET_DIR / "model"
+MODEL_PATH = ASSET_DIR / "model" / "SMPLX_NEUTRAL.npz"
 INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5

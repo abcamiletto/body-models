@@ -10,13 +10,14 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
+from ..base import BodyModel
 from . import core
 from .io import get_model_path, load_model_data, compute_kinematic_fronts, simplify_mesh
 
 __all__ = ["MHR"]
 
 
-class MHR:
+class MHR(BodyModel):
     """MHR body model with NumPy backend (no pose correctives).
 
     Args:
@@ -104,6 +105,10 @@ class MHR:
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
         return self.base_vertices * 0.01
+
+    @property
+    def skin_weights(self) -> Float[np.ndarray, "V K"]:
+        return self._skin_weights
 
     def forward_vertices(
         self,

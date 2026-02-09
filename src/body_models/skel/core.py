@@ -7,7 +7,6 @@ The torch.py backend adds forward_skeleton_mesh on top of this core computation.
 import math
 from typing import Any
 
-import numpy as np
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -52,9 +51,17 @@ def forward_vertices(
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
-    xp = get_namespace(pose)
+    assert shape.ndim == 2 and shape.shape[1] >= 1
+    assert pose.ndim == 2 and pose.shape[1] == NUM_POSE_PARAMS
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
+    if xp is None:
+        xp = get_namespace(pose)
     B = pose.shape[0]
     dtype = pose.dtype
     Nv = v_template.shape[0]
@@ -95,7 +102,8 @@ def forward_vertices(
     eye3 = xp.eye(3, dtype=dtype)
     R_smpl = xp.broadcast_to(eye3, (B, num_joints_smpl, 3, 3))
     # Set SKEL rotations into SMPL positions (copy=True handles broadcast->contiguous)
-    R_smpl = common.set(R_smpl, np.index_exp[:, SMPL_JOINT_MAP], G_local[:, :, :3, :3], copy=True)
+    idx_smpl = (slice(None), SMPL_JOINT_MAP)
+    R_smpl = common.set(R_smpl, idx_smpl, G_local[:, :, :3, :3], copy=True, xp=xp)
     pose_feat = (R_smpl[:, 1:] - eye3).reshape(B, -1)
     pose_offsets = (pose_feat @ posedirs).reshape(B, Nv, 3)
     v_posed = v_shaped + pose_offsets
@@ -112,8 +120,8 @@ def forward_vertices(
     # Apply global transform
     v_out = v_out + global_translation[:, None]
     if global_rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
-        v_out = xp.permute_dims(R @ xp.permute_dims(v_out, (0, 2, 1)), (0, 2, 1))
+        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
+        v_out = (R @ v_out.mT).mT
 
     return v_out + feet_offset
 
@@ -140,9 +148,17 @@ def forward_skeleton(
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B 24 4 4"]:
     """Compute skeleton joint transforms [B, 24, 4, 4]."""
-    xp = get_namespace(pose)
+    assert shape.ndim == 2 and shape.shape[1] >= 1
+    assert pose.ndim == 2 and pose.shape[1] == NUM_POSE_PARAMS
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
+    if xp is None:
+        xp = get_namespace(pose)
     B = pose.shape[0]
     dtype = pose.dtype
 
@@ -179,9 +195,9 @@ def forward_skeleton(
     rot = G[:, :, :3, :3]
     trans = G[:, :, :3, 3]
     if global_rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
+        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
         rot = R[:, None] @ rot
-        trans = xp.permute_dims(R @ xp.permute_dims(trans, (0, 2, 1)), (0, 2, 1))
+        trans = (R @ trans.mT).mT
     trans = trans + global_translation[:, None]
 
     # Add feet offset
@@ -240,7 +256,7 @@ def _compute_local_transforms(
     zero_pad = xp.zeros((B, 1), dtype=dtype)
     pose_padded = xp.concat([pose, zero_pad], axis=1)
     axis_angles = pose_padded[..., None] * all_axes  # [B, 47, 3]
-    all_R = SO3.to_matrix(SO3.from_axis_angle(axis_angles))  # [B, 47, 3, 3]
+    all_R = SO3.to_matrix(SO3.from_axis_angle(axis_angles, xp=xp), xp=xp)  # [B, 47, 3, 3]
 
     # Compose rotations: Rp = R2 @ R1 @ R0 (identity-padded for joints with fewer DOFs)
     R0 = all_R[:, rotation_indices[:, 0]]  # [B, J, 3, 3]
@@ -249,8 +265,8 @@ def _compute_local_transforms(
     Rp = R2 @ (R1 @ R0)
 
     # Compose rotations: R = Rk @ Ra.T @ Rp @ Ra @ Rk.T
-    Ra_T = xp.permute_dims(Ra, (0, 1, 3, 2))
-    Rk_T = xp.permute_dims(Rk, (0, 1, 3, 2))
+    Ra_T = Ra.mT
+    Rk_T = Rk.mT
     R = Rk @ (Ra_T @ (Rp @ (Ra @ Rk_T)))
 
     # Translation with anatomical adjustments
@@ -333,7 +349,7 @@ def _compute_bone_orientation(
     eye3 = xp.eye(3, dtype=dtype)
     fixed = xp.broadcast_to(eye3, (B, NUM_JOINTS, 3, 3))
     mask = xp.zeros(NUM_JOINTS, dtype=xp.bool)
-    mask = common.set(mask, np.index_exp[fixed_orientation_joints], xp.asarray(True))
+    mask = common.set(mask, (fixed_orientation_joints,), xp.asarray(True), xp=xp)
     mask = xp.broadcast_to(mask[None, :, None, None], Gk.shape)
     Gk = xp.where(mask, fixed, Gk)
 

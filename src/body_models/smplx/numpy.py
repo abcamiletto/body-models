@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from jaxtyping import Float, Int
 
+from ..base import BodyModel
 from . import core
 from .io import compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
 
@@ -13,7 +14,7 @@ Array = np.ndarray
 __all__ = ["SMPLX"]
 
 
-class SMPLX:
+class SMPLX(BodyModel):
     """SMPL-X body model with NumPy backend."""
 
     NUM_BODY_JOINTS = 21
@@ -87,6 +88,9 @@ class SMPLX:
 
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
+        # Precompute Y offset for ground plane (min Y of rest pose mesh)
+        self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
+
     @property
     def faces(self) -> Int[Array, "F 3"]:
         return self._faces
@@ -98,6 +102,14 @@ class SMPLX:
     @property
     def num_vertices(self) -> int:
         return self.v_template.shape[0]
+
+    @property
+    def skin_weights(self) -> Float[Array, "V J"]:
+        return self.lbs_weights
+
+    @property
+    def rest_vertices(self) -> Float[Array, "V 3"]:
+        return self.v_template
 
     def forward_vertices(
         self,
@@ -123,6 +135,7 @@ class SMPLX:
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
@@ -153,6 +166,7 @@ class SMPLX:
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
