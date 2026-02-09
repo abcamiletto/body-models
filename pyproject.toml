@@ -1,7 +1,7 @@
 [project]
 name = "body-models"
-version = "0.3.1"
-description = "Add your description here"
+version = "0.4.0"
+description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
     { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
