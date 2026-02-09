@@ -7,13 +7,14 @@ import numpy as np
 from jaxtyping import Float, Int
 from scipy import sparse
 
+from ..base import BodyModel
 from . import core
 from .io import get_model_path, simplify_mesh
 
 __all__ = ["SKEL", "from_native_args", "to_native_outputs"]
 
 
-class SKEL:
+class SKEL(BodyModel):
     """SKEL body model with NumPy backend.
 
     Args:

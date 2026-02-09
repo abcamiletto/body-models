@@ -10,13 +10,14 @@ from flax import nnx
 from jaxtyping import Float, Int
 from scipy import sparse
 
+from ..base import BodyModel
 from . import core
 from .io import get_model_path, simplify_mesh
 
 __all__ = ["SKEL", "from_native_args", "to_native_outputs"]
 
 
-class SKEL(nnx.Module):
+class SKEL(BodyModel, nnx.Module):
     """SKEL body model with JAX/Flax NNX backend.
 
     Args:

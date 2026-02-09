@@ -47,6 +47,16 @@ def forward_vertices(
     global_translation: Float[Array, "B 3"] | None = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
+    assert gender.ndim == 1
+    assert age.ndim == 1
+    assert muscle.ndim == 1
+    assert weight.ndim == 1
+    assert height.ndim == 1
+    assert proportions.ndim == 1
+    assert pose.ndim == 3 and pose.shape[2] == 3
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(gender)
 
     pose_T = _axis_angle_to_transform(xp, pose)
@@ -121,6 +131,16 @@ def forward_skeleton(
     global_translation: Float[Array, "B 3"] | None = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4]."""
+    assert gender.ndim == 1
+    assert age.ndim == 1
+    assert muscle.ndim == 1
+    assert weight.ndim == 1
+    assert height.ndim == 1
+    assert proportions.ndim == 1
+    assert pose.ndim == 3 and pose.shape[2] == 3
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(gender)
 
     pose_T = _axis_angle_to_transform(xp, pose)

@@ -44,6 +44,12 @@ def forward_vertices(
     pose_correctives_fn: Callable[[Float[Array, "B J 7"]], Float[Array, "B V 3"]] | None = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
+    assert shape.ndim == 2 and shape.shape[1] == shape_dim
+    assert pose.ndim == 2 and pose.shape[1] == 204
+    assert expression is None or (expression.ndim == 2 and expression.shape[1] == expr_dim)
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(shape)
     B = pose.shape[0]
     dtype = shape.dtype
@@ -119,6 +125,10 @@ def forward_skeleton(
     global_translation: Float[Array, "B 3"] | None = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
+    assert pose.ndim == 2 and pose.shape[1] == 204
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(pose)
 
     t_g, r_g, s_g, _ = _forward_skeleton_core(

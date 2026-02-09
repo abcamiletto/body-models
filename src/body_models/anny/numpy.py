@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from jaxtyping import Float, Int
 
+from ..base import BodyModel
 from . import core
 from .io import (
     EXCLUDED_PHENOTYPES,
@@ -20,7 +21,7 @@ to_native_outputs = core.to_native_outputs
 __all__ = ["ANNY", "from_native_args", "to_native_outputs"]
 
 
-class ANNY:
+class ANNY(BodyModel):
     """ANNY body model with NumPy backend.
 
     Args:

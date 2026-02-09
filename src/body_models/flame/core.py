@@ -35,6 +35,13 @@ def forward_vertices(
     ground_plane: bool = True,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
+    assert shape.ndim == 2 and shape.shape[1] >= 1
+    assert expression.ndim == 2 and expression.shape[1] >= 1
+    assert pose.ndim == 3 and pose.shape[1:] == (4, 3)
+    assert head_rotation is None or (head_rotation.ndim == 2 and head_rotation.shape[1] == 3)
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(shape)
     B = pose.shape[0]
 
@@ -95,6 +102,13 @@ def forward_skeleton(
     ground_plane: bool = True,
 ) -> Float[Array, "B 5 4 4"]:
     """Compute skeleton joint transforms [B, 5, 4, 4]."""
+    assert shape.ndim == 2 and shape.shape[1] >= 1
+    assert expression.ndim == 2 and expression.shape[1] >= 1
+    assert pose.ndim == 3 and pose.shape[1:] == (4, 3)
+    assert head_rotation is None or (head_rotation.ndim == 2 and head_rotation.shape[1] == 3)
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(shape)
     B = pose.shape[0]
 

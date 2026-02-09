@@ -8,13 +8,14 @@ import numpy as np
 from flax import nnx
 from jaxtyping import Float, Int
 
+from ..base import BodyModel
 from . import core
 from .io import compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
 
 __all__ = ["SMPL"]
 
 
-class SMPL(nnx.Module):
+class SMPL(BodyModel, nnx.Module):
     """SMPL body model with JAX/Flax NNX backend."""
 
     NUM_BODY_JOINTS = 23
