@@ -89,6 +89,9 @@ class SMPLX(BodyModel, nnx.Module):
 
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
+        # Precompute Y offset for ground plane (min Y of rest pose mesh)
+        self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
+
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
         return self._faces[...]
@@ -133,6 +136,7 @@ class SMPLX(BodyModel, nnx.Module):
             parents=self.parents[...],
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
@@ -163,6 +167,7 @@ class SMPLX(BodyModel, nnx.Module):
             parents=self.parents[...],
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,

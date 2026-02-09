@@ -242,6 +242,7 @@ class ANNY(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            xp=torch,
         )
 
     def forward_skeleton(
@@ -280,6 +281,7 @@ class ANNY(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            xp=torch,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:

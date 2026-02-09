@@ -65,6 +65,9 @@ class SMPL(BodyModel):
         self._faces = faces
         self._kinematic_fronts = compute_kinematic_fronts(parents)
 
+        # Precompute Y offset for ground plane (min Y of rest pose mesh)
+        self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
+
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
@@ -103,6 +106,7 @@ class SMPL(BodyModel):
             J_regressor=self.J_regressor,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
@@ -125,6 +129,7 @@ class SMPL(BodyModel):
             J_regressor=self.J_regressor,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
+            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,

@@ -45,6 +45,8 @@ def forward_vertices(
     pose: Float[Array, "B J 3"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
     assert gender.ndim == 1
@@ -57,7 +59,8 @@ def forward_vertices(
     assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
-    xp = get_namespace(gender)
+    if xp is None:
+        xp = get_namespace(gender)
 
     pose_T = _axis_angle_to_transform(xp, pose)
     coeffs, _, bone_transforms = _forward_core(
@@ -129,6 +132,8 @@ def forward_skeleton(
     pose: Float[Array, "B J 3"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4]."""
     assert gender.ndim == 1
@@ -141,7 +146,8 @@ def forward_skeleton(
     assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
-    xp = get_namespace(gender)
+    if xp is None:
+        xp = get_namespace(gender)
 
     pose_T = _axis_angle_to_transform(xp, pose)
     _, bone_poses, _ = _forward_core(
