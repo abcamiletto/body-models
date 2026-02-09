@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import numpy as np
 
 from .. import config
 from ..common import simplify_mesh
@@ -29,5 +28,3 @@ def get_model_path(model_path: Path | str | None, gender: str) -> Path:
             return candidate
 
     raise FileNotFoundError(f"SKEL {gender} model not found in {model_path}")
-
-

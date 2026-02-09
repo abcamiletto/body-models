@@ -272,8 +272,10 @@ def _build_transform_matrix(
     dtype = R.dtype
 
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, (..., slice(None, 3), slice(None, 3)), R, xp=xp)
-    T = common.set(T, (..., slice(None, 3), 3), t, xp=xp)
+    idx_R = (..., slice(None, 3), slice(None, 3))
+    idx_t = (..., slice(None, 3), 3)
+    T = common.set(T, idx_R, R, xp=xp)
+    T = common.set(T, idx_t, t, xp=xp)
     T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
 

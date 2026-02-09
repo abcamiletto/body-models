@@ -174,23 +174,27 @@ def forward_skeleton(
 
     # Coordinate transform
     B = bone_poses.shape[0]
+    idx_R = (slice(None, 3), slice(None, 3))
+    idx_t = (slice(None, 3), 3)
     coord_T = xp.zeros((4, 4), dtype=bone_poses.dtype)
-    coord_T = common.set(coord_T, (slice(None, 3), slice(None, 3)), coord_rotation, xp=xp)
-    coord_T = common.set(coord_T, (slice(None, 3), 3), coord_translation, xp=xp)
+    coord_T = common.set(coord_T, idx_R, coord_rotation, xp=xp)
+    coord_T = common.set(coord_T, idx_t, coord_translation, xp=xp)
     coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=bone_poses.dtype), xp=xp)
     transforms = coord_T @ bone_poses
 
     # Global transform
     if global_rotation is not None or global_translation is not None:
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
+        idx_R = (slice(None), slice(None, 3), slice(None, 3))
+        idx_t = (slice(None), slice(None, 3), 3)
         G = xp.stack([xp.eye(4, dtype=transforms.dtype)] * B, axis=0)
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
             R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
-            G = common.set(G, (slice(None), slice(None, 3), slice(None, 3)), R_global, copy=False, xp=xp)
+            G = common.set(G, idx_R, R_global, copy=False, xp=xp)
         if global_translation is not None:
             global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
-            G = common.set(G, (slice(None), slice(None, 3), 3), global_translation, copy=False, xp=xp)
+            G = common.set(G, idx_t, global_translation, copy=False, xp=xp)
         transforms = G[:, None] @ transforms
     return transforms
 
@@ -240,8 +244,9 @@ def _forward_core(
     root_rest = rest_poses[:, 0]
     base_T = _invert_transform(xp, root_rest)
 
+    idx_R = (slice(None), slice(None, 3), slice(None, 3))
     root_rot = xp.zeros_like(root_rest)
-    root_rot = common.set(root_rot, (slice(None), slice(None, 3), slice(None, 3)), root_rest[:, :3, :3], copy=False, xp=xp)
+    root_rot = common.set(root_rot, idx_R, root_rest[:, :3, :3], copy=False, xp=xp)
     root_rot = common.set(root_rot, (slice(None), 3, 3), xp.asarray(1.0, dtype=root_rot.dtype), copy=False, xp=xp)
     new_root = pose_T[:, 0] @ root_rot
     # copy=True handles clone/copy for NumPy/PyTorch, creates new array for JAX
@@ -366,9 +371,11 @@ def _bone_poses_from_heads_tails(
 
     B, J = R.shape[:2]
     dtype = R.dtype
+    idx_R = (..., slice(None, 3), slice(None, 3))
+    idx_t = (..., slice(None, 3), 3)
     H = xp.zeros((B, J, 4, 4), dtype=dtype)
-    H = common.set(H, (..., slice(None, 3), slice(None, 3)), R, xp=xp)
-    H = common.set(H, (..., slice(None, 3), 3), heads, xp=xp)
+    H = common.set(H, idx_R, R, xp=xp)
+    H = common.set(H, idx_t, heads, xp=xp)
     H = common.set(H, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return H
 
@@ -378,9 +385,11 @@ def _invert_transform(xp, T: Float[Array, "*batch 4 4"]) -> Float[Array, "*batch
     R = T[..., :3, :3]
     t = T[..., :3, 3]
     R_t = R.mT
+    idx_R = (..., slice(None, 3), slice(None, 3))
+    idx_t = (..., slice(None, 3), 3)
     inv = xp.zeros_like(T)
-    inv = common.set(inv, (..., slice(None, 3), slice(None, 3)), R_t, xp=xp)
-    inv = common.set(inv, (..., slice(None, 3), 3), -xp.squeeze(R_t @ t[..., None], axis=-1), xp=xp)
+    inv = common.set(inv, idx_R, R_t, xp=xp)
+    inv = common.set(inv, idx_t, -xp.squeeze(R_t @ t[..., None], axis=-1), xp=xp)
     inv = common.set(inv, (..., 3, 3), xp.asarray(1.0, dtype=T.dtype), xp=xp)
     return inv
 
@@ -434,8 +443,9 @@ def _axis_angle_to_transform(xp, pose: Float[Array, "B J 3"]) -> Float[Array, "B
     R = SO3.to_matrix(SO3.from_axis_angle(pose, xp=xp), xp=xp)
     B, J = R.shape[:2]
     dtype = R.dtype
+    idx_R = (..., slice(None, 3), slice(None, 3))
     T = xp.zeros((B, J, 4, 4), dtype=dtype)
-    T = common.set(T, (..., slice(None, 3), slice(None, 3)), R, xp=xp)
+    T = common.set(T, idx_R, R, xp=xp)
     T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
 
@@ -481,9 +491,11 @@ def to_native_outputs(
 
     # For transforms: T_yup = coord @ T_zup
     # Inverse: T_zup = coord_inv @ T_yup
+    idx_R = (slice(None, 3), slice(None, 3))
+    idx_t = (slice(None, 3), 3)
     coord_T = xp.zeros((4, 4), dtype=dtype)
-    coord_T = common.set(coord_T, (slice(None, 3), slice(None, 3)), coord_rot, xp=xp)
-    coord_T = common.set(coord_T, (slice(None, 3), 3), coord_trans, xp=xp)
+    coord_T = common.set(coord_T, idx_R, coord_rot, xp=xp)
+    coord_T = common.set(coord_T, idx_t, coord_trans, xp=xp)
     coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     coord_T_inv = _invert_transform(xp, coord_T)
     native_transforms = coord_T_inv @ transforms

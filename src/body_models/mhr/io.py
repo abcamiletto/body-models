@@ -13,7 +13,14 @@ from .. import config
 from ..common import simplify_mesh
 from ..utils import download_and_extract, get_cache_dir
 
-__all__ = ["get_model_path", "download_model", "load_model_data", "compute_kinematic_fronts", "simplify_mesh", "load_pose_correctives"]
+__all__ = [
+    "get_model_path",
+    "download_model",
+    "load_model_data",
+    "compute_kinematic_fronts",
+    "simplify_mesh",
+    "load_pose_correctives",
+]
 
 MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
 

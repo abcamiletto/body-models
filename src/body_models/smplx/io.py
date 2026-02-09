@@ -100,5 +100,3 @@ def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[i
         fronts.append((joints, parent_indices))
 
     return fronts
-
-
