@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-from jaxtyping import Int
+from jaxtyping import Float, Int
 from nanomanifold import SO3
 from torch import Tensor
 
@@ -166,7 +166,7 @@ class _PoseCorrectivesModel(nn.Module):
 
     def forward(self, joint_params: Float[Tensor, "B J 7"]) -> Float[Tensor, "B V 3"]:
         euler = joint_params[:, 2:, 3:6]
-        rot = SO3.to_matrix(SO3.from_euler(euler, convention="xyz"))
+        rot = SO3.to_matrix(SO3.from_euler(euler, convention="xyz", xp=torch), xp=torch)
         feat = torch.cat([rot[..., 0], rot[..., 1]], dim=-1)
         feat[:, :, 0] -= 1
         feat[:, :, 4] -= 1

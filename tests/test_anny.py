@@ -56,7 +56,8 @@ def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_torch(idx: int) -> None:
     """Test PyTorch forward_vertices matches reference."""
-    from body_models.anny import ANNY, from_native_args, to_native_outputs
+    from body_models.anny import from_native_args, to_native_outputs
+    from body_models.anny.torch import ANNY
 
     model = ANNY(model_path=MODEL_PATH)
     model.eval()

@@ -171,7 +171,8 @@ def test_forward_vertices_jax(idx: int) -> None:
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_skeleton_torch(idx: int) -> None:
     """Test PyTorch forward_skeleton matches reference."""
-    from body_models.mhr import MHR, to_native_outputs
+    from body_models.mhr import to_native_outputs
+    from body_models.mhr.torch import MHR
 
     model = MHR(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)

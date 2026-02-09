@@ -117,7 +117,7 @@ def forward_vertices(
     # Apply global transform
     v_out = v_out + global_translation[:, None]
     if global_rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
+        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
         v_out = xp.permute_dims(R @ xp.permute_dims(v_out, (0, 2, 1)), (0, 2, 1))
 
     return v_out + feet_offset
@@ -189,7 +189,7 @@ def forward_skeleton(
     rot = G[:, :, :3, :3]
     trans = G[:, :, :3, 3]
     if global_rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation))
+        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
         rot = R[:, None] @ rot
         trans = xp.permute_dims(R @ xp.permute_dims(trans, (0, 2, 1)), (0, 2, 1))
     trans = trans + global_translation[:, None]
@@ -250,7 +250,7 @@ def _compute_local_transforms(
     zero_pad = xp.zeros((B, 1), dtype=dtype)
     pose_padded = xp.concat([pose, zero_pad], axis=1)
     axis_angles = pose_padded[..., None] * all_axes  # [B, 47, 3]
-    all_R = SO3.to_matrix(SO3.from_axis_angle(axis_angles))  # [B, 47, 3, 3]
+    all_R = SO3.to_matrix(SO3.from_axis_angle(axis_angles, xp=xp), xp=xp)  # [B, 47, 3, 3]
 
     # Compose rotations: Rp = R2 @ R1 @ R0 (identity-padded for joints with fewer DOFs)
     R0 = all_R[:, rotation_indices[:, 0]]  # [B, J, 3, 3]
