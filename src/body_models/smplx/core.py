@@ -38,6 +38,15 @@ def forward_vertices(
     ground_plane: bool = True,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
+    assert shape.ndim == 2 and shape.shape[1] >= 1
+    assert body_pose.ndim == 3 and body_pose.shape[1:] == (21, 3)
+    assert hand_pose.ndim == 3 and hand_pose.shape[1:] == (30, 3)
+    assert head_pose.ndim == 3 and head_pose.shape[1:] == (3, 3)
+    assert expression is None or (expression.ndim == 2 and expression.shape[1] >= 1)
+    assert pelvis_rotation is None or (pelvis_rotation.ndim == 2 and pelvis_rotation.shape[1] == 3)
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(shape)
     B = body_pose.shape[0]
     dtype = shape.dtype
@@ -108,6 +117,15 @@ def forward_skeleton(
     ground_plane: bool = True,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton joint transforms [B, J, 4, 4]."""
+    assert shape.ndim == 2 and shape.shape[1] >= 1
+    assert body_pose.ndim == 3 and body_pose.shape[1:] == (21, 3)
+    assert hand_pose.ndim == 3 and hand_pose.shape[1:] == (30, 3)
+    assert head_pose.ndim == 3 and head_pose.shape[1:] == (3, 3)
+    assert expression is None or (expression.ndim == 2 and expression.shape[1] >= 1)
+    assert pelvis_rotation is None or (pelvis_rotation.ndim == 2 and pelvis_rotation.shape[1] == 3)
+    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+
     xp = get_namespace(shape)
     B = body_pose.shape[0]
     dtype = shape.dtype

@@ -13,13 +13,14 @@ from flax import nnx
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
+from ..base import BodyModel
 from . import core
 from .io import get_model_path, load_model_data, compute_kinematic_fronts, simplify_mesh
 
 __all__ = ["MHR"]
 
 
-class MHR(nnx.Module):
+class MHR(BodyModel, nnx.Module):
     """MHR body model with JAX/Flax NNX backend (no pose correctives).
 
     Args:

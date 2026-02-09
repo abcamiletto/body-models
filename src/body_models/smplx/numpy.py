@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from jaxtyping import Float, Int
 
+from ..base import BodyModel
 from . import core
 from .io import compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
 
@@ -13,7 +14,7 @@ Array = np.ndarray
 __all__ = ["SMPLX"]
 
 
-class SMPLX:
+class SMPLX(BodyModel):
     """SMPL-X body model with NumPy backend."""
 
     NUM_BODY_JOINTS = 21

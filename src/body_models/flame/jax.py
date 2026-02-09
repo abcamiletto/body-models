@@ -8,13 +8,14 @@ import numpy as np
 from flax import nnx
 from jaxtyping import Float, Int
 
+from ..base import BodyModel
 from . import core
 from .io import get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
 __all__ = ["FLAME"]
 
 
-class FLAME(nnx.Module):
+class FLAME(BodyModel, nnx.Module):
     """FLAME head model with JAX/Flax NNX backend.
 
     Args:
