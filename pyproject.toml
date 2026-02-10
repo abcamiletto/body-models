@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.4.1"
+version = "0.4.2"
 description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
