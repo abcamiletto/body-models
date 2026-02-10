@@ -1,8 +1,4 @@
-"""NumPy backend for MHR model.
-
-Note: Pose correctives are NOT available in this backend.
-Use the PyTorch backend for full accuracy with pose correctives.
-"""
+"""NumPy backend for MHR model with neural pose correctives."""
 
 from pathlib import Path
 
@@ -12,21 +8,18 @@ from nanomanifold import SO3
 
 from ..base import BodyModel
 from . import core
-from .io import get_model_path, load_model_data, compute_kinematic_fronts, simplify_mesh
+from .io import get_model_path, load_model_data, load_pose_correctives_weights, compute_kinematic_fronts, simplify_mesh
 
 __all__ = ["MHR"]
 
 
 class MHR(BodyModel):
-    """MHR body model with NumPy backend (no pose correctives).
+    """MHR body model with NumPy backend and neural pose correctives.
 
     Args:
         model_path: Path to MHR model directory. Auto-downloads if None.
+        lod: Level of detail for pose correctives (1 = default).
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
-
-    Note:
-        This backend does NOT include neural pose correctives.
-        For full accuracy, use the PyTorch backend.
 
     Forward API:
         forward_vertices(shape, pose, expression, global_rotation, global_translation)
@@ -44,6 +37,7 @@ class MHR(BodyModel):
         self,
         model_path: Path | str | None = None,
         *,
+        lod: int = 1,
         simplify: float = 1.0,
     ) -> None:
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
@@ -84,6 +78,11 @@ class MHR(BodyModel):
         self.bind_inv_linear = SO3.to_matrix(q, xyzw=True) * s[..., None]
         self.bind_inv_translation = t
 
+        # Load pose correctives weights
+        corrective_weights = load_pose_correctives_weights(resolved_path, lod)
+        self.corrective_W1 = corrective_weights["W1"]
+        self.corrective_W2 = corrective_weights["W2"]
+
         self._kinematic_fronts = compute_kinematic_fronts(data["joint_parents"])
 
     @property
@@ -118,10 +117,7 @@ class MHR(BodyModel):
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
-        """Compute mesh vertices [B, V, 3] in meters.
-
-        Note: Pose correctives are NOT applied in this backend.
-        """
+        """Compute mesh vertices [B, V, 3] in meters."""
         return core.forward_vertices(
             base_vertices=self.base_vertices,
             blendshape_dirs=self.blendshape_dirs,
@@ -141,7 +137,8 @@ class MHR(BodyModel):
             expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            pose_correctives_fn=None,  # No pose correctives for NumPy backend
+            corrective_W1=self.corrective_W1,
+            corrective_W2=self.corrective_W2,
         )
 
     def forward_skeleton(
