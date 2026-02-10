@@ -235,15 +235,30 @@ def test_gradients_forward_skeleton(model_float64) -> None:
 # ============================================================================
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-def test_forward_cuda_optional_defaults() -> None:
-    """Test CUDA forward_* with omitted optional params keeps outputs on CUDA."""
+def _get_accelerator_device() -> torch.device | None:
+    """Return the best available torch accelerator device."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    mps_backend = getattr(torch.backends, "mps", None)
+    if mps_backend is not None and mps_backend.is_available():
+        return torch.device("mps")
+
+    return None
+
+
+def test_forward_accelerator_optional_defaults() -> None:
+    """Test accelerator forward_* with omitted optional params stays on-device."""
     from body_models.smplx.torch import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=True).to("cuda")
+    device = _get_accelerator_device()
+    if device is None:
+        pytest.skip("No accelerator available (cuda or mps)")
+
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=True).to(device)
     B = 2
     params = model.get_rest_pose(batch_size=B)
-    params["body_pose"] = torch.randn(B, model.NUM_BODY_JOINTS, 3, device="cuda", dtype=torch.float32)
+    params["body_pose"] = torch.randn(B, model.NUM_BODY_JOINTS, 3, device=device, dtype=torch.float32)
     params.pop("expression")
     params.pop("pelvis_rotation")
 
@@ -251,8 +266,8 @@ def test_forward_cuda_optional_defaults() -> None:
         verts = model.forward_vertices(**params)
         skel = model.forward_skeleton(**params)
 
-    assert verts.device.type == "cuda"
-    assert skel.device.type == "cuda"
+    assert verts.device.type == device.type
+    assert skel.device.type == device.type
 
 
 def test_simplify() -> None:
