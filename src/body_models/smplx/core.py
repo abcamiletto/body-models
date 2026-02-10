@@ -56,7 +56,7 @@ def forward_vertices(
     shape_batch = shape if shape.shape[0] == B else xp.broadcast_to(shape, (B, shape.shape[1]))
 
     if expression is None:
-        expression = xp.broadcast_to(xp.zeros_like(shape_batch[:, :1]), (B, 10))
+        expression = common.zeros_as(shape_batch[:, :1], shape=(B, 10))
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
@@ -84,10 +84,7 @@ def forward_vertices(
     y_offset = rest_pose_y_offset if ground_plane else 0.0
 
     # Pose blend shapes
-    eye3 = xp.zeros_like(pose_matrices[:, :1])
-    eye3 = common.set(eye3, (..., 0, 0), 1.0, xp=xp)
-    eye3 = common.set(eye3, (..., 1, 1), 1.0, xp=xp)
-    eye3 = common.set(eye3, (..., 2, 2), 1.0, xp=xp)
+    eye3 = common.eye_as(pose_matrices[:, :1], batch_dims=(B, 1))
     pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
     v_shaped = v_t + (pose_delta @ posedirs).reshape(B, -1, 3)
 
@@ -103,7 +100,7 @@ def forward_vertices(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = xp.broadcast_to(xp.zeros_like(v_posed[:1, :1, :1]), (1, 1, 3))
+        offset = common.zeros_as(v_posed[:1, :1, :1], shape=(1, 1, 3))
         offset = common.set(offset, (0, 0, 1), y_offset, xp=xp)
         v_posed = v_posed + offset
 
@@ -150,7 +147,7 @@ def forward_skeleton(
     shape_batch = shape if shape.shape[0] == B else xp.broadcast_to(shape, (B, shape.shape[1]))
 
     if expression is None:
-        expression = xp.broadcast_to(xp.zeros_like(shape_batch[:, :1]), (B, 10))
+        expression = common.zeros_as(shape_batch[:, :1], shape=(B, 10))
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -186,7 +183,7 @@ def forward_skeleton(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = xp.broadcast_to(xp.zeros_like(t_world[:1, :1, :1]), (1, 1, 3))
+        offset = common.zeros_as(t_world[:1, :1, :1], shape=(1, 1, 3))
         offset = common.set(offset, (0, 0, 1), y_offset, xp=xp)
         t_world = t_world + offset
 
@@ -233,7 +230,7 @@ def _forward_core(
 
     # Build full pose with pelvis rotation
     if pelvis_rotation is None:
-        pelvis = xp.broadcast_to(xp.zeros_like(shape[:, :1]), (B, 3))
+        pelvis = common.zeros_as(shape[:, :1], shape=(B, 3))
     else:
         pelvis = pelvis_rotation
     pose = xp.concat([pelvis, body_pose, head_pose, hand_pose_adj], axis=-1).reshape(B, -1, 3)
@@ -311,7 +308,7 @@ def _build_transform_matrix(
     B, J = R.shape[:2]
 
     upper = xp.concat([R, t[..., None]], axis=-1)
-    bottom = xp.broadcast_to(xp.zeros_like(upper[..., :1, :1]), (B, J, 1, 4))
+    bottom = common.zeros_as(upper[..., :1, :1], shape=(B, J, 1, 4))
     bottom = common.set(bottom, (..., 0, 3), 1.0, xp=xp)
     return xp.concat([upper, bottom], axis=-2)
 
