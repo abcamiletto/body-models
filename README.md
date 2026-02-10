@@ -1,7 +1,11 @@
 # body-models
 
 A unified library for parametric human body models. Provides a ~shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, and MHR body models.
-Supports PyTorch, NumPy, and JAX backends, batched processing, out of box the lower resolution mesh forward pass, and disentangled forward kinematics from mesh skinning (`forward_skeleton` and `forward_vertices` methods).
+
+- Supports PyTorch, NumPy, and JAX backends
+- Supports batched processing
+- Supports an out-of-the-box lower-resolution mesh forward pass
+- Keeps forward kinematics disentangled from mesh skinning (`forward_skeleton` and `forward_vertices` methods)
 
 ## Installation
 
