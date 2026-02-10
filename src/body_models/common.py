@@ -79,3 +79,22 @@ def set(array: Array, slices: tuple, values: Array, *, copy: bool = True, xp: An
 
     array[slices] = values
     return array
+
+
+def zeros_as(ref: Array, *, shape: tuple[int, ...]) -> Array:
+    """Create a zero array with ref's backend/device/dtype and a target shape."""
+    xp = get_namespace(ref)
+    z = xp.zeros_like(ref)
+    base = z if z.ndim == 0 else xp.reshape(z, (-1,))[:1]
+    return xp.broadcast_to(base, shape)
+
+
+def eye_as(ref: Array, *, batch_dims: tuple[int, ...]) -> Array:
+    """Create batched identity matrices using ref's backend/device/dtype."""
+    xp = get_namespace(ref)
+    n = ref.shape[-1]
+    eye = zeros_as(ref, shape=(*batch_dims, n, n))
+    one = 1 if "torch" in xp.__name__ else 1.0
+    for i in range(n):
+        eye = set(eye, (..., i, i), one, xp=xp)
+    return eye

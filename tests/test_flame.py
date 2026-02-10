@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import torch
 
+from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "flame"
@@ -232,6 +233,30 @@ def test_gradients_forward_skeleton(model_float64) -> None:
 # ============================================================================
 # Feature tests
 # ============================================================================
+
+
+@requires_model
+def test_forward_accelerator_optional_defaults() -> None:
+    """Test accelerator forward_* with omitted optional params stays on-device."""
+    from body_models.flame.torch import FLAME
+
+    device = get_accelerator_device()
+    if device is None:
+        pytest.skip("No accelerator available (cuda or mps)")
+
+    model = FLAME(model_path=MODEL_PATH, ground_plane=True).to(device)
+    B = 2
+    params = model.get_rest_pose(batch_size=B)
+    params["pose"] = torch.randn(B, model.NUM_HEAD_JOINTS, 3, device=device, dtype=torch.float32)
+    params.pop("expression")
+    params.pop("head_rotation")
+
+    with torch.no_grad():
+        verts = model.forward_vertices(**params)
+        skel = model.forward_skeleton(**params)
+
+    assert verts.device.type == device.type
+    assert skel.device.type == device.type
 
 
 @requires_model
