@@ -19,6 +19,7 @@ __all__ = [
     "load_model_data",
     "compute_kinematic_fronts",
     "simplify_mesh",
+    "load_pose_correctives_weights",
     "load_pose_correctives",
 ]
 
@@ -181,8 +182,41 @@ class _PoseCorrectivesModel(nn.Module):
         return corr.reshape(joint_params.shape[0], -1, 3)
 
 
+def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, np.ndarray]:
+    """Load pose correctives weights as numpy arrays (backend-agnostic).
+
+    Args:
+        asset_dir: Path to MHR assets directory.
+        lod: Level of detail (1 = default).
+
+    Returns:
+        Dict with 'W1' [3000, 750] and 'W2' [V*3, 3000] weight matrices.
+    """
+    blend_data = dict(np.load(asset_dir / f"corrective_blendshapes_lod{lod}.npz"))
+    act_data = dict(np.load(asset_dir / "corrective_activation.npz"))
+
+    # Build dense W1 from sparse representation
+    sparse_indices = act_data["0.sparse_indices"]  # (2, N)
+    sparse_weight = act_data["0.sparse_weight"]  # (N,)
+
+    out_features, in_features = 125 * 24, 125 * 6  # 3000, 750
+    W1 = np.zeros((out_features, in_features), dtype=np.float32)
+    W1[sparse_indices[0], sparse_indices[1]] = sparse_weight
+
+    # W2 from corrective_blendshapes
+    corrective_blendshapes = blend_data["corrective_blendshapes"]  # (n_comp, n_v, 3)
+    n_comp = corrective_blendshapes.shape[0]
+    W2 = corrective_blendshapes.reshape(n_comp, -1).T.astype(np.float32)  # (V*3, n_comp)
+
+    return {"W1": W1, "W2": W2}
+
+
 def load_pose_correctives(asset_dir: Path, lod: int) -> _PoseCorrectivesModel:
-    """Load neural pose correctives model (PyTorch only)."""
+    """Load neural pose correctives model (PyTorch nn.Module).
+
+    .. deprecated::
+        Use :func:`load_pose_correctives_weights` for backend-agnostic weights.
+    """
     blend_data = dict(np.load(asset_dir / f"corrective_blendshapes_lod{lod}.npz"))
     act_data = dict(np.load(asset_dir / "corrective_activation.npz"))
 
