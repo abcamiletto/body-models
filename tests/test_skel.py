@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import torch
 
+from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "skel"
@@ -173,6 +174,30 @@ def test_gradients_forward_skeleton(model_float64) -> None:
 # ============================================================================
 # Feature tests
 # ============================================================================
+
+
+@requires_model
+def test_forward_accelerator_optional_defaults() -> None:
+    """Test accelerator forward_* with omitted optional params stays on-device."""
+    from body_models.skel.torch import SKEL
+
+    device = get_accelerator_device()
+    if device is None:
+        pytest.skip("No accelerator available (cuda or mps)")
+
+    model = SKEL(model_path=MODEL_PATH, gender="male").to(device)
+    B = 2
+    params = model.get_rest_pose(batch_size=B)
+    params["pose"] = torch.randn_like(params["pose"]) * 0.1
+    params.pop("global_rotation")
+    params.pop("global_translation")
+
+    with torch.no_grad():
+        verts = model.forward_vertices(**params)
+        skel = model.forward_skeleton(**params)
+
+    assert verts.device.type == device.type
+    assert skel.device.type == device.type
 
 
 @requires_model

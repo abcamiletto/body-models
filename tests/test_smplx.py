@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import torch
 
+from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "smplx"
@@ -235,23 +236,11 @@ def test_gradients_forward_skeleton(model_float64) -> None:
 # ============================================================================
 
 
-def _get_accelerator_device() -> torch.device | None:
-    """Return the best available torch accelerator device."""
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-
-    mps_backend = getattr(torch.backends, "mps", None)
-    if mps_backend is not None and mps_backend.is_available():
-        return torch.device("mps")
-
-    return None
-
-
 def test_forward_accelerator_optional_defaults() -> None:
     """Test accelerator forward_* with omitted optional params stays on-device."""
     from body_models.smplx.torch import SMPLX
 
-    device = _get_accelerator_device()
+    device = get_accelerator_device()
     if device is None:
         pytest.skip("No accelerator available (cuda or mps)")
 
