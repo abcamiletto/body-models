@@ -310,8 +310,7 @@ def _phenotype_to_coeffs(
             alpha = xp.clip(alpha, 0, 1)
 
         # Build weight matrix
-        w = common.zeros_as(val, shape=(val.shape[0], n_anchors))
-        w = xp.asarray(w, dtype=dtype)
+        w = common.zeros_as(phenotype_mask, shape=(val.shape[0], n_anchors))
         # Scatter 1-alpha at idx-1 and alpha at idx
         batch_indices = xp.cumsum(xp.ones_like(val, dtype=xp.int32), axis=0) - 1
         w = common.set(w, (batch_indices, idx_m1), 1 - alpha, copy=True, xp=xp)
