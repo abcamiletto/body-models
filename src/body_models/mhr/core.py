@@ -1,11 +1,7 @@
-"""Backend-agnostic MHR computation using array_api_compat.
-
-Note: Pose correctives are NOT included here - they are PyTorch-only.
-The torch.py backend adds pose correctives on top of this core computation.
-"""
+"""Backend-agnostic MHR computation using array_api_compat."""
 
 import math
-from typing import Any, Callable
+from typing import Any
 
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
@@ -16,6 +12,63 @@ from .. import common
 Array = Any  # Generic array type (numpy, torch, jax)
 
 _LN2 = math.log(2)
+
+
+def apply_pose_correctives(
+    joint_params: Float[Array, "B J 7"],
+    W1: Float[Array, "3000 750"],
+    W2: Float[Array, "V*3 3000"],
+    *,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    """Compute neural pose correctives from joint parameters.
+
+    This implements the pose correctives network in a backend-agnostic way:
+    - Extract rotation features from joints 2+ (125 joints)
+    - Apply sparse linear layer (densified) + ReLU
+    - Apply dense linear layer to get vertex offsets
+
+    Args:
+        joint_params: Per-joint parameters [B, J, 7] from skeleton forward.
+        W1: First layer weights [3000, 750] (densified sparse layer).
+        W2: Second layer weights [V*3, 3000] (corrective blendshapes).
+        xp: Array namespace (optional).
+
+    Returns:
+        Vertex offsets [B, V, 3] to add to shaped vertices.
+    """
+    if xp is None:
+        xp = get_namespace(joint_params)
+
+    B = joint_params.shape[0]
+    V = W2.shape[0] // 3
+    dtype = joint_params.dtype
+
+    # Extract euler angles from joints 2+ (125 joints for MHR)
+    euler = joint_params[:, 2:, 3:6]  # [B, 125, 3]
+
+    # Convert to rotation matrices
+    rot = SO3.to_matrix(SO3.from_euler(euler, convention="xyz", xp=xp), xp=xp)  # [B, 125, 3, 3]
+
+    # Extract first two columns as features: [r00, r10, r20, r01, r11, r21]
+    feat = xp.concat([rot[..., 0], rot[..., 1]], axis=-1)  # [B, 125, 6]
+
+    # Subtract identity components (r00=1 and r11=1 for identity rotation)
+    # This makes features zero for unrotated joints
+    identity_offset = xp.asarray([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=dtype)
+    feat = feat - identity_offset  # broadcasts over [B, 125, 6]
+
+    # Flatten: [B, 750]
+    feat_flat = feat.reshape(B, -1)
+
+    # First layer + ReLU: [B, 750] @ [750, 3000] -> [B, 3000]
+    h = feat_flat @ W1.T
+    h = xp.maximum(h, xp.asarray(0.0, dtype=dtype))
+
+    # Second layer: [B, 3000] @ [3000, V*3] -> [B, V*3]
+    out = h @ W2.T
+
+    return out.reshape(B, V, 3)
 
 
 def forward_vertices(
@@ -39,8 +92,9 @@ def forward_vertices(
     expression: Float[Array, "B 72"] | None = None,
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
-    # Optional pose correctives callback (PyTorch only)
-    pose_correctives_fn: Callable[[Float[Array, "B J 7"]], Float[Array, "B V 3"]] | None = None,
+    # Optional pose correctives weights
+    corrective_W1: Float[Array, "3000 750"] | None = None,
+    corrective_W2: Float[Array, "V*3 3000"] | None = None,
     *,
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
@@ -82,9 +136,9 @@ def forward_vertices(
     # Blendshapes
     v_t = base_vertices + xp.einsum("bi,ivk->bvk", coeffs, blendshape_dirs)
 
-    # Apply pose correctives if provided (PyTorch only)
-    if pose_correctives_fn is not None:
-        v_t = v_t + pose_correctives_fn(j_p)
+    # Apply pose correctives if weights provided
+    if corrective_W1 is not None and corrective_W2 is not None:
+        v_t = v_t + apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp)
 
     # Linear blend skinning
     lin_g = r_g * s_g[..., None]  # [B, J, 3, 3]
