@@ -22,6 +22,9 @@ OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
 RTOL, ATOL = 1e-4, 1e-4
 
+if not MODEL_PATH.exists():
+    pytest.skip(f"SMPLX model not found at {MODEL_PATH}", allow_module_level=True)
+
 
 # ============================================================================
 # Test data loading
