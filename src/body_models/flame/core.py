@@ -71,7 +71,7 @@ def forward_vertices(
     y_offset = rest_pose_y_offset if ground_plane else 0.0
 
     # Pose blend shapes
-    eye3 = xp.eye(3, dtype=shape.dtype)
+    eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1))
     pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
     v_shaped = v_t + (pose_delta @ posedirs).reshape(B, -1, 3)
 
@@ -87,7 +87,7 @@ def forward_vertices(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = xp.zeros((1, 1, 3), dtype=v_posed.dtype)
+        offset = common.zeros_as(v_posed, shape=(1, 1, 3))
         offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=v_posed.dtype), xp=xp)
         v_posed = v_posed + offset
 
@@ -157,7 +157,7 @@ def forward_skeleton(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = xp.zeros((1, 1, 3), dtype=t_world.dtype)
+        offset = common.zeros_as(t_world, shape=(1, 1, 3))
         offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=t_world.dtype), xp=xp)
         t_world = t_world + offset
 
@@ -189,14 +189,13 @@ def _forward_core(
 ]:
     """Core forward pass."""
     B = pose.shape[0]
-    dtype = shape.dtype
 
     # Broadcast shape if needed
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
     # Build full pose (root joint uses head_rotation if provided)
-    root = head_rotation if head_rotation is not None else xp.zeros((B, 3), dtype=dtype)
+    root = head_rotation if head_rotation is not None else common.zeros_as(shape, shape=(B, 3))
     full_pose = xp.concat([root, pose], axis=-1).reshape(B, -1, 3)
     pose_matrices = SO3.to_matrix(SO3.from_axis_angle(full_pose, xp=xp), xp=xp)
 
@@ -271,7 +270,7 @@ def _build_transform_matrix(
     B, J = R.shape[:2]
     dtype = R.dtype
 
-    T = xp.zeros((B, J, 4, 4), dtype=dtype)
+    T = common.zeros_as(R, shape=(B, J, 4, 4))
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
     T = common.set(T, idx_R, R, xp=xp)

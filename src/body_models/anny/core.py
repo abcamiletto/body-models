@@ -176,7 +176,7 @@ def forward_skeleton(
     B = bone_poses.shape[0]
     idx_R = (slice(None, 3), slice(None, 3))
     idx_t = (slice(None, 3), 3)
-    coord_T = xp.zeros((4, 4), dtype=bone_poses.dtype)
+    coord_T = common.zeros_as(bone_poses, shape=(4, 4))
     coord_T = common.set(coord_T, idx_R, coord_rotation, xp=xp)
     coord_T = common.set(coord_T, idx_t, coord_translation, xp=xp)
     coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=bone_poses.dtype), xp=xp)
@@ -187,7 +187,7 @@ def forward_skeleton(
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
         idx_R = (slice(None), slice(None, 3), slice(None, 3))
         idx_t = (slice(None), slice(None, 3), 3)
-        G = xp.stack([xp.eye(4, dtype=transforms.dtype)] * B, axis=0)
+        G = common.eye_as(transforms, batch_dims=(B,))
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
             R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
@@ -276,11 +276,10 @@ def _phenotype_to_coeffs(
 ) -> Float[Array, "B S"]:
     """Convert phenotype parameters to blendshape coefficients."""
     dtype = phenotype_mask.dtype
-    B = gender.shape[0]
 
     # Convert scalar defaults to batched arrays (user inputs are already tensors)
-    cupsize = xp.full((B,), cupsize, dtype=dtype)
-    firmness = xp.full((B,), firmness, dtype=dtype)
+    cupsize = xp.full_like(gender, cupsize, dtype=dtype)
+    firmness = xp.full_like(gender, firmness, dtype=dtype)
 
     # Interpolation weights for each phenotype
     weights = {}
@@ -311,18 +310,18 @@ def _phenotype_to_coeffs(
             alpha = xp.clip(alpha, 0, 1)
 
         # Build weight matrix
-        w = xp.zeros((val.shape[0], n_anchors), dtype=dtype)
+        w = common.zeros_as(phenotype_mask, shape=(val.shape[0], n_anchors))
         # Scatter 1-alpha at idx-1 and alpha at idx
-        batch_indices = xp.arange(val.shape[0])
-        w = common.set(w, (batch_indices, idx_m1), 1 - alpha, copy=False, xp=xp)
+        batch_indices = xp.cumsum(xp.ones_like(val, dtype=xp.int32), axis=0) - 1
+        w = common.set(w, (batch_indices, idx_m1), 1 - alpha, copy=True, xp=xp)
         w = common.set(w, (batch_indices, idx), alpha, copy=False, xp=xp)
 
         weights[name] = {k: w[:, i] for i, k in enumerate(PHENOTYPE_VARIATIONS[name])}
 
     # Race weights (normalized) - convert scalar defaults to batched arrays
-    african = xp.full((B,), african, dtype=dtype)
-    asian = xp.full((B,), asian, dtype=dtype)
-    caucasian = xp.full((B,), caucasian, dtype=dtype)
+    african = xp.full_like(gender, african, dtype=dtype)
+    asian = xp.full_like(gender, asian, dtype=dtype)
+    caucasian = xp.full_like(gender, caucasian, dtype=dtype)
     race = xp.stack([african, asian, caucasian], axis=1)
     race_sum = xp.sum(race, axis=1, keepdims=True)
     race_sum = xp.where(race_sum == 0, xp.asarray(1.0, dtype=dtype), race_sum)
@@ -373,7 +372,7 @@ def _bone_poses_from_heads_tails(
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
-    H = xp.zeros((B, J, 4, 4), dtype=dtype)
+    H = common.zeros_as(R, shape=(B, J, 4, 4))
     H = common.set(H, idx_R, R, xp=xp)
     H = common.set(H, idx_t, heads, xp=xp)
     H = common.set(H, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
@@ -444,7 +443,7 @@ def _axis_angle_to_transform(xp, pose: Float[Array, "B J 3"]) -> Float[Array, "B
     B, J = R.shape[:2]
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
-    T = xp.zeros((B, J, 4, 4), dtype=dtype)
+    T = common.zeros_as(R, shape=(B, J, 4, 4))
     T = common.set(T, idx_R, R, xp=xp)
     T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
@@ -493,7 +492,7 @@ def to_native_outputs(
     # Inverse: T_zup = coord_inv @ T_yup
     idx_R = (slice(None, 3), slice(None, 3))
     idx_t = (slice(None, 3), 3)
-    coord_T = xp.zeros((4, 4), dtype=dtype)
+    coord_T = common.zeros_as(vertices, shape=(4, 4))
     coord_T = common.set(coord_T, idx_R, coord_rot, xp=xp)
     coord_T = common.set(coord_T, idx_t, coord_trans, xp=xp)
     coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)

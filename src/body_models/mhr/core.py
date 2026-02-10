@@ -54,11 +54,10 @@ def forward_vertices(
     if xp is None:
         xp = get_namespace(shape)
     B = pose.shape[0]
-    dtype = shape.dtype
 
     # Handle expression
     if expression is None:
-        expression = xp.zeros((B, expr_dim), dtype=dtype)
+        expression = common.zeros_as(shape, shape=(B, expr_dim))
 
     # Broadcast shape/expression if needed
     if shape.shape[0] == 1 and B > 1:
@@ -156,14 +155,14 @@ def forward_skeleton(
         dtype = T.dtype
         idx_R = (slice(None), slice(None, 3), slice(None, 3))
         idx_t = (slice(None), slice(None, 3), 3)
-        global_T = xp.zeros((B, 4, 4), dtype=dtype)
+        global_T = common.zeros_as(T, shape=(B, 4, 4))
         global_T = common.set(global_T, (slice(None), 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
 
         if global_rotation is not None:
             R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
             global_T = common.set(global_T, idx_R, R_global, xp=xp)
         else:
-            eye3 = xp.eye(3, dtype=dtype)
+            eye3 = common.eye_as(r_g, batch_dims=(B,))
             global_T = common.set(global_T, idx_R, eye3, xp=xp)
 
         if global_translation is not None:
@@ -218,8 +217,7 @@ def _pose_to_joint_params(
 ) -> Float[Array, "B J 7"]:
     """Convert pose vector to per-joint parameters [B, J, 7]."""
     B = pose.shape[0]
-    dtype = pose.dtype
-    pad = xp.zeros((B, shape_dim), dtype=dtype)
+    pad = common.zeros_as(pose, shape=(B, shape_dim))
     j_p = xp.einsum("dn,bn->bd", parameter_transform, xp.concat([pose, pad], axis=-1))
     return j_p.reshape(B, num_joints, 7)
 
@@ -270,7 +268,7 @@ def _trs_to_transforms(
     B, J = t.shape[:2]
     dtype = t.dtype
 
-    T = xp.zeros((B, J, 4, 4), dtype=dtype)
+    T = common.zeros_as(t, shape=(B, J, 4, 4))
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
     T = common.set(T, idx_R, R, xp=xp)
