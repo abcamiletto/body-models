@@ -13,7 +13,7 @@ from torch import Tensor
 
 from ..base import BodyModel
 from . import core
-from .io import get_model_path, load_model_data, load_pose_correctives, compute_kinematic_fronts, simplify_mesh
+from .io import get_model_path, load_model_data, load_pose_correctives_weights, compute_kinematic_fronts, simplify_mesh
 
 
 class MHR(BodyModel, nn.Module):
@@ -53,6 +53,8 @@ class MHR(BodyModel, nn.Module):
     bind_inv_linear: Tensor
     bind_inv_translation: Tensor
     _faces: Tensor
+    corrective_W1: Tensor
+    corrective_W2: Tensor
 
     def __init__(
         self,
@@ -110,7 +112,11 @@ class MHR(BodyModel, nn.Module):
         self.register_buffer("bind_inv_linear", SO3.to_matrix(q, xyzw=True) * s.unsqueeze(-1))
         self.register_buffer("bind_inv_translation", t)
 
-        self._pose_correctives = load_pose_correctives(resolved_path, lod)
+        # Load pose correctives weights
+        corrective_weights = load_pose_correctives_weights(resolved_path, lod)
+        self.register_buffer("corrective_W1", torch.from_numpy(corrective_weights["W1"]))
+        self.register_buffer("corrective_W2", torch.from_numpy(corrective_weights["W2"]))
+
         self._kinematic_fronts = compute_kinematic_fronts(data["joint_parents"])
 
     @property
@@ -172,7 +178,8 @@ class MHR(BodyModel, nn.Module):
             expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            pose_correctives_fn=self._pose_correctives,
+            corrective_W1=self.corrective_W1,
+            corrective_W2=self.corrective_W2,
         )
 
     def _forward_vertices_simplified(
@@ -212,7 +219,7 @@ class MHR(BodyModel, nn.Module):
 
         # Compute full-resolution v_t with correctives
         v_t_full = self.base_vertices_full + torch.einsum("bi,ivk->bvk", coeffs, self.blendshape_dirs_full)
-        v_t_full = v_t_full + self._pose_correctives(j_p)
+        v_t_full = v_t_full + core.apply_pose_correctives(j_p, self.corrective_W1, self.corrective_W2, xp=torch)
 
         # Downsample to simplified vertices
         v_t = v_t_full[:, self._vertex_map]

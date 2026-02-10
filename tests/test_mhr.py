@@ -7,9 +7,8 @@
 Note: Reference outputs are in centimeters (MHR native units), while the model
 outputs meters. Tests convert model output to cm for comparison.
 
-The PyTorch backend includes neural pose correctives, while NumPy and JAX do not.
-- PyTorch tests compare against reference outputs (with pose correctives)
-- NumPy/JAX tests compare against each other for cross-backend consistency
+All backends (PyTorch, NumPy, JAX) include neural pose correctives.
+Tests compare against reference outputs with pose correctives.
 """
 
 import json
@@ -98,74 +97,41 @@ def test_forward_vertices_torch(idx: int) -> None:
 
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_numpy(idx: int) -> None:
-    """Test NumPy backend against PyTorch core without pose correctives."""
-    from body_models.mhr import core
-    from body_models.mhr.numpy import MHR as MHR_Numpy
-    from body_models.mhr.torch import MHR as MHR_Torch
+    """Test NumPy forward_vertices matches reference (with pose correctives)."""
+    from body_models.mhr.numpy import MHR
 
-    # Load PyTorch model to get reference (without pose correctives)
-    torch_model = MHR_Torch(model_path=MODEL_PATH)
-    numpy_model = MHR_Numpy(model_path=MODEL_PATH)
-    inputs, _ = load_test_case(idx)
+    model = MHR(model_path=MODEL_PATH)
+    inputs, ref = load_test_case(idx)
 
-    # Get PyTorch output without pose correctives
-    with torch.no_grad():
-        ref_verts = core.forward_vertices(
-            base_vertices=torch_model.base_vertices,
-            blendshape_dirs=torch_model.blendshape_dirs,
-            skin_weights=torch_model._skin_weights,
-            skin_indices=torch_model._skin_indices,
-            joint_offsets=torch_model.joint_offsets,
-            joint_pre_rotations=torch_model.joint_pre_rotations,
-            parameter_transform=torch_model.parameter_transform,
-            bind_inv_linear=torch_model.bind_inv_linear,
-            bind_inv_translation=torch_model.bind_inv_translation,
-            kinematic_fronts=torch_model._kinematic_fronts,
-            num_joints=torch_model.num_joints,
-            shape_dim=torch_model.SHAPE_DIM,
-            expr_dim=torch_model.EXPR_DIM,
-            shape=torch.tensor(inputs["shape"])[None],
-            pose=torch.tensor(inputs["pose"])[None],
-            expression=torch.tensor(inputs["expression"])[None],
-            pose_correctives_fn=None,  # No pose correctives
-        )
-
-    # Get NumPy output
-    verts = numpy_model.forward_vertices(
+    verts = model.forward_vertices(
         shape=inputs["shape"][None],
         pose=inputs["pose"][None],
         expression=inputs["expression"][None],
     )
 
-    np.testing.assert_allclose(verts[0], ref_verts[0].numpy(), rtol=RTOL, atol=ATOL)
+    # Model outputs meters, reference is in cm
+    verts_cm = verts[0] * 100
+    np.testing.assert_allclose(verts_cm, ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_jax(idx: int) -> None:
-    """Test JAX backend against NumPy backend (cross-backend consistency)."""
+    """Test JAX forward_vertices matches reference (with pose correctives)."""
     jnp = pytest.importorskip("jax.numpy")
-    from body_models.mhr.jax import MHR as MHR_Jax
-    from body_models.mhr.numpy import MHR as MHR_Numpy
+    from body_models.mhr.jax import MHR
 
-    numpy_model = MHR_Numpy(model_path=MODEL_PATH)
-    jax_model = MHR_Jax(model_path=MODEL_PATH)
-    inputs, _ = load_test_case(idx)
+    model = MHR(model_path=MODEL_PATH)
+    inputs, ref = load_test_case(idx)
 
-    # Get NumPy reference
-    ref_verts = numpy_model.forward_vertices(
-        shape=inputs["shape"][None],
-        pose=inputs["pose"][None],
-        expression=inputs["expression"][None],
-    )
-
-    # Get JAX output
-    verts = jax_model.forward_vertices(
+    verts = model.forward_vertices(
         shape=jnp.array(inputs["shape"])[None],
         pose=jnp.array(inputs["pose"])[None],
         expression=jnp.array(inputs["expression"])[None],
     )
 
-    np.testing.assert_allclose(np.asarray(verts[0]), ref_verts[0], rtol=RTOL, atol=ATOL)
+    # Model outputs meters, reference is in cm
+    verts_cm = np.asarray(verts[0]) * 100
+    np.testing.assert_allclose(verts_cm, ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
 @pytest.mark.parametrize("idx", range(NUM_CASES))
