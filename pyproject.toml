@@ -15,7 +15,7 @@ dependencies = [
     "platformdirs>=4.0",
     "pyfqmr>=0.5.0",
     "scipy>=1.15.1",
-    "typer>=0.18",
+    "typer>=0.19.2",
 ]
 
 [project.scripts]
