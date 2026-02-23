@@ -177,6 +177,34 @@ def test_gradients_forward_skeleton(model_float64) -> None:
 
 
 @requires_model
+@pytest.mark.parametrize("batch_shape", [(2, 3), (2, 1, 3)])
+def test_forward_arbitrary_batch_dims_torch(batch_shape: tuple[int, ...]) -> None:
+    """Test torch forward_* supports multiple leading batch dimensions."""
+    from body_models.skel.torch import SKEL
+
+    model = SKEL(gender="male", model_path=MODEL_PATH)
+    flat_batch = int(np.prod(batch_shape))
+
+    params_flat = model.get_rest_pose(batch_size=flat_batch)
+    params_flat["shape"] = torch.randn(flat_batch, model.NUM_BETAS, dtype=torch.float32)
+    params_flat["pose"] = torch.randn(flat_batch, model.NUM_POSE_PARAMS, dtype=torch.float32) * 0.1
+    params_flat["global_rotation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.1
+    params_flat["global_translation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.01
+
+    params_nd = {key: value.reshape(*batch_shape, *value.shape[1:]) for key, value in params_flat.items()}
+
+    verts_nd = model.forward_vertices(**params_nd)
+    skel_nd = model.forward_skeleton(**params_nd)
+    verts_flat = model.forward_vertices(**params_flat)
+    skel_flat = model.forward_skeleton(**params_flat)
+
+    assert verts_nd.shape == (*batch_shape, model.num_vertices, 3)
+    assert skel_nd.shape == (*batch_shape, model.num_joints, 4, 4)
+    torch.testing.assert_close(verts_nd.reshape(flat_batch, model.num_vertices, 3), verts_flat, rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(skel_nd.reshape(flat_batch, model.num_joints, 4, 4), skel_flat, rtol=1e-5, atol=1e-5)
+
+
+@requires_model
 def test_forward_accelerator_optional_defaults() -> None:
     """Test accelerator forward_* with omitted optional params stays on-device."""
     from body_models.skel.torch import SKEL
