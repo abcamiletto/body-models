@@ -256,10 +256,7 @@ def test_forward_arbitrary_batch_dims_torch(batch_shape: tuple[int, ...]) -> Non
     params_flat["pelvis_rotation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.1
     params_flat["global_translation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.01
 
-    params_nd = {
-        key: value.reshape(*batch_shape, *value.shape[1:])
-        for key, value in params_flat.items()
-    }
+    params_nd = {key: value.reshape(*batch_shape, *value.shape[1:]) for key, value in params_flat.items()}
 
     verts_nd = model.forward_vertices(**params_nd)
     skel_nd = model.forward_skeleton(**params_nd)

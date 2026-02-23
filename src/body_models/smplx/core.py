@@ -1,4 +1,5 @@
 """Backend-agnostic SMPL-X computation using array_api_compat."""
+
 from typing import Any
 
 from array_api_compat import get_namespace
