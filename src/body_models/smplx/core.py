@@ -59,15 +59,6 @@ def forward_vertices(
 
     if expression is None:
         expression = common.zeros_as(shape, shape=(*batch_shape, 10))
-    else:
-        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-
-    if pelvis_rotation is not None:
-        pelvis_rotation = xp.broadcast_to(pelvis_rotation, (*batch_shape, 3))
-    if global_rotation is not None:
-        global_rotation = xp.broadcast_to(global_rotation, (*batch_shape, 3))
-    if global_translation is not None:
-        global_translation = xp.broadcast_to(global_translation, (*batch_shape, 3))
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
@@ -162,15 +153,6 @@ def forward_skeleton(
 
     if expression is None:
         expression = common.zeros_as(shape, shape=(*batch_shape, 10))
-    else:
-        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-
-    if pelvis_rotation is not None:
-        pelvis_rotation = xp.broadcast_to(pelvis_rotation, (*batch_shape, 3))
-    if global_rotation is not None:
-        global_rotation = xp.broadcast_to(global_rotation, (*batch_shape, 3))
-    if global_translation is not None:
-        global_translation = xp.broadcast_to(global_translation, (*batch_shape, 3))
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -242,7 +224,6 @@ def _forward_core(
     """Core forward pass."""
     batch_shape = body_pose.shape[:-1]
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-    expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
 
     # Apply hand pose mean
     lh = hand_pose[..., :45]
@@ -253,7 +234,7 @@ def _forward_core(
     if pelvis_rotation is None:
         pelvis = common.zeros_as(shape, shape=(*batch_shape, 3))
     else:
-        pelvis = xp.broadcast_to(pelvis_rotation, (*batch_shape, 3))
+        pelvis = pelvis_rotation
     pose = xp.concat([pelvis, body_pose, head_pose, hand_pose_adj], axis=-1).reshape(*batch_shape, -1, 3)
     pose_matrices = SO3.to_matrix(SO3.from_axis_angle(pose, xp=xp), xp=xp)
 
