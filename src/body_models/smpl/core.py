@@ -34,15 +34,19 @@ def forward_vertices(
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
-    assert shape.ndim == 2 and shape.shape[1] >= 1
-    assert body_pose.ndim == 3 and body_pose.shape[1:] == (23, 3)
-    assert pelvis_rotation is None or (pelvis_rotation.ndim == 2 and pelvis_rotation.shape[1] == 3)
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    assert body_pose.ndim >= 3 and body_pose.shape[-2:] == (23, 3)
+    assert pelvis_rotation is None or (pelvis_rotation.ndim >= 1 and pelvis_rotation.shape[-1] == 3)
+    assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
+    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
         xp = get_namespace(shape)
-    B = body_pose.shape[0]
+    batch_shape = tuple(body_pose.shape[:-2])
+    assert pelvis_rotation is None or tuple(pelvis_rotation.shape[:-1]) == batch_shape
+    assert global_rotation is None or tuple(global_rotation.shape[:-1]) == batch_shape
+    assert global_translation is None or tuple(global_translation.shape[:-1]) == batch_shape
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
@@ -54,7 +58,7 @@ def forward_vertices(
         parents=parents,
         kinematic_fronts=kinematic_fronts,
         shape=shape,
-        body_pose=body_pose.reshape(B, -1),
+        body_pose=body_pose.reshape(*batch_shape, -1),
         pelvis_rotation=pelvis_rotation,
         skeleton_only=False,
     )
@@ -63,15 +67,15 @@ def forward_vertices(
     y_offset = rest_pose_y_offset if ground_plane else 0.0
 
     # Pose blend shapes
-    eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1))
-    pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
-    v_shaped = v_t + (pose_delta @ posedirs).reshape(B, -1, 3)
+    eye3 = common.eye_as(pose_matrices, batch_dims=(*batch_shape, 1))
+    pose_delta = (pose_matrices[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
+    v_shaped = v_t + (pose_delta @ posedirs).reshape(*batch_shape, -1, 3)
 
     # Linear blend skinning
     R_world = T_world[..., :3, :3]
     t_world = T_world[..., :3, 3]
-    W_R = xp.einsum("vj,bjkl->bvkl", lbs_weights, R_world)
-    W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t_world - xp.squeeze(R_world @ j_t[..., None], axis=-1))
+    W_R = xp.einsum("vj,...jkl->...vkl", lbs_weights, R_world)
+    W_t = xp.einsum("vj,...jk->...vk", lbs_weights, t_world - xp.squeeze(R_world @ j_t[..., None], axis=-1))
     v_posed = xp.squeeze(W_R @ v_shaped[..., None], axis=-1) + W_t
 
     # Apply global transform
@@ -105,15 +109,19 @@ def forward_skeleton(
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton joint transforms [B, J, 4, 4]."""
-    assert shape.ndim == 2 and shape.shape[1] >= 1
-    assert body_pose.ndim == 3 and body_pose.shape[1:] == (23, 3)
-    assert pelvis_rotation is None or (pelvis_rotation.ndim == 2 and pelvis_rotation.shape[1] == 3)
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    assert body_pose.ndim >= 3 and body_pose.shape[-2:] == (23, 3)
+    assert pelvis_rotation is None or (pelvis_rotation.ndim >= 1 and pelvis_rotation.shape[-1] == 3)
+    assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
+    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
         xp = get_namespace(shape)
-    B = body_pose.shape[0]
+    batch_shape = tuple(body_pose.shape[:-2])
+    assert pelvis_rotation is None or tuple(pelvis_rotation.shape[:-1]) == batch_shape
+    assert global_rotation is None or tuple(global_rotation.shape[:-1]) == batch_shape
+    assert global_translation is None or tuple(global_translation.shape[:-1]) == batch_shape
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -125,7 +133,7 @@ def forward_skeleton(
         parents=parents,
         kinematic_fronts=kinematic_fronts,
         shape=shape,
-        body_pose=body_pose.reshape(B, -1),
+        body_pose=body_pose.reshape(*batch_shape, -1),
         pelvis_rotation=pelvis_rotation,
         skeleton_only=True,
     )
@@ -160,47 +168,44 @@ def _forward_core(
     J_regressor: Float[Array, "J V_full"],
     parents: Int[Array, "J"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
-    shape: Float[Array, "B 10"],
-    body_pose: Float[Array, "B 69"],
-    pelvis_rotation: Float[Array, "B 3"] | None,
+    shape: Float[Array, "*batch 10"],
+    body_pose: Float[Array, "*batch 69"],
+    pelvis_rotation: Float[Array, "*batch 3"] | None,
     skeleton_only: bool,
 ) -> tuple[
-    Float[Array, "B V 3"] | None,
-    Float[Array, "B J 3"],
-    Float[Array, "B J 3 3"],
-    Float[Array, "B J 4 4"],
+    Float[Array, "*batch V 3"] | None,
+    Float[Array, "*batch J 3"],
+    Float[Array, "*batch J 3 3"],
+    Float[Array, "*batch J 4 4"],
 ]:
     """Core forward pass."""
-    B = body_pose.shape[0]
-
-    # Broadcast shape if needed
-    if shape.shape[0] == 1 and B > 1:
-        shape = xp.broadcast_to(shape, (B, shape.shape[1]))
+    batch_shape = body_pose.shape[:-1]
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     # Build full pose with pelvis rotation
     if pelvis_rotation is None:
-        pelvis = common.zeros_as(shape, shape=(B, 3))
+        pelvis = common.zeros_as(shape, shape=(*batch_shape, 3))
     else:
         pelvis = pelvis_rotation
-    pose = xp.concat([pelvis, body_pose], axis=-1).reshape(B, -1, 3)
+    pose = xp.concat([pelvis, body_pose], axis=-1).reshape(*batch_shape, -1, 3)
     pose_matrices = SO3.to_matrix(SO3.from_axis_angle(pose, xp=xp), xp=xp)
 
     # Joint locations from full-resolution mesh
-    v_t_full = v_template_full + xp.einsum("bi,vdi->bvd", shape, shapedirs_full[:, :, : shape.shape[-1]])
-    j_t = xp.einsum("bvd,jv->bjd", v_t_full, J_regressor)
+    v_t_full = v_template_full + xp.einsum("...i,vdi->...vd", shape, shapedirs_full[:, :, : shape.shape[-1]])
+    j_t = xp.einsum("...vd,jv->...jd", v_t_full, J_regressor)
 
     # Shape blend shapes for mesh output
     if skeleton_only:
         v_t = None
     else:
         assert v_template is not None and shapedirs is not None
-        v_t = v_template + xp.einsum("bi,vdi->bvd", shape, shapedirs[:, :, : shape.shape[-1]])
+        v_t = v_template + xp.einsum("...i,vdi->...vd", shape, shapedirs[:, :, : shape.shape[-1]])
 
     # Forward kinematics
     # Build t_local using concatenation
-    j0 = j_t[:, 0:1]  # [B, 1, 3]
-    j_rest = j_t[:, 1:] - j_t[:, parents[1:]]  # [B, J-1, 3]
-    t_local = xp.concat([j0, j_rest], axis=1)  # [B, J, 3]
+    j0 = j_t[..., 0:1, :]  # [..., 1, 3]
+    j_rest = j_t[..., 1:, :] - j_t[..., parents[1:], :]  # [..., J-1, 3]
+    t_local = xp.concat([j0, j_rest], axis=-2)  # [..., J, 3]
 
     T_world = _batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts)
 
@@ -209,50 +214,51 @@ def _forward_core(
 
 def _batched_forward_kinematics(
     xp,
-    R: Float[Array, "B J 3 3"],
-    t: Float[Array, "B J 3"],
+    R: Float[Array, "*batch J 3 3"],
+    t: Float[Array, "*batch J 3"],
     fronts: list[tuple[list[int], list[int]]],
-) -> Float[Array, "B J 4 4"]:
+) -> Float[Array, "*batch J 4 4"]:
     """Batched forward kinematics using precomputed kinematic fronts."""
-    _, J = R.shape[:2]
+    J = R.shape[-3]
 
-    R_world: list[Float[Array, "B 3 3"] | None] = [None] * J
-    t_world: list[Float[Array, "B 3"] | None] = [None] * J
+    R_world: list[Float[Array, "*batch 3 3"] | None] = [None] * J
+    t_world: list[Float[Array, "*batch 3"] | None] = [None] * J
 
     for joints, parents in fronts:
         if parents[0] < 0:  # Root joints
             for joint in joints:
-                R_world[joint] = R[:, joint]
-                t_world[joint] = t[:, joint]
+                R_world[joint] = R[..., joint, :, :]
+                t_world[joint] = t[..., joint, :]
             continue
 
-        R_parent = xp.stack([R_world[i] for i in parents], axis=1)
-        t_parent = xp.stack([t_world[i] for i in parents], axis=1)
-        R_local = R[:, joints]
-        t_local = t[:, joints]
+        R_parent = xp.stack([R_world[i] for i in parents], axis=-3)
+        t_parent = xp.stack([t_world[i] for i in parents], axis=-2)
+        R_local = R[..., joints, :, :]
+        t_local = t[..., joints, :]
 
         R_cur = R_parent @ R_local
         t_cur = t_parent + xp.squeeze(R_parent @ t_local[..., None], axis=-1)
         for idx, joint in enumerate(joints):
-            R_world[joint] = R_cur[:, idx]
-            t_world[joint] = t_cur[:, idx]
+            R_world[joint] = R_cur[..., idx, :, :]
+            t_world[joint] = t_cur[..., idx, :]
 
-    R_world_stacked = xp.stack(R_world, axis=1)
-    t_world_stacked = xp.stack(t_world, axis=1)
+    R_world_stacked = xp.stack(R_world, axis=-3)
+    t_world_stacked = xp.stack(t_world, axis=-2)
 
     return _build_transform_matrix(xp, R_world_stacked, t_world_stacked)
 
 
 def _build_transform_matrix(
     xp,
-    R: Float[Array, "B J 3 3"],
-    t: Float[Array, "B J 3"],
-) -> Float[Array, "B J 4 4"]:
-    """Build 4x4 transform matrix from R [B, J, 3, 3] and t [B, J, 3]."""
-    B, J = R.shape[:2]
+    R: Float[Array, "*batch J 3 3"],
+    t: Float[Array, "*batch J 3"],
+) -> Float[Array, "*batch J 4 4"]:
+    """Build 4x4 transform matrix from R [..., J, 3, 3] and t [..., J, 3]."""
+    batch_shape = R.shape[:-3]
+    J = R.shape[-3]
     dtype = R.dtype
 
-    T = common.zeros_as(R, shape=(B, J, 4, 4))
+    T = common.zeros_as(R, shape=(*batch_shape, J, 4, 4))
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
     T = common.set(T, idx_R, R, xp=xp)
@@ -263,35 +269,35 @@ def _build_transform_matrix(
 
 def _apply_global_transform(
     xp,
-    points: Float[Array, "B N 3"],
-    rotation: Float[Array, "B 3"] | None,
-    translation: Float[Array, "B 3"] | None,
-) -> Float[Array, "B N 3"]:
-    """Apply global rotation and translation to points [B, N, 3]."""
+    points: Float[Array, "*batch N 3"],
+    rotation: Float[Array, "*batch 3"] | None,
+    translation: Float[Array, "*batch 3"] | None,
+) -> Float[Array, "*batch N 3"]:
+    """Apply global rotation and translation to points [..., N, 3]."""
     if rotation is not None:
         R = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
         points = (R @ points.mT).mT
     if translation is not None:
-        points = points + translation[:, None]
+        points = points + translation[..., None, :]
     return points
 
 
 def _apply_global_transform_to_rt(
     xp,
-    R: Float[Array, "B J 3 3"],
-    t: Float[Array, "B J 3"],
-    rotation: Float[Array, "B 3"] | None,
-    translation: Float[Array, "B 3"] | None,
-) -> tuple[Float[Array, "B J 3 3"], Float[Array, "B J 3"]]:
+    R: Float[Array, "*batch J 3 3"],
+    t: Float[Array, "*batch J 3"],
+    rotation: Float[Array, "*batch 3"] | None,
+    translation: Float[Array, "*batch 3"] | None,
+) -> tuple[Float[Array, "*batch J 3 3"], Float[Array, "*batch J 3"]]:
     """Apply global rotation and translation to R, t components."""
     if rotation is not None:
         R_global = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
         # Transform t: R_global @ t
         t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)
-        R = R_global[:, None] @ R
+        R = R_global[..., None, :, :] @ R
     if translation is not None:
-        t = t + translation[:, None]
+        t = t + translation[..., None, :]
     return R, t
 
 
