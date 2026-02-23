@@ -51,6 +51,9 @@ def forward_vertices(
     if xp is None:
         xp = get_namespace(shape)
     batch_shape = tuple(body_pose.shape[:-2])
+    assert tuple(hand_pose.shape[:-2]) == batch_shape
+    assert tuple(head_pose.shape[:-2]) == batch_shape
+    assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
@@ -151,6 +154,9 @@ def forward_skeleton(
     if xp is None:
         xp = get_namespace(shape)
     batch_shape = tuple(body_pose.shape[:-2])
+    assert tuple(hand_pose.shape[:-2]) == batch_shape
+    assert tuple(head_pose.shape[:-2]) == batch_shape
+    assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
