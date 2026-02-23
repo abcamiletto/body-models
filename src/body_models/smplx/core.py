@@ -10,28 +10,6 @@ from .. import common
 Array = Any  # Generic array type (numpy, torch, jax)
 
 
-def _broadcast_to_batch(
-    x: Array,
-    *,
-    batch_shape: tuple[int, ...],
-    tail_ndim: int,
-    xp: Any,
-    name: str,
-) -> Array:
-    """Broadcast leading dims of x to batch_shape while preserving tail dims."""
-    assert x.ndim >= tail_ndim, f"{name} must have at least {tail_ndim} trailing dims"
-    tail_shape = tuple(x.shape[-tail_ndim:])
-    target_shape = (*batch_shape, *tail_shape)
-    if tuple(x.shape) == target_shape:
-        return x
-    try:
-        return xp.broadcast_to(x, target_shape)
-    except Exception as exc:
-        raise AssertionError(
-            f"{name} leading dims {tuple(x.shape[:-tail_ndim])} are not broadcastable to {batch_shape}"
-        ) from exc
-
-
 def forward_vertices(
     # Model data
     v_template: Float[Array, "V 3"],
@@ -74,24 +52,19 @@ def forward_vertices(
         xp = get_namespace(shape)
     batch_shape = tuple(body_pose.shape[:-2])
 
-    body_pose = _broadcast_to_batch(body_pose, batch_shape=batch_shape, tail_ndim=2, xp=xp, name="body_pose")
-    hand_pose = _broadcast_to_batch(hand_pose, batch_shape=batch_shape, tail_ndim=2, xp=xp, name="hand_pose")
-    head_pose = _broadcast_to_batch(head_pose, batch_shape=batch_shape, tail_ndim=2, xp=xp, name="head_pose")
-    shape = _broadcast_to_batch(shape, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="shape")
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     if expression is None:
         expression = common.zeros_as(shape, shape=(*batch_shape, 10))
     else:
-        expression = _broadcast_to_batch(expression, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="expression")
+        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
 
     if pelvis_rotation is not None:
-        pelvis_rotation = _broadcast_to_batch(pelvis_rotation, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="pelvis_rotation")
+        pelvis_rotation = xp.broadcast_to(pelvis_rotation, (*batch_shape, 3))
     if global_rotation is not None:
-        global_rotation = _broadcast_to_batch(global_rotation, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="global_rotation")
+        global_rotation = xp.broadcast_to(global_rotation, (*batch_shape, 3))
     if global_translation is not None:
-        global_translation = _broadcast_to_batch(
-            global_translation, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="global_translation"
-        )
+        global_translation = xp.broadcast_to(global_translation, (*batch_shape, 3))
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
@@ -179,24 +152,19 @@ def forward_skeleton(
         xp = get_namespace(shape)
     batch_shape = tuple(body_pose.shape[:-2])
 
-    body_pose = _broadcast_to_batch(body_pose, batch_shape=batch_shape, tail_ndim=2, xp=xp, name="body_pose")
-    hand_pose = _broadcast_to_batch(hand_pose, batch_shape=batch_shape, tail_ndim=2, xp=xp, name="hand_pose")
-    head_pose = _broadcast_to_batch(head_pose, batch_shape=batch_shape, tail_ndim=2, xp=xp, name="head_pose")
-    shape = _broadcast_to_batch(shape, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="shape")
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     if expression is None:
         expression = common.zeros_as(shape, shape=(*batch_shape, 10))
     else:
-        expression = _broadcast_to_batch(expression, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="expression")
+        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
 
     if pelvis_rotation is not None:
-        pelvis_rotation = _broadcast_to_batch(pelvis_rotation, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="pelvis_rotation")
+        pelvis_rotation = xp.broadcast_to(pelvis_rotation, (*batch_shape, 3))
     if global_rotation is not None:
-        global_rotation = _broadcast_to_batch(global_rotation, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="global_rotation")
+        global_rotation = xp.broadcast_to(global_rotation, (*batch_shape, 3))
     if global_translation is not None:
-        global_translation = _broadcast_to_batch(
-            global_translation, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="global_translation"
-        )
+        global_translation = xp.broadcast_to(global_translation, (*batch_shape, 3))
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -267,8 +235,8 @@ def _forward_core(
 ]:
     """Core forward pass."""
     batch_shape = body_pose.shape[:-1]
-    shape = _broadcast_to_batch(shape, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="shape")
-    expression = _broadcast_to_batch(expression, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="expression")
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+    expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
 
     # Apply hand pose mean
     lh = hand_pose[..., :45]
@@ -279,7 +247,7 @@ def _forward_core(
     if pelvis_rotation is None:
         pelvis = common.zeros_as(shape, shape=(*batch_shape, 3))
     else:
-        pelvis = _broadcast_to_batch(pelvis_rotation, batch_shape=batch_shape, tail_ndim=1, xp=xp, name="pelvis_rotation")
+        pelvis = xp.broadcast_to(pelvis_rotation, (*batch_shape, 3))
     pose = xp.concat([pelvis, body_pose, head_pose, hand_pose_adj], axis=-1).reshape(*batch_shape, -1, 3)
     pose_matrices = SO3.to_matrix(SO3.from_axis_angle(pose, xp=xp), xp=xp)
 
