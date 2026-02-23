@@ -239,6 +239,36 @@ def test_gradients_forward_skeleton(model_float64) -> None:
 # ============================================================================
 
 
+@pytest.mark.parametrize("batch_shape", [(2, 3), (2, 1, 3)])
+def test_forward_arbitrary_batch_dims_torch(batch_shape: tuple[int, ...]) -> None:
+    """Test torch forward_* supports multiple leading batch dimensions."""
+    from body_models.smplx.torch import SMPLX
+
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    flat_batch = int(np.prod(batch_shape))
+
+    params_flat = model.get_rest_pose(batch_size=flat_batch)
+    params_flat["shape"] = torch.randn(flat_batch, 10, dtype=torch.float32)
+    params_flat["body_pose"] = torch.randn(flat_batch, model.NUM_BODY_JOINTS, 3, dtype=torch.float32) * 0.1
+    params_flat["hand_pose"] = torch.randn(flat_batch, model.NUM_HAND_JOINTS, 3, dtype=torch.float32) * 0.05
+    params_flat["head_pose"] = torch.randn(flat_batch, model.NUM_HEAD_JOINTS, 3, dtype=torch.float32) * 0.05
+    params_flat["expression"] = torch.randn(flat_batch, 10, dtype=torch.float32) * 0.1
+    params_flat["pelvis_rotation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.1
+    params_flat["global_translation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.01
+
+    params_nd = {key: value.reshape(*batch_shape, *value.shape[1:]) for key, value in params_flat.items()}
+
+    verts_nd = model.forward_vertices(**params_nd)
+    skel_nd = model.forward_skeleton(**params_nd)
+    verts_flat = model.forward_vertices(**params_flat)
+    skel_flat = model.forward_skeleton(**params_flat)
+
+    assert verts_nd.shape == (*batch_shape, model.num_vertices, 3)
+    assert skel_nd.shape == (*batch_shape, model.NUM_JOINTS, 4, 4)
+    torch.testing.assert_close(verts_nd.reshape(flat_batch, model.num_vertices, 3), verts_flat, rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(skel_nd.reshape(flat_batch, model.NUM_JOINTS, 4, 4), skel_flat, rtol=1e-5, atol=1e-5)
+
+
 def test_forward_accelerator_optional_defaults() -> None:
     """Test accelerator forward_* with omitted optional params stays on-device."""
     from body_models.smplx.torch import SMPLX
