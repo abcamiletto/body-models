@@ -7,7 +7,8 @@ Provides a ~shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, and MHR bod
 Supports:
 - PyTorch, NumPy, and JAX backends
 - forward kinematics disentangled from mesh skinning (`forward_skeleton` and `forward_vertices` methods)
-- out-of-the-box lower-resolution mesh forward pass
+- out-of-the-box lower-resolution mesh forward pass (`simplify` argument to the constructor)
+- arbitrary number of leading dimensions
 
 ## Installation
 
