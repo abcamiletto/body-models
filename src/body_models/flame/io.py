@@ -6,7 +6,9 @@ from jaxtyping import Int
 from .. import config
 from ..common import simplify_mesh
 
-__all__ = ["get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
+FLAME_JOINT_NAMES = ["root", "neck", "jaw", "left_eye", "right_eye"]
+
+__all__ = ["FLAME_JOINT_NAMES", "get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
 
 
 def get_model_path(model_path: Path | str | None) -> Path:

@@ -57,7 +57,8 @@ def download_model() -> Path:
 
 def load_model_data(asset_dir: Path) -> dict[str, Tensor]:
     """Load MHR model data from disk."""
-    state = torch.jit.load(asset_dir / "mhr_model.pt").state_dict()
+    model = torch.jit.load(asset_dir / "mhr_model.pt")
+    state = model.state_dict()
 
     skin_indices, skin_weights = _build_dense_skinning(
         state["character_torch.linear_blend_skinning.vert_indices_flattened"],
@@ -76,6 +77,7 @@ def load_model_data(asset_dir: Path) -> dict[str, Tensor]:
             dim=0,
         ),
         "joint_parents": state["character_torch.skeleton.joint_parents"],
+        "joint_names": list(model.character_torch.skeleton.joint_names),
         "joint_offsets": state["character_torch.skeleton.joint_translation_offsets"],
         "joint_pre_rotations": state["character_torch.skeleton.joint_prerotations"],
         "skin_weights": skin_weights,
