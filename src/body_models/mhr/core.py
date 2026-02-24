@@ -55,8 +55,8 @@ def apply_pose_correctives(
 
     # Subtract identity components (r00=1 and r11=1 for identity rotation)
     # This makes features zero for unrotated joints
-    identity_offset = xp.asarray([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=dtype)
-    feat = feat - identity_offset  # broadcasts over [B, 125, 6]
+    feat = common.set(feat, (..., 0), feat[..., 0] - 1.0, copy=False, xp=xp)
+    feat = common.set(feat, (..., 4), feat[..., 4] - 1.0, copy=False, xp=xp)
 
     # Flatten: [B, 750]
     feat_flat = feat.reshape(B, -1)
