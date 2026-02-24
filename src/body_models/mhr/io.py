@@ -55,7 +55,7 @@ def download_model() -> Path:
     return cache_dir
 
 
-def load_model_data(asset_dir: Path) -> dict[str, Tensor]:
+def load_model_data(asset_dir: Path) -> dict[str, Tensor | list[str]]:
     """Load MHR model data from disk."""
     model = torch.jit.load(asset_dir / "mhr_model.pt")
     state = model.state_dict()
