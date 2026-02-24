@@ -427,7 +427,7 @@ def _forward_kinematics(
             parent_ids_list = [p for _, p in children_list]
             parent_transforms = xp.stack([transforms[p] for p in parent_ids_list], axis=1)
             child_poses = parent_transforms @ T[:, child_ids]
-            child_transforms = child_poses @ rest_inv[:, child_ids]
+            child_transforms = xp.sum(child_poses[..., :, None] * rest_inv[:, child_ids][..., None, :, :], axis=-2)
             for idx, joint_id in enumerate(child_ids):
                 poses[joint_id] = child_poses[:, idx]
                 transforms[joint_id] = child_transforms[:, idx]
