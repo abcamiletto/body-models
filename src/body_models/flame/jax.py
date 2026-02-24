@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 
 from ..base import BodyModel
 from . import core
-from .io import get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
+from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
 __all__ = ["FLAME"]
 
@@ -90,6 +90,7 @@ class FLAME(BodyModel, nnx.Module):
         self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
 
         self._kinematic_fronts = compute_kinematic_fronts(parents)
+        self._joint_names = list(FLAME_JOINT_NAMES)
 
         # Precompute Y offset for ground plane (min Y of rest pose mesh)
         self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
@@ -101,6 +102,10 @@ class FLAME(BodyModel, nnx.Module):
     @property
     def num_joints(self) -> int:
         return self.NUM_JOINTS
+
+    @property
+    def joint_names(self) -> list[str]:
+        return self._joint_names
 
     @property
     def num_vertices(self) -> int:
