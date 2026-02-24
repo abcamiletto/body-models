@@ -1,6 +1,7 @@
 """I/O utilities for MHR model loading."""
 
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 import torch
@@ -24,6 +25,20 @@ __all__ = [
 ]
 
 MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
+
+
+class MHRModelData(TypedDict):
+    base_vertices: Tensor
+    blendshape_dirs: Tensor
+    joint_parents: Tensor
+    joint_names: list[str]
+    joint_offsets: Tensor
+    joint_pre_rotations: Tensor
+    skin_weights: Tensor
+    skin_indices: Tensor
+    parameter_transform: Tensor
+    inverse_bind_pose: Tensor
+    faces: Tensor
 
 
 def get_model_path(model_path: Path | str | None = None) -> Path:
@@ -55,7 +70,7 @@ def download_model() -> Path:
     return cache_dir
 
 
-def load_model_data(asset_dir: Path) -> dict[str, Tensor | list[str]]:
+def load_model_data(asset_dir: Path) -> MHRModelData:
     """Load MHR model data from disk."""
     model = torch.jit.load(asset_dir / "mhr_model.pt")
     state = model.state_dict()
