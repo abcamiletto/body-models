@@ -188,6 +188,10 @@ class ANNY(BodyModel, nn.Module):
         return len(self.bone_labels)
 
     @property
+    def joint_names(self) -> list[str]:
+        return list(self.bone_labels)
+
+    @property
     def num_vertices(self) -> int:
         return self.template_vertices.shape[0]
 

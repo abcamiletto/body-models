@@ -29,6 +29,11 @@ class BodyModel(ABC):
         """Number of mesh vertices."""
 
     @property
+    def joint_names(self) -> list[str]:
+        """Joint names. Backends can override with semantic names."""
+        return [f"joint_{i}" for i in range(self.num_joints)]
+
+    @property
     @abstractmethod
     def skin_weights(self) -> Any:
         """Skinning weights mapping vertices to joints. Shape [V, J]."""
