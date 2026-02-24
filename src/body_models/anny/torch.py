@@ -338,9 +338,7 @@ def _load_data(data_dir: Path, cache_dir: Path, rig: str, eyes: bool, tongue: bo
         return torch.load(cache_file, weights_only=True)
 
     dtype = torch.float32
-    world_T = (
-        0.1 * SO3.to_matrix(SO3.from_euler(torch.tensor([[torch.pi / 2, 0, 0]], dtype=dtype), convention="xyz"))[0]
-    )
+    world_T = 0.1 * SO3.conversions.from_euler_to_matrix(torch.tensor([[torch.pi / 2, 0, 0]], dtype=dtype), convention="xyz")[0]
 
     # Load mesh
     mesh_path = data_dir / "data" / "mpfb2" / "3dobjs" / "base.obj"
@@ -565,7 +563,7 @@ def _compute_bone_data(
 
     euler = torch.zeros(len(rolls), 3, dtype=dtype)
     euler[:, 1] = torch.tensor(rolls, dtype=dtype)
-    rolls_mat = SO3.to_matrix(SO3.from_euler(euler, convention="xyz"))
+    rolls_mat = SO3.conversions.from_euler_to_matrix(euler, convention="xyz")
 
     return torch.stack(heads), torch.stack(tails), torch.stack(heads_bs, dim=1), torch.stack(tails_bs, dim=1), rolls_mat
 

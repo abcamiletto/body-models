@@ -111,7 +111,7 @@ class SKEL(BodyModel):
         def pin_axis_from_euler(euler_xyz):
             """Compute pin joint axis from euler angles (XYZ convention)."""
             euler = np.array(euler_xyz, dtype=np.float32)
-            R = SO3.to_matrix(SO3.from_euler(euler, convention="XYZ"))
+            R = SO3.conversions.from_euler_to_matrix(euler, convention="XYZ")
             axis = R @ np.array([0.0, 0.0, 1.0], dtype=np.float32)
             return axis.tolist()
 

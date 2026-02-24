@@ -48,7 +48,7 @@ def apply_pose_correctives(
     euler = joint_params[:, 2:, 3:6]  # [B, 125, 3]
 
     # Convert to rotation matrices
-    rot = SO3.to_matrix(SO3.from_euler(euler, convention="xyz", xp=xp), xp=xp)  # [B, 125, 3, 3]
+    rot = SO3.conversions.from_euler_to_matrix(euler, convention="xyz", xp=xp)  # [B, 125, 3, 3]
 
     # Extract first two columns as features: [r00, r10, r20, r01, r11, r21]
     feat = xp.concat([rot[..., 0], rot[..., 1]], axis=-1)  # [B, 125, 6]
@@ -158,7 +158,7 @@ def forward_vertices(
 
     # Apply global transform
     if global_rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
+        R = SO3.conversions.from_axis_angle_to_matrix(global_rotation, xp=xp)
         verts = xp.einsum("bij,bvj->bvi", R, verts)
     if global_translation is not None:
         verts = verts + global_translation[:, None]
@@ -213,7 +213,7 @@ def forward_skeleton(
         global_T = common.set(global_T, (slice(None), 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
 
         if global_rotation is not None:
-            R_global = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=xp), xp=xp)
+            R_global = SO3.conversions.from_axis_angle_to_matrix(global_rotation, xp=xp)
             global_T = common.set(global_T, idx_R, R_global, xp=xp)
         else:
             eye3 = common.eye_as(r_g, batch_dims=(B,))
@@ -250,7 +250,7 @@ def _forward_skeleton_core(
     euler = j_p[..., 3:6]  # [B, J, 3]
 
     # Convert euler to quaternion and apply pre-rotation
-    q_local = SO3.to_quat_xyzw(SO3.canonicalize(SO3.from_euler(euler, convention="xyz", xp=xp), xp=xp), xp=xp)
+    q_local = SO3.canonicalize(SO3.conversions.from_euler_to_quat_xyzw(euler, convention="xyz", xp=xp), xyzw=True, xp=xp)
     q_l = SO3.canonicalize(SO3.multiply(joint_pre_rotations, q_local, xyzw=True, xp=xp), xyzw=True, xp=xp)
 
     # Scale from joint params
@@ -285,7 +285,7 @@ def _compose_global_trs(
     num_joints: int,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"]]:
     """Compose local TRS transforms into global via batched FK."""
-    r_l = SO3.to_matrix(q_l, xyzw=True, xp=xp)  # [B, J, 3, 3]
+    r_l = SO3.conversions.from_quat_xyzw_to_matrix(q_l, xp=xp)  # [B, J, 3, 3]
 
     t_results: list[Float[Array, "B 3"] | None] = [None] * num_joints
     s_results: list[Float[Array, "B 1"] | None] = [None] * num_joints
@@ -373,7 +373,7 @@ def extract_skeleton_state(
 
     # Extract pure rotation and convert to quaternion
     R_pure = R / s[..., None]
-    q = SO3.to_quat_xyzw(SO3.from_matrix(R_pure, xp=xp), xp=xp)
+    q = SO3.conversions.from_matrix_to_quat_xyzw(R_pure, xp=xp)
 
     return xp.concat([t, q, s], axis=-1)
 

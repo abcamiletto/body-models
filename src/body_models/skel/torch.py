@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 from torch import Tensor
 
 from array_api_compat import get_namespace
@@ -151,7 +152,7 @@ class SKEL(BodyModel, nn.Module):
         def pin_axis_from_euler(euler_xyz):
             """Compute pin joint axis from euler angles (XYZ convention)."""
             euler = torch.tensor(euler_xyz, dtype=torch.float32)
-            R = SO3.to_matrix(SO3.from_euler(euler, convention="XYZ"))
+            R = SO3.conversions.from_euler_to_matrix(euler, convention="XYZ", xp=torch)
             axis = R @ torch.tensor([0.0, 0.0, 1.0])
             return axis.tolist()
 
@@ -518,14 +519,8 @@ class SKEL(BodyModel, nn.Module):
 
 
 def _axisangle_to_matrix(v: Float[Tensor, "*batch 3"]) -> Float[Tensor, "*batch 3 3"]:
-    """Rodrigues formula: axis-angle [*, 3] -> rotation matrix [*, 3, 3]."""
-    theta = torch.linalg.norm(v, dim=-1, keepdim=True).clamp(min=1e-8)
-    r = v / theta
-    rx, ry, rz = r.unbind(-1)
-    z = torch.zeros_like(rx)
-    K = torch.stack([torch.stack([z, -rz, ry], -1), torch.stack([rz, z, -rx], -1), torch.stack([-ry, rx, z], -1)], -2)
-    sin_t, cos_t = torch.sin(theta).unsqueeze(-1), torch.cos(theta).unsqueeze(-1)
-    return torch.eye(3, device=v.device, dtype=v.dtype) + sin_t * K + (1 - cos_t) * (K @ K)
+    """Axis-angle [*, 3] -> rotation matrix [*, 3, 3]."""
+    return SO3.conversions.from_axis_angle_to_matrix(v, xp=torch)
 
 
 def _sparse_to_dense(arr_coo) -> Tensor:
