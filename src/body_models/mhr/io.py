@@ -174,7 +174,7 @@ class _PoseCorrectivesModel(nn.Module):
 
     def forward(self, joint_params: Float[Tensor, "B J 7"]) -> Float[Tensor, "B V 3"]:
         euler = joint_params[:, 2:, 3:6]
-        rot = SO3.to_matrix(SO3.from_euler(euler, convention="xyz", xp=torch), xp=torch)
+        rot = SO3.conversions.from_euler_to_matrix(euler, convention="xyz", xp=torch)
         feat = torch.cat([rot[..., 0], rot[..., 1]], dim=-1)
         feat[:, :, 0] -= 1
         feat[:, :, 4] -= 1

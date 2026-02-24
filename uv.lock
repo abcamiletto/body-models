@@ -61,7 +61,7 @@ wheels = [
 
 [[package]]
 name = "body-models"
-version = "0.4.2"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "array-api-compat" },
@@ -102,14 +102,14 @@ requires-dist = [
     { name = "flax", marker = "extra == 'jax'", specifier = ">=0.10.0" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.9.0" },
     { name = "jaxtyping", specifier = ">=0.3.5" },
-    { name = "nanomanifold", specifier = ">=0.2.0" },
+    { name = "nanomanifold", specifier = ">=0.3.1" },
     { name = "numpy", specifier = ">=2.4.1" },
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "pyfqmr", specifier = ">=0.5.0" },
     { name = "scipy", specifier = ">=1.15.1" },
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.1.0", index = "https://download.pytorch.org/whl/cu118" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.1.0" },
-    { name = "typer", specifier = ">=0.15" },
+    { name = "typer", specifier = ">=0.19.2" },
 ]
 provides-extras = ["torch", "jax"]
 
@@ -962,16 +962,16 @@ wheels = [
 
 [[package]]
 name = "nanomanifold"
-version = "0.2.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "array-api-compat" },
     { name = "jaxtyping" },
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/e3/4a0ceb7bb942098b2f9fc4192fc6645237d3ef5627e7e7feddec6b3dc753/nanomanifold-0.2.0.tar.gz", hash = "sha256:fb79b0461e871b87d909dc112a2246f98b0a1e36f8db49041d148b5499cfc29d", size = 89419, upload-time = "2026-02-09T15:23:06.169Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/37/29374ed8f66ac5935197e06e899482995e9a13605b1a0bfd4177d09d10e4/nanomanifold-0.3.1.tar.gz", hash = "sha256:53af1820037221070c008568d808b671a7461e8fda786b0856773124a9625a96", size = 87256, upload-time = "2026-02-24T20:22:22.989Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/69/547f9b31647446af0878270120b6887923d6c3d154142eaec65c9668f474/nanomanifold-0.2.0-py3-none-any.whl", hash = "sha256:5c47efc5484ddaee077bfc8ee9a0dc323f31a7d74a715b28c2dd94e2dd96e485", size = 35219, upload-time = "2026-02-09T15:23:07.003Z" },
+    { url = "https://files.pythonhosted.org/packages/73/1a/5fd7408c91c1decfef9c86ad637a438c6d9e0d23c2cbdfbfdf4a6145d848/nanomanifold-0.3.1-py3-none-any.whl", hash = "sha256:ddae7f46d32f8ce5c39e60fea49595a9fa6b50730de20f3cf4a09585cbb456c1", size = 37977, upload-time = "2026-02-24T20:22:21.754Z" },
 ]
 
 [[package]]
@@ -2072,9 +2072,9 @@ dependencies = [
     { name = "typing-extensions", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/25/d8/9e6b8e7df981a1e3ea3907fd5a74673e791da483e8c307f0b6ff012626d0/torch-2.10.0-1-cp311-none-macosx_11_0_arm64.whl", hash = "sha256:f699f31a236a677b3118bc0a3ef3d89c0c29b5ec0b20f4c4bf0b110378487464", size = 79423460, upload-time = "2026-02-06T17:37:39.657Z" },
-    { url = "https://files.pythonhosted.org/packages/c9/2f/0b295dd8d199ef71e6f176f576473d645d41357b7b8aa978cc6b042575df/torch-2.10.0-1-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:6abb224c2b6e9e27b592a1c0015c33a504b00a0e0938f1499f7f514e9b7bfb5c", size = 79498197, upload-time = "2026-02-06T17:37:27.627Z" },
-    { url = "https://files.pythonhosted.org/packages/a4/1b/af5fccb50c341bd69dc016769503cb0857c1423fbe9343410dfeb65240f2/torch-2.10.0-1-cp313-none-macosx_11_0_arm64.whl", hash = "sha256:7350f6652dfd761f11f9ecb590bfe95b573e2961f7a242eccb3c8e78348d26fe", size = 79498248, upload-time = "2026-02-06T17:37:31.982Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/8b/4b61d6e13f7108f36910df9ab4b58fd389cc2520d54d81b88660804aad99/torch-2.10.0-2-cp311-none-macosx_11_0_arm64.whl", hash = "sha256:418997cb02d0a0f1497cf6a09f63166f9f5df9f3e16c8a716ab76a72127c714f", size = 79423467, upload-time = "2026-02-10T21:44:48.711Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/54/a2ba279afcca44bbd320d4e73675b282fcee3d81400ea1b53934efca6462/torch-2.10.0-2-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:13ec4add8c3faaed8d13e0574f5cd4a323c11655546f91fbe6afa77b57423574", size = 79498202, upload-time = "2026-02-10T21:44:52.603Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/23/2c9fe0c9c27f7f6cb865abcea8a4568f29f00acaeadfc6a37f6801f84cb4/torch-2.10.0-2-cp313-none-macosx_11_0_arm64.whl", hash = "sha256:e521c9f030a3774ed770a9c011751fb47c4d12029a3d6522116e48431f2ff89e", size = 79498254, upload-time = "2026-02-10T21:44:44.095Z" },
     { url = "https://files.pythonhosted.org/packages/61/d8/15b9d9d3a6b0c01b883787bd056acbe5cc321090d4b216d3ea89a8fcfdf3/torch-2.10.0-cp311-none-macosx_11_0_arm64.whl", hash = "sha256:b7bd80f3477b830dd166c707c5b0b82a898e7b16f59a7d9d42778dd058272e8b", size = 79423461, upload-time = "2026-01-21T16:24:50.266Z" },
     { url = "https://files.pythonhosted.org/packages/c9/5c/dee910b87c4d5c0fcb41b50839ae04df87c1cfc663cf1b5fca7ea565eeaa/torch-2.10.0-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:6d3707a61863d1c4d6ebba7be4ca320f42b869ee657e9b2c21c736bf17000294", size = 79498198, upload-time = "2026-01-21T16:24:34.704Z" },
     { url = "https://files.pythonhosted.org/packages/1a/0b/39929b148f4824bc3ad6f9f72a29d4ad865bcf7ebfc2fa67584773e083d2/torch-2.10.0-cp313-cp313t-macosx_14_0_arm64.whl", hash = "sha256:3202429f58309b9fa96a614885eace4b7995729f44beb54d3e4a47773649d382", size = 79851305, upload-time = "2026-01-21T16:24:09.209Z" },

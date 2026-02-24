@@ -109,7 +109,7 @@ class MHR(BodyModel, nn.Module):
 
         inv_bind = data["inverse_bind_pose"]
         t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
-        self.register_buffer("bind_inv_linear", SO3.to_matrix(q, xyzw=True) * s.unsqueeze(-1))
+        self.register_buffer("bind_inv_linear", SO3.conversions.from_quat_xyzw_to_matrix(q) * s.unsqueeze(-1))
         self.register_buffer("bind_inv_translation", t)
 
         # Load pose correctives weights
@@ -261,7 +261,7 @@ class MHR(BodyModel, nn.Module):
 
         # Apply global transform
         if global_rotation is not None:
-            R = SO3.to_matrix(SO3.from_axis_angle(global_rotation, xp=torch), xp=torch)
+            R = SO3.conversions.from_axis_angle_to_matrix(global_rotation, xp=torch)
             verts = verts @ R.mT
         if global_translation is not None:
             verts = verts + global_translation[:, None]

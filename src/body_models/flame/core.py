@@ -197,7 +197,7 @@ def _forward_core(
     # Build full pose (root joint uses head_rotation if provided)
     root = head_rotation if head_rotation is not None else common.zeros_as(shape, shape=(B, 3))
     full_pose = xp.concat([root, pose], axis=-1).reshape(B, -1, 3)
-    pose_matrices = SO3.to_matrix(SO3.from_axis_angle(full_pose, xp=xp), xp=xp)
+    pose_matrices = SO3.conversions.from_axis_angle_to_matrix(full_pose, xp=xp)
 
     # Joint locations from full-resolution mesh
     shape_dim = min(shape.shape[-1], shapedirs_full.shape[-1])
@@ -287,7 +287,7 @@ def _apply_global_transform(
 ) -> Float[Array, "B N 3"]:
     """Apply global rotation and translation to points [B, N, 3]."""
     if rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
+        R = SO3.conversions.from_axis_angle_to_matrix(rotation, xp=xp)
         points = (R @ points.mT).mT
     if translation is not None:
         points = points + translation[:, None]
@@ -303,7 +303,7 @@ def _apply_global_transform_to_rt(
 ) -> tuple[Float[Array, "B J 3 3"], Float[Array, "B J 3"]]:
     """Apply global rotation and translation to R, t components."""
     if rotation is not None:
-        R_global = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
+        R_global = SO3.conversions.from_axis_angle_to_matrix(rotation, xp=xp)
         # Transform t: R_global @ t
         t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)

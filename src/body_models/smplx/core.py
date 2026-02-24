@@ -237,7 +237,7 @@ def _forward_core(
     else:
         pelvis = pelvis_rotation
     pose = xp.concat([pelvis, body_pose, head_pose, hand_pose_adj], axis=-1).reshape(*batch_shape, -1, 3)
-    pose_matrices = SO3.to_matrix(SO3.from_axis_angle(pose, xp=xp), xp=xp)
+    pose_matrices = SO3.conversions.from_axis_angle_to_matrix(pose, xp=xp)
 
     # Joint locations from full-resolution mesh
     shape_dim = shape.shape[-1]
@@ -325,7 +325,7 @@ def _apply_global_transform(
 ) -> Float[Array, "*batch N 3"]:
     """Apply global rotation and translation to points [..., N, 3]."""
     if rotation is not None:
-        R = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
+        R = SO3.conversions.from_axis_angle_to_matrix(rotation, xp=xp)
         points = (R @ points.mT).mT
     if translation is not None:
         points = points + translation[..., None, :]
@@ -341,7 +341,7 @@ def _apply_global_transform_to_rt(
 ) -> tuple[Float[Array, "*batch J 3 3"], Float[Array, "*batch J 3"]]:
     """Apply global rotation and translation to R, t components."""
     if rotation is not None:
-        R_global = SO3.to_matrix(SO3.from_axis_angle(rotation, xp=xp), xp=xp)
+        R_global = SO3.conversions.from_axis_angle_to_matrix(rotation, xp=xp)
         # Transform t: R_global @ t
         t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)
