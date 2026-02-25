@@ -185,6 +185,7 @@ class MHR(BodyModel, nn.Module):
             global_translation=global_translation,
             corrective_W1=self.corrective_W1,
             corrective_W2=self.corrective_W2,
+            xp=torch,
         )
 
     def _forward_vertices_simplified(
@@ -292,6 +293,7 @@ class MHR(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            xp=torch,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:

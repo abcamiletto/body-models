@@ -176,7 +176,7 @@ def forward_skeleton(
     B = bone_poses.shape[0]
     idx_R = (slice(None, 3), slice(None, 3))
     idx_t = (slice(None, 3), 3)
-    coord_T = common.zeros_as(bone_poses, shape=(4, 4))
+    coord_T = common.zeros_as(bone_poses, shape=(4, 4), xp=xp)
     coord_T = common.set(coord_T, idx_R, coord_rotation, xp=xp)
     coord_T = common.set(coord_T, idx_t, coord_translation, xp=xp)
     coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=bone_poses.dtype), xp=xp)
@@ -187,7 +187,7 @@ def forward_skeleton(
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
         idx_R = (slice(None), slice(None, 3), slice(None, 3))
         idx_t = (slice(None), slice(None, 3), 3)
-        G = common.eye_as(transforms, batch_dims=(B,))
+        G = common.eye_as(transforms, batch_dims=(B,), xp=xp)
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
             R_global = SO3.conversions.from_axis_angle_to_matrix(global_rotation, xp=xp)
@@ -310,7 +310,7 @@ def _phenotype_to_coeffs(
             alpha = xp.clip(alpha, 0, 1)
 
         # Build weight matrix
-        w = common.zeros_as(phenotype_mask, shape=(val.shape[0], n_anchors))
+        w = common.zeros_as(phenotype_mask, shape=(val.shape[0], n_anchors), xp=xp)
         # Scatter 1-alpha at idx-1 and alpha at idx
         batch_indices = xp.cumsum(xp.ones_like(val, dtype=xp.int32), axis=0) - 1
         w = common.set(w, (batch_indices, idx_m1), 1 - alpha, copy=True, xp=xp)
@@ -372,7 +372,7 @@ def _bone_poses_from_heads_tails(
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
-    H = common.zeros_as(R, shape=(B, J, 4, 4))
+    H = common.zeros_as(R, shape=(B, J, 4, 4), xp=xp)
     H = common.set(H, idx_R, R, xp=xp)
     H = common.set(H, idx_t, heads, xp=xp)
     H = common.set(H, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
@@ -443,7 +443,7 @@ def _axis_angle_to_transform(xp, pose: Float[Array, "B J 3"]) -> Float[Array, "B
     B, J = R.shape[:2]
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
-    T = common.zeros_as(R, shape=(B, J, 4, 4))
+    T = common.zeros_as(R, shape=(B, J, 4, 4), xp=xp)
     T = common.set(T, idx_R, R, xp=xp)
     T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
@@ -492,7 +492,7 @@ def to_native_outputs(
     # Inverse: T_zup = coord_inv @ T_yup
     idx_R = (slice(None, 3), slice(None, 3))
     idx_t = (slice(None, 3), 3)
-    coord_T = common.zeros_as(vertices, shape=(4, 4))
+    coord_T = common.zeros_as(vertices, shape=(4, 4), xp=xp)
     coord_T = common.set(coord_T, idx_R, coord_rot, xp=xp)
     coord_T = common.set(coord_T, idx_t, coord_trans, xp=xp)
     coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
