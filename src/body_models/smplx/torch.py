@@ -102,6 +102,15 @@ class SMPLX(BodyModel, nn.Module):
         # Precompute Y offset for ground plane (min Y of rest pose mesh)
         self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
 
+        # Precomputed joint regression: j_t = j_template + einsum(params, j_dirs)
+        # Avoids materializing [B, V_full, 3] intermediate at runtime
+        _j_template = J_regressor @ v_template_full  # [55, 3]
+        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full[:, :, :300])  # [55, 3, 300]
+        _j_exprdirs = np.einsum("jv,vde->jde", J_regressor, shapedirs_full[:, :, 300:400])  # [55, 3, 100]
+        self.register_buffer("_j_template", torch.as_tensor(_j_template))
+        self.register_buffer("_j_shapedirs", torch.as_tensor(_j_shapedirs))
+        self.register_buffer("_j_exprdirs", torch.as_tensor(_j_exprdirs))
+
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
         return self._faces
@@ -139,14 +148,13 @@ class SMPLX(BodyModel, nn.Module):
     ) -> Float[Tensor, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template,
-            v_template_full=self.v_template_full,
             shapedirs=self.shapedirs,
-            shapedirs_full=self.shapedirs_full,
             exprdirs=self.exprdirs,
-            exprdirs_full=self.exprdirs_full,
             posedirs=self.posedirs,
             lbs_weights=self.lbs_weights,
-            J_regressor=self.J_regressor,
+            j_template=self._j_template,
+            j_shapedirs=self._j_shapedirs,
+            j_exprdirs=self._j_exprdirs,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
@@ -175,10 +183,9 @@ class SMPLX(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B 55 4 4"]:
         return core.forward_skeleton(
-            v_template_full=self.v_template_full,
-            shapedirs_full=self.shapedirs_full,
-            exprdirs_full=self.exprdirs_full,
-            J_regressor=self.J_regressor,
+            j_template=self._j_template,
+            j_shapedirs=self._j_shapedirs,
+            j_exprdirs=self._j_exprdirs,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
