@@ -93,6 +93,14 @@ class SMPLX(BodyModel, nnx.Module):
         # Precompute Y offset for ground plane (min Y of rest pose mesh)
         self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
 
+        # Precomputed joint regression matrices
+        _j_template = J_regressor @ v_template_full
+        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full[:, :, :300])
+        _j_exprdirs = np.einsum("jv,vde->jde", J_regressor, shapedirs_full[:, :, 300:400])
+        self._j_template = nnx.Variable(jnp.asarray(_j_template))
+        self._j_shapedirs = nnx.Variable(jnp.asarray(_j_shapedirs))
+        self._j_exprdirs = nnx.Variable(jnp.asarray(_j_exprdirs))
+
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
         return self._faces[...]
@@ -130,14 +138,13 @@ class SMPLX(BodyModel, nnx.Module):
     ) -> Float[jax.Array, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template[...],
-            v_template_full=self.v_template_full[...],
             shapedirs=self.shapedirs[...],
-            shapedirs_full=self.shapedirs_full[...],
             exprdirs=self.exprdirs[...],
-            exprdirs_full=self.exprdirs_full[...],
             posedirs=self.posedirs[...],
             lbs_weights=self.lbs_weights[...],
-            J_regressor=self.J_regressor[...],
+            j_template=self._j_template[...],
+            j_shapedirs=self._j_shapedirs[...],
+            j_exprdirs=self._j_exprdirs[...],
             parents=self.parents[...],
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
@@ -165,10 +172,9 @@ class SMPLX(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B 55 4 4"]:
         return core.forward_skeleton(
-            v_template_full=self.v_template_full[...],
-            shapedirs_full=self.shapedirs_full[...],
-            exprdirs_full=self.exprdirs_full[...],
-            J_regressor=self.J_regressor[...],
+            j_template=self._j_template[...],
+            j_shapedirs=self._j_shapedirs[...],
+            j_exprdirs=self._j_exprdirs[...],
             parents=self.parents[...],
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
