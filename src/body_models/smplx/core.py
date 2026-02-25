@@ -14,14 +14,13 @@ Array = Any  # Generic array type (numpy, torch, jax)
 def forward_vertices(
     # Model data
     v_template: Float[Array, "V 3"],
-    v_template_full: Float[Array, "V_full 3"],
     shapedirs: Float[Array, "V 3 S"],
-    shapedirs_full: Float[Array, "V_full 3 S"],
     exprdirs: Float[Array, "V 3 E"],
-    exprdirs_full: Float[Array, "V_full 3 E"],
     posedirs: Float[Array, "P V*3"],
     lbs_weights: Float[Array, "V 55"],
-    J_regressor: Float[Array, "55 V_full"],
+    j_template: Float[Array, "55 3"],
+    j_shapedirs: Float[Array, "55 3 S"],
+    j_exprdirs: Float[Array, "55 3 E"],
     parents: Int[Array, "55"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
     hand_mean: Float[Array, "2 45"],
@@ -64,12 +63,11 @@ def forward_vertices(
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
         v_template=v_template,
-        v_template_full=v_template_full,
         shapedirs=shapedirs,
-        shapedirs_full=shapedirs_full,
         exprdirs=exprdirs,
-        exprdirs_full=exprdirs_full,
-        J_regressor=J_regressor,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        j_exprdirs=j_exprdirs,
         parents=parents,
         kinematic_fronts=kinematic_fronts,
         hand_mean=hand_mean,
@@ -112,10 +110,9 @@ def forward_vertices(
 
 def forward_skeleton(
     # Model data
-    v_template_full: Float[Array, "V_full 3"],
-    shapedirs_full: Float[Array, "V_full 3 S"],
-    exprdirs_full: Float[Array, "V_full 3 E"],
-    J_regressor: Float[Array, "J V_full"],
+    j_template: Float[Array, "J 3"],
+    j_shapedirs: Float[Array, "J 3 S"],
+    j_exprdirs: Float[Array, "J 3 E"],
     parents: Int[Array, "J"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
     hand_mean: Float[Array, "2 45"],
@@ -158,12 +155,11 @@ def forward_skeleton(
     _, _, _, T_world = _forward_core(
         xp=xp,
         v_template=None,
-        v_template_full=v_template_full,
         shapedirs=None,
-        shapedirs_full=shapedirs_full,
         exprdirs=None,
-        exprdirs_full=exprdirs_full,
-        J_regressor=J_regressor,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        j_exprdirs=j_exprdirs,
         parents=parents,
         kinematic_fronts=kinematic_fronts,
         hand_mean=hand_mean,
@@ -200,12 +196,11 @@ def forward_skeleton(
 def _forward_core(
     xp,
     v_template: Float[Array, "V 3"] | None,
-    v_template_full: Float[Array, "V_full 3"],
     shapedirs: Float[Array, "V 3 S"] | None,
-    shapedirs_full: Float[Array, "V_full 3 S"],
     exprdirs: Float[Array, "V 3 E"] | None,
-    exprdirs_full: Float[Array, "V_full 3 E"],
-    J_regressor: Float[Array, "J V_full"],
+    j_template: Float[Array, "J 3"],
+    j_shapedirs: Float[Array, "J 3 S"],
+    j_exprdirs: Float[Array, "J 3 E"],
     parents: Int[Array, "J"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
     hand_mean: Float[Array, "2 45"],
@@ -239,14 +234,12 @@ def _forward_core(
     pose = xp.concat([pelvis, body_pose, head_pose, hand_pose_adj], axis=-1).reshape(*batch_shape, -1, 3)
     pose_matrices = SO3.conversions.from_axis_angle_to_matrix(pose, xp=xp)
 
-    # Joint locations from full-resolution mesh
-    # Fuse shape+expression blending into a single einsum
+    # Joint locations from precomputed regression matrices
     shape_dim = shape.shape[-1]
     expr_dim = expression.shape[-1]
     params_full = xp.concat([shape, expression], axis=-1)
-    dirs_full = xp.concat([shapedirs_full[:, :, :shape_dim], exprdirs_full[:, :, :expr_dim]], axis=-1)
-    v_t_full = v_template_full + xp.einsum("...i,vdi->...vd", params_full, dirs_full)
-    j_t = xp.einsum("...vd,jv->...jd", v_t_full, J_regressor)
+    j_dirs = xp.concat([j_shapedirs[:, :, :shape_dim], j_exprdirs[:, :, :expr_dim]], axis=-1)
+    j_t = j_template + xp.einsum("...p,jdp->...jd", params_full, j_dirs)
 
     # Shape blend shapes for mesh output
     if skeleton_only:
