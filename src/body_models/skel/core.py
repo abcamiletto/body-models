@@ -33,7 +33,7 @@ def forward_vertices(
     posedirs: Float[Array, "V*3 P"],
     skin_weights: Float[Array, "V 24"],
     J_regressor: Float[Array, "24 V_full"],
-    parents: Int[Array, "23"],
+    parents: list[int],
     all_axes: Float[Array, "47 3"],
     rotation_indices: Int[Array, "24 3"],
     apose_R: Float[Array, "24 3 3"],
@@ -130,7 +130,7 @@ def forward_skeleton(
     v_template_full: Float[Array, "V_full 3"],
     shapedirs_full: Float[Array, "V_full 3 B"],
     J_regressor: Float[Array, "24 V_full"],
-    parents: Int[Array, "23"],
+    parents: list[int],
     all_axes: Float[Array, "47 3"],
     rotation_indices: Int[Array, "24 3"],
     apose_R: Float[Array, "24 3 3"],
@@ -432,13 +432,12 @@ def _spine_offset(
 def _propagate_transforms(
     xp,
     G_local: Float[Array, "B 24 4 4"],
-    parents: list[int] | Int[Array, "23"],
+    parents: list[int],
 ) -> Float[Array, "B 24 4 4"]:
     """Propagate local transforms to world space."""
-    parent_list = parents if isinstance(parents, list) else parents.tolist()
     G_list = [G_local[:, 0]]
     for i in range(1, NUM_JOINTS):
-        G_list.append(G_list[parent_list[i - 1]] @ G_local[:, i])
+        G_list.append(G_list[parents[i - 1]] @ G_local[:, i])
     return xp.stack(G_list, axis=1)
 
 
