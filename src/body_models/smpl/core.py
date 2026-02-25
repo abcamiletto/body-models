@@ -213,34 +213,30 @@ def _batched_forward_kinematics(
     t: Float[Array, "B J 3"],
     fronts: list[tuple[list[int], list[int]]],
 ) -> Float[Array, "B J 4 4"]:
-    """Batched forward kinematics using precomputed kinematic fronts."""
+    """Batched forward kinematics using precomputed kinematic fronts.
+
+    Uses unified 4x4 homogeneous transforms: one bmm per depth level instead
+    of two (R_parent @ R_local + R_parent @ t_local).
+    """
     _, J = R.shape[:2]
 
-    R_world: list[Float[Array, "B 3 3"] | None] = [None] * J
-    t_world: list[Float[Array, "B 3"] | None] = [None] * J
+    # Build all local 4x4 transforms up front
+    T_local = _build_transform_matrix(xp, R, t)
+
+    T_world: list[Float[Array, "B 4 4"] | None] = [None] * J
 
     for joints, parents in fronts:
         if parents[0] < 0:  # Root joints
             for joint in joints:
-                R_world[joint] = R[:, joint]
-                t_world[joint] = t[:, joint]
+                T_world[joint] = T_local[:, joint]
             continue
 
-        R_parent = xp.stack([R_world[i] for i in parents], axis=1)
-        t_parent = xp.stack([t_world[i] for i in parents], axis=1)
-        R_local = R[:, joints]
-        t_local = t[:, joints]
-
-        R_cur = R_parent @ R_local
-        t_cur = t_parent + xp.squeeze(R_parent @ t_local[..., None], axis=-1)
+        T_parent = xp.stack([T_world[i] for i in parents], axis=1)
+        T_cur = T_parent @ T_local[:, joints]
         for idx, joint in enumerate(joints):
-            R_world[joint] = R_cur[:, idx]
-            t_world[joint] = t_cur[:, idx]
+            T_world[joint] = T_cur[:, idx]
 
-    R_world_stacked = xp.stack(R_world, axis=1)
-    t_world_stacked = xp.stack(t_world, axis=1)
-
-    return _build_transform_matrix(xp, R_world_stacked, t_world_stacked)
+    return xp.stack(T_world, axis=1)
 
 
 def _build_transform_matrix(

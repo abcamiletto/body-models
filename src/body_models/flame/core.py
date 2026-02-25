@@ -200,10 +200,12 @@ def _forward_core(
     pose_matrices = SO3.conversions.from_axis_angle_to_matrix(full_pose, xp=xp)
 
     # Joint locations from full-resolution mesh
+    # Fuse shape+expression blending into a single einsum
     shape_dim = min(shape.shape[-1], shapedirs_full.shape[-1])
     expr_dim = min(expression.shape[-1], exprdirs_full.shape[-1])
-    v_t_full = v_template_full + xp.einsum("bi,vdi->bvd", shape[:, :shape_dim], shapedirs_full[:, :, :shape_dim])
-    v_t_full = v_t_full + xp.einsum("bi,vdi->bvd", expression[:, :expr_dim], exprdirs_full[:, :, :expr_dim])
+    params = xp.concat([shape[:, :shape_dim], expression[:, :expr_dim]], axis=-1)
+    dirs_full = xp.concat([shapedirs_full[:, :, :shape_dim], exprdirs_full[:, :, :expr_dim]], axis=-1)
+    v_t_full = v_template_full + xp.einsum("bi,vdi->bvd", params, dirs_full)
     j_t = xp.einsum("bvd,jv->bjd", v_t_full, J_regressor)
 
     # Shape blend shapes for mesh output
@@ -211,8 +213,8 @@ def _forward_core(
         v_t = None
     else:
         assert v_template is not None and shapedirs is not None and exprdirs is not None
-        v_t = v_template + xp.einsum("bi,vdi->bvd", shape[:, :shape_dim], shapedirs[:, :, :shape_dim])
-        v_t = v_t + xp.einsum("bi,vdi->bvd", expression[:, :expr_dim], exprdirs[:, :, :expr_dim])
+        dirs_simp = xp.concat([shapedirs[:, :, :shape_dim], exprdirs[:, :, :expr_dim]], axis=-1)
+        v_t = v_template + xp.einsum("bi,vdi->bvd", params, dirs_simp)
 
     # Forward kinematics
     # Build t_local using concatenation
@@ -231,34 +233,30 @@ def _batched_forward_kinematics(
     t: Float[Array, "B J 3"],
     fronts: list[tuple[list[int], list[int]]],
 ) -> Float[Array, "B J 4 4"]:
-    """Batched forward kinematics using precomputed kinematic fronts."""
+    """Batched forward kinematics using precomputed kinematic fronts.
+
+    Uses unified 4x4 homogeneous transforms: one bmm per depth level instead
+    of two (R_parent @ R_local + R_parent @ t_local).
+    """
     _, J = R.shape[:2]
 
-    R_world: list[Float[Array, "B 3 3"] | None] = [None] * J
-    t_world: list[Float[Array, "B 3"] | None] = [None] * J
+    # Build all local 4x4 transforms up front
+    T_local = _build_transform_matrix(xp, R, t)
+
+    T_world: list[Float[Array, "B 4 4"] | None] = [None] * J
 
     for joints, parents in fronts:
         if parents[0] < 0:  # Root joints
             for joint in joints:
-                R_world[joint] = R[:, joint]
-                t_world[joint] = t[:, joint]
+                T_world[joint] = T_local[:, joint]
             continue
 
-        R_parent = xp.stack([R_world[i] for i in parents], axis=1)
-        t_parent = xp.stack([t_world[i] for i in parents], axis=1)
-        R_local = R[:, joints]
-        t_local = t[:, joints]
-
-        R_cur = R_parent @ R_local
-        t_cur = t_parent + xp.squeeze(R_parent @ t_local[..., None], axis=-1)
+        T_parent = xp.stack([T_world[i] for i in parents], axis=1)
+        T_cur = T_parent @ T_local[:, joints]
         for idx, joint in enumerate(joints):
-            R_world[joint] = R_cur[:, idx]
-            t_world[joint] = t_cur[:, idx]
+            T_world[joint] = T_cur[:, idx]
 
-    R_world_stacked = xp.stack(R_world, axis=1)
-    t_world_stacked = xp.stack(t_world, axis=1)
-
-    return _build_transform_matrix(xp, R_world_stacked, t_world_stacked)
+    return xp.stack(T_world, axis=1)
 
 
 def _build_transform_matrix(
