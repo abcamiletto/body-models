@@ -69,6 +69,10 @@ class SMPL(BodyModel):
         # Precompute Y offset for ground plane (min Y of rest pose mesh)
         self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
 
+        # Precomputed joint regression matrices
+        self._j_template = J_regressor @ v_template_full
+        self._j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full)
+
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
@@ -103,12 +107,11 @@ class SMPL(BodyModel):
     ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template,
-            v_template_full=self.v_template_full,
             shapedirs=self.shapedirs,
-            shapedirs_full=self.shapedirs_full,
             posedirs=self.posedirs,
             lbs_weights=self.lbs_weights,
-            J_regressor=self.J_regressor,
+            j_template=self._j_template,
+            j_shapedirs=self._j_shapedirs,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             rest_pose_y_offset=self._rest_pose_y_offset,
@@ -129,9 +132,8 @@ class SMPL(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
         return core.forward_skeleton(
-            v_template_full=self.v_template_full,
-            shapedirs_full=self.shapedirs_full,
-            J_regressor=self.J_regressor,
+            j_template=self._j_template,
+            j_shapedirs=self._j_shapedirs,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             rest_pose_y_offset=self._rest_pose_y_offset,
