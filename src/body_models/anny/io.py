@@ -42,7 +42,7 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
 def download_model() -> Path:
     cache_dir = get_cache_dir() / "anny"
     print(f"Downloading ANNY model to {cache_dir}...")
-    download_and_extract(url=ANNY_URL, dest=cache_dir, extract_subdir="anny-main/")
+    download_and_extract(url=ANNY_URL, dest=cache_dir, extract_subdir="anny-main/src/anny/")
     print("Done")
     return cache_dir
 

@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "array-api-compat>=1.11.2",
     "jaxtyping>=0.3.5",
-    "nanomanifold>=0.3.1",
+    "nanomanifold>=0.3.2",
     "numpy>=2.4.1",
     "platformdirs>=4.0",
     "pyfqmr>=0.5.0",
@@ -24,7 +24,7 @@ convert-smpl-pkl = "body_models.smpl.convert:main"
 
 [project.optional-dependencies]
 torch = [
-    "torch>=2.1.0",
+    "torch>=2.10.0",
 ]
 jax = [
     "jax>=0.9.0",
@@ -42,19 +42,19 @@ dev = [
     "ty>=0.0.1a13",
     "viser>=1.0.21",
     # Include optional backends for type checking
-    "torch>=2.1.0",
+    "torch>=2.10.0",
     "jax>=0.9.0",
     "flax>=0.10.0",
 ]
 
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cu118", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cu118"
-url = "https://download.pytorch.org/whl/cu118"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.ty.src]

@@ -71,7 +71,7 @@ def forward_vertices(
     y_offset = rest_pose_y_offset if ground_plane else 0.0
 
     # Pose blend shapes
-    eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1))
+    eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1), xp=xp)
     pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
     v_shaped = v_t + (pose_delta @ posedirs).reshape(B, -1, 3)
 
@@ -87,7 +87,7 @@ def forward_vertices(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = common.zeros_as(v_posed, shape=(1, 1, 3))
+        offset = common.zeros_as(v_posed, shape=(1, 1, 3), xp=xp)
         offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=v_posed.dtype), xp=xp)
         v_posed = v_posed + offset
 
@@ -157,7 +157,7 @@ def forward_skeleton(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = common.zeros_as(t_world, shape=(1, 1, 3))
+        offset = common.zeros_as(t_world, shape=(1, 1, 3), xp=xp)
         offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=t_world.dtype), xp=xp)
         t_world = t_world + offset
 
@@ -195,7 +195,7 @@ def _forward_core(
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
     # Build full pose (root joint uses head_rotation if provided)
-    root = head_rotation if head_rotation is not None else common.zeros_as(shape, shape=(B, 3))
+    root = head_rotation if head_rotation is not None else common.zeros_as(shape, shape=(B, 3), xp=xp)
     full_pose = xp.concat([root, pose], axis=-1).reshape(B, -1, 3)
     pose_matrices = SO3.conversions.from_axis_angle_to_matrix(full_pose, xp=xp)
 
@@ -270,7 +270,7 @@ def _build_transform_matrix(
     B, J = R.shape[:2]
     dtype = R.dtype
 
-    T = common.zeros_as(R, shape=(B, J, 4, 4))
+    T = common.zeros_as(R, shape=(B, J, 4, 4), xp=xp)
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
     T = common.set(T, idx_R, R, xp=xp)
