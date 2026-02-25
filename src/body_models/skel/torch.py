@@ -278,7 +278,7 @@ class SKEL(BodyModel, nn.Module):
             posedirs=self.posedirs.view(-1, self.posedirs.shape[-1]).T,
             skin_weights=self._skin_weights,
             J_regressor=self.J_regressor,
-            parents=self.parent,
+            parents=self.parent_list,
             all_axes=self._all_axes,
             rotation_indices=self._rotation_indices,
             apose_R=self.apose_R,
@@ -310,7 +310,7 @@ class SKEL(BodyModel, nn.Module):
             v_template_full=self._v_template_full,
             shapedirs_full=self.shapedirs_full,
             J_regressor=self.J_regressor,
-            parents=self.parent,
+            parents=self.parent_list,
             all_axes=self._all_axes,
             rotation_indices=self._rotation_indices,
             apose_R=self.apose_R,
@@ -420,7 +420,7 @@ class SKEL(BodyModel, nn.Module):
             scapula_l_axes=self._scapula_l_axes,
             spine_axes=self._spine_axes,
         )
-        G = core._propagate_transforms(xp, G_local, self.parent)
+        G = core._propagate_transforms(xp, G_local, self.parent_list)
 
         # Shape blend shapes (simplified mesh for output)
         v_shaped = self._v_template + torch.einsum("vdi,bi->bvd", self.shapedirs, shape)

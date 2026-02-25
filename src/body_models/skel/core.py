@@ -33,7 +33,7 @@ def forward_vertices(
     posedirs: Float[Array, "V*3 P"],
     skin_weights: Float[Array, "V 24"],
     J_regressor: Float[Array, "24 V_full"],
-    parents: Int[Array, "23"],
+    parents: list[int],
     all_axes: Float[Array, "47 3"],
     rotation_indices: Int[Array, "24 3"],
     apose_R: Float[Array, "24 3 3"],
@@ -66,7 +66,7 @@ def forward_vertices(
     Nv = v_template.shape[0]
 
     if global_translation is None:
-        global_translation = common.zeros_as(pose, shape=(B, 3))
+        global_translation = common.zeros_as(pose, shape=(B, 3), xp=xp)
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
@@ -98,7 +98,7 @@ def forward_vertices(
     v_shaped = v_template + xp.einsum("vdi,bi->bvd", shapedirs, shape)
 
     # Pose blend shapes (SMPL-compatible)
-    eye3 = common.eye_as(apose_R, batch_dims=(B, 1))
+    eye3 = common.eye_as(apose_R, batch_dims=(B, 1), xp=xp)
     R_smpl = xp.broadcast_to(eye3, (B, num_joints_smpl, 3, 3))
     # Set SKEL rotations into SMPL positions (copy=True handles broadcast->contiguous)
     idx_smpl = (slice(None), SMPL_JOINT_MAP)
@@ -130,7 +130,7 @@ def forward_skeleton(
     v_template_full: Float[Array, "V_full 3"],
     shapedirs_full: Float[Array, "V_full 3 B"],
     J_regressor: Float[Array, "24 V_full"],
-    parents: Int[Array, "23"],
+    parents: list[int],
     all_axes: Float[Array, "47 3"],
     rotation_indices: Int[Array, "24 3"],
     apose_R: Float[Array, "24 3 3"],
@@ -162,7 +162,7 @@ def forward_skeleton(
     dtype = pose.dtype
 
     if global_translation is None:
-        global_translation = common.zeros_as(pose, shape=(B, 3))
+        global_translation = common.zeros_as(pose, shape=(B, 3), xp=xp)
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
@@ -203,7 +203,7 @@ def forward_skeleton(
     trans = trans + feet_offset
 
     # Build output transform
-    last_row = common.zeros_as(rot, shape=(B, NUM_JOINTS, 1, 4))
+    last_row = common.zeros_as(rot, shape=(B, NUM_JOINTS, 1, 4), xp=xp)
     last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     G = xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
     return G
@@ -252,7 +252,7 @@ def _compute_local_transforms(
 
     # Batched joint rotations: convert all axis-angles to matrices at once
     # Pad pose with zero for identity rotation (used by joints with < 3 DOFs)
-    zero_pad = common.zeros_as(pose, shape=(B, 1))
+    zero_pad = common.zeros_as(pose, shape=(B, 1), xp=xp)
     pose_padded = xp.concat([pose, zero_pad], axis=1)
     axis_angles = pose_padded[..., None] * all_axes  # [B, 47, 3]
     all_R = SO3.conversions.from_axis_angle_to_matrix(axis_angles, xp=xp)  # [B, 47, 3, 3]
@@ -285,7 +285,7 @@ def _compute_local_transforms(
     offset_13 = _spine_offset(xp, pose[:, 23], pose[:, 24], xp.abs(J[:, 13, 1] - J[:, 12, 1]), spine_axes)
 
     # Build offset tensor
-    zero = common.zeros_as(pose, shape=(B, 3, 1))
+    zero = common.zeros_as(pose, shape=(B, 3, 1), xp=xp)
     offsets = [zero for _ in range(NUM_JOINTS)]
     offsets[14] = offset_r[:, :, None]
     offsets[19] = offset_l[:, :, None]
@@ -344,9 +344,9 @@ def _compute_bone_orientation(
     Gk = xp.where(xp.isnan(Gk), xp.zeros_like(Gk), Gk)
 
     # Set identity for fixed orientation joints
-    eye3 = common.eye_as(per_joint_rot, batch_dims=(B, NUM_JOINTS))
+    eye3 = common.eye_as(per_joint_rot, batch_dims=(B, NUM_JOINTS), xp=xp)
     fixed = xp.broadcast_to(eye3, (B, NUM_JOINTS, 3, 3))
-    mask = common.zeros_as(fixed, shape=(NUM_JOINTS,))
+    mask = common.zeros_as(fixed, shape=(NUM_JOINTS,), xp=xp)
     mask = xp.asarray(mask, dtype=xp.bool)
     mask = common.set(mask, (fixed_orientation_joints,), xp.asarray(True), xp=xp)
     mask = xp.broadcast_to(mask[None, :, None, None], Gk.shape)
@@ -432,13 +432,12 @@ def _spine_offset(
 def _propagate_transforms(
     xp,
     G_local: Float[Array, "B 24 4 4"],
-    parents: Int[Array, "23"],
+    parents: list[int],
 ) -> Float[Array, "B 24 4 4"]:
     """Propagate local transforms to world space."""
-    parent_list = parents.tolist()  # Works for numpy, torch, and jax arrays
     G_list = [G_local[:, 0]]
     for i in range(1, NUM_JOINTS):
-        G_list.append(G_list[parent_list[i - 1]] @ G_local[:, i])
+        G_list.append(G_list[parents[i - 1]] @ G_local[:, i])
     return xp.stack(G_list, axis=1)
 
 
@@ -450,7 +449,7 @@ def _homog_matrix(
     """Build [B, J, 4, 4] homogeneous matrix from rotation and translation."""
     B, J = R.shape[:2]
     dtype = R.dtype
-    pad = common.zeros_as(R, shape=(B, J, 1, 4))
+    pad = common.zeros_as(R, shape=(B, J, 1, 4), xp=xp)
     pad = common.set(pad, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return xp.concat([xp.concat([R, t], axis=-1), pad], axis=-2)
 
@@ -480,7 +479,7 @@ def _rotation_between_vectors(
     s = xp.linalg.vector_norm(v, axis=-1) + 1e-7
 
     K = _skew(xp, v)
-    eye3 = common.eye_as(a, batch_dims=a.shape[:-1])
+    eye3 = common.eye_as(a, batch_dims=a.shape[:-1], xp=xp)
     I = xp.broadcast_to(eye3, (*a.shape[:-1], 3, 3))
     scale = ((1 - c) / (s**2))[..., None, None]
     return I + K + (K @ K) * scale
