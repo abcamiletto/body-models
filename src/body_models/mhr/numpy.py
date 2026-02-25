@@ -84,6 +84,7 @@ class MHR(BodyModel):
         self.corrective_W2 = corrective_weights["W2"]
 
         self._kinematic_fronts = compute_kinematic_fronts(data["joint_parents"])
+        self._joint_names = list(data["joint_names"])
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
@@ -92,6 +93,10 @@ class MHR(BodyModel):
     @property
     def num_joints(self) -> int:
         return self.joint_offsets.shape[0]
+
+    @property
+    def joint_names(self) -> list[str]:
+        return self._joint_names
 
     @property
     def num_vertices(self) -> int:

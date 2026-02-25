@@ -188,6 +188,10 @@ class ANNY(BodyModel, nn.Module):
         return len(self.bone_labels)
 
     @property
+    def joint_names(self) -> list[str]:
+        return list(self.bone_labels)
+
+    @property
     def num_vertices(self) -> int:
         return self.template_vertices.shape[0]
 
@@ -338,7 +342,10 @@ def _load_data(data_dir: Path, cache_dir: Path, rig: str, eyes: bool, tongue: bo
         return torch.load(cache_file, weights_only=True)
 
     dtype = torch.float32
-    world_T = 0.1 * SO3.conversions.from_euler_to_matrix(torch.tensor([[torch.pi / 2, 0, 0]], dtype=dtype), convention="xyz")[0]
+    world_T = (
+        0.1
+        * SO3.conversions.from_euler_to_matrix(torch.tensor([[torch.pi / 2, 0, 0]], dtype=dtype), convention="xyz")[0]
+    )
 
     # Load mesh
     mesh_path = data_dir / "data" / "mpfb2" / "3dobjs" / "base.obj"

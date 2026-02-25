@@ -102,6 +102,7 @@ class SKEL(BodyModel, nnx.Module):
 
         # Number of SMPL joints
         self.num_joints_smpl = data["J_regressor"].shape[0]
+        self._joint_names = list(data["bone_names"])
 
         # Feet offset for Y=0 floor
         y_offset = -v_template[:, 1].min()
@@ -189,6 +190,10 @@ class SKEL(BodyModel, nnx.Module):
     @property
     def num_joints(self) -> int:
         return self.NUM_JOINTS
+
+    @property
+    def joint_names(self) -> list[str]:
+        return self._joint_names
 
     @property
     def num_vertices(self) -> int:

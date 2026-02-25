@@ -6,6 +6,33 @@ from jaxtyping import Int
 from .. import config
 from ..common import simplify_mesh
 
+SMPL_JOINT_NAMES = [
+    "pelvis",
+    "left_hip",
+    "right_hip",
+    "spine1",
+    "left_knee",
+    "right_knee",
+    "spine2",
+    "left_ankle",
+    "right_ankle",
+    "spine3",
+    "left_foot",
+    "right_foot",
+    "neck",
+    "left_collar",
+    "right_collar",
+    "head",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hand",
+    "right_hand",
+]
+
 
 def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
     """Resolve SMPL model file path.
@@ -112,4 +139,4 @@ def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[i
     return fronts
 
 
-__all__ = ["get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
+__all__ = ["SMPL_JOINT_NAMES", "get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]

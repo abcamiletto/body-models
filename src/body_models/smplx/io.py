@@ -8,7 +8,7 @@ from jaxtyping import Int
 from .. import config
 from ..common import simplify_mesh
 
-__all__ = ["get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
+__all__ = ["get_model_path", "get_joint_names", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
 
 
 def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
@@ -65,6 +65,12 @@ def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
 def load_model_data(path: Path) -> dict:
     """Load SMPL-X model data from .npz file."""
     return dict(np.load(path, allow_pickle=True))
+
+
+def get_joint_names(model_data: dict) -> list[str]:
+    """Extract ordered SMPL-X joint names from model data."""
+    joint2num = model_data["joint2num"].item()
+    return [name for name, _ in sorted(joint2num.items(), key=lambda item: int(item[1]))]
 
 
 def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[int], list[int]]]:
