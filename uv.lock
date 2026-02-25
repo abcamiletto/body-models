@@ -98,29 +98,29 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "array-api-compat", specifier = ">=1.11.2" },
+    { name = "array-api-compat", specifier = ">=1.4" },
     { name = "flax", marker = "extra == 'jax'", specifier = ">=0.10.0" },
-    { name = "jax", marker = "extra == 'jax'", specifier = ">=0.9.0" },
-    { name = "jaxtyping", specifier = ">=0.3.5" },
-    { name = "nanomanifold", specifier = ">=0.3.2" },
-    { name = "numpy", specifier = ">=2.4.1" },
-    { name = "platformdirs", specifier = ">=4.0" },
-    { name = "pyfqmr", specifier = ">=0.5.0" },
-    { name = "scipy", specifier = ">=1.15.1" },
-    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.10.0", index = "https://download.pytorch.org/whl/cu126" },
-    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.10.0" },
-    { name = "typer", specifier = ">=0.19.2" },
+    { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.33" },
+    { name = "jaxtyping", specifier = ">=0.2.28" },
+    { name = "nanomanifold", specifier = ">=0.3.0" },
+    { name = "numpy", specifier = ">=2.0.0" },
+    { name = "platformdirs", specifier = ">=2.0" },
+    { name = "pyfqmr", specifier = ">=0.3.0" },
+    { name = "scipy", specifier = ">=1.13.0" },
+    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu126" },
+    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.3.0" },
+    { name = "typer", specifier = ">=0.9.0" },
 ]
 provides-extras = ["torch", "jax"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "flax", specifier = ">=0.10.0" },
-    { name = "jax", specifier = ">=0.9.0" },
+    { name = "jax", specifier = ">=0.4.33" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.9.0" },
-    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = ">=2.10.0" },
-    { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = ">=2.10.0", index = "https://download.pytorch.org/whl/cu126" },
+    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = ">=2.3.0" },
+    { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "ty", specifier = ">=0.0.1a13" },
     { name = "viser", specifier = ">=1.0.21" },
 ]
