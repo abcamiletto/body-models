@@ -3,6 +3,7 @@
 import statistics
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -32,7 +33,7 @@ def remove_outliers_and_mean(values: list[float], factor: float = 1.5) -> float:
     return statistics.mean(filtered) if filtered else statistics.mean(values)
 
 
-def load_models(device: torch.device) -> dict[str, torch.nn.Module]:
+def load_models(device: torch.device) -> dict[str, Any]:
     """Load all available models."""
     models = {}
 
@@ -130,18 +131,14 @@ def benchmark_all(device: torch.device, compile: bool = False) -> dict:
                 # Trigger compilation with a small batch before benchmarking
                 warmup_params = model.get_rest_pose(batch_size=2)
                 warmup_params = {
-                    k: v.to(device) if isinstance(v, torch.Tensor) else v
-                    for k, v in warmup_params.items()
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in warmup_params.items()
                 }
                 with torch.no_grad():
                     method(**warmup_params)
 
             for bs in batch_sizes:
                 params = model.get_rest_pose(batch_size=bs)
-                params = {
-                    k: v.to(device) if isinstance(v, torch.Tensor) else v
-                    for k, v in params.items()
-                }
+                params = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in params.items()}
                 mean_ms = benchmark_method(method, params, device)
                 results[name][(method_name, bs)] = mean_ms
                 print(f"  {method_name} (B={bs:>4}): {mean_ms:8.2f} ms")
