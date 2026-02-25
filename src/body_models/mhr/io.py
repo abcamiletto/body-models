@@ -1,6 +1,7 @@
 """I/O utilities for MHR model loading."""
 
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 import torch
@@ -24,6 +25,20 @@ __all__ = [
 ]
 
 MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
+
+
+class MHRModelData(TypedDict):
+    base_vertices: Tensor
+    blendshape_dirs: Tensor
+    joint_parents: Tensor
+    joint_names: list[str]
+    joint_offsets: Tensor
+    joint_pre_rotations: Tensor
+    skin_weights: Tensor
+    skin_indices: Tensor
+    parameter_transform: Tensor
+    inverse_bind_pose: Tensor
+    faces: Tensor
 
 
 def get_model_path(model_path: Path | str | None = None) -> Path:
@@ -55,9 +70,10 @@ def download_model() -> Path:
     return cache_dir
 
 
-def load_model_data(asset_dir: Path) -> dict[str, Tensor]:
+def load_model_data(asset_dir: Path) -> MHRModelData:
     """Load MHR model data from disk."""
-    state = torch.jit.load(asset_dir / "mhr_model.pt").state_dict()
+    model = torch.jit.load(asset_dir / "mhr_model.pt")
+    state = model.state_dict()
 
     skin_indices, skin_weights = _build_dense_skinning(
         state["character_torch.linear_blend_skinning.vert_indices_flattened"],
@@ -76,6 +92,7 @@ def load_model_data(asset_dir: Path) -> dict[str, Tensor]:
             dim=0,
         ),
         "joint_parents": state["character_torch.skeleton.joint_parents"],
+        "joint_names": list(model.character_torch.skeleton.joint_names),
         "joint_offsets": state["character_torch.skeleton.joint_translation_offsets"],
         "joint_pre_rotations": state["character_torch.skeleton.joint_prerotations"],
         "skin_weights": skin_weights,

@@ -30,6 +30,11 @@ class BodyModel(ABC):
 
     @property
     @abstractmethod
+    def joint_names(self) -> list[str]:
+        """Joint names in joint index order."""
+
+    @property
+    @abstractmethod
     def skin_weights(self) -> Any:
         """Skinning weights mapping vertices to joints. Shape [V, J]."""
 

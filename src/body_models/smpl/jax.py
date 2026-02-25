@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 
 from ..base import BodyModel
 from . import core
-from .io import compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
+from .io import SMPL_JOINT_NAMES, compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
 
 __all__ = ["SMPL"]
 
@@ -68,6 +68,7 @@ class SMPL(BodyModel, nnx.Module):
         self.parents = nnx.Variable(jnp.asarray(parents))
         self._faces = nnx.Variable(jnp.asarray(faces))
         self._kinematic_fronts = compute_kinematic_fronts(parents)
+        self._joint_names = list(SMPL_JOINT_NAMES)
 
         # Precompute Y offset for ground plane (min Y of rest pose mesh)
         self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
@@ -79,6 +80,10 @@ class SMPL(BodyModel, nnx.Module):
     @property
     def num_joints(self) -> int:
         return self.NUM_JOINTS
+
+    @property
+    def joint_names(self) -> list[str]:
+        return self._joint_names
 
     @property
     def num_vertices(self) -> int:

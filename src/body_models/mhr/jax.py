@@ -96,6 +96,7 @@ class MHR(BodyModel, nnx.Module):
         joint_parents = data["joint_parents"]
         self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
         self._num_joints = len(joint_parents)
+        self._joint_names = list(data["joint_names"])
         self._pose_dim = data["parameter_transform"].shape[1] - self.SHAPE_DIM
 
     @property
@@ -105,6 +106,10 @@ class MHR(BodyModel, nnx.Module):
     @property
     def num_joints(self) -> int:
         return self._num_joints
+
+    @property
+    def joint_names(self) -> list[str]:
+        return self._joint_names
 
     @property
     def num_vertices(self) -> int:
