@@ -59,7 +59,7 @@ def forward_vertices(
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     if expression is None:
-        expression = common.zeros_as(shape, shape=(*batch_shape, 10))
+        expression = common.zeros_as(shape, shape=(*batch_shape, 10), xp=xp)
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
@@ -87,7 +87,7 @@ def forward_vertices(
     y_offset = rest_pose_y_offset if ground_plane else 0.0
 
     # Pose blend shapes
-    eye3 = common.eye_as(pose_matrices, batch_dims=(*batch_shape, 1))
+    eye3 = common.eye_as(pose_matrices, batch_dims=(*batch_shape, 1), xp=xp)
     pose_delta = (pose_matrices[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
     v_shaped = v_t + (pose_delta @ posedirs).reshape(*batch_shape, -1, 3)
 
@@ -103,7 +103,7 @@ def forward_vertices(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = common.zeros_as(v_posed, shape=(1, 1, 3))
+        offset = common.zeros_as(v_posed, shape=(1, 1, 3), xp=xp)
         offset = common.set(offset, (0, 0, 1), y_offset, xp=xp)
         v_posed = v_posed + offset
 
@@ -153,7 +153,7 @@ def forward_skeleton(
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     if expression is None:
-        expression = common.zeros_as(shape, shape=(*batch_shape, 10))
+        expression = common.zeros_as(shape, shape=(*batch_shape, 10), xp=xp)
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -189,7 +189,7 @@ def forward_skeleton(
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
-        offset = common.zeros_as(t_world, shape=(1, 1, 3))
+        offset = common.zeros_as(t_world, shape=(1, 1, 3), xp=xp)
         offset = common.set(offset, (0, 0, 1), y_offset, xp=xp)
         t_world = t_world + offset
 
@@ -233,7 +233,7 @@ def _forward_core(
 
     # Build full pose with pelvis rotation
     if pelvis_rotation is None:
-        pelvis = common.zeros_as(shape, shape=(*batch_shape, 3))
+        pelvis = common.zeros_as(shape, shape=(*batch_shape, 3), xp=xp)
     else:
         pelvis = pelvis_rotation
     pose = xp.concat([pelvis, body_pose, head_pose, hand_pose_adj], axis=-1).reshape(*batch_shape, -1, 3)
@@ -312,7 +312,7 @@ def _build_transform_matrix(
     J = R.shape[-3]
 
     upper = xp.concat([R, t[..., None]], axis=-1)
-    bottom = common.zeros_as(upper, shape=(*batch_shape, J, 1, 4))
+    bottom = common.zeros_as(upper, shape=(*batch_shape, J, 1, 4), xp=xp)
     bottom = common.set(bottom, (..., 0, 3), 1.0, xp=xp)
     return xp.concat([upper, bottom], axis=-2)
 
