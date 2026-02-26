@@ -254,39 +254,62 @@ def write_markdown(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark body models")
     parser.add_argument(
-        "-m", "--model", action="append", dest="models", metavar="NAME",
+        "-m",
+        "--model",
+        action="append",
+        dest="models",
+        metavar="NAME",
         help=f"Model(s) to benchmark (can repeat). Choices: {', '.join(ALL_MODEL_NAMES)}",
     )
     parser.add_argument(
-        "-d", "--device", action="append", dest="devices", metavar="DEV",
+        "-d",
+        "--device",
+        action="append",
+        dest="devices",
+        metavar="DEV",
         help="Device(s) to benchmark: cpu, cuda (can repeat). Default: all available",
     )
     parser.add_argument(
-        "--method", action="append", dest="methods", choices=["skeleton", "vertices"],
+        "--method",
+        action="append",
+        dest="methods",
+        choices=["skeleton", "vertices"],
         help="Method(s) to benchmark (can repeat). Default: both",
     )
     parser.add_argument(
-        "--compile", action="store_true", default=None,
+        "--compile",
+        action="store_true",
+        default=None,
         help="Only run compiled benchmarks",
     )
     parser.add_argument(
-        "--no-compile", action="store_true",
+        "--no-compile",
+        action="store_true",
         help="Only run eager (non-compiled) benchmarks",
     )
     parser.add_argument(
-        "--batch-sizes", type=str, default=None,
+        "--batch-sizes",
+        type=str,
+        default=None,
         help="Override batch sizes (comma-separated, e.g. '512,1024,2048'). Applies to both methods.",
     )
     parser.add_argument(
-        "-n", "--runs", type=int, default=DEFAULT_N_RUNS,
+        "-n",
+        "--runs",
+        type=int,
+        default=DEFAULT_N_RUNS,
         help=f"Number of timed runs (default: {DEFAULT_N_RUNS})",
     )
     parser.add_argument(
-        "-w", "--warmup", type=int, default=DEFAULT_WARMUP,
+        "-w",
+        "--warmup",
+        type=int,
+        default=DEFAULT_WARMUP,
         help=f"Number of warmup runs (default: {DEFAULT_WARMUP})",
     )
     parser.add_argument(
-        "--no-save", action="store_true",
+        "--no-save",
+        action="store_true",
         help="Don't write results to BENCHMARK.md",
     )
     return parser.parse_args()
@@ -325,21 +348,21 @@ def main():
     output_path = Path(__file__).resolve().parent.parent / "BENCHMARK.md"
     all_results = {}
 
-    common_kwargs = dict(
-        model_filter=args.models,
-        methods=args.methods,
-        skeleton_batch_sizes=skel_bs,
-        vertices_batch_sizes=vert_bs,
-        n_runs=args.runs,
-        warmup=args.warmup,
-    )
-
     for device in devices:
         for do_compile in compile_modes:
             label = f"{device}".upper()
             if do_compile:
                 label += " (torch.compile)"
-            all_results[label] = benchmark_all(device, compile=do_compile, **common_kwargs)
+            all_results[label] = benchmark_all(
+                device,
+                compile=do_compile,
+                model_filter=args.models,
+                methods=args.methods,
+                skeleton_batch_sizes=skel_bs,
+                vertices_batch_sizes=vert_bs,
+                n_runs=args.runs,
+                warmup=args.warmup,
+            )
 
     if not args.no_save:
         write_markdown(all_results, output_path, args.runs, args.warmup, skel_bs, vert_bs)

@@ -181,7 +181,7 @@ def _forward_core(
     pose_matrices = SO3.conversions.from_axis_angle_to_matrix(pose, xp=xp)
 
     # Joint locations from precomputed regression matrices
-    j_t = j_template + xp.einsum("...p,jdp->...jd", shape, j_shapedirs[:, :, :shape.shape[-1]])
+    j_t = j_template + xp.einsum("...p,jdp->...jd", shape, j_shapedirs[:, :, : shape.shape[-1]])
 
     # Shape blend shapes for mesh output
     if skeleton_only:
