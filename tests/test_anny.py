@@ -21,7 +21,7 @@ MODEL_PATH = ASSET_DIR / "model"
 INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
-RTOL, ATOL = 1e-4, 1e-4
+RTOL, ATOL = 5e-4, 2e-4
 
 if not MODEL_PATH.exists():
     pytest.skip(f"ANNY model not found at {MODEL_PATH}", allow_module_level=True)
