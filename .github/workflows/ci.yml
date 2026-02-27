@@ -30,17 +30,26 @@ jobs:
 
   tests-core:
     name: Tests Core (py3.12, locked)
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
     runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
+      GH_TOKEN: ${{ secrets.ASSETS_PAT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
+      - name: Download test assets
+        run: |
+          gh release download latest \
+            --repo abcamiletto/body-models-test-assets \
+            --pattern 'assets.tar.gz' \
+            --dir /tmp
+          tar xzf /tmp/assets.tar.gz -C tests/
       - run: uv sync --group dev --all-extras --frozen
-      - run: uv run pytest -q tests/test_anny.py tests/test_flame.py tests/test_mhr.py tests/test_skel.py tests/test_smpl.py tests/test_smplx.py tests/test_compile.py
+      - run: uv run pytest -q tests/test_anny.py tests/test_flame.py tests/test_mhr.py tests/test_skel.py tests/test_smpl.py tests/test_smplx.py tests/test_compile.py tests/test_model_interface.py
 
   tests-version-smoke:
     name: Tests Version Smoke (py${{ matrix.python-version }}, ${{ matrix.resolution }})
