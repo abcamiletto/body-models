@@ -17,6 +17,18 @@ pub struct JointData {
     pub t_world: Vec<Matrix4<f32>>, // [J] FK world-space 4x4 transforms
 }
 
+fn assert_optional_batch_vec_len(name: &str, value: Option<&[f32]>, batch_size: usize) {
+    if let Some(v) = value {
+        assert!(
+            v.len() == batch_size * 3,
+            "{} length {} must be exactly batch_size*3 ({})",
+            name,
+            v.len(),
+            batch_size * 3
+        );
+    }
+}
+
 /// Compute pose delta: (pose_matrices[1:] - I).flatten() → [(J-1)*9]
 pub fn compute_pose_delta(pose_matrices: &[Matrix3<f32>], num_joints: usize, num_pose_params: usize) -> Vec<f32> {
     let mut pose_delta = vec![0.0f32; num_pose_params];
@@ -47,9 +59,21 @@ fn compute_global_transform(
     ground_plane: bool,
     rest_pose_y_offset: f32,
 ) -> (Option<Matrix3<f32>>, Vector3<f32>) {
-    let r_global = global_rotation.map(|gr|
+    let r_global = global_rotation.map(|gr| {
+        assert!(
+            gr.len() == 3,
+            "global_rotation length {} must be exactly 3 for one instance",
+            gr.len()
+        );
         rodrigues::axis_angle_to_matrix(&Vector3::new(gr[0], gr[1], gr[2]))
-    );
+    });
+    if let Some(gt) = global_translation {
+        assert!(
+            gt.len() == 3,
+            "global_translation length {} must be exactly 3 for one instance",
+            gt.len()
+        );
+    }
     let gt = global_translation.unwrap_or(&[0.0, 0.0, 0.0]);
     let y_off = if ground_plane { rest_pose_y_offset } else { 0.0 };
     (r_global, Vector3::new(gt[0], gt[1] + y_off, gt[2]))
@@ -160,6 +184,20 @@ impl SmplModel {
         let j = d.num_joints;
         let s = d.num_shape_params;
         let s_used = shape.len().min(s);
+        let expected_body_pose = (j - 1) * 3;
+        assert!(
+            body_pose.len() == expected_body_pose,
+            "body_pose length {} must be exactly {} for one instance",
+            body_pose.len(),
+            expected_body_pose
+        );
+        if let Some(pr) = pelvis_rotation {
+            assert!(
+                pr.len() == 3,
+                "pelvis_rotation length {} must be exactly 3 for one instance",
+                pr.len()
+            );
+        }
 
         // Build full pose: cat([pelvis, body_pose])
         let zero3 = [0.0f32; 3];
@@ -231,6 +269,9 @@ impl SmplModel {
         let bp_len = self.body_pose_len();
 
         let batch_size = parse_batch_size(body_pose.len(), bp_len, shape.len());
+        assert_optional_batch_vec_len("pelvis_rotation", pelvis_rotation, batch_size);
+        assert_optional_batch_vec_len("global_rotation", global_rotation, batch_size);
+        assert_optional_batch_vec_len("global_translation", global_translation, batch_size);
 
         let s_per = shape.len() / batch_size;
         let s_used = s_per.min(s);
@@ -311,6 +352,9 @@ impl SmplModel {
         let bp_len = self.body_pose_len();
 
         let batch_size = parse_batch_size(body_pose.len(), bp_len, shape.len());
+        assert_optional_batch_vec_len("pelvis_rotation", pelvis_rotation, batch_size);
+        assert_optional_batch_vec_len("global_rotation", global_rotation, batch_size);
+        assert_optional_batch_vec_len("global_translation", global_translation, batch_size);
         let s_per = shape.len() / batch_size;
 
         let mut result = Vec::with_capacity(batch_size * j * 16);
@@ -354,6 +398,7 @@ impl SmplModel {
 
 /// Validate batch dimensions and return batch size.
 pub fn parse_batch_size(body_pose_len: usize, bp_per: usize, shape_len: usize) -> usize {
+    assert!(bp_per > 0, "body_pose-per-instance length must be > 0");
     assert!(body_pose_len > 0 && body_pose_len % bp_per == 0,
         "body_pose length {} must be a positive multiple of {}", body_pose_len, bp_per);
     let batch_size = body_pose_len / bp_per;

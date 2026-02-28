@@ -1,11 +1,11 @@
-//! GPU dispatch orchestration (batched).
+//! GPU dispatch orchestration (batched, pooled buffers).
 //!
 //! CPU computes joint-level data for all B instances →
-//! packs concatenated buffers → GPU dispatches 3 compute passes →
+//! write_buffer into pooled GPU buffers → 2 compute passes →
 //! single readback of [B*V*3].
 
 use crate::cpu_backend::{SmplModel, compute_pose_delta, compute_lbs_transforms, parse_batch_size, slice_instance};
-use crate::gpu_backend::{GpuBackend, bg_entry, create_init_buf};
+use crate::gpu_backend::GpuBackend;
 use crate::model_data::SmplModelData;
 
 /// GPU-accelerated SMPL forward pass with batch support.
@@ -15,15 +15,22 @@ pub struct GpuSmplModel {
 }
 
 impl GpuSmplModel {
-    pub async fn new(data: SmplModelData) -> Self {
-        let gpu = GpuBackend::new(&data).await;
+    pub async fn try_new(data: SmplModelData, max_batch_size: usize) -> Result<Self, String> {
+        let gpu = GpuBackend::try_new(&data, max_batch_size).await?;
         let model = SmplModel::new(data);
-        GpuSmplModel { model, gpu }
+        Ok(GpuSmplModel { model, gpu })
+    }
+
+    pub async fn new(data: SmplModelData, max_batch_size: usize) -> Self {
+        Self::try_new(data, max_batch_size)
+            .await
+            .expect("Failed to initialize GPU SMPL model")
     }
 
     /// Forward vertices using GPU compute shaders.
     ///
     /// Batch size B is inferred from `body_pose.len() / body_pose_len()`.
+    /// Panics if B > max_batch_size.
     /// Returns `[B*V*3]` vertex positions.
     pub fn forward_vertices(
         &self,
@@ -42,11 +49,40 @@ impl GpuSmplModel {
         let bp_len = self.model.body_pose_len();
 
         let batch_size = parse_batch_size(body_pose.len(), bp_len, shape.len());
+        assert!(
+            batch_size <= self.gpu.max_batch_size,
+            "batch_size {} exceeds max_batch_size {}",
+            batch_size, self.gpu.max_batch_size,
+        );
+        if let Some(pr) = pelvis_rotation {
+            assert!(
+                pr.len() == batch_size * 3,
+                "pelvis_rotation length {} must be exactly batch_size*3 ({})",
+                pr.len(),
+                batch_size * 3
+            );
+        }
+        if let Some(gr) = global_rotation {
+            assert!(
+                gr.len() == batch_size * 3,
+                "global_rotation length {} must be exactly batch_size*3 ({})",
+                gr.len(),
+                batch_size * 3
+            );
+        }
+        if let Some(gt) = global_translation {
+            assert!(
+                gt.len() == batch_size * 3,
+                "global_translation length {} must be exactly batch_size*3 ({})",
+                gt.len(),
+                batch_size * 3
+            );
+        }
+
         let s_per = shape.len() / batch_size;
         let s_used = s_per.min(s);
 
         // === CPU: Joint-level computation for all B instances ===
-        // Pack shape compactly as [B * s_used] — the shader indexes with stride S = s_used
         let mut shape_full = vec![0.0f32; batch_size * s_used];
         let mut all_pose_delta = Vec::with_capacity(batch_size * p);
         let mut all_joint_rt = Vec::with_capacity(batch_size * j * 12);
@@ -60,7 +96,6 @@ impl GpuSmplModel {
             let jd = self.model.compute_joints(shape_i, body_pose_i, pelvis_i);
             all_pose_delta.extend_from_slice(&compute_pose_delta(&jd.pose_matrices, j, p));
 
-            // Pack fused joint R + t_offset into [J*12] for GPU
             let (r_world, t_offset) = compute_lbs_transforms(
                 &jd, d, global_rot_i, global_trans_i, ground_plane,
             );
@@ -76,79 +111,23 @@ impl GpuSmplModel {
             }
         }
 
-        // === GPU: Create per-call buffers, bind groups, dispatch ===
+        // === GPU: Write into pooled buffers, dispatch 2 passes ===
         let gpu = &self.gpu;
         let b = batch_size;
-        use wgpu::BufferUsages as BU;
 
-        let shape_buf = create_init_buf(&gpu.device, "shape", &shape_full, BU::STORAGE);
-        let pose_delta_buf = create_init_buf(&gpu.device, "pose_delta", &all_pose_delta, BU::STORAGE);
-        let joint_rt_buf = create_init_buf(&gpu.device, "joint_rt", &all_joint_rt, BU::STORAGE);
+        // Write dynamic data into pooled buffers
+        gpu.queue.write_buffer(&gpu.shape_buf, 0, bytemuck::cast_slice(&shape_full));
+        gpu.queue.write_buffer(&gpu.pose_delta_buf, 0, bytemuck::cast_slice(&all_pose_delta));
+        gpu.queue.write_buffer(&gpu.joint_rt_buf, 0, bytemuck::cast_slice(&all_joint_rt));
 
-        let v_shaped_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("v_shaped"),
-            size: (b * v * 3 * 4) as u64,
-            usage: BU::STORAGE,
-            mapped_at_creation: false,
-        });
-        let v_posed_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("v_posed"),
-            size: (b * v * 3 * 4) as u64,
-            usage: BU::STORAGE | BU::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let staging_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("staging"),
-            size: (b * v * 3 * 4) as u64,
-            usage: BU::MAP_READ | BU::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let shape_blend_params: [u32; 4] = [v as u32, s_used as u32, b as u32, 0];
-        let shape_blend_params_buf = create_init_buf(&gpu.device, "shape_blend_params", &shape_blend_params, BU::UNIFORM);
-
-        let pose_blend_params: [u32; 4] = [v as u32, p as u32, b as u32, 0];
-        let pose_blend_params_buf = create_init_buf(&gpu.device, "pose_blend_params", &pose_blend_params, BU::UNIFORM);
+        // Write uniform params
+        let blend_params: [u32; 4] = [v as u32, s_used as u32, p as u32, b as u32];
+        gpu.queue.write_buffer(&gpu.blend_params_buf, 0, bytemuck::cast_slice(&blend_params));
 
         let lbs_params: [u32; 4] = [v as u32, d.nnz_per_vertex as u32, j as u32, b as u32];
-        let lbs_params_buf = create_init_buf(&gpu.device, "lbs_params", &lbs_params, BU::UNIFORM);
+        gpu.queue.write_buffer(&gpu.lbs_params_buf, 0, bytemuck::cast_slice(&lbs_params));
 
-        // Bind groups
-        let shape_blend_bg = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("shape_blend_bg"),
-            layout: &gpu.shape_blend_bgl,
-            entries: &[
-                bg_entry(0, &shape_blend_params_buf),
-                bg_entry(1, &gpu.v_template_buf),
-                bg_entry(2, &gpu.shapedirs_buf),
-                bg_entry(3, &shape_buf),
-                bg_entry(4, &v_shaped_buf),
-            ],
-        });
-        let pose_blend_bg = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("pose_blend_bg"),
-            layout: &gpu.pose_blend_bgl,
-            entries: &[
-                bg_entry(0, &pose_blend_params_buf),
-                bg_entry(1, &gpu.posedirs_buf),
-                bg_entry(2, &pose_delta_buf),
-                bg_entry(3, &v_shaped_buf),
-            ],
-        });
-        let lbs_bg = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("lbs_bg"),
-            layout: &gpu.lbs_bgl,
-            entries: &[
-                bg_entry(0, &lbs_params_buf),
-                bg_entry(1, &v_shaped_buf),
-                bg_entry(2, &gpu.sparse_indices_buf),
-                bg_entry(3, &gpu.sparse_weights_buf),
-                bg_entry(4, &joint_rt_buf),
-                bg_entry(5, &v_posed_buf),
-            ],
-        });
-
-        // Dispatch compute passes
+        // Encode compute passes
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("smpl_forward"),
         });
@@ -158,21 +137,11 @@ impl GpuSmplModel {
 
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("shape_blend"),
+                label: Some("shape_pose_blend"),
                 timestamp_writes: None,
             });
-            pass.set_pipeline(&gpu.shape_blend_pipeline);
-            pass.set_bind_group(0, &shape_blend_bg, &[]);
-            pass.dispatch_workgroups(wg_bvd, 1, 1);
-        }
-
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("pose_blend"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&gpu.pose_blend_pipeline);
-            pass.set_bind_group(0, &pose_blend_bg, &[]);
+            pass.set_pipeline(&gpu.blend_pipeline);
+            pass.set_bind_group(0, &gpu.blend_bg, &[]);
             pass.dispatch_workgroups(wg_bvd, 1, 1);
         }
 
@@ -182,20 +151,18 @@ impl GpuSmplModel {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&gpu.lbs_pipeline);
-            pass.set_bind_group(0, &lbs_bg, &[]);
+            pass.set_bind_group(0, &gpu.lbs_bg, &[]);
             pass.dispatch_workgroups(wg_bv, 1, 1);
         }
 
-        encoder.copy_buffer_to_buffer(
-            &v_posed_buf, 0,
-            &staging_buf, 0,
-            (b * v * 3 * 4) as u64,
-        );
+        // Copy only the valid portion (not full max_batch_size buffer)
+        let copy_bytes = (b * v * 3 * 4) as u64;
+        encoder.copy_buffer_to_buffer(&gpu.v_posed_buf, 0, &gpu.staging_buf, 0, copy_bytes);
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
 
         // Readback
-        let buffer_slice = staging_buf.slice(..);
+        let buffer_slice = gpu.staging_buf.slice(..copy_bytes);
         let (sender, receiver) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
             sender.send(result).unwrap();
@@ -206,7 +173,7 @@ impl GpuSmplModel {
         let data = buffer_slice.get_mapped_range();
         let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
         drop(data);
-        staging_buf.unmap();
+        gpu.staging_buf.unmap();
 
         result
     }

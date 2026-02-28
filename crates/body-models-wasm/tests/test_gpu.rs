@@ -1,6 +1,7 @@
 //! GPU backend tests: verify GPU output matches CPU (and thus Python).
 //!
-//! Requires `gpu` feature and a GPU adapter (skips gracefully if unavailable).
+//! Requires `gpu` feature and a GPU adapter/device.
+//! Tests are skipped gracefully when unavailable.
 
 #![cfg(feature = "gpu")]
 
@@ -9,10 +10,20 @@ mod common;
 use common::*;
 use body_models_wasm::gpu_forward::GpuSmplModel;
 
+fn new_gpu_or_skip() -> Option<GpuSmplModel> {
+    let model = load_model();
+    match pollster::block_on(GpuSmplModel::try_new(model.data, 64)) {
+        Ok(m) => Some(m),
+        Err(e) => {
+            eprintln!("Skipping GPU tests: {}", e);
+            None
+        }
+    }
+}
+
 #[test]
 fn test_gpu_forward_vertices_matches_cpu() {
-    let model = load_model();
-    let gpu_model = pollster::block_on(GpuSmplModel::new(model.data));
+    let Some(gpu_model) = new_gpu_or_skip() else { return; };
     let cpu_model = load_model();
 
     for idx in 0..NUM_CASES {
@@ -31,8 +42,7 @@ fn test_gpu_forward_vertices_matches_cpu() {
 
 #[test]
 fn test_gpu_forward_vertices_batch() {
-    let model = load_model();
-    let gpu_model = pollster::block_on(GpuSmplModel::new(model.data));
+    let Some(gpu_model) = new_gpu_or_skip() else { return; };
     let cpu_model = load_model();
     let batch = load_batched_inputs();
 
@@ -53,8 +63,7 @@ fn test_gpu_forward_vertices_batch() {
 
 #[test]
 fn test_gpu_forward_vertices_ground_plane() {
-    let model = load_model();
-    let gpu_model = pollster::block_on(GpuSmplModel::new(model.data));
+    let Some(gpu_model) = new_gpu_or_skip() else { return; };
 
     for idx in 0..NUM_CASES {
         eprintln!("GPU Case {} (ground plane):", idx);
