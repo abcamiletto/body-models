@@ -69,11 +69,11 @@ class MHR(BodyModel, nn.Module):
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 
-        base_vertices_full = data["base_vertices"]
-        blendshape_dirs_full = data["blendshape_dirs"]
-        skin_weights_full = data["skin_weights"]
-        skin_indices_full = data["skin_indices"].to(torch.int64)
-        faces = data["faces"]
+        base_vertices_full = torch.from_numpy(data["base_vertices"])
+        blendshape_dirs_full = torch.from_numpy(data["blendshape_dirs"])
+        skin_weights_full = torch.from_numpy(data["skin_weights"])
+        skin_indices_full = torch.from_numpy(data["skin_indices"]).to(torch.int64)
+        faces = torch.from_numpy(data["faces"]).to(torch.int64)
 
         # Apply mesh simplification if requested
         if simplify > 1.0:
@@ -103,11 +103,11 @@ class MHR(BodyModel, nn.Module):
         self.register_buffer("_skin_indices_full", skin_indices_full)
 
         # Skeleton buffers
-        self.register_buffer("joint_offsets", data["joint_offsets"])
-        self.register_buffer("joint_pre_rotations", data["joint_pre_rotations"])
-        self.register_buffer("parameter_transform", data["parameter_transform"])
+        self.register_buffer("joint_offsets", torch.from_numpy(data["joint_offsets"]))
+        self.register_buffer("joint_pre_rotations", torch.from_numpy(data["joint_pre_rotations"]))
+        self.register_buffer("parameter_transform", torch.from_numpy(data["parameter_transform"]))
 
-        inv_bind = data["inverse_bind_pose"]
+        inv_bind = torch.from_numpy(data["inverse_bind_pose"])
         t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
         self.register_buffer("bind_inv_linear", SO3.conversions.from_quat_xyzw_to_matrix(q) * s.unsqueeze(-1))
         self.register_buffer("bind_inv_translation", t)

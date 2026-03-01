@@ -48,11 +48,11 @@ class MHR(BodyModel, nnx.Module):
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 
-        base_vertices_full = data["base_vertices"].numpy()
-        blendshape_dirs_full = data["blendshape_dirs"].numpy()
-        skin_weights_full = data["skin_weights"].numpy()
-        skin_indices_full = data["skin_indices"].numpy().astype(np.int64)
-        faces = data["faces"].numpy()
+        base_vertices_full = data["base_vertices"]
+        blendshape_dirs_full = data["blendshape_dirs"]
+        skin_weights_full = data["skin_weights"]
+        skin_indices_full = data["skin_indices"].astype(np.int64)
+        faces = data["faces"]
 
         # Apply mesh simplification if requested
         if simplify > 1.0:
@@ -79,11 +79,11 @@ class MHR(BodyModel, nnx.Module):
         self._faces = nnx.Variable(jnp.asarray(faces))
 
         # Skeleton data
-        self.joint_offsets = nnx.Variable(jnp.asarray(data["joint_offsets"].numpy()))
-        self.joint_pre_rotations = nnx.Variable(jnp.asarray(data["joint_pre_rotations"].numpy()))
-        self.parameter_transform = nnx.Variable(jnp.asarray(data["parameter_transform"].numpy()))
+        self.joint_offsets = nnx.Variable(jnp.asarray(data["joint_offsets"]))
+        self.joint_pre_rotations = nnx.Variable(jnp.asarray(data["joint_pre_rotations"]))
+        self.parameter_transform = nnx.Variable(jnp.asarray(data["parameter_transform"]))
 
-        inv_bind = data["inverse_bind_pose"].numpy()
+        inv_bind = data["inverse_bind_pose"]
         t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
         self.bind_inv_linear = nnx.Variable(jnp.asarray(SO3.conversions.from_quat_xyzw_to_matrix(q) * s[..., None]))
         self.bind_inv_translation = nnx.Variable(jnp.asarray(t))
