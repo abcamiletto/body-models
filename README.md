@@ -36,7 +36,7 @@ pip install body-models[torch]
 pip install body-models[jax]
 ```
 
-Note: MHR model requires PyTorch for loading the model file (stored in .pt format).
+Note: NumPy/JAX backends can load MHR torch checkpoints without installing PyTorch.
 
 ## Model Setup
 
@@ -152,8 +152,8 @@ All models inherit from `BodyModel` and share these properties:
 |----------|------|-------------|
 | `num_joints` | `int` | Number of skeleton joints |
 | `num_vertices` | `int` | Number of mesh vertices |
+| `joint_names` | `list[str]` | Joint names |
 | `faces` | `[F, 3]` | Mesh face indices |
-| `skin_weights` | `[V, J]` | Skinning weights |
 | `rest_vertices` | `[V, 3]` | Vertices in rest pose |
 
 ### Mesh Simplification
@@ -335,10 +335,10 @@ vertices = model.forward_vertices(
 
 ### MHR
 
-Meta Human Renderer with neural pose correctives. Requires PyTorch for model loading.
+Meta Human Renderer with neural pose correctives.
 
 ```python
-from body_models.mhr.torch import MHR  # or .numpy, .jax (all require torch for loading)
+from body_models.mhr.torch import MHR  # or .numpy, .jax
 
 model = MHR(lod=1)  # Level of detail
 

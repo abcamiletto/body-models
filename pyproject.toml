@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.5.4"
+version = "0.6.0"
 description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
@@ -13,6 +13,7 @@ dependencies = [
     "nanomanifold>=0.3.0",
     "numpy>=2.0.0",
     "platformdirs>=2.0",
+    "ptloader==0.3.0",
     "pyfqmr>=0.3.0",
     "scipy>=1.13.0",
     "typer>=0.9.0",
@@ -51,6 +52,7 @@ dev = [
 torch = [
     { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+ptloader = { git = "https://github.com/abcamiletto/ptloader.git", tag = "v0.3.0" }
 
 [[tool.uv.index]]
 name = "pytorch-cu126"

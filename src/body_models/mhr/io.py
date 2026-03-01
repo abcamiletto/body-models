@@ -1,14 +1,11 @@
 """I/O utilities for MHR model loading."""
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import numpy as np
-import torch
-import torch.nn as nn
-from jaxtyping import Float, Int
-from nanomanifold import SO3
-from torch import Tensor
 
 from .. import config
 from ..common import simplify_mesh
@@ -28,17 +25,17 @@ MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/asse
 
 
 class MHRModelData(TypedDict):
-    base_vertices: Tensor
-    blendshape_dirs: Tensor
-    joint_parents: Tensor
+    base_vertices: np.ndarray
+    blendshape_dirs: np.ndarray
+    joint_parents: np.ndarray
     joint_names: list[str]
-    joint_offsets: Tensor
-    joint_pre_rotations: Tensor
-    skin_weights: Tensor
-    skin_indices: Tensor
-    parameter_transform: Tensor
-    inverse_bind_pose: Tensor
-    faces: Tensor
+    joint_offsets: np.ndarray
+    joint_pre_rotations: np.ndarray
+    skin_weights: np.ndarray
+    skin_indices: np.ndarray
+    parameter_transform: np.ndarray
+    inverse_bind_pose: np.ndarray
+    faces: np.ndarray
 
 
 def get_model_path(model_path: Path | str | None = None) -> Path:
@@ -71,65 +68,93 @@ def download_model() -> Path:
 
 
 def load_model_data(asset_dir: Path) -> MHRModelData:
-    """Load MHR model data from disk."""
-    model = torch.jit.load(asset_dir / "mhr_model.pt")
-    state = model.state_dict()
+    """Load MHR model data from disk without requiring torch."""
+    model = _load_checkpoint_numpy(asset_dir / "mhr_model.pt")
+    character = _get_attr(model, "character_torch")
+    skeleton = character.skeleton
+    lbs = character.linear_blend_skinning
+    blend_shape = character.blend_shape
 
     skin_indices, skin_weights = _build_dense_skinning(
-        state["character_torch.linear_blend_skinning.vert_indices_flattened"],
-        state["character_torch.linear_blend_skinning.skin_indices_flattened"],
-        state["character_torch.linear_blend_skinning.skin_weights_flattened"],
-        state["character_torch.blend_shape.base_shape"].shape[0],
+        lbs.vert_indices_flattened,
+        lbs.skin_indices_flattened,
+        lbs.skin_weights_flattened,
+        blend_shape.base_shape.shape[0],
     )
 
     return {
-        "base_vertices": state["character_torch.blend_shape.base_shape"],
-        "blendshape_dirs": torch.cat(
+        "base_vertices": blend_shape.base_shape,
+        "blendshape_dirs": np.concatenate(
             [
-                state["character_torch.blend_shape.shape_vectors"],
-                state["face_expressions_model.shape_vectors"],
+                blend_shape.shape_vectors,
+                model.face_expressions_model.shape_vectors,
             ],
-            dim=0,
+            axis=0,
         ),
-        "joint_parents": state["character_torch.skeleton.joint_parents"],
-        "joint_names": list(model.character_torch.skeleton.joint_names),
-        "joint_offsets": state["character_torch.skeleton.joint_translation_offsets"],
-        "joint_pre_rotations": state["character_torch.skeleton.joint_prerotations"],
+        "joint_parents": skeleton.joint_parents,
+        "joint_names": [str(x) for x in skeleton.joint_names],
+        "joint_offsets": skeleton.joint_translation_offsets,
+        "joint_pre_rotations": skeleton.joint_prerotations,
         "skin_weights": skin_weights,
         "skin_indices": skin_indices,
-        "parameter_transform": state["character_torch.parameter_transform.parameter_transform"],
-        "inverse_bind_pose": state["character_torch.linear_blend_skinning.inverse_bind_pose"],
-        "faces": state["character_torch.mesh.faces"],
+        "parameter_transform": character.parameter_transform.parameter_transform,
+        "inverse_bind_pose": lbs.inverse_bind_pose,
+        "faces": character.mesh.faces,
     }
 
 
+def _get_attr(obj: Any, path: str) -> Any:
+    cur = obj
+    for part in path.split("."):
+        if isinstance(cur, dict):
+            cur = cur[part]
+        else:
+            cur = getattr(cur, part)
+    return cur
+
+
+def _load_checkpoint_numpy(checkpoint_path: Path) -> Any:
+    try:
+        from ptloader import CheckpointError, load
+    except ImportError as exc:
+        raise ImportError("ptloader is required to load MHR checkpoints without torch.") from exc
+
+    try:
+        return load(checkpoint_path, weights_only=True)
+    except (CheckpointError, ValueError):
+        # Keep one fallback with explicit permissive mode for older ptloader variants.
+        return load(checkpoint_path, weights_only=True, torchscript_mode="permissive")
+
+
 def _build_dense_skinning(
-    vert_indices: Int[Tensor, "N"],
-    joint_indices: Int[Tensor, "N"],
-    joint_weights: Float[Tensor, "N"],
+    vert_indices: np.ndarray,
+    joint_indices: np.ndarray,
+    joint_weights: np.ndarray,
     num_vertices: int,
-) -> tuple[Int[Tensor, "V K"], Float[Tensor, "V K"]]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Build dense skinning matrices from sparse representation."""
-    counts = torch.bincount(vert_indices.to(torch.int64), minlength=num_vertices)
-    K = int(counts.max().item())
+    vert_indices = vert_indices.astype(np.int64, copy=False)
+    joint_indices = joint_indices.astype(np.int64, copy=False)
+    counts = np.bincount(vert_indices, minlength=num_vertices)
+    K = int(counts.max())
 
-    dense_indices = torch.zeros((num_vertices, K), dtype=torch.int64)
-    dense_weights = torch.zeros((num_vertices, K), dtype=joint_weights.dtype)
+    dense_indices = np.zeros((num_vertices, K), dtype=np.int64)
+    dense_weights = np.zeros((num_vertices, K), dtype=joint_weights.dtype)
 
-    offsets = torch.zeros(num_vertices + 1, dtype=torch.int64)
-    offsets[1:] = counts.cumsum(0)
+    offsets = np.zeros(num_vertices + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(counts)
 
     for v in range(num_vertices):
-        start, end = int(offsets[v].item()), int(offsets[v + 1].item())
-        dense_indices[v, : end - start] = joint_indices[start:end].to(torch.int64)
+        start, end = int(offsets[v]), int(offsets[v + 1])
+        dense_indices[v, : end - start] = joint_indices[start:end]
         dense_weights[v, : end - start] = joint_weights[start:end]
 
     return dense_indices, dense_weights
 
 
-def compute_kinematic_fronts(parents: Int[Tensor, "J"] | np.ndarray) -> list[tuple[list[int], list[int]]]:
+def compute_kinematic_fronts(parents: np.ndarray) -> list[tuple[list[int], list[int]]]:
     """Compute kinematic fronts for batched FK. Returns [(joint_indices, parent_indices), ...]."""
-    parents_list = parents.tolist()  # Works for both numpy arrays and torch tensors
+    parents_list = parents.tolist()
 
     n_joints = len(parents_list)
     processed: set[int] = set()
@@ -141,7 +166,7 @@ def compute_kinematic_fronts(parents: Int[Tensor, "J"] | np.ndarray) -> list[tup
         for j in range(n_joints):
             if j in processed:
                 continue
-            p = parents_list[j]
+            p = int(parents_list[j])
             if p < 0 or p in processed:
                 joints.append(j)
                 joint_parents.append(p)
@@ -149,54 +174,6 @@ def compute_kinematic_fronts(parents: Int[Tensor, "J"] | np.ndarray) -> list[tup
         processed.update(joints)
 
     return fronts
-
-
-# ============================================================================
-# Pose correctives (PyTorch only)
-# ============================================================================
-
-
-class _SparseLinear(nn.Module):
-    """Sparse linear layer for pose correctives."""
-
-    dense_weight: Float[Tensor, "O I"]
-    _sparse_indices: Int[Tensor, "2 N"]
-
-    def __init__(self, in_features: int, out_features: int, sparse_mask: Float[Tensor, "O I"]) -> None:
-        super().__init__()
-        idx = sparse_mask.nonzero().T
-        self.register_buffer("_sparse_indices", idx, persistent=False)
-        self.sparse_indices = nn.Parameter(idx, requires_grad=False)
-        self.sparse_weight = nn.Parameter(torch.zeros(idx.shape[1]), requires_grad=False)
-        self.register_buffer("dense_weight", torch.zeros(out_features, in_features), persistent=False)
-        self._weight_initialized = False
-
-    def _ensure_dense_weight(self) -> None:
-        """Lazily initialize dense weight from sparse representation."""
-        if not self._weight_initialized:
-            self.dense_weight[self._sparse_indices[0], self._sparse_indices[1]] = self.sparse_weight
-            self._weight_initialized = True
-
-    def forward(self, x: Float[Tensor, "B I"]) -> Float[Tensor, "B O"]:
-        self._ensure_dense_weight()
-        return x @ self.dense_weight.T
-
-
-class _PoseCorrectivesModel(nn.Module):
-    """Neural pose correctives predictor."""
-
-    def __init__(self, predictor: nn.Sequential) -> None:
-        super().__init__()
-        self.predictor = predictor
-
-    def forward(self, joint_params: Float[Tensor, "B J 7"]) -> Float[Tensor, "B V 3"]:
-        euler = joint_params[:, 2:, 3:6]
-        rot = SO3.conversions.from_euler_to_matrix(euler, convention="xyz", xp=torch)
-        feat = torch.cat([rot[..., 0], rot[..., 1]], dim=-1)
-        feat[:, :, 0] -= 1
-        feat[:, :, 4] -= 1
-        corr = self.predictor(feat.flatten(1, 2))
-        return corr.reshape(joint_params.shape[0], -1, 3)
 
 
 def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, np.ndarray]:
@@ -212,35 +189,69 @@ def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, np.nda
     blend_data = dict(np.load(asset_dir / f"corrective_blendshapes_lod{lod}.npz"))
     act_data = dict(np.load(asset_dir / "corrective_activation.npz"))
 
-    # Build dense W1 from sparse representation
-    sparse_indices = act_data["0.sparse_indices"]  # (2, N)
-    sparse_weight = act_data["0.sparse_weight"]  # (N,)
+    sparse_indices = act_data["0.sparse_indices"]
+    sparse_weight = act_data["0.sparse_weight"]
 
-    out_features, in_features = 125 * 24, 125 * 6  # 3000, 750
+    out_features, in_features = 125 * 24, 125 * 6
     W1 = np.zeros((out_features, in_features), dtype=np.float32)
     W1[sparse_indices[0], sparse_indices[1]] = sparse_weight
 
-    # W2 from corrective_blendshapes
-    corrective_blendshapes = blend_data["corrective_blendshapes"]  # (n_comp, n_v, 3)
+    corrective_blendshapes = blend_data["corrective_blendshapes"]
     n_comp = corrective_blendshapes.shape[0]
-    W2 = corrective_blendshapes.reshape(n_comp, -1).T.astype(np.float32)  # (V*3, n_comp)
+    W2 = corrective_blendshapes.reshape(n_comp, -1).T.astype(np.float32)
 
     return {"W1": W1, "W2": W2}
 
 
-def load_pose_correctives(asset_dir: Path, lod: int) -> _PoseCorrectivesModel:
+def load_pose_correctives(asset_dir: Path, lod: int) -> Any:
     """Load neural pose correctives model (PyTorch nn.Module).
 
     .. deprecated::
         Use :func:`load_pose_correctives_weights` for backend-agnostic weights.
     """
+    import torch
+    import torch.nn as nn
+    from nanomanifold import SO3
+
+    class _SparseLinear(nn.Module):
+        def __init__(self, in_features: int, out_features: int, sparse_mask: np.ndarray) -> None:
+            super().__init__()
+            idx = torch.from_numpy(sparse_mask).nonzero().T
+            self.register_buffer("_sparse_indices", idx, persistent=False)
+            self.sparse_indices = nn.Parameter(idx, requires_grad=False)
+            self.sparse_weight = nn.Parameter(torch.zeros(idx.shape[1]), requires_grad=False)
+            self.register_buffer("dense_weight", torch.zeros(out_features, in_features), persistent=False)
+            self._weight_initialized = False
+
+        def _ensure_dense_weight(self) -> None:
+            if not self._weight_initialized:
+                self.dense_weight[self._sparse_indices[0], self._sparse_indices[1]] = self.sparse_weight
+                self._weight_initialized = True
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            self._ensure_dense_weight()
+            return x @ self.dense_weight.T
+
+    class _PoseCorrectivesModel(nn.Module):
+        def __init__(self, predictor: nn.Sequential) -> None:
+            super().__init__()
+            self.predictor = predictor
+
+        def forward(self, joint_params: torch.Tensor) -> torch.Tensor:
+            euler = joint_params[:, 2:, 3:6]
+            rot = SO3.conversions.from_euler_to_matrix(euler, convention="xyz", xp=torch)
+            feat = torch.cat([rot[..., 0], rot[..., 1]], dim=-1)
+            feat[:, :, 0] -= 1
+            feat[:, :, 4] -= 1
+            corr = self.predictor(feat.flatten(1, 2))
+            return corr.reshape(joint_params.shape[0], -1, 3)
+
     blend_data = dict(np.load(asset_dir / f"corrective_blendshapes_lod{lod}.npz"))
     act_data = dict(np.load(asset_dir / "corrective_activation.npz"))
 
     n_comp, n_v = blend_data["corrective_blendshapes"].shape[:2]
-
     predictor = nn.Sequential(
-        _SparseLinear(125 * 6, 125 * 24, torch.from_numpy(act_data["posedirs_sparse_mask"])),
+        _SparseLinear(125 * 6, 125 * 24, act_data["posedirs_sparse_mask"]),
         nn.ReLU(),
         nn.Linear(125 * 24, n_v * 3, bias=False),
     )
