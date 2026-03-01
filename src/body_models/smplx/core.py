@@ -54,6 +54,9 @@ def forward_vertices(
     assert tuple(hand_pose.shape[:-2]) == batch_shape
     assert tuple(head_pose.shape[:-2]) == batch_shape
     assert expression is None or tuple(expression.shape[:-1]) == batch_shape
+    assert pelvis_rotation is None or tuple(pelvis_rotation.shape[:-1]) == batch_shape
+    assert global_rotation is None or tuple(global_rotation.shape[:-1]) == batch_shape
+    assert global_translation is None or tuple(global_translation.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
@@ -146,6 +149,9 @@ def forward_skeleton(
     assert tuple(hand_pose.shape[:-2]) == batch_shape
     assert tuple(head_pose.shape[:-2]) == batch_shape
     assert expression is None or tuple(expression.shape[:-1]) == batch_shape
+    assert pelvis_rotation is None or tuple(pelvis_rotation.shape[:-1]) == batch_shape
+    assert global_rotation is None or tuple(global_rotation.shape[:-1]) == batch_shape
+    assert global_translation is None or tuple(global_translation.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
