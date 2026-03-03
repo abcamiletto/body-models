@@ -63,6 +63,6 @@ if [[ "$DENOISE" == "1" ]]; then
   render_args+=(--denoise)
 fi
 
-blender -b -P scripts/teaser/render_readme_blender.py -- "${render_args[@]}"
+blender -b --python-exit-code 1 -P scripts/teaser/render_readme_blender.py -- "${render_args[@]}"
 
 echo "Teaser image written to: $OUTPUT_PATH"

@@ -154,10 +154,7 @@ def create_mesh_object(vertices: np.ndarray, faces: np.ndarray, name: str) -> bp
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
     bpy.ops.object.shade_smooth()
-
-    if hasattr(obj.data, "use_auto_smooth"):
-        obj.data.use_auto_smooth = True
-        obj.data.auto_smooth_angle = np.radians(30.0)
+    bpy.ops.object.shade_auto_smooth(use_auto_smooth=True, angle=np.radians(30.0))
 
     return obj
 
@@ -187,10 +184,7 @@ def build_material(name: str, color: tuple[float, float, float, float]) -> bpy.t
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Metallic"].default_value = 0.0
     bsdf.inputs["Roughness"].default_value = 0.45
-    if "Specular IOR Level" in bsdf.inputs:
-        bsdf.inputs["Specular IOR Level"].default_value = 0.18
-    elif "Specular" in bsdf.inputs:
-        bsdf.inputs["Specular"].default_value = 0.18
+    bsdf.inputs["Specular IOR Level"].default_value = 0.18
 
     links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
     return mat
@@ -200,10 +194,9 @@ def add_ground(size: float) -> None:
     bpy.ops.mesh.primitive_plane_add(size=size, location=(0.0, 0.0, 0.0))
     ground = bpy.context.active_object
     mat = build_material("GroundMaterial", (0.09, 0.10, 0.17, 1.0))
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
-    if bsdf:
-        bsdf.inputs["Roughness"].default_value = 0.95
-        bsdf.inputs["Metallic"].default_value = 0.0
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = 0.95
+    bsdf.inputs["Metallic"].default_value = 0.0
     ground.data.materials.append(mat)
 
 
@@ -228,10 +221,9 @@ def set_world_background() -> None:
     world = bpy.data.worlds[0] if bpy.data.worlds else bpy.data.worlds.new("World")
     bpy.context.scene.world = world
     world.use_nodes = True
-    bg = world.node_tree.nodes.get("Background")
-    if bg:
-        bg.inputs["Color"].default_value = (0.02, 0.02, 0.06, 1.0)
-        bg.inputs["Strength"].default_value = 0.25
+    bg = world.node_tree.nodes["Background"]
+    bg.inputs["Color"].default_value = (0.02, 0.02, 0.06, 1.0)
+    bg.inputs["Strength"].default_value = 0.25
 
 
 def scene_bounds(objects: list[bpy.types.Object]) -> tuple[np.ndarray, np.ndarray]:
@@ -363,23 +355,16 @@ def configure_render(args: argparse.Namespace, output_path: Path) -> None:
     if args.engine == "CYCLES":
         scene.cycles.samples = args.samples
         scene.cycles.use_adaptive_sampling = True
-        if hasattr(scene.cycles, "adaptive_threshold"):
-            scene.cycles.adaptive_threshold = args.adaptive_threshold
+        scene.cycles.adaptive_threshold = args.adaptive_threshold
         scene.cycles.max_bounces = args.max_bounces
         scene.cycles.diffuse_bounces = args.diffuse_bounces
         scene.cycles.glossy_bounces = args.glossy_bounces
-        if hasattr(scene.cycles, "transmission_bounces"):
-            scene.cycles.transmission_bounces = args.transmission_bounces
-        if hasattr(scene.cycles, "transparent_max_bounces"):
-            scene.cycles.transparent_max_bounces = args.transparent_max_bounces
-        if hasattr(scene.cycles, "volume_bounces"):
-            scene.cycles.volume_bounces = args.volume_bounces
-        if hasattr(scene.cycles, "caustics_reflective"):
-            scene.cycles.caustics_reflective = True
-        if hasattr(scene.cycles, "caustics_refractive"):
-            scene.cycles.caustics_refractive = True
-        if hasattr(scene.cycles, "use_denoising"):
-            scene.cycles.use_denoising = bool(args.denoise)
+        scene.cycles.transmission_bounces = args.transmission_bounces
+        scene.cycles.transparent_max_bounces = args.transparent_max_bounces
+        scene.cycles.volume_bounces = args.volume_bounces
+        scene.cycles.caustics_reflective = True
+        scene.cycles.caustics_refractive = True
+        scene.cycles.use_denoising = bool(args.denoise)
     else:
         scene.eevee.taa_render_samples = 64
 
@@ -404,12 +389,10 @@ def main() -> None:
         verts, faces = parse_obj_mesh(obj_path)
         loaded.append((fam, verts, faces))
 
-    if not loaded:
-        raise RuntimeError(f"No OBJ meshes found in {mesh_dir}")
-
-    print(f"Loaded families: {[x[0] for x in loaded]}", flush=True)
     if missing:
-        print(f"Missing families: {missing}", flush=True)
+        missing_joined = ", ".join(missing)
+        raise RuntimeError(f"Missing required OBJ meshes in {mesh_dir}: {missing_joined}")
+    print(f"Loaded families: {[x[0] for x in loaded]}", flush=True)
 
     print("[3/9] Building scene...", flush=True)
     clear_scene()
