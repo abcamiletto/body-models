@@ -18,6 +18,7 @@ set -euo pipefail
 #   WIDTH=2200
 #   HEIGHT=1200
 #   MESH_DIR=/abs/or/rel/path
+#   BLENDER=blender
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_PATH="${1:-$ROOT_DIR/assets/readme/body-model-lineup.png}"
@@ -34,6 +35,7 @@ ADAPTIVE_THRESHOLD="${ADAPTIVE_THRESHOLD:-0.003}"
 DENOISE="${DENOISE:-0}"
 WIDTH="${WIDTH:-2200}"
 HEIGHT="${HEIGHT:-1200}"
+BLENDER="${BLENDER:-blender}"
 
 mkdir -p "$(dirname "$OUTPUT_PATH")" "$MESH_DIR"
 cd "$ROOT_DIR"
@@ -63,6 +65,6 @@ if [[ "$DENOISE" == "1" ]]; then
   render_args+=(--denoise)
 fi
 
-blender -b --python-exit-code 1 -P scripts/teaser/render_readme_blender.py -- "${render_args[@]}"
+"$BLENDER" -b --python-exit-code 1 -P scripts/teaser/render_readme_blender.py -- "${render_args[@]}"
 
 echo "Teaser image written to: $OUTPUT_PATH"
