@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Export canonical body-model family meshes to OBJ for Blender README renders.
-
-By default this exports the README lineup: smpl, smplx, skel, mhr, anny.
-Optional families (e.g. flame) can be requested via `--families`.
-For ANNY and MHR, we apply a tuned display pose to match the lineup's T-pose style.
-"""
+"""Export canonical body-model family meshes to OBJ for the README teaser render."""
 
 from __future__ import annotations
 
@@ -14,9 +9,7 @@ from typing import Any
 
 import numpy as np
 
-LINEUP_FAMILIES = ("smpl", "smplx", "skel", "mhr", "anny")
-EXTRA_FAMILIES = ("flame",)
-ALL_FAMILIES = LINEUP_FAMILIES + EXTRA_FAMILIES
+FAMILIES = ("smpl", "smplx", "skel", "mhr", "anny")
 
 # Tuned display-pose offsets for README rendering.
 # Mapping key is (joint_name, axis_index) for axis-angle pose entries.
@@ -57,8 +50,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--families",
         nargs="+",
-        choices=sorted(ALL_FAMILIES),
-        default=list(LINEUP_FAMILIES),
+        choices=sorted(FAMILIES),
+        default=list(FAMILIES),
         help="Families to export",
     )
     return parser.parse_args()
@@ -90,12 +83,8 @@ def _clone_params(params: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     return {k: np.array(v, copy=True) for k, v in params.items()}
 
 
-def _joint_index_map(model: Any) -> dict[str, int]:
-    return {name.lower(): i for i, name in enumerate(model.joint_names)}
-
-
 def _require_joint_indices(model: Any, names: list[str]) -> dict[str, int]:
-    idx = _joint_index_map(model)
+    idx = {name.lower(): i for i, name in enumerate(model.joint_names)}
     missing = [n for n in names if n not in idx]
     if missing:
         raise ValueError(f"Missing joints for pose adapter: {missing}")
@@ -112,15 +101,14 @@ def _apply_anny_display_pose(model: Any, params: dict[str, np.ndarray]) -> dict[
 
 
 def _solve_mhr_display_pose_vector(model: Any) -> np.ndarray:
-    idx = _require_joint_indices(model, [t[0] for t in MHR_TARGETS])
-    pose_dim = model.pose_dim
-    pt = np.asarray(model.parameter_transform, dtype=np.float64)
-
+    idx = _require_joint_indices(model, [joint for joint, _, _ in MHR_TARGETS])
     rows = [idx[joint] * 7 + component for joint, component, _ in MHR_TARGETS]
     targets = [target for _, _, target in MHR_TARGETS]
-    system = pt[np.asarray(rows, dtype=np.int64), :pose_dim]
-    b = np.asarray(targets, dtype=np.float64)
-    x, *_ = np.linalg.lstsq(system, b, rcond=1e-4)
+
+    transform = np.asarray(model.parameter_transform, dtype=np.float64)
+    system = transform[np.asarray(rows, dtype=np.int64), : model.pose_dim]
+    rhs = np.asarray(targets, dtype=np.float64)
+    x, *_ = np.linalg.lstsq(system, rhs, rcond=1e-4)
     return x.astype(np.float32)
 
 
@@ -128,64 +116,37 @@ def canonical_vertices(model: Any, family: str) -> np.ndarray:
     if family == "anny":
         params = _apply_anny_display_pose(model, model.get_rest_pose(batch_size=1))
         return np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
+
     if family == "mhr":
         params = _clone_params(model.get_rest_pose(batch_size=1))
         params["pose"][0] = _solve_mhr_display_pose_vector(model)
         return np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
+
     return np.asarray(model.rest_vertices, dtype=np.float32)
 
 
-def _load_smpl() -> Any:
-    from body_models.smpl.numpy import SMPL
-
-    return SMPL(gender="neutral")
-
-
-def _load_smplx() -> Any:
-    from body_models.smplx.numpy import SMPLX
-
-    return SMPLX(gender="neutral")
-
-
-def _load_skel() -> Any:
-    from body_models.skel.numpy import SKEL
-
-    return SKEL(gender="male")
-
-
-def _load_mhr() -> Any:
-    from body_models.mhr.numpy import MHR
-
-    return MHR()
-
-
-def _load_anny() -> Any:
-    from body_models.anny.numpy import ANNY
-
-    return ANNY()
-
-
-def _load_flame() -> Any:
-    from body_models.flame.numpy import FLAME
-
-    return FLAME()
-
-
-MODEL_LOADERS = {
-    "smpl": _load_smpl,
-    "smplx": _load_smplx,
-    "skel": _load_skel,
-    "mhr": _load_mhr,
-    "anny": _load_anny,
-    "flame": _load_flame,
-}
-
-
 def load_model(family: str) -> Any:
-    try:
-        return MODEL_LOADERS[family]()
-    except KeyError as e:
-        raise ValueError(f"Unknown family: {family}") from e
+    if family == "smpl":
+        from body_models.smpl.numpy import SMPL
+
+        return SMPL(gender="neutral")
+    if family == "smplx":
+        from body_models.smplx.numpy import SMPLX
+
+        return SMPLX(gender="neutral")
+    if family == "skel":
+        from body_models.skel.numpy import SKEL
+
+        return SKEL(gender="male")
+    if family == "mhr":
+        from body_models.mhr.numpy import MHR
+
+        return MHR()
+    if family == "anny":
+        from body_models.anny.numpy import ANNY
+
+        return ANNY()
+    raise ValueError(f"Unknown family: {family}")
 
 
 def export_model(out_dir: Path, family: str) -> None:

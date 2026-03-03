@@ -5,7 +5,6 @@ set -euo pipefail
 # Usage:
 #   scripts/teaser/run_teaser.sh [output_png]
 # Environment overrides:
-#   ENGINE=CYCLES|BLENDER_EEVEE
 #   SAMPLES=512
 #   MAX_BOUNCES=14
 #   DIFFUSE_BOUNCES=6
@@ -23,7 +22,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_PATH="${1:-$ROOT_DIR/assets/readme/body-model-lineup.png}"
 MESH_DIR="${MESH_DIR:-$ROOT_DIR/scripts/teaser/.meshes}"
-ENGINE="${ENGINE:-CYCLES}"
 SAMPLES="${SAMPLES:-512}"
 MAX_BOUNCES="${MAX_BOUNCES:-14}"
 DIFFUSE_BOUNCES="${DIFFUSE_BOUNCES:-6}"
@@ -40,15 +38,11 @@ BLENDER="${BLENDER:-blender}"
 mkdir -p "$(dirname "$OUTPUT_PATH")" "$MESH_DIR"
 cd "$ROOT_DIR"
 
-uv run python scripts/teaser/export_readme_meshes.py \
-  --out "$MESH_DIR" \
-  --families smpl smplx skel mhr anny
+uv run python scripts/teaser/export_readme_meshes.py --out "$MESH_DIR"
 
 render_args=(
   --mesh-dir "$MESH_DIR"
-  --skip-export
   --output "$OUTPUT_PATH"
-  --engine "$ENGINE"
   --samples "$SAMPLES"
   --max-bounces "$MAX_BOUNCES"
   --diffuse-bounces "$DIFFUSE_BOUNCES"
