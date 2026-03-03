@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import bpy
+from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 import numpy as np
 
@@ -23,6 +24,7 @@ PASTELS = (
 AUTO_SMOOTH_ANGLE = np.radians(30.0)
 MODEL_HEIGHT = 1.75
 MODEL_GAP = 0.30
+BORDER_PAD = 0.03
 
 
 def blender_argv() -> list[str]:
@@ -233,7 +235,10 @@ def set_camera(model_objects: list[bpy.types.Object]) -> bpy.types.Object:
     return cam
 
 
-def add_family_labels(names: list[str], model_objects: list[bpy.types.Object], camera: bpy.types.Object) -> None:
+def add_family_labels(
+    names: list[str], model_objects: list[bpy.types.Object], camera: bpy.types.Object
+) -> list[bpy.types.Object]:
+    labels: list[bpy.types.Object] = []
     for name, obj in zip(names, model_objects):
         mins, maxs = object_bounds(obj)
         center = 0.5 * (mins + maxs)
@@ -256,6 +261,33 @@ def add_family_labels(names: list[str], model_objects: list[bpy.types.Object], c
         constraint.up_axis = "UP_Y"
 
         label.data.materials.append(build_material(f"{name}_LabelMaterial", (0.93, 0.94, 0.95, 1.0)))
+        labels.append(label)
+    return labels
+
+
+def set_render_border(camera: bpy.types.Object, objects: list[bpy.types.Object], pad: float = BORDER_PAD) -> None:
+    scene = bpy.context.scene
+    bpy.context.view_layer.update()
+    min_x, min_y = 1.0, 1.0
+    max_x, max_y = 0.0, 0.0
+    for obj in objects:
+        if obj.type == "MESH":
+            points = (obj.matrix_world @ v.co for v in obj.data.vertices)
+        else:
+            points = (obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+        for co in points:
+            ndc = world_to_camera_view(scene, camera, co)
+            min_x = min(min_x, float(ndc.x))
+            min_y = min(min_y, float(ndc.y))
+            max_x = max(max_x, float(ndc.x))
+            max_y = max(max_y, float(ndc.y))
+
+    scene.render.use_border = True
+    scene.render.use_crop_to_border = True
+    scene.render.border_min_x = max(0.0, min_x - pad)
+    scene.render.border_min_y = max(0.0, min_y - pad)
+    scene.render.border_max_x = min(1.0, max_x + pad)
+    scene.render.border_max_y = min(1.0, max_y + pad)
 
 
 def configure_render(args: argparse.Namespace, output_path: Path) -> None:
@@ -308,7 +340,8 @@ def main() -> None:
     camera = set_camera(model_objects)
 
     print("[5/7] Adding labels...", flush=True)
-    add_family_labels([name for name, _, _ in loaded], model_objects, camera)
+    labels = add_family_labels([name for name, _, _ in loaded], model_objects, camera)
+    set_render_border(camera, model_objects + labels)
 
     print("[6/7] Configuring renderer...", flush=True)
     configure_render(args, output_path)
