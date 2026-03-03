@@ -4,14 +4,6 @@ A unified library for parametric human body models.
 
 Provides a ~shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, and MHR body models.
 
-![Body model lineup](assets/readme/body-model-lineup.png)
-
-To regenerate this teaser image:
-
-```bash
-scripts/teaser/run_teaser.sh
-```
-
 Supports:
 - PyTorch, NumPy, and JAX backends
 - forward kinematics disentangled from mesh skinning (`forward_skeleton` and `forward_vertices` methods)
