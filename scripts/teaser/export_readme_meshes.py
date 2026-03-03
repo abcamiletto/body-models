@@ -76,7 +76,7 @@ def write_obj(path: Path, vertices: np.ndarray, faces: np.ndarray) -> None:
         for x, y, z in vertices:
             f.write(f"v {x:.8f} {y:.8f} {z:.8f}\n")
         for a, b, c in faces:
-            f.write(f"f {int(a)+1} {int(b)+1} {int(c)+1}\n")  # OBJ is 1-indexed
+            f.write(f"f {int(a) + 1} {int(b) + 1} {int(c) + 1}\n")  # OBJ is 1-indexed
 
 
 def _clone_params(params: dict[str, np.ndarray]) -> dict[str, np.ndarray]:

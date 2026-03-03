@@ -58,7 +58,10 @@ url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.ty.src]
-exclude = ["tests/"]
+exclude = [
+    "tests/",
+    "scripts/teaser/render_readme_blender.py",
+]
 
 [tool.ruff]
 line-length = 120
