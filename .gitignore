@@ -220,8 +220,3 @@ __marimo__/
 
 # Test assets (model files, reference inputs/outputs)
 tests/assets/
-
-# Local README render artifacts
-README_render*.png
-scripts/.readme_meshes/
-scripts/teaser/.meshes/
