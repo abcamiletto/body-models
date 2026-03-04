@@ -1,0 +1,33 @@
+[package]
+name = "body-models-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["npz"]
+npz = ["zip"]
+gpu = ["wgpu", "pollster"]
+js = ["wasm-bindgen", "js-sys", "web-sys", "console_error_panic_hook"]
+
+[dependencies]
+nalgebra = "0.33"
+bytemuck = { version = "1", features = ["derive"] }
+
+# NPZ/NPY parsing (optional, on by default)
+zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+
+# GPU backend (optional)
+wgpu = { version = "24", optional = true }
+pollster = { version = "0.4", optional = true }
+
+# WASM/JS interop (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["console"] }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[dev-dependencies]
+approx = "0.5"
