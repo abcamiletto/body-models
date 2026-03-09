@@ -181,7 +181,12 @@ def _forward_core(
     # Build full pose with pelvis rotation
     body_pose_matrices = SO3.convert(body_pose, src=rotation_type, dst="matrix", xp=xp)
     if pelvis_rotation is None:
-        pelvis_matrices = SO3.identity_as(body_pose_matrices[:, :1], rotation_type="matrix", xp=xp)
+        pelvis_matrices = SO3.identity_as(
+            body_pose_matrices,
+            batch_dims=(B, 1),
+            rotation_type="matrix",
+            xp=xp,
+        )
     else:
         pelvis_matrices = SO3.convert(
             pelvis_rotation,

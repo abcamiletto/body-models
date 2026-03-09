@@ -165,11 +165,13 @@ class SMPL(BodyModel, nnx.Module):
             "shape": jnp.zeros((1, 10), dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
+                batch_dims=(batch_size, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
+                batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
