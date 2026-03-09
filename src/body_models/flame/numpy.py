@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 
 from ..base import BodyModel
 from . import core
@@ -41,9 +42,13 @@ class FLAME(BodyModel):
         model_path: Path | str | None = None,
         simplify: float = 1.0,
         ground_plane: bool = True,
+        rotation_type: core.RotationType = "axis_angle",
     ):
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+            raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.ground_plane = ground_plane
+        self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
@@ -120,9 +125,9 @@ class FLAME(BodyModel):
         self,
         shape: Float[np.ndarray, "B|1 N_shape"],
         expression: Float[np.ndarray, "B N_expr"] | None = None,
-        pose: Float[np.ndarray, "B 4 3"] | None = None,
-        head_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        pose: Float[np.ndarray, "B 4 N"] | Float[np.ndarray, "B 4 3 3"] | None = None,
+        head_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
@@ -131,7 +136,12 @@ class FLAME(BodyModel):
         if expression is None:
             expression = np.zeros((B, 100), dtype=np.float32)
         if pose is None:
-            pose = np.zeros((B, self.NUM_HEAD_JOINTS, 3), dtype=np.float32)
+            pose = SO3.identity_as(
+                expression,
+                batch_dims=(B, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=np,
+            )
 
         return core.forward_vertices(
             v_template=self.v_template,
@@ -153,15 +163,16 @@ class FLAME(BodyModel):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
         )
 
     def forward_skeleton(
         self,
         shape: Float[np.ndarray, "B|1 N_shape"],
         expression: Float[np.ndarray, "B N_expr"] | None = None,
-        pose: Float[np.ndarray, "B 4 3"] | None = None,
-        head_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        pose: Float[np.ndarray, "B 4 N"] | Float[np.ndarray, "B 4 3 3"] | None = None,
+        head_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B 5 4 4"]:
         """Compute skeleton joint transforms [B, 5, 4, 4]."""
@@ -170,7 +181,12 @@ class FLAME(BodyModel):
         if expression is None:
             expression = np.zeros((B, 100), dtype=np.float32)
         if pose is None:
-            pose = np.zeros((B, self.NUM_HEAD_JOINTS, 3), dtype=np.float32)
+            pose = SO3.identity_as(
+                expression,
+                batch_dims=(B, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=np,
+            )
 
         return core.forward_skeleton(
             v_template_full=self.v_template_full,
@@ -187,6 +203,7 @@ class FLAME(BodyModel):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
@@ -194,8 +211,23 @@ class FLAME(BodyModel):
         return {
             "shape": np.zeros((1, 300), dtype=dtype),
             "expression": np.zeros((batch_size, 100), dtype=dtype),
-            "pose": np.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), dtype=dtype),
-            "head_rotation": np.zeros((batch_size, 3), dtype=dtype),
-            "global_rotation": np.zeros((batch_size, 3), dtype=dtype),
+            "pose": SO3.identity_as(
+                np.zeros((batch_size, 100), dtype=dtype),
+                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
+            "head_rotation": SO3.identity_as(
+                np.zeros((batch_size, 100), dtype=dtype),
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
+            "global_rotation": SO3.identity_as(
+                np.zeros((batch_size, 100), dtype=dtype),
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
