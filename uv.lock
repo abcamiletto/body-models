@@ -103,10 +103,10 @@ requires-dist = [
     { name = "flax", marker = "extra == 'jax'", specifier = ">=0.10.0" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.33" },
     { name = "jaxtyping", specifier = ">=0.2.28" },
-    { name = "nanomanifold", git = "https://github.com/abcamiletto/nanomanifold.git?tag=v0.4.0" },
+    { name = "nanomanifold", specifier = ">=0.4.1" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "platformdirs", specifier = ">=2.0" },
-    { name = "ptloader", git = "https://github.com/abcamiletto/ptloader.git?tag=v0.3.0" },
+    { name = "ptloader", specifier = "==0.3.0" },
     { name = "pyfqmr", specifier = ">=0.3.0" },
     { name = "scipy", specifier = ">=1.13.0" },
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu126" },
@@ -994,12 +994,16 @@ wheels = [
 
 [[package]]
 name = "nanomanifold"
-version = "0.4.0"
-source = { git = "https://github.com/abcamiletto/nanomanifold.git?tag=v0.4.0#0e2c8ec6721c358e98146a58422812baeea94908" }
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "array-api-compat" },
     { name = "jaxtyping" },
     { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/77/e2/4420ade5dfa23ac139ba0066ba4f850b056d69abe42b016e20cc14188adc/nanomanifold-0.4.1.tar.gz", hash = "sha256:68e68eb9845b9b907d713b2950d1ec8aac460857231da36fa2595f83c46f48b9", size = 91963, upload-time = "2026-03-09T19:40:21.918Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/ca/bb595558444d2476a7aed3147b756490d45508b6bdd81d43c8e045e01c4a/nanomanifold-0.4.1-py3-none-any.whl", hash = "sha256:22c01b8c5ae3f12d80d2be4ae80ee09f8dec3d39abf210d0d599573a1b34c80a", size = 40096, upload-time = "2026-03-09T19:40:20.983Z" },
 ]
 
 [[package]]
@@ -1481,9 +1485,13 @@ wheels = [
 [[package]]
 name = "ptloader"
 version = "0.3.0"
-source = { git = "https://github.com/abcamiletto/ptloader.git?tag=v0.3.0#03beb2779d9b6636eec7d8d239ddd786470948d4" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a6/e6/7be97b01d4fb7c4989d42f8229f8546f69730ea05ceea56015c86530602b/ptloader-0.3.0.tar.gz", hash = "sha256:4d97502aea650c0f9b2ec6f8c0563f9483829aedcbc1951392bd58a6c79e0bfd", size = 4539, upload-time = "2026-03-01T08:31:48.672Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/a8/cd541220b579ebc8b8a3f490882c7329c81932c1a30004991ecdfc4d3a0e/ptloader-0.3.0-py3-none-any.whl", hash = "sha256:08bceef691a5c5fa8e7dd21563e0c8d2e0e3b5bfc0169570a0fe8bd6295300b8", size = 5428, upload-time = "2026-03-01T08:31:47.792Z" },
 ]
 
 [[package]]

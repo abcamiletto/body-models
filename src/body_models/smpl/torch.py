@@ -179,11 +179,13 @@ class SMPL(BodyModel, nn.Module):
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
+                batch_dims=(batch_size, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
+                batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
