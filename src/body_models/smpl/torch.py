@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 from torch import Tensor
 
 from ..base import BodyModel
@@ -33,15 +34,19 @@ class SMPL(BodyModel, nn.Module):
         gender: str | None = None,
         simplify: float = 1.0,
         ground_plane: bool = True,
+        rotation_type: core.RotationType = "axis_angle",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
+        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+            raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
         super().__init__()
 
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
         self.ground_plane = ground_plane
+        self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)
         data = load_model_data(resolved_path)
@@ -117,9 +122,9 @@ class SMPL(BodyModel, nn.Module):
     def forward_vertices(
         self,
         shape: Float[Tensor, "B|1 10"],
-        body_pose: Float[Tensor, "B 23 3"],
-        pelvis_rotation: Float[Tensor, "B 3"] | None = None,
-        global_rotation: Float[Tensor, "B 3"] | None = None,
+        body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B V 3"]:
         return core.forward_vertices(
@@ -138,15 +143,16 @@ class SMPL(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
             xp=torch,
         )
 
     def forward_skeleton(
         self,
         shape: Float[Tensor, "B|1 10"],
-        body_pose: Float[Tensor, "B 23 3"],
-        pelvis_rotation: Float[Tensor, "B 3"] | None = None,
-        global_rotation: Float[Tensor, "B 3"] | None = None,
+        body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B 24 4 4"]:
         return core.forward_skeleton(
@@ -161,15 +167,26 @@ class SMPL(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
             xp=torch,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.v_template.device
+        body_pose_ref = torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
+        pelvis_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         return {
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
-            "body_pose": torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype),
-            "pelvis_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "body_pose": SO3.identity_as(
+                body_pose_ref,
+                rotation_type=self.rotation_type,
+                xp=torch,
+            ),
+            "pelvis_rotation": SO3.identity_as(
+                pelvis_ref,
+                rotation_type=self.rotation_type,
+                xp=torch,
+            ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 

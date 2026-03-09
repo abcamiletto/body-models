@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 
 from ..base import BodyModel
 from . import core
@@ -24,14 +25,18 @@ class SMPL(BodyModel):
         gender: str | None = None,
         simplify: float = 1.0,
         ground_plane: bool = True,
+        rotation_type: core.RotationType = "axis_angle",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
+        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+            raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
 
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
         self.ground_plane = ground_plane
+        self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)
         data = load_model_data(resolved_path)
@@ -100,9 +105,9 @@ class SMPL(BodyModel):
     def forward_vertices(
         self,
         shape: Float[np.ndarray, "B|1 10"],
-        body_pose: Float[np.ndarray, "B 23 3"],
-        pelvis_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        body_pose: Float[np.ndarray, "B 23 N"] | Float[np.ndarray, "B 23 3 3"],
+        pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
@@ -121,14 +126,15 @@ class SMPL(BodyModel):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
         )
 
     def forward_skeleton(
         self,
         shape: Float[np.ndarray, "B|1 10"],
-        body_pose: Float[np.ndarray, "B 23 3"],
-        pelvis_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
+        body_pose: Float[np.ndarray, "B 23 N"] | Float[np.ndarray, "B 23 3 3"],
+        pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
         return core.forward_skeleton(
@@ -143,12 +149,23 @@ class SMPL(BodyModel):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+        body_pose_ref = np.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype)
+        pelvis_ref = np.zeros((batch_size, 3), dtype=dtype)
         return {
             "shape": np.zeros((1, 10), dtype=dtype),
-            "body_pose": np.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype),
-            "pelvis_rotation": np.zeros((batch_size, 3), dtype=dtype),
+            "body_pose": SO3.identity_as(
+                body_pose_ref,
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
+            "pelvis_rotation": SO3.identity_as(
+                pelvis_ref,
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }

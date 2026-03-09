@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "array-api-compat>=1.4",
     "jaxtyping>=0.2.28",
-    "nanomanifold>=0.3.0",
+    "nanomanifold>=0.4.0",
     "numpy>=2.0.0",
     "platformdirs>=2.0",
     "ptloader==0.3.0",
@@ -52,6 +52,7 @@ dev = [
 torch = [
     { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+nanomanifold = { git = "https://github.com/abcamiletto/nanomanifold.git", tag = "v0.4.0" }
 ptloader = { git = "https://github.com/abcamiletto/ptloader.git", tag = "v0.3.0" }
 
 [[tool.uv.index]]

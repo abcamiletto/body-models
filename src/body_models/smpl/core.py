@@ -1,6 +1,6 @@
 """Backend-agnostic SMPL computation using array_api_compat."""
 
-from typing import Any
+from typing import Any, Literal
 
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
@@ -9,6 +9,7 @@ from nanomanifold import SO3
 from .. import common
 
 Array = Any  # Generic array type (numpy, torch, jax)
+RotationType = Literal["axis_angle", "quat", "sixd", "matrix"]
 
 
 def forward_vertices(
@@ -24,19 +25,17 @@ def forward_vertices(
     rest_pose_y_offset: float,
     # Inputs
     shape: Float[Array, "B 10"],
-    body_pose: Float[Array, "B 23 3"],
-    pelvis_rotation: Float[Array, "B 3"] | None = None,
-    global_rotation: Float[Array, "B 3"] | None = None,
+    body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
+    pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     ground_plane: bool = True,
+    rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
     assert shape.ndim == 2 and shape.shape[1] >= 1
-    assert body_pose.ndim == 3 and body_pose.shape[1:] == (23, 3)
-    assert pelvis_rotation is None or (pelvis_rotation.ndim == 2 and pelvis_rotation.shape[1] == 3)
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
     if xp is None:
@@ -52,9 +51,10 @@ def forward_vertices(
         parents=parents,
         kinematic_fronts=kinematic_fronts,
         shape=shape,
-        body_pose=body_pose.reshape(B, -1),
+        body_pose=body_pose,
         pelvis_rotation=pelvis_rotation,
         skeleton_only=False,
+        rotation_type=rotation_type,
     )
 
     # Precomputed offset to place feet on ground plane
@@ -73,7 +73,7 @@ def forward_vertices(
     v_posed = xp.squeeze(W_R @ v_shaped[..., None], axis=-1) + W_t
 
     # Apply global transform
-    v_posed = _apply_global_transform(xp, v_posed, global_rotation, global_translation)
+    v_posed = _apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
@@ -93,24 +93,21 @@ def forward_skeleton(
     rest_pose_y_offset: float,
     # Inputs
     shape: Float[Array, "B 10"],
-    body_pose: Float[Array, "B 23 3"],
-    pelvis_rotation: Float[Array, "B 3"] | None = None,
-    global_rotation: Float[Array, "B 3"] | None = None,
+    body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
+    pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     ground_plane: bool = True,
+    rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton joint transforms [B, J, 4, 4]."""
     assert shape.ndim == 2 and shape.shape[1] >= 1
-    assert body_pose.ndim == 3 and body_pose.shape[1:] == (23, 3)
-    assert pelvis_rotation is None or (pelvis_rotation.ndim == 2 and pelvis_rotation.shape[1] == 3)
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
     if xp is None:
         xp = get_namespace(shape)
-    B = body_pose.shape[0]
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -121,9 +118,10 @@ def forward_skeleton(
         parents=parents,
         kinematic_fronts=kinematic_fronts,
         shape=shape,
-        body_pose=body_pose.reshape(B, -1),
+        body_pose=body_pose,
         pelvis_rotation=pelvis_rotation,
         skeleton_only=True,
+        rotation_type=rotation_type,
     )
 
     # Precomputed offset to place feet on ground plane
@@ -135,7 +133,14 @@ def forward_skeleton(
 
     # Apply global transform
     if global_rotation is not None or global_translation is not None:
-        R_world, t_world = _apply_global_transform_to_rt(xp, R_world, t_world, global_rotation, global_translation)
+        R_world, t_world = _apply_global_transform_to_rt(
+            xp,
+            R_world,
+            t_world,
+            global_rotation,
+            global_translation,
+            rotation_type,
+        )
 
     # Apply ground plane offset (shift Y up by precomputed amount)
     if y_offset != 0.0:
@@ -156,9 +161,10 @@ def _forward_core(
     parents: Int[Array, "J"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
     shape: Float[Array, "B 10"],
-    body_pose: Float[Array, "B 69"],
-    pelvis_rotation: Float[Array, "B 3"] | None,
+    body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
+    pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
     skeleton_only: bool,
+    rotation_type: RotationType,
 ) -> tuple[
     Float[Array, "B V 3"] | None,
     Float[Array, "B J 3"],
@@ -173,12 +179,17 @@ def _forward_core(
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
     # Build full pose with pelvis rotation
+    body_pose_matrices = SO3.convert(body_pose, src=rotation_type, dst="matrix", xp=xp)
     if pelvis_rotation is None:
-        pelvis = common.zeros_as(shape, shape=(B, 3), xp=xp)
+        pelvis_matrices = SO3.identity_as(body_pose_matrices[:, :1], rotation_type="matrix", xp=xp)
     else:
-        pelvis = pelvis_rotation
-    pose = xp.concat([pelvis, body_pose], axis=-1).reshape(B, -1, 3)
-    pose_matrices = SO3.conversions.from_axis_angle_to_matrix(pose, xp=xp)
+        pelvis_matrices = SO3.convert(
+            pelvis_rotation,
+            src=rotation_type,
+            dst="matrix",
+            xp=xp,
+        )[:, None]
+    pose_matrices = xp.concat([pelvis_matrices, body_pose_matrices], axis=1)
 
     # Joint locations from precomputed regression matrices
     j_t = j_template + xp.einsum("...p,jdp->...jd", shape, j_shapedirs[:, :, : shape.shape[-1]])
@@ -254,12 +265,13 @@ def _build_transform_matrix(
 def _apply_global_transform(
     xp,
     points: Float[Array, "B N 3"],
-    rotation: Float[Array, "B 3"] | None,
+    rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
     translation: Float[Array, "B 3"] | None,
+    rotation_type: RotationType,
 ) -> Float[Array, "B N 3"]:
     """Apply global rotation and translation to points [B, N, 3]."""
     if rotation is not None:
-        R = SO3.conversions.from_axis_angle_to_matrix(rotation, xp=xp)
+        R = SO3.convert(rotation, src=rotation_type, dst="matrix", xp=xp)
         points = (R @ points.mT).mT
     if translation is not None:
         points = points + translation[:, None]
@@ -270,12 +282,13 @@ def _apply_global_transform_to_rt(
     xp,
     R: Float[Array, "B J 3 3"],
     t: Float[Array, "B J 3"],
-    rotation: Float[Array, "B 3"] | None,
+    rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
     translation: Float[Array, "B 3"] | None,
+    rotation_type: RotationType,
 ) -> tuple[Float[Array, "B J 3 3"], Float[Array, "B J 3"]]:
     """Apply global rotation and translation to R, t components."""
     if rotation is not None:
-        R_global = SO3.conversions.from_axis_angle_to_matrix(rotation, xp=xp)
+        R_global = SO3.convert(rotation, src=rotation_type, dst="matrix", xp=xp)
         # Transform t: R_global @ t
         t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)
