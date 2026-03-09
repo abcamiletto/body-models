@@ -6,12 +6,15 @@
 """
 
 import json
+from contextlib import nullcontext
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 import torch
+from nanomanifold import SO3
 
 from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
@@ -22,6 +25,7 @@ INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
 RTOL, ATOL = 5e-4, 2e-4
+ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix"]
 
 if not MODEL_PATH.exists():
     pytest.skip(f"ANNY model not found at {MODEL_PATH}", allow_module_level=True)
@@ -50,6 +54,42 @@ def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
         "bone_poses": np.load(OUTPUTS_DIR / str(idx) / "bone_poses.npy"),
     }
     return inputs, outputs
+
+
+def convert_rotation_inputs(inputs: dict[str, Any], rotation_type: str) -> dict[str, Any]:
+    if rotation_type == "axis_angle":
+        return inputs
+
+    return {
+        **{k: inputs[k] for k in ["gender", "age", "muscle", "weight", "height", "proportions"]},
+        "pose": SO3.convert(inputs["pose"], src="axis_angle", dst=rotation_type, xp=np),
+        "global_rotation": SO3.convert(inputs["global_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+    }
+
+
+def _anny_backend(backend: str):
+    if backend == "jax":
+        pytest.importorskip("jax.numpy")
+    module = import_module(f"body_models.anny.{backend}")
+    package = import_module("body_models.anny")
+    return getattr(module, "ANNY"), package.from_native_args, package.to_native_outputs
+
+
+def _backend_array(backend: str, value):
+    if isinstance(value, np.ndarray):
+        if backend == "torch":
+            return torch.tensor(value)
+        if backend == "jax":
+            import jax.numpy as jnp
+
+            return jnp.array(value)
+    return value
+
+
+def _to_numpy(backend: str, value):
+    if backend == "torch":
+        return value.numpy()
+    return np.asarray(value)
 
 
 # ============================================================================
@@ -173,6 +213,73 @@ def test_forward_vertices_jax(idx: int) -> None:
 
     np.testing.assert_allclose(np.asarray(result["vertices"][0]), ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(np.asarray(result["bone_poses"][0]), ref["bone_poses"], rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+@pytest.mark.parametrize("rotation_type", ROTATION_TYPES)
+def test_rotation_types(rotation_type: str, backend: str) -> None:
+    """Test ANNY matches axis-angle across rotation representations."""
+    ANNY, from_native_args, to_native_outputs = _anny_backend(backend)
+    inputs, _ = load_test_case(0)
+
+    pose_args = from_native_args(_backend_array(backend, inputs["pose_4x4"][None]))
+    pose_axis_angle = _to_numpy(backend, pose_args["pose"])[0]
+    native_inputs = {
+        **{
+            k: np.array([inputs[k]], dtype=np.float32)
+            for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
+        },
+        "pose": pose_axis_angle,
+        "global_rotation": np.zeros((3,), dtype=np.float32),
+    }
+    rotated_inputs = convert_rotation_inputs(native_inputs, rotation_type)
+
+    native_model = ANNY(model_path=MODEL_PATH)
+    rotated_model = ANNY(model_path=MODEL_PATH, rotation_type=rotation_type)
+
+    native_kwargs = {
+        "gender": _backend_array(backend, native_inputs["gender"]),
+        "age": _backend_array(backend, native_inputs["age"]),
+        "muscle": _backend_array(backend, native_inputs["muscle"]),
+        "weight": _backend_array(backend, native_inputs["weight"]),
+        "height": _backend_array(backend, native_inputs["height"]),
+        "proportions": _backend_array(backend, native_inputs["proportions"]),
+        "pose": _backend_array(backend, native_inputs["pose"][None]),
+        "global_rotation": _backend_array(backend, native_inputs["global_rotation"][None]),
+    }
+    rotated_kwargs = {
+        "gender": _backend_array(backend, rotated_inputs["gender"]),
+        "age": _backend_array(backend, rotated_inputs["age"]),
+        "muscle": _backend_array(backend, rotated_inputs["muscle"]),
+        "weight": _backend_array(backend, rotated_inputs["weight"]),
+        "height": _backend_array(backend, rotated_inputs["height"]),
+        "proportions": _backend_array(backend, rotated_inputs["proportions"]),
+        "pose": _backend_array(backend, rotated_inputs["pose"][None]),
+        "global_rotation": _backend_array(backend, rotated_inputs["global_rotation"][None]),
+    }
+
+    with torch.no_grad() if backend == "torch" else nullcontext():
+        native_result = to_native_outputs(
+            native_model.forward_vertices(**native_kwargs),
+            native_model.forward_skeleton(**native_kwargs),
+        )
+        rotated_result = to_native_outputs(
+            rotated_model.forward_vertices(**rotated_kwargs),
+            rotated_model.forward_skeleton(**rotated_kwargs),
+        )
+
+    np.testing.assert_allclose(
+        _to_numpy(backend, rotated_result["vertices"]),
+        _to_numpy(backend, native_result["vertices"]),
+        rtol=RTOL,
+        atol=ATOL,
+    )
+    np.testing.assert_allclose(
+        _to_numpy(backend, rotated_result["bone_poses"]),
+        _to_numpy(backend, native_result["bone_poses"]),
+        rtol=RTOL,
+        atol=ATOL,
+    )
 
 
 # ============================================================================

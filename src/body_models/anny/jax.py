@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from flax import nnx
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 
 from ..base import BodyModel
 from . import core
@@ -47,10 +48,13 @@ class ANNY(BodyModel, nnx.Module):
         all_phenotypes: bool = False,
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
+        rotation_type: core.RotationType = "axis_angle",
     ) -> None:
         assert rig in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo")
         assert topology in ("default", "makehuman")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+            raise ValueError(f"Invalid rotation_type: {rotation_type}")
 
         data = load_model_data_numpy(
             model_path=model_path,
@@ -98,6 +102,7 @@ class ANNY(BodyModel, nnx.Module):
 
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
+        self.rotation_type = rotation_type
         self.phenotype_labels = (
             PHENOTYPE_LABELS if all_phenotypes else [x for x in PHENOTYPE_LABELS if x not in EXCLUDED_PHENOTYPES]
         )
@@ -148,8 +153,8 @@ class ANNY(BodyModel, nnx.Module):
         weight: Float[jax.Array, "B"],
         height: Float[jax.Array, "B"],
         proportions: Float[jax.Array, "B"],
-        pose: Float[jax.Array, "B J 3"],
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"],
+        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
@@ -179,6 +184,7 @@ class ANNY(BodyModel, nnx.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            rotation_type=self.rotation_type,
         )
 
     def forward_skeleton(
@@ -189,8 +195,8 @@ class ANNY(BodyModel, nnx.Module):
         weight: Float[jax.Array, "B"],
         height: Float[jax.Array, "B"],
         proportions: Float[jax.Array, "B"],
-        pose: Float[jax.Array, "B J 3"],
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"],
+        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4]."""
@@ -217,6 +223,7 @@ class ANNY(BodyModel, nnx.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
@@ -226,7 +233,17 @@ class ANNY(BodyModel, nnx.Module):
                 k: jnp.full((batch_size,), 0.5, dtype=dtype)
                 for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
-            "pose": jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype),
-            "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "pose": SO3.identity_as(
+                jnp.zeros((batch_size,), dtype=dtype),
+                batch_dims=(batch_size, self.num_joints),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
+            "global_rotation": SO3.identity_as(
+                jnp.zeros((batch_size,), dtype=dtype),
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }

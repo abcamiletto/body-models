@@ -1,6 +1,6 @@
 """Backend-agnostic ANNY computation using array_api_compat."""
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from array_api_compat import get_namespace
@@ -11,6 +11,7 @@ from .. import common
 from .io import PHENOTYPE_VARIATIONS
 
 Array = Any  # Generic array type (numpy, torch, jax)
+RotationType = Literal["axis_angle", "quat", "sixd", "matrix"]
 
 # Coordinate transform constants (Z-up to Y-up)
 COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=np.float32)
@@ -42,9 +43,10 @@ def forward_vertices(
     weight: Float[Array, "B"],
     height: Float[Array, "B"],
     proportions: Float[Array, "B"],
-    pose: Float[Array, "B J 3"],
-    global_rotation: Float[Array, "B 3"] | None = None,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
@@ -55,14 +57,13 @@ def forward_vertices(
     assert weight.ndim == 1
     assert height.ndim == 1
     assert proportions.ndim == 1
-    assert pose.ndim == 3 and pose.shape[2] == 3
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert pose.ndim in (3, 4)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
     if xp is None:
         xp = get_namespace(gender)
 
-    pose_T = _axis_angle_to_transform(xp, pose)
+    pose_T = _pose_to_transform(xp, pose, rotation_type)
     coeffs, _, bone_transforms = _forward_core(
         xp=xp,
         template_bone_heads=template_bone_heads,
@@ -99,7 +100,7 @@ def forward_vertices(
     vertices = vertices @ coord_rotation.T + coord_translation
     if global_rotation is not None:
         global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
-        R_global = SO3.conversions.from_axis_angle_to_matrix(global_rotation, xp=xp)
+        R_global = SO3.convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
         vertices = (R_global @ vertices.mT).mT
     if global_translation is not None:
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
@@ -129,9 +130,10 @@ def forward_skeleton(
     weight: Float[Array, "B"],
     height: Float[Array, "B"],
     proportions: Float[Array, "B"],
-    pose: Float[Array, "B J 3"],
-    global_rotation: Float[Array, "B 3"] | None = None,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
@@ -142,14 +144,13 @@ def forward_skeleton(
     assert weight.ndim == 1
     assert height.ndim == 1
     assert proportions.ndim == 1
-    assert pose.ndim == 3 and pose.shape[2] == 3
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
+    assert pose.ndim in (3, 4)
     assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
 
     if xp is None:
         xp = get_namespace(gender)
 
-    pose_T = _axis_angle_to_transform(xp, pose)
+    pose_T = _pose_to_transform(xp, pose, rotation_type)
     _, bone_poses, _ = _forward_core(
         xp=xp,
         template_bone_heads=template_bone_heads,
@@ -190,7 +191,7 @@ def forward_skeleton(
         G = common.eye_as(transforms, batch_dims=(B,), xp=xp)
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
-            R_global = SO3.conversions.from_axis_angle_to_matrix(global_rotation, xp=xp)
+            R_global = SO3.convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
             G = common.set(G, idx_R, R_global, copy=False, xp=xp)
         if global_translation is not None:
             global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
@@ -437,9 +438,13 @@ def _forward_kinematics(
     return poses_tensor, transforms_tensor
 
 
-def _axis_angle_to_transform(xp, pose: Float[Array, "B J 3"]) -> Float[Array, "B J 4 4"]:
-    """Convert axis-angle pose to 4x4 transforms."""
-    R = SO3.conversions.from_axis_angle_to_matrix(pose, xp=xp)
+def _pose_to_transform(
+    xp,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    rotation_type: RotationType,
+) -> Float[Array, "B J 4 4"]:
+    """Convert per-joint rotations to 4x4 transforms."""
+    R = SO3.convert(pose, src=rotation_type, dst="matrix", xp=xp)
     B, J = R.shape[:2]
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
