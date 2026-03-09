@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from flax import nnx
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 
 from ..base import BodyModel
 from . import core
@@ -44,9 +45,13 @@ class FLAME(BodyModel, nnx.Module):
         model_path: Path | str | None = None,
         simplify: float = 1.0,
         ground_plane: bool = True,
+        rotation_type: core.RotationType = "axis_angle",
     ):
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
         self.ground_plane = ground_plane
+        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+            raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
@@ -123,9 +128,9 @@ class FLAME(BodyModel, nnx.Module):
         self,
         shape: Float[jax.Array, "B|1 N_shape"],
         expression: Float[jax.Array, "B N_expr"] | None = None,
-        pose: Float[jax.Array, "B 4 3"] | None = None,
-        head_rotation: Float[jax.Array, "B 3"] | None = None,
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"] | None = None,
+        head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
@@ -134,7 +139,12 @@ class FLAME(BodyModel, nnx.Module):
         if expression is None:
             expression = jnp.zeros((B, 100), dtype=jnp.float32)
         if pose is None:
-            pose = jnp.zeros((B, self.NUM_HEAD_JOINTS, 3), dtype=jnp.float32)
+            pose = SO3.identity_as(
+                expression,
+                batch_dims=(B, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            )
 
         return core.forward_vertices(
             v_template=self.v_template[...],
@@ -156,15 +166,16 @@ class FLAME(BodyModel, nnx.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
         )
 
     def forward_skeleton(
         self,
         shape: Float[jax.Array, "B|1 N_shape"],
         expression: Float[jax.Array, "B N_expr"] | None = None,
-        pose: Float[jax.Array, "B 4 3"] | None = None,
-        head_rotation: Float[jax.Array, "B 3"] | None = None,
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"] | None = None,
+        head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B 5 4 4"]:
         """Compute skeleton joint transforms [B, 5, 4, 4]."""
@@ -173,7 +184,12 @@ class FLAME(BodyModel, nnx.Module):
         if expression is None:
             expression = jnp.zeros((B, 100), dtype=jnp.float32)
         if pose is None:
-            pose = jnp.zeros((B, self.NUM_HEAD_JOINTS, 3), dtype=jnp.float32)
+            pose = SO3.identity_as(
+                expression,
+                batch_dims=(B, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            )
 
         return core.forward_skeleton(
             v_template_full=self.v_template_full[...],
@@ -190,6 +206,7 @@ class FLAME(BodyModel, nnx.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
@@ -197,8 +214,23 @@ class FLAME(BodyModel, nnx.Module):
         return {
             "shape": jnp.zeros((1, 300), dtype=dtype),
             "expression": jnp.zeros((batch_size, 100), dtype=dtype),
-            "pose": jnp.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), dtype=dtype),
-            "head_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
-            "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "pose": SO3.identity_as(
+                jnp.zeros((batch_size, 100), dtype=dtype),
+                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
+            "head_rotation": SO3.identity_as(
+                jnp.zeros((batch_size, 100), dtype=dtype),
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
+            "global_rotation": SO3.identity_as(
+                jnp.zeros((batch_size, 100), dtype=dtype),
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }

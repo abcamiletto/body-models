@@ -6,12 +6,15 @@
 """
 
 import json
+from contextlib import nullcontext
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 import torch
+from nanomanifold import SO3
 
 from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
@@ -22,6 +25,7 @@ INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
 RTOL, ATOL = 1e-4, 1e-4
+ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix"]
 
 requires_model = pytest.mark.skipif(
     not MODEL_PATH.exists(),
@@ -50,6 +54,42 @@ def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
         "joints": np.load(OUTPUTS_DIR / str(idx) / "joints.npy"),
     }
     return inputs, outputs
+
+
+def convert_rotation_inputs(inputs: dict[str, np.ndarray], rotation_type: str) -> dict[str, np.ndarray]:
+    if rotation_type == "axis_angle":
+        return inputs
+
+    return {
+        "shape": inputs["shape"],
+        "expression": inputs["expression"],
+        "pose": SO3.convert(inputs["pose"], src="axis_angle", dst=rotation_type, xp=np),
+        "head_rotation": SO3.convert(inputs["head_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+        "global_translation": inputs["global_translation"],
+    }
+
+
+def _flame_backend(backend: str):
+    if backend == "jax":
+        pytest.importorskip("jax.numpy")
+    module = import_module(f"body_models.flame.{backend}")
+    return getattr(module, "FLAME")
+
+
+def _backend_array(backend: str, value: np.ndarray):
+    if backend == "torch":
+        return torch.tensor(value)
+    if backend == "jax":
+        import jax.numpy as jnp
+
+        return jnp.array(value)
+    return value
+
+
+def _to_numpy(backend: str, value):
+    if backend == "torch":
+        return value.numpy()
+    return np.asarray(value)
 
 
 # ============================================================================
@@ -185,6 +225,40 @@ def test_forward_skeleton_jax(idx: int) -> None:
     joints = np.asarray(transforms[0, :, :3, 3])
     num_joints = min(joints.shape[0], ref["joints"].shape[0])
     np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
+
+
+@requires_model
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+@pytest.mark.parametrize("rotation_type", ROTATION_TYPES)
+def test_rotation_types(rotation_type: str, backend: str) -> None:
+    """Test FLAME matches axis-angle across rotation representations."""
+    FLAME = _flame_backend(backend)
+    inputs, _ = load_test_case(0)
+    native_model = FLAME(model_path=MODEL_PATH, ground_plane=False)
+    rotated_model = FLAME(model_path=MODEL_PATH, ground_plane=False, rotation_type=rotation_type)
+
+    native_kwargs = {k: _backend_array(backend, v[None]) for k, v in inputs.items()}
+    rotated_inputs = convert_rotation_inputs(inputs, rotation_type)
+    rotated_kwargs = {k: _backend_array(backend, v[None]) for k, v in rotated_inputs.items()}
+
+    with torch.no_grad() if backend == "torch" else nullcontext():
+        native_vertices = native_model.forward_vertices(**native_kwargs)
+        rotated_vertices = rotated_model.forward_vertices(**rotated_kwargs)
+        native_skeleton = native_model.forward_skeleton(**native_kwargs)
+        rotated_skeleton = rotated_model.forward_skeleton(**rotated_kwargs)
+
+    np.testing.assert_allclose(
+        _to_numpy(backend, rotated_vertices),
+        _to_numpy(backend, native_vertices),
+        rtol=RTOL,
+        atol=ATOL,
+    )
+    np.testing.assert_allclose(
+        _to_numpy(backend, rotated_skeleton),
+        _to_numpy(backend, native_skeleton),
+        rtol=RTOL,
+        atol=ATOL,
+    )
 
 
 # ============================================================================

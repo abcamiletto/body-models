@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 from torch import Tensor
 
 from ..base import BodyModel
@@ -50,10 +51,14 @@ class FLAME(BodyModel, nn.Module):
         model_path: Path | str | None = None,
         simplify: float = 1.0,
         ground_plane: bool = True,
+        rotation_type: core.RotationType = "axis_angle",
     ):
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+            raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.ground_plane = ground_plane
+        self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
@@ -136,9 +141,9 @@ class FLAME(BodyModel, nn.Module):
         self,
         shape: Float[Tensor, "B|1 N_shape"],
         expression: Float[Tensor, "B N_expr"] | None = None,
-        pose: Float[Tensor, "B 4 3"] | None = None,
-        head_rotation: Float[Tensor, "B 3"] | None = None,
-        global_rotation: Float[Tensor, "B 3"] | None = None,
+        pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"] | None = None,
+        head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
@@ -148,7 +153,12 @@ class FLAME(BodyModel, nn.Module):
         if expression is None:
             expression = torch.zeros((B, 100), device=device, dtype=dtype)
         if pose is None:
-            pose = torch.zeros((B, self.NUM_HEAD_JOINTS, 3), device=device, dtype=dtype)
+            pose = SO3.identity_as(
+                expression,
+                batch_dims=(B, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=torch,
+            )
 
         return core.forward_vertices(
             v_template=self.v_template,
@@ -170,6 +180,7 @@ class FLAME(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
             xp=torch,
         )
 
@@ -177,9 +188,9 @@ class FLAME(BodyModel, nn.Module):
         self,
         shape: Float[Tensor, "B|1 N_shape"],
         expression: Float[Tensor, "B N_expr"] | None = None,
-        pose: Float[Tensor, "B 4 3"] | None = None,
-        head_rotation: Float[Tensor, "B 3"] | None = None,
-        global_rotation: Float[Tensor, "B 3"] | None = None,
+        pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"] | None = None,
+        head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B 5 4 4"]:
         """Compute skeleton joint transforms [B, 5, 4, 4]."""
@@ -189,7 +200,12 @@ class FLAME(BodyModel, nn.Module):
         if expression is None:
             expression = torch.zeros((B, 100), device=device, dtype=dtype)
         if pose is None:
-            pose = torch.zeros((B, self.NUM_HEAD_JOINTS, 3), device=device, dtype=dtype)
+            pose = SO3.identity_as(
+                expression,
+                batch_dims=(B, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=torch,
+            )
 
         return core.forward_skeleton(
             v_template_full=self.v_template_full,
@@ -206,6 +222,7 @@ class FLAME(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             ground_plane=self.ground_plane,
+            rotation_type=self.rotation_type,
             xp=torch,
         )
 
@@ -215,9 +232,24 @@ class FLAME(BodyModel, nn.Module):
         return {
             "shape": torch.zeros((1, 300), device=device, dtype=dtype),
             "expression": torch.zeros((batch_size, 100), device=device, dtype=dtype),
-            "pose": torch.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), device=device, dtype=dtype),
-            "head_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
-            "global_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "pose": SO3.identity_as(
+                torch.zeros((batch_size, 100), device=device, dtype=dtype),
+                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                rotation_type=self.rotation_type,
+                xp=torch,
+            ),
+            "head_rotation": SO3.identity_as(
+                torch.zeros((batch_size, 100), device=device, dtype=dtype),
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=torch,
+            ),
+            "global_rotation": SO3.identity_as(
+                torch.zeros((batch_size, 100), device=device, dtype=dtype),
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=torch,
+            ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 
