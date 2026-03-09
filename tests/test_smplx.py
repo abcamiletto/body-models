@@ -263,7 +263,9 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
         rotated_verts = rotated_model.forward_vertices(**rotated_kwargs)
         rotated_skeleton = rotated_model.forward_skeleton(**rotated_kwargs)
 
-    np.testing.assert_allclose(_to_numpy(backend, rotated_verts), _to_numpy(backend, native_verts), rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(
+        _to_numpy(backend, rotated_verts), _to_numpy(backend, native_verts), rtol=RTOL, atol=ATOL
+    )
     np.testing.assert_allclose(
         _to_numpy(backend, rotated_skeleton),
         _to_numpy(backend, native_skeleton),

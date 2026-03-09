@@ -3,6 +3,7 @@ import hashlib
 import itertools
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from nanomanifold import SO3
@@ -94,7 +95,7 @@ def load_model_data_numpy(
     rig: str = "default",
     topology: str = "default",
     simplify: float = 1.0,
-    dtype=np.float32,
+    dtype: Any = np.float32,
 ) -> dict:
     """Load ANNY model data as numpy arrays."""
     resolved_path = get_model_path(model_path)
@@ -129,7 +130,9 @@ def load_model_data_numpy(
         quads = data["faces"]
         tri_faces = np.concatenate([quads[:, [0, 1, 2]], quads[:, [0, 2, 3]]], axis=0)
         target_faces = int(len(tri_faces) / simplify)
-        new_vertices, new_faces, vertex_map = _simplify_mesh(data["template_vertices"], tri_faces.astype(int), target_faces)
+        new_vertices, new_faces, vertex_map = _simplify_mesh(
+            data["template_vertices"], tri_faces.astype(int), target_faces
+        )
 
         data["template_vertices"] = new_vertices.astype(data["template_vertices"].dtype)
         data["blendshapes"] = data["blendshapes"][:, vertex_map]
@@ -174,7 +177,7 @@ def _load_data_numpy(
     rig: str,
     eyes: bool,
     tongue: bool,
-    dtype: np.dtype = np.float32,
+    dtype: Any = np.float32,
 ) -> dict:
     """Load ANNY model data with NumPy, optionally reading legacy torch caches via ptloader."""
     stem = _cache_file_stem(rig, eyes, tongue)
@@ -187,6 +190,7 @@ def _load_data_numpy(
     if cache_pth.exists():
         try:
             from ptloader import load as ptload
+
             data = ptload(cache_pth, weights_only=True)
             # Store converted cache in a torch-free format for future loads.
             cache_dir.mkdir(parents=True, exist_ok=True)
@@ -195,10 +199,13 @@ def _load_data_numpy(
         except ImportError:
             pass
 
-    world_T = 0.1 * SO3.conversions.from_euler_to_matrix(
-        np.array([[np.pi / 2, 0, 0]], dtype=dtype),
-        convention="xyz",
-    )[0]
+    world_T = (
+        0.1
+        * SO3.conversions.from_euler_to_matrix(
+            np.array([[np.pi / 2, 0, 0]], dtype=dtype),
+            convention="xyz",
+        )[0]
+    )
 
     mesh_path = data_dir / "data" / "mpfb2" / "3dobjs" / "base.obj"
     verts, _uvs, groups = _load_obj(mesh_path, dtype)
