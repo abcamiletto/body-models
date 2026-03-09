@@ -6,12 +6,15 @@
 """
 
 import json
+from contextlib import nullcontext
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 import torch
+from nanomanifold import SO3
 
 from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
@@ -22,6 +25,7 @@ INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
 RTOL, ATOL = 1e-4, 1e-4
+ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix"]
 
 if not MODEL_PATH.exists():
     pytest.skip(f"SMPL model not found at {MODEL_PATH}", allow_module_level=True)
@@ -46,6 +50,41 @@ def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
         "joints": np.load(OUTPUTS_DIR / str(idx) / "joints.npy"),
     }
     return inputs, outputs
+
+
+def convert_rotation_inputs(inputs: dict[str, np.ndarray], rotation_type: str) -> dict[str, np.ndarray]:
+    if rotation_type == "axis_angle":
+        return inputs
+
+    return {
+        "shape": inputs["shape"],
+        "body_pose": SO3.convert(inputs["body_pose"], src="axis_angle", dst=rotation_type, xp=np),
+        "pelvis_rotation": SO3.convert(inputs["pelvis_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+        "global_translation": inputs["global_translation"],
+    }
+
+
+def _smpl_backend(backend: str):
+    if backend == "jax":
+        pytest.importorskip("jax.numpy")
+    module = import_module(f"body_models.smpl.{backend}")
+    return getattr(module, "SMPL")
+
+
+def _backend_array(backend: str, value: np.ndarray):
+    if backend == "torch":
+        return torch.tensor(value)
+    if backend == "jax":
+        import jax.numpy as jnp
+
+        return jnp.array(value)
+    return value
+
+
+def _to_numpy(backend: str, value):
+    if backend == "torch":
+        return value.numpy()
+    return np.asarray(value)
 
 
 # ============================================================================
@@ -169,6 +208,37 @@ def test_forward_skeleton_jax(idx: int) -> None:
     joints = np.asarray(transforms[0, :, :3, 3])
     num_joints = min(joints.shape[0], ref["joints"].shape[0])
     np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+@pytest.mark.parametrize("rotation_type", ROTATION_TYPES)
+def test_rotation_types(rotation_type: str, backend: str) -> None:
+    """Test SMPL matches axis-angle across rotation representations."""
+    SMPL = _smpl_backend(backend)
+    inputs, _ = load_test_case(0)
+    native_model = SMPL(model_path=MODEL_PATH, ground_plane=False)
+    rotated_model = SMPL(model_path=MODEL_PATH, ground_plane=False, rotation_type=rotation_type)
+
+    rotated_inputs = convert_rotation_inputs(inputs, rotation_type)
+    native_kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
+    rotated_kwargs = {k: _backend_array(backend, v)[None] for k, v in rotated_inputs.items()}
+
+    context = torch.no_grad() if backend == "torch" else nullcontext()
+    with context:
+        native_verts = native_model.forward_vertices(**native_kwargs)
+        native_skeleton = native_model.forward_skeleton(**native_kwargs)
+        rotated_verts = rotated_model.forward_vertices(**rotated_kwargs)
+        rotated_skeleton = rotated_model.forward_skeleton(**rotated_kwargs)
+
+    np.testing.assert_allclose(
+        _to_numpy(backend, rotated_verts), _to_numpy(backend, native_verts), rtol=RTOL, atol=ATOL
+    )
+    np.testing.assert_allclose(
+        _to_numpy(backend, rotated_skeleton),
+        _to_numpy(backend, native_skeleton),
+        rtol=RTOL,
+        atol=ATOL,
+    )
 
 
 # ============================================================================
