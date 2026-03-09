@@ -212,8 +212,13 @@ def load_pose_correctives(asset_dir: Path, lod: int) -> Any:
     import torch
     import torch.nn as nn
     from nanomanifold import SO3
+    from torch import Tensor
 
     class _SparseLinear(nn.Module):
+        sparse_weight: Tensor
+        dense_weight: Tensor
+        _sparse_indices: Tensor
+
         def __init__(self, in_features: int, out_features: int, sparse_mask: np.ndarray) -> None:
             super().__init__()
             idx = torch.from_numpy(sparse_mask).nonzero().T

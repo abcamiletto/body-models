@@ -47,9 +47,9 @@ def forward_vertices(
 
     if xp is None:
         xp = get_namespace(shape)
-    batch_shape = tuple(body_pose.shape[:-2 if rotation_type != "matrix" else -3])
-    assert tuple(hand_pose.shape[:-2 if rotation_type != "matrix" else -3]) == batch_shape
-    assert tuple(head_pose.shape[:-2 if rotation_type != "matrix" else -3]) == batch_shape
+    batch_shape = tuple(body_pose.shape[: -2 if rotation_type != "matrix" else -3])
+    assert tuple(hand_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
+    assert tuple(head_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
     assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
@@ -136,9 +136,9 @@ def forward_skeleton(
 
     if xp is None:
         xp = get_namespace(shape)
-    batch_shape = tuple(body_pose.shape[:-2 if rotation_type != "matrix" else -3])
-    assert tuple(hand_pose.shape[:-2 if rotation_type != "matrix" else -3]) == batch_shape
-    assert tuple(head_pose.shape[:-2 if rotation_type != "matrix" else -3]) == batch_shape
+    batch_shape = tuple(body_pose.shape[: -2 if rotation_type != "matrix" else -3])
+    assert tuple(hand_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
+    assert tuple(head_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
     assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
@@ -221,7 +221,7 @@ def _forward_core(
     Float[Array, "*batch J 4 4"],
 ]:
     """Core forward pass."""
-    batch_shape = body_pose.shape[:-2 if rotation_type != "matrix" else -3]
+    batch_shape = body_pose.shape[: -2 if rotation_type != "matrix" else -3]
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     # Apply hand pose mean
