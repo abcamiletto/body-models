@@ -145,6 +145,7 @@ class SMPLX(BodyModel, nn.Module):
         pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
+        vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template,
@@ -166,6 +167,7 @@ class SMPLX(BodyModel, nn.Module):
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
             xp=torch,
         )

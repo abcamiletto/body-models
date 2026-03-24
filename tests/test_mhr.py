@@ -12,6 +12,8 @@ Tests compare against reference outputs with pose correctives.
 """
 
 import json
+from contextlib import nullcontext
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +53,29 @@ def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
         "skeleton": np.load(OUTPUTS_DIR / str(idx) / "skeleton.npy"),
     }
     return inputs, outputs
+
+
+def _mhr_backend(backend: str):
+    if backend == "jax":
+        pytest.importorskip("jax.numpy")
+    module = import_module(f"body_models.mhr.{backend}")
+    return getattr(module, "MHR")
+
+
+def _backend_array(backend: str, value: np.ndarray):
+    if backend == "torch":
+        return torch.tensor(value)
+    if backend == "jax":
+        import jax.numpy as jnp
+
+        return jnp.array(value)
+    return value
+
+
+def _to_numpy(backend: str, value):
+    if backend == "torch":
+        return value.numpy()
+    return np.asarray(value)
 
 
 def _assert_skeleton_close(
@@ -161,6 +186,29 @@ def test_forward_skeleton_torch(idx: int) -> None:
 
     result = to_native_outputs(verts, transforms)
     _assert_skeleton_close(result["joints"][0], torch.from_numpy(ref["skeleton"]), rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_vertex_subset_matches_full_output(backend: str) -> None:
+    """Test vertex_indices returns the same vertices as slicing the full output."""
+    MHR = _mhr_backend(backend)
+    model = MHR(model_path=MODEL_PATH)
+    inputs, _ = load_test_case(0)
+    kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
+    vertex_indices = np.array([0, 10, 1, 10, 25], dtype=np.int64)
+    backend_indices = _backend_array(backend, vertex_indices)
+
+    context = torch.no_grad() if backend == "torch" else nullcontext()
+    with context:
+        vertices_full = model.forward_vertices(**kwargs)
+        vertices_subset = model.forward_vertices(**kwargs, vertex_indices=backend_indices)
+
+    np.testing.assert_allclose(
+        _to_numpy(backend, vertices_subset),
+        _to_numpy(backend, vertices_full)[:, vertex_indices],
+        rtol=RTOL,
+        atol=ATOL,
+    )
 
 
 # ============================================================================

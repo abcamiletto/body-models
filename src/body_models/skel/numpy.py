@@ -214,6 +214,7 @@ class SKEL(BodyModel):
         pose: Float[np.ndarray, "B 46"],
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
+        vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         return core.forward_vertices(
@@ -241,6 +242,7 @@ class SKEL(BodyModel):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            vertex_indices=vertex_indices,
         )
 
     def forward_skeleton(
