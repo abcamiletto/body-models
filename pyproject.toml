@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.7.0"
+version = "0.7.1"
 description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "array-api-compat>=1.4",
     "jaxtyping>=0.2.28",
-    "nanomanifold>=0.4.1",
+    "nanomanifold>=0.5.0",
     "numpy>=2.0.0",
     "platformdirs>=2.0",
     "ptloader==0.3.0",
@@ -21,7 +21,6 @@ dependencies = [
 
 [project.scripts]
 body-models = "body_models:main"
-convert-smpl-pkl = "body_models.smpl.convert:main"
 
 [project.optional-dependencies]
 torch = [

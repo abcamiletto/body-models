@@ -15,6 +15,7 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from ..base import BodyModel
+from ..rotations import VALID_ROTATION_TYPES, identity_as
 from ..utils import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
@@ -73,7 +74,7 @@ class ANNY(BodyModel, nn.Module):
         assert rig in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo")
         assert topology in ("default", "makehuman")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
-        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+        if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
 
@@ -302,13 +303,13 @@ class ANNY(BodyModel, nn.Module):
                 k: torch.full((batch_size,), 0.5, device=device, dtype=dtype)
                 for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
-            "pose": SO3.identity_as(
+            "pose": identity_as(
                 torch.zeros((batch_size,), device=device, dtype=dtype),
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "global_rotation": SO3.identity_as(
+            "global_rotation": identity_as(
                 torch.zeros((batch_size,), device=device, dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
@@ -360,7 +361,7 @@ def _load_data(data_dir: Path, cache_dir: Path, rig: str, eyes: bool, tongue: bo
     dtype = torch.float32
     world_T = (
         0.1
-        * SO3.conversions.from_euler_to_matrix(torch.tensor([[torch.pi / 2, 0, 0]], dtype=dtype), convention="xyz")[0]
+        * SO3.conversions.from_euler_to_rotmat(torch.tensor([[torch.pi / 2, 0, 0]], dtype=dtype), convention="xyz")[0]
     )
 
     # Load mesh
@@ -586,7 +587,7 @@ def _compute_bone_data(
 
     euler = torch.zeros(len(rolls), 3, dtype=dtype)
     euler[:, 1] = torch.tensor(rolls, dtype=dtype)
-    rolls_mat = SO3.conversions.from_euler_to_matrix(euler, convention="xyz")
+    rolls_mat = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz")
 
     return torch.stack(heads), torch.stack(tails), torch.stack(heads_bs, dim=1), torch.stack(tails_bs, dim=1), rolls_mat
 

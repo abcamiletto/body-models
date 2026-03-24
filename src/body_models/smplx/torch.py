@@ -6,10 +6,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 from torch import Tensor
 
 from ..base import BodyModel
+from ..rotations import VALID_ROTATION_TYPES, identity_as
 from . import core
 from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
@@ -43,7 +43,7 @@ class SMPLX(BodyModel, nn.Module):
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
-        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+        if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
         super().__init__()
@@ -217,26 +217,26 @@ class SMPLX(BodyModel, nn.Module):
         pelvis_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         return {
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
-            "body_pose": SO3.identity_as(
+            "body_pose": identity_as(
                 body_pose_ref,
                 batch_dims=(batch_size, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "hand_pose": SO3.identity_as(
+            "hand_pose": identity_as(
                 hand_pose_ref,
                 batch_dims=(batch_size, self.NUM_HAND_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "head_pose": SO3.identity_as(
+            "head_pose": identity_as(
                 head_pose_ref,
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
             "expression": torch.zeros((batch_size, 10), device=device, dtype=dtype),
-            "pelvis_rotation": SO3.identity_as(
+            "pelvis_rotation": identity_as(
                 pelvis_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

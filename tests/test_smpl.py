@@ -14,9 +14,9 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
-from nanomanifold import SO3
 
 from accelerator_utils import get_accelerator_device
+from body_models.rotations import convert
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "smpl"
@@ -25,7 +25,7 @@ INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
 RTOL, ATOL = 1e-4, 1e-4
-ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix"]
+ROTATION_TYPES = ["axis_angle", "quat", "quat_wxyz", "quat_xyzw", "sixd", "matrix", "rotmat"]
 
 if not MODEL_PATH.exists():
     pytest.skip(f"SMPL model not found at {MODEL_PATH}", allow_module_level=True)
@@ -58,8 +58,8 @@ def convert_rotation_inputs(inputs: dict[str, np.ndarray], rotation_type: str) -
 
     return {
         "shape": inputs["shape"],
-        "body_pose": SO3.convert(inputs["body_pose"], src="axis_angle", dst=rotation_type, xp=np),
-        "pelvis_rotation": SO3.convert(inputs["pelvis_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+        "body_pose": convert(inputs["body_pose"], src="axis_angle", dst=rotation_type, xp=np),
+        "pelvis_rotation": convert(inputs["pelvis_rotation"], src="axis_angle", dst=rotation_type, xp=np),
         "global_translation": inputs["global_translation"],
     }
 

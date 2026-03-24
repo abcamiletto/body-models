@@ -6,10 +6,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 from torch import Tensor
 
 from ..base import BodyModel
+from ..rotations import VALID_ROTATION_TYPES, identity_as
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
@@ -54,7 +54,7 @@ class FLAME(BodyModel, nn.Module):
         rotation_type: core.RotationType = "axis_angle",
     ):
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
-        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+        if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.ground_plane = ground_plane
@@ -153,7 +153,7 @@ class FLAME(BodyModel, nn.Module):
         if expression is None:
             expression = torch.zeros((B, 100), device=device, dtype=dtype)
         if pose is None:
-            pose = SO3.identity_as(
+            pose = identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -200,7 +200,7 @@ class FLAME(BodyModel, nn.Module):
         if expression is None:
             expression = torch.zeros((B, 100), device=device, dtype=dtype)
         if pose is None:
-            pose = SO3.identity_as(
+            pose = identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -232,19 +232,19 @@ class FLAME(BodyModel, nn.Module):
         return {
             "shape": torch.zeros((1, 300), device=device, dtype=dtype),
             "expression": torch.zeros((batch_size, 100), device=device, dtype=dtype),
-            "pose": SO3.identity_as(
+            "pose": identity_as(
                 torch.zeros((batch_size, 100), device=device, dtype=dtype),
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "head_rotation": SO3.identity_as(
+            "head_rotation": identity_as(
                 torch.zeros((batch_size, 100), device=device, dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "global_rotation": SO3.identity_as(
+            "global_rotation": identity_as(
                 torch.zeros((batch_size, 100), device=device, dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

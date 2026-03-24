@@ -153,7 +153,7 @@ class SKEL(BodyModel, nn.Module):
         def pin_axis_from_euler(euler_xyz):
             """Compute pin joint axis from euler angles (XYZ convention)."""
             euler = torch.tensor(euler_xyz, dtype=torch.float32)
-            R = SO3.conversions.from_euler_to_matrix(euler, convention="XYZ", xp=torch)
+            R = SO3.conversions.from_euler_to_rotmat(euler, convention="XYZ", xp=torch)
             axis = R @ torch.tensor([0.0, 0.0, 1.0])
             return axis.tolist()
 
@@ -525,7 +525,7 @@ class SKEL(BodyModel, nn.Module):
 
 def _axisangle_to_matrix(v: Float[Tensor, "*batch 3"]) -> Float[Tensor, "*batch 3 3"]:
     """Axis-angle [*, 3] -> rotation matrix [*, 3, 3]."""
-    return SO3.conversions.from_axis_angle_to_matrix(v, xp=torch)
+    return SO3.conversions.from_axis_angle_to_rotmat(v, xp=torch)
 
 
 def _sparse_to_dense(arr_coo) -> Tensor:

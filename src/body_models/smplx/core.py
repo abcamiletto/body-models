@@ -1,15 +1,14 @@
 """Backend-agnostic SMPL-X computation using array_api_compat."""
 
-from typing import Any, Literal
+from typing import Any
 
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
 from .. import common
+from ..rotations import RotationType, convert, identity_as, is_rotmat_type
 
 Array = Any  # Generic array type (numpy, torch, jax)
-RotationType = Literal["axis_angle", "quat", "sixd", "matrix"]
 
 
 def forward_vertices(
@@ -47,9 +46,10 @@ def forward_vertices(
 
     if xp is None:
         xp = get_namespace(shape)
-    batch_shape = tuple(body_pose.shape[: -2 if rotation_type != "matrix" else -3])
-    assert tuple(hand_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
-    assert tuple(head_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
+    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
+    assert tuple(head_pose.shape[:-pose_ndim]) == batch_shape
     assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
@@ -136,9 +136,10 @@ def forward_skeleton(
 
     if xp is None:
         xp = get_namespace(shape)
-    batch_shape = tuple(body_pose.shape[: -2 if rotation_type != "matrix" else -3])
-    assert tuple(hand_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
-    assert tuple(head_pose.shape[: -2 if rotation_type != "matrix" else -3]) == batch_shape
+    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
+    assert tuple(head_pose.shape[:-pose_ndim]) == batch_shape
     assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
@@ -221,7 +222,8 @@ def _forward_core(
     Float[Array, "*batch J 4 4"],
 ]:
     """Core forward pass."""
-    batch_shape = body_pose.shape[: -2 if rotation_type != "matrix" else -3]
+    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    batch_shape = body_pose.shape[:-pose_ndim]
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     # Apply hand pose mean
@@ -229,24 +231,24 @@ def _forward_core(
         hand_pose_axis_angle = hand_pose
     else:
         # SMPL-X hand pose mean is defined in axis-angle coordinates.
-        hand_pose_axis_angle = SO3.convert(hand_pose, src=rotation_type, dst="axis_angle", xp=xp)
+        hand_pose_axis_angle = convert(hand_pose, src=rotation_type, dst="axis_angle", xp=xp)
     lh = hand_pose_axis_angle[..., :15, :] + hand_mean[0].reshape(15, 3)
     rh = hand_pose_axis_angle[..., 15:, :] + hand_mean[1].reshape(15, 3)
     hand_pose_adj = xp.concat([lh, rh], axis=-2)
 
     # Build full pose with pelvis rotation
     if pelvis_rotation is None:
-        pelvis_matrices = SO3.identity_as(
+        pelvis_matrices = identity_as(
             body_pose,
             batch_dims=(*batch_shape, 1),
             rotation_type="matrix",
             xp=xp,
         )
     else:
-        pelvis_matrices = SO3.convert(pelvis_rotation, src=rotation_type, dst="matrix", xp=xp)[..., None, :, :]
-    body_matrices = SO3.convert(body_pose, src=rotation_type, dst="matrix", xp=xp)
-    head_matrices = SO3.convert(head_pose, src=rotation_type, dst="matrix", xp=xp)
-    hand_matrices = SO3.convert(hand_pose_adj, src="axis_angle", dst="matrix", xp=xp)
+        pelvis_matrices = convert(pelvis_rotation, src=rotation_type, dst="matrix", xp=xp)[..., None, :, :]
+    body_matrices = convert(body_pose, src=rotation_type, dst="matrix", xp=xp)
+    head_matrices = convert(head_pose, src=rotation_type, dst="matrix", xp=xp)
+    hand_matrices = convert(hand_pose_adj, src="axis_angle", dst="matrix", xp=xp)
     pose_matrices = xp.concat([pelvis_matrices, body_matrices, head_matrices, hand_matrices], axis=-3)
 
     # Joint locations from precomputed regression matrices
@@ -330,7 +332,7 @@ def _apply_global_transform(
 ) -> Float[Array, "*batch N 3"]:
     """Apply global rotation and translation to points [..., N, 3]."""
     if rotation is not None:
-        R = SO3.convert(rotation, src=rotation_type, dst="matrix", xp=xp)
+        R = convert(rotation, src=rotation_type, dst="matrix", xp=xp)
         points = (R @ points.mT).mT
     if translation is not None:
         points = points + translation[..., None, :]
@@ -347,7 +349,7 @@ def _apply_global_transform_to_rt(
 ) -> tuple[Float[Array, "*batch J 3 3"], Float[Array, "*batch J 3"]]:
     """Apply global rotation and translation to R, t components."""
     if rotation is not None:
-        R_global = SO3.convert(rotation, src=rotation_type, dst="matrix", xp=xp)
+        R_global = convert(rotation, src=rotation_type, dst="matrix", xp=xp)
         # Transform t: R_global @ t
         t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)

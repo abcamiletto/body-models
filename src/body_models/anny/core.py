@@ -1,6 +1,6 @@
 """Backend-agnostic ANNY computation using array_api_compat."""
 
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from array_api_compat import get_namespace
@@ -8,10 +8,10 @@ from jaxtyping import Float
 from nanomanifold import SO3
 
 from .. import common
+from ..rotations import RotationType, convert
 from .io import PHENOTYPE_VARIATIONS
 
 Array = Any  # Generic array type (numpy, torch, jax)
-RotationType = Literal["axis_angle", "quat", "sixd", "matrix"]
 
 # Coordinate transform constants (Z-up to Y-up)
 COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=np.float32)
@@ -100,7 +100,7 @@ def forward_vertices(
     vertices = vertices @ coord_rotation.T + coord_translation
     if global_rotation is not None:
         global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
-        R_global = SO3.convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
+        R_global = convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
         vertices = (R_global @ vertices.mT).mT
     if global_translation is not None:
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
@@ -191,7 +191,7 @@ def forward_skeleton(
         G = common.eye_as(transforms, batch_dims=(B,), xp=xp)
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
-            R_global = SO3.convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
+            R_global = convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
             G = common.set(G, idx_R, R_global, copy=False, xp=xp)
         if global_translation is not None:
             global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
@@ -362,7 +362,7 @@ def _bone_poses_from_heads_tails(
 
     axis = cross / cross_norm[..., None]
     angle = xp.atan2(cross_norm, dot)
-    R = SO3.conversions.from_axis_angle_to_matrix(-angle[..., None] * axis, xp=xp)
+    R = SO3.conversions.from_axis_angle_to_rotmat(-angle[..., None] * axis, xp=xp)
 
     valid = (xp.abs(xp.sum(axis**2, axis=-1) - 1) < eps)[..., None, None]
     degen_expanded = xp.broadcast_to(degen_rot, R.shape)
@@ -444,7 +444,7 @@ def _pose_to_transform(
     rotation_type: RotationType,
 ) -> Float[Array, "B J 4 4"]:
     """Convert per-joint rotations to 4x4 transforms."""
-    R = SO3.convert(pose, src=rotation_type, dst="matrix", xp=xp)
+    R = convert(pose, src=rotation_type, dst="matrix", xp=xp)
     B, J = R.shape[:2]
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
@@ -465,7 +465,7 @@ def from_native_args(pose: Float[Array, "B J 4 4"]) -> dict[str, Array]:
     """
     xp = get_namespace(pose)
     R = pose[..., :3, :3]
-    axis_angle = SO3.conversions.from_matrix_to_axis_angle(R, xp=xp)
+    axis_angle = SO3.conversions.from_rotmat_to_axis_angle(R, xp=xp)
     return {"pose": axis_angle}
 
 

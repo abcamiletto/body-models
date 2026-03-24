@@ -56,7 +56,7 @@ def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
             raise ValueError(
                 f"Directory paths are no longer supported: {model_path}\n"
                 "Please provide a direct path to the model file, e.g.:\n"
-                f"  SMPL(model_path='{model_path}/SMPL_NEUTRAL.npz')"
+                f"  SMPL(model_path='{model_path}/SMPL_NEUTRAL.pkl')"
             )
 
         if model_path.is_file():
@@ -69,7 +69,7 @@ def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
         raise ValueError(
             "Either model_path or gender must be provided.\n"
             "Examples:\n"
-            "  SMPL(model_path='/path/to/SMPL_NEUTRAL.npz')\n"
+            "  SMPL(model_path='/path/to/SMPL_NEUTRAL.pkl')\n"
             "  SMPL(gender='neutral')  # Uses smpl-neutral config key"
         )
 
@@ -79,7 +79,7 @@ def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
     if resolved_path is None:
         raise FileNotFoundError(
             f"SMPL model not found. Download from https://smpl.is.tue.mpg.de/ "
-            f"and run: body-models set smpl-{gender} /path/to/SMPL_{gender.upper()}.npz"
+            f"and run: body-models set smpl-{gender} /path/to/SMPL_{gender.upper()}.pkl"
         )
 
     return resolved_path
@@ -87,29 +87,47 @@ def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
 
 def load_model_data(model_path: Path) -> dict:
     """Load SMPL model data from a .pkl or .npz file."""
-    if model_path.suffix == ".npz":
-        return dict(np.load(model_path, allow_pickle=True))
-
-    import pickle
-
-    try:
-        with open(model_path, "rb") as f:
-            model_data = pickle.load(f, encoding="latin1")
-    except ModuleNotFoundError as e:
-        if "chumpy" in str(e):
-            npz_path = model_path.with_suffix(".npz")
-            raise RuntimeError(
-                f"This SMPL pkl file requires chumpy to load. "
-                f"Convert it to npz format first:\n\n"
-                f"  uvx --from body-models convert-smpl-pkl {model_path} {npz_path}\n\n"
-                f"Then use the npz file instead."
-            ) from None
-        raise
+    model_data = dict(np.load(model_path, allow_pickle=True)) if model_path.suffix == ".npz" else _load_smpl_pkl(model_path)
 
     if hasattr(model_data["J_regressor"], "toarray"):
         model_data["J_regressor"] = model_data["J_regressor"].toarray()
 
     return model_data
+
+
+def _load_smpl_pkl(model_path: Path) -> dict:
+    """Load legacy SMPL pickles without requiring chumpy at runtime."""
+    import pickle
+
+    class _ChumpyPlaceholder:
+        def __setstate__(self, state):
+            if isinstance(state, dict) and "x" in state:
+                self.data = np.asarray(state["x"])
+                return
+            if isinstance(state, dict):
+                for value in state.values():
+                    if isinstance(value, np.ndarray):
+                        self.data = value
+                        return
+            self.data = state
+
+    class _CompatUnpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if module == "scipy.sparse.csc" and name == "csc_matrix":
+                from scipy.sparse import csc_matrix
+
+                return csc_matrix
+            if module.startswith("chumpy"):
+                return _ChumpyPlaceholder
+            return super().find_class(module, name)
+
+    with open(model_path, "rb") as f:
+        data = _CompatUnpickler(f, encoding="latin1").load()
+
+    return {
+        key: value.data if isinstance(value, _ChumpyPlaceholder) else value.toarray() if hasattr(value, "toarray") else value
+        for key, value in data.items()
+    }
 
 
 def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[int], list[int]]]:
