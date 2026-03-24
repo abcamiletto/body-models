@@ -25,7 +25,7 @@ class MHR(BodyModel, nn.Module):
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
 
     Forward API:
-        forward_vertices(shape, pose, expression, global_rotation, global_translation)
+        forward_vertices(shape, pose, expression, global_rotation, global_translation, vertex_indices=None)
         forward_skeleton(shape, pose, expression, global_rotation, global_translation)
 
         shape: [B, 45] identity blendshapes
@@ -158,6 +158,7 @@ class MHR(BodyModel, nn.Module):
         expression: Float[Tensor, "B 72"] | None = None,
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
+        vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute mesh vertices [B, V, 3] in meters."""
         # For simplified meshes, compute correctives at full resolution then downsample
@@ -183,6 +184,7 @@ class MHR(BodyModel, nn.Module):
             expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            vertex_indices=vertex_indices,
             corrective_W1=self.corrective_W1,
             corrective_W2=self.corrective_W2,
             xp=torch,

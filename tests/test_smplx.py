@@ -273,6 +273,29 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
     )
 
 
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_vertex_subset_matches_full_output(backend: str) -> None:
+    """Test vertex_indices returns the same vertices as slicing the full output."""
+    SMPLX = _smplx_backend(backend)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    inputs, _ = load_test_case(0)
+    kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
+    vertex_indices = np.array([0, 10, 1, 10, 25], dtype=np.int64)
+    backend_indices = _backend_array(backend, vertex_indices)
+
+    context = torch.no_grad() if backend == "torch" else nullcontext()
+    with context:
+        vertices_full = model.forward_vertices(**kwargs)
+        vertices_subset = model.forward_vertices(**kwargs, vertex_indices=backend_indices)
+
+    np.testing.assert_allclose(
+        _to_numpy(backend, vertices_subset),
+        _to_numpy(backend, vertices_full)[:, vertex_indices],
+        rtol=RTOL,
+        atol=ATOL,
+    )
+
+
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================
