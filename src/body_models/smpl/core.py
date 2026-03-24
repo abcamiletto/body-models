@@ -1,15 +1,14 @@
 """Backend-agnostic SMPL computation using array_api_compat."""
 
-from typing import Any, Literal
+from typing import Any
 
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
 from .. import common
+from ..rotations import RotationType, convert, identity_as
 
 Array = Any  # Generic array type (numpy, torch, jax)
-RotationType = Literal["axis_angle", "quat", "sixd", "matrix"]
 
 
 def forward_vertices(
@@ -179,16 +178,16 @@ def _forward_core(
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
     # Build full pose with pelvis rotation
-    body_pose_matrices = SO3.convert(body_pose, src=rotation_type, dst="matrix", xp=xp)
+    body_pose_matrices = convert(body_pose, src=rotation_type, dst="matrix", xp=xp)
     if pelvis_rotation is None:
-        pelvis_matrices = SO3.identity_as(
+        pelvis_matrices = identity_as(
             body_pose_matrices,
             batch_dims=(B, 1),
             rotation_type="matrix",
             xp=xp,
         )
     else:
-        pelvis_matrices = SO3.convert(
+        pelvis_matrices = convert(
             pelvis_rotation,
             src=rotation_type,
             dst="matrix",
@@ -276,7 +275,7 @@ def _apply_global_transform(
 ) -> Float[Array, "B N 3"]:
     """Apply global rotation and translation to points [B, N, 3]."""
     if rotation is not None:
-        R = SO3.convert(rotation, src=rotation_type, dst="matrix", xp=xp)
+        R = convert(rotation, src=rotation_type, dst="matrix", xp=xp)
         points = (R @ points.mT).mT
     if translation is not None:
         points = points + translation[:, None]
@@ -293,7 +292,7 @@ def _apply_global_transform_to_rt(
 ) -> tuple[Float[Array, "B J 3 3"], Float[Array, "B J 3"]]:
     """Apply global rotation and translation to R, t components."""
     if rotation is not None:
-        R_global = SO3.convert(rotation, src=rotation_type, dst="matrix", xp=xp)
+        R_global = convert(rotation, src=rotation_type, dst="matrix", xp=xp)
         # Transform t: R_global @ t
         t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)

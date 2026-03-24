@@ -4,9 +4,9 @@ from pathlib import Path
 
 import numpy as np
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
 from ..base import BodyModel
+from ..rotations import VALID_ROTATION_TYPES, identity_as
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
@@ -45,7 +45,7 @@ class FLAME(BodyModel):
         rotation_type: core.RotationType = "axis_angle",
     ):
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
-        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+        if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.ground_plane = ground_plane
         self.rotation_type = rotation_type
@@ -136,7 +136,7 @@ class FLAME(BodyModel):
         if expression is None:
             expression = np.zeros((B, 100), dtype=np.float32)
         if pose is None:
-            pose = SO3.identity_as(
+            pose = identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -181,7 +181,7 @@ class FLAME(BodyModel):
         if expression is None:
             expression = np.zeros((B, 100), dtype=np.float32)
         if pose is None:
-            pose = SO3.identity_as(
+            pose = identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -211,19 +211,19 @@ class FLAME(BodyModel):
         return {
             "shape": np.zeros((1, 300), dtype=dtype),
             "expression": np.zeros((batch_size, 100), dtype=dtype),
-            "pose": SO3.identity_as(
+            "pose": identity_as(
                 np.zeros((batch_size, 100), dtype=dtype),
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
-            "head_rotation": SO3.identity_as(
+            "head_rotation": identity_as(
                 np.zeros((batch_size, 100), dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
-            "global_rotation": SO3.identity_as(
+            "global_rotation": identity_as(
                 np.zeros((batch_size, 100), dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

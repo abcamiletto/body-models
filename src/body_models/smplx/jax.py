@@ -7,9 +7,9 @@ import jax.numpy as jnp
 import numpy as np
 from flax import nnx
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
 from ..base import BodyModel
+from ..rotations import VALID_ROTATION_TYPES, identity_as
 from . import core
 from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
@@ -36,7 +36,7 @@ class SMPLX(BodyModel, nnx.Module):
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
-        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+        if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
 
@@ -204,26 +204,26 @@ class SMPLX(BodyModel, nnx.Module):
         pelvis_ref = jnp.zeros((batch_size, 3), dtype=dtype)
         return {
             "shape": jnp.zeros((1, 10), dtype=dtype),
-            "body_pose": SO3.identity_as(
+            "body_pose": identity_as(
                 body_pose_ref,
                 batch_dims=(batch_size, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "hand_pose": SO3.identity_as(
+            "hand_pose": identity_as(
                 hand_pose_ref,
                 batch_dims=(batch_size, self.NUM_HAND_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "head_pose": SO3.identity_as(
+            "head_pose": identity_as(
                 head_pose_ref,
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
             "expression": jnp.zeros((batch_size, 10), dtype=dtype),
-            "pelvis_rotation": SO3.identity_as(
+            "pelvis_rotation": identity_as(
                 pelvis_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

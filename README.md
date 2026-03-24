@@ -60,18 +60,12 @@ SMPL, SMPL-X, SKEL, and FLAME require registration. Download from:
 - SKEL: https://skel.is.tue.mpg.de/
 - FLAME: https://flame.is.tue.mpg.de/
 
-For SMPL, convert the pkl file to npz format (the pkl files use chumpy):
+SMPL `.pkl` and `.npz` files are both supported directly. Configure the paths (per gender):
 
 ```bash
-convert-smpl-pkl /path/to/model.pkl /path/to/model.npz
-```
-
-Then configure the paths (per gender):
-
-```bash
-body-models set smpl-neutral /path/to/SMPL_NEUTRAL.npz
-body-models set smpl-male /path/to/SMPL_MALE.npz
-body-models set smpl-female /path/to/SMPL_FEMALE.npz
+body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl
+body-models set smpl-male /path/to/SMPL_MALE.pkl
+body-models set smpl-female /path/to/SMPL_FEMALE.pkl
 body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel
 body-models set flame /path/to/flame
@@ -83,7 +77,7 @@ Or pass file paths directly:
 from body_models.smpl.torch import SMPL
 
 # Direct file path (no gender needed)
-model = SMPL(model_path="/path/to/SMPL_NEUTRAL.npz")
+model = SMPL(model_path="/path/to/SMPL_NEUTRAL.pkl")
 
 # From config using gender
 model = SMPL(gender="neutral")  # Uses smpl-neutral config key
@@ -98,9 +92,9 @@ $ body-models
 Config file: /path/to/config.toml  # Platform-dependent location
 
 Current settings:
-  smpl-male: /data/models/smpl/SMPL_MALE.npz
-  smpl-female: /data/models/smpl/SMPL_FEMALE.npz
-  smpl-neutral: /data/models/smpl/SMPL_NEUTRAL.npz
+  smpl-male: /data/models/smpl/SMPL_MALE.pkl
+  smpl-female: /data/models/smpl/SMPL_FEMALE.pkl
+  smpl-neutral: /data/models/smpl/SMPL_NEUTRAL.pkl
   smplx-male: (not set)
   smplx-female: (not set)
   smplx-neutral: (not set)

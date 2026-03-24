@@ -4,9 +4,9 @@ from pathlib import Path
 
 import numpy as np
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
 from ..base import BodyModel
+from ..rotations import VALID_ROTATION_TYPES, identity_as
 from . import core
 from .io import (
     EXCLUDED_PHENOTYPES,
@@ -50,7 +50,7 @@ class ANNY(BodyModel):
         assert rig in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo")
         assert topology in ("default", "makehuman")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
-        if rotation_type not in ("axis_angle", "quat", "sixd", "matrix"):
+        if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
 
         data = load_model_data_numpy(
@@ -207,13 +207,13 @@ class ANNY(BodyModel):
                 k: np.full((batch_size,), 0.5, dtype=dtype)
                 for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
-            "pose": SO3.identity_as(
+            "pose": identity_as(
                 np.zeros((batch_size,), dtype=dtype),
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
-            "global_rotation": SO3.identity_as(
+            "global_rotation": identity_as(
                 np.zeros((batch_size,), dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

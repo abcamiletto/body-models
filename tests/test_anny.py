@@ -14,9 +14,9 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
-from nanomanifold import SO3
 
 from accelerator_utils import get_accelerator_device
+from body_models.rotations import convert
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "anny"
@@ -25,7 +25,7 @@ INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
 RTOL, ATOL = 5e-4, 2e-4
-ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix"]
+ROTATION_TYPES = ["axis_angle", "quat", "quat_wxyz", "quat_xyzw", "sixd", "matrix", "rotmat"]
 
 if not MODEL_PATH.exists():
     pytest.skip(f"ANNY model not found at {MODEL_PATH}", allow_module_level=True)
@@ -62,8 +62,8 @@ def convert_rotation_inputs(inputs: dict[str, Any], rotation_type: str) -> dict[
 
     return {
         **{k: inputs[k] for k in ["gender", "age", "muscle", "weight", "height", "proportions"]},
-        "pose": SO3.convert(inputs["pose"], src="axis_angle", dst=rotation_type, xp=np),
-        "global_rotation": SO3.convert(inputs["global_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+        "pose": convert(inputs["pose"], src="axis_angle", dst=rotation_type, xp=np),
+        "global_rotation": convert(inputs["global_rotation"], src="axis_angle", dst=rotation_type, xp=np),
     }
 
 
