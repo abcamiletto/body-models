@@ -46,7 +46,7 @@ def forward_vertices(
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
-    vertex_indices: Array | None = None,
+    vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
@@ -65,7 +65,7 @@ def forward_vertices(
         xp = get_namespace(gender)
 
     if vertex_indices is not None:
-        vertex_indices = common.as_index_array(vertex_indices, template_vertices)
+        vertex_indices = xp.asarray(vertex_indices)
         template_vertices = template_vertices[vertex_indices]
         blendshapes = blendshapes[:, vertex_indices]
         lbs_weights = lbs_weights[vertex_indices]

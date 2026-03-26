@@ -100,17 +100,3 @@ def eye_as(ref: Array, *, batch_dims: tuple[int, ...], xp: Any = None) -> Array:
     for i in range(n):
         eye = set(eye, (..., i, i), one, xp=xp)
     return eye
-
-
-def as_index_array(indices: Array, ref: Array) -> Array:
-    """Convert indices to a backend-native integer array compatible with ref."""
-    module = type(ref).__module__
-    if "torch" in module:
-        import torch
-
-        return torch.as_tensor(indices, device=ref.device, dtype=torch.int64)
-    if "jax" in module:
-        import jax.numpy as jnp
-
-        return jnp.asarray(indices, dtype=jnp.int32)
-    return np.asarray(indices, dtype=np.int64)

@@ -269,13 +269,12 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
     model = FLAME(model_path=MODEL_PATH, ground_plane=False)
     inputs, _ = load_test_case(0)
     kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
-    vertex_indices = np.array([0, 10, 1, 10, 25], dtype=np.int64)
-    backend_indices = _backend_array(backend, vertex_indices)
+    vertex_indices = [0, 10, 1, 10, 25]
 
     context = torch.no_grad() if backend == "torch" else nullcontext()
     with context:
         vertices_full = model.forward_vertices(**kwargs)
-        vertices_subset = model.forward_vertices(**kwargs, vertex_indices=backend_indices)
+        vertices_subset = model.forward_vertices(**kwargs, vertex_indices=vertex_indices)
 
     np.testing.assert_allclose(
         _to_numpy(backend, vertices_subset),
