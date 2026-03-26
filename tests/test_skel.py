@@ -165,13 +165,12 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
         body_pose=_backend_array(backend, inputs["body_pose"])[None],
         global_translation=_backend_array(backend, inputs["global_translation"])[None],
     )
-    vertex_indices = np.array([0, 10, 1, 10, 25], dtype=np.int64)
-    backend_indices = _backend_array(backend, vertex_indices)
+    vertex_indices = [0, 10, 1, 10, 25]
 
     context = torch.no_grad() if backend == "torch" else nullcontext()
     with context:
         vertices_full = model.forward_vertices(**args)
-        vertices_subset = model.forward_vertices(**args, vertex_indices=backend_indices)
+        vertices_subset = model.forward_vertices(**args, vertex_indices=vertex_indices)
 
     np.testing.assert_allclose(
         _to_numpy(backend, vertices_subset),

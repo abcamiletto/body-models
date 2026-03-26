@@ -51,7 +51,7 @@ def forward_vertices(
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
-    vertex_indices: Array | None = None,
+    vertex_indices: list[int] | None = None,
     *,
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
@@ -66,7 +66,7 @@ def forward_vertices(
     B = pose.shape[0]
 
     if vertex_indices is not None:
-        vertex_indices = common.as_index_array(vertex_indices, v_template)
+        vertex_indices = xp.asarray(vertex_indices)
         v_template = v_template[vertex_indices]
         shapedirs = shapedirs[vertex_indices]
         skin_weights = skin_weights[vertex_indices]
