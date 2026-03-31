@@ -92,6 +92,7 @@ def forward_vertices(
     expression: Float[Array, "B 72"] | None = None,
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
     # Optional pose correctives weights
     corrective_W1: Float[Array, "3000 750"] | None = None,
     corrective_W2: Float[Array, "V*3 3000"] | None = None,
@@ -108,6 +109,17 @@ def forward_vertices(
     if xp is None:
         xp = get_namespace(shape)
     B = pose.shape[0]
+
+    if vertex_indices is not None:
+        vertex_indices = xp.asarray(vertex_indices)
+        base_vertices = base_vertices[vertex_indices]
+        blendshape_dirs = blendshape_dirs[:, vertex_indices]
+        skin_weights = skin_weights[vertex_indices]
+        skin_indices = skin_indices[vertex_indices]
+        if corrective_W2 is not None:
+            corrective_W2 = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])[vertex_indices].reshape(
+                -1, corrective_W2.shape[-1]
+            )
 
     # Handle expression
     if expression is None:

@@ -87,7 +87,9 @@ def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
 
 def load_model_data(model_path: Path) -> dict:
     """Load SMPL model data from a .pkl or .npz file."""
-    model_data = dict(np.load(model_path, allow_pickle=True)) if model_path.suffix == ".npz" else _load_smpl_pkl(model_path)
+    model_data = (
+        dict(np.load(model_path, allow_pickle=True)) if model_path.suffix == ".npz" else _load_smpl_pkl(model_path)
+    )
 
     if hasattr(model_data["J_regressor"], "toarray"):
         model_data["J_regressor"] = model_data["J_regressor"].toarray()
@@ -125,7 +127,11 @@ def _load_smpl_pkl(model_path: Path) -> dict:
         data = _CompatUnpickler(f, encoding="latin1").load()
 
     return {
-        key: value.data if isinstance(value, _ChumpyPlaceholder) else value.toarray() if hasattr(value, "toarray") else value
+        key: value.data
+        if isinstance(value, _ChumpyPlaceholder)
+        else value.toarray()
+        if hasattr(value, "toarray")
+        else value
         for key, value in data.items()
     }
 

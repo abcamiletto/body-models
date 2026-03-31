@@ -104,6 +104,7 @@ class SMPL(BodyModel):
         pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
+        vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template,
@@ -119,6 +120,7 @@ class SMPL(BodyModel):
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
         )
 

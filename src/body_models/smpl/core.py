@@ -27,6 +27,7 @@ def forward_vertices(
     pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
@@ -38,6 +39,12 @@ def forward_vertices(
     if xp is None:
         xp = get_namespace(shape)
     B = body_pose.shape[0]
+    if vertex_indices is not None:
+        vertex_indices = xp.asarray(vertex_indices)
+        v_template = v_template[vertex_indices]
+        shapedirs = shapedirs[vertex_indices]
+        lbs_weights = lbs_weights[vertex_indices]
+        posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, vertex_indices].reshape(posedirs.shape[0], -1)
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,

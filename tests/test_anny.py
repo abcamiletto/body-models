@@ -282,6 +282,37 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
     )
 
 
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_vertex_subset_matches_full_output(backend: str) -> None:
+    """Test vertex_indices returns the same vertices as slicing the full output."""
+    ANNY, from_native_args, _ = _anny_backend(backend)
+    model = ANNY(model_path=MODEL_PATH)
+    inputs, _ = load_test_case(0)
+    pose_args = from_native_args(_backend_array(backend, inputs["pose_4x4"][None]))
+    kwargs = {
+        "gender": _backend_array(backend, np.array([inputs["gender"]], dtype=np.float32)),
+        "age": _backend_array(backend, np.array([inputs["age"]], dtype=np.float32)),
+        "muscle": _backend_array(backend, np.array([inputs["muscle"]], dtype=np.float32)),
+        "weight": _backend_array(backend, np.array([inputs["weight"]], dtype=np.float32)),
+        "height": _backend_array(backend, np.array([inputs["height"]], dtype=np.float32)),
+        "proportions": _backend_array(backend, np.array([inputs["proportions"]], dtype=np.float32)),
+        **pose_args,
+    }
+    vertex_indices = [0, 10, 1, 10, 25]
+
+    context = torch.no_grad() if backend == "torch" else nullcontext()
+    with context:
+        vertices_full = model.forward_vertices(**kwargs)
+        vertices_subset = model.forward_vertices(**kwargs, vertex_indices=vertex_indices)
+
+    np.testing.assert_allclose(
+        _to_numpy(backend, vertices_subset),
+        _to_numpy(backend, vertices_full)[:, vertex_indices],
+        rtol=RTOL,
+        atol=ATOL,
+    )
+
+
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================

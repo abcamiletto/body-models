@@ -268,6 +268,7 @@ class SKEL(BodyModel, nn.Module):
         pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
+        vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         return core.forward_vertices(
@@ -295,6 +296,7 @@ class SKEL(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            vertex_indices=vertex_indices,
             xp=torch,
         )
 
