@@ -15,7 +15,7 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, identity_as
+from ..rotations import VALID_ROTATION_TYPES
 from ..utils import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
@@ -305,13 +305,13 @@ class ANNY(BodyModel, nn.Module):
                 k: torch.full((batch_size,), 0.5, device=device, dtype=dtype)
                 for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
-            "pose": identity_as(
+            "pose": SO3.identity_as(
                 torch.zeros((batch_size,), device=device, dtype=dtype),
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "global_rotation": identity_as(
+            "global_rotation": SO3.identity_as(
                 torch.zeros((batch_size,), device=device, dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

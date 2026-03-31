@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "array-api-compat>=1.4",
     "jaxtyping>=0.2.28",
-    "nanomanifold>=0.5.0",
+    "nanomanifold>=0.6.1",
     "numpy>=2.0.0",
     "platformdirs>=2.0",
     "ptloader==0.3.0",

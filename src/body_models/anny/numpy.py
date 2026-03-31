@@ -6,7 +6,9 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, identity_as
+from nanomanifold import SO3
+
+from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import (
     EXCLUDED_PHENOTYPES,
@@ -209,13 +211,13 @@ class ANNY(BodyModel):
                 k: np.full((batch_size,), 0.5, dtype=dtype)
                 for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
-            "pose": identity_as(
+            "pose": SO3.identity_as(
                 np.zeros((batch_size,), dtype=dtype),
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
-            "global_rotation": identity_as(
+            "global_rotation": SO3.identity_as(
                 np.zeros((batch_size,), dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
