@@ -107,7 +107,7 @@ def test_forward_vertices_torch(idx: int) -> None:
     """Test PyTorch forward_vertices matches reference."""
     from body_models.smplx.torch import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     inputs, ref = load_test_case(idx)
 
     with torch.no_grad():
@@ -129,7 +129,7 @@ def test_forward_vertices_numpy(idx: int) -> None:
     """Test NumPy forward_vertices matches reference."""
     from body_models.smplx.numpy import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     inputs, ref = load_test_case(idx)
 
     verts = model.forward_vertices(
@@ -151,7 +151,7 @@ def test_forward_vertices_jax(idx: int) -> None:
     jnp = pytest.importorskip("jax.numpy")
     from body_models.smplx.jax import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     inputs, ref = load_test_case(idx)
 
     verts = model.forward_vertices(
@@ -172,7 +172,7 @@ def test_forward_skeleton_torch(idx: int) -> None:
     """Test PyTorch forward_skeleton matches reference joint positions."""
     from body_models.smplx.torch import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     inputs, ref = load_test_case(idx)
 
     with torch.no_grad():
@@ -196,7 +196,7 @@ def test_forward_skeleton_numpy(idx: int) -> None:
     """Test NumPy forward_skeleton matches reference joint positions."""
     from body_models.smplx.numpy import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     inputs, ref = load_test_case(idx)
 
     transforms = model.forward_skeleton(
@@ -220,7 +220,7 @@ def test_forward_skeleton_jax(idx: int) -> None:
     jnp = pytest.importorskip("jax.numpy")
     from body_models.smplx.jax import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     inputs, ref = load_test_case(idx)
 
     transforms = model.forward_skeleton(
@@ -244,11 +244,10 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
     """Test SMPL-X matches axis-angle across rotation representations."""
     SMPLX = _smplx_backend(backend)
     inputs, _ = load_test_case(0)
-    native_model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    native_model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     rotated_model = SMPLX(
         model_path=MODEL_PATH,
         flat_hand_mean=False,
-        ground_plane=False,
         rotation_type=rotation_type,
     )
 
@@ -322,7 +321,7 @@ def test_forward_arbitrary_batch_dims_torch(batch_shape: tuple[int, ...]) -> Non
     """Test torch forward_* supports multiple leading batch dimensions."""
     from body_models.smplx.torch import SMPLX
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=False)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
     flat_batch = int(np.prod(batch_shape))
 
     params_flat = model.get_rest_pose(batch_size=flat_batch)
@@ -355,7 +354,7 @@ def test_forward_accelerator_optional_defaults() -> None:
     if device is None:
         pytest.skip("No accelerator available (cuda or mps)")
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False, ground_plane=True).to(device)
+    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False).to(device)
     B = 2
     params = model.get_rest_pose(batch_size=B)
     params["body_pose"] = torch.randn(B, model.NUM_BODY_JOINTS, 3, device=device, dtype=torch.float32)

@@ -20,9 +20,6 @@ class FLAME(BodyModel, nn.Module):
     Args:
         model_path: Path to the FLAME model file or directory.
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
-        ground_plane: If True (default), dynamically offset mesh so chin is at Y=0
-            regardless of head shape. If False, use native FLAME coordinates.
-
     Forward API:
         forward_vertices(shape, expression, pose, head_rotation, global_rotation, global_translation)
         forward_skeleton(shape, expression, pose, head_rotation, global_rotation, global_translation)
@@ -50,14 +47,12 @@ class FLAME(BodyModel, nn.Module):
         self,
         model_path: Path | str | None = None,
         simplify: float = 1.0,
-        ground_plane: bool = True,
         rotation_type: core.RotationType = "axis_angle",
     ):
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
-        self.ground_plane = ground_plane
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path)
@@ -109,9 +104,6 @@ class FLAME(BodyModel, nn.Module):
 
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = list(FLAME_JOINT_NAMES)
-
-        # Precompute Y offset for ground plane (min Y of rest pose mesh)
-        self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -172,14 +164,12 @@ class FLAME(BodyModel, nn.Module):
             J_regressor=self.J_regressor,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
-            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             expression=expression,
             pose=pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            ground_plane=self.ground_plane,
             rotation_type=self.rotation_type,
             xp=torch,
         )
@@ -214,14 +204,12 @@ class FLAME(BodyModel, nn.Module):
             J_regressor=self.J_regressor,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
-            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             expression=expression,
             pose=pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            ground_plane=self.ground_plane,
             rotation_type=self.rotation_type,
             xp=torch,
         )
