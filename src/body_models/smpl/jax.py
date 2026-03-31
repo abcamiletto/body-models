@@ -27,7 +27,6 @@ class SMPL(BodyModel, nnx.Module):
         model_path: Path | str | None = None,
         gender: str | None = None,
         simplify: float = 1.0,
-        ground_plane: bool = True,
         rotation_type: core.RotationType = "axis_angle",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
@@ -38,7 +37,6 @@ class SMPL(BodyModel, nnx.Module):
 
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
-        self.ground_plane = ground_plane
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)
@@ -74,9 +72,6 @@ class SMPL(BodyModel, nnx.Module):
         self._faces = nnx.Variable(jnp.asarray(faces))
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = list(SMPL_JOINT_NAMES)
-
-        # Precompute Y offset for ground plane (min Y of rest pose mesh)
-        self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
 
         # Precomputed joint regression matrices
         _j_template = J_regressor @ v_template_full
@@ -125,13 +120,11 @@ class SMPL(BodyModel, nnx.Module):
             j_shapedirs=self._j_shapedirs[...],
             parents=self.parents[...],
             kinematic_fronts=self._kinematic_fronts,
-            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            ground_plane=self.ground_plane,
             rotation_type=self.rotation_type,
         )
 
@@ -148,13 +141,11 @@ class SMPL(BodyModel, nnx.Module):
             j_shapedirs=self._j_shapedirs[...],
             parents=self.parents[...],
             kinematic_fronts=self._kinematic_fronts,
-            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            ground_plane=self.ground_plane,
             rotation_type=self.rotation_type,
         )
 
