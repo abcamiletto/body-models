@@ -263,9 +263,13 @@ def _forward_skeleton_core(
 
     # Convert euler to quaternion and apply pre-rotation
     q_local = SO3.canonicalize(
-        SO3.conversions.from_euler_to_quat(euler, src_convention="xyz", dst_convention="xyzw", xp=xp), convention="xyzw", xp=xp
+        SO3.conversions.from_euler_to_quat(euler, src_convention="xyz", dst_convention="xyzw", xp=xp),
+        convention="xyzw",
+        xp=xp,
     )
-    q_l = SO3.canonicalize(SO3.multiply(joint_pre_rotations, q_local, convention="xyzw", xp=xp), convention="xyzw", xp=xp)
+    q_l = SO3.canonicalize(
+        SO3.multiply(joint_pre_rotations, q_local, convention="xyzw", xp=xp), convention="xyzw", xp=xp
+    )
 
     # Scale from joint params
     s_l = xp.exp(_LN2 * j_p[..., 6:7])  # [B, J, 1]

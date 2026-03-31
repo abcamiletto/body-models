@@ -109,7 +109,9 @@ class MHR(BodyModel, nn.Module):
 
         inv_bind = torch.from_numpy(data["inverse_bind_pose"])
         t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
-        self.register_buffer("bind_inv_linear", SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s.unsqueeze(-1))
+        self.register_buffer(
+            "bind_inv_linear", SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s.unsqueeze(-1)
+        )
         self.register_buffer("bind_inv_translation", t)
 
         # Load pose correctives weights
