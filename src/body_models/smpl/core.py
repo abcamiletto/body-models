@@ -21,14 +21,12 @@ def forward_vertices(
     j_shapedirs: Float[Array, "24 3 S"],
     parents: Int[Array, "24"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
-    rest_pose_y_offset: float,
     # Inputs
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
     pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
-    ground_plane: bool = True,
     rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
@@ -56,9 +54,6 @@ def forward_vertices(
         rotation_type=rotation_type,
     )
 
-    # Precomputed offset to place feet on ground plane
-    y_offset = rest_pose_y_offset if ground_plane else 0.0
-
     # Pose blend shapes
     eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1), xp=xp)
     pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
@@ -74,12 +69,6 @@ def forward_vertices(
     # Apply global transform
     v_posed = _apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
 
-    # Apply ground plane offset (shift Y up by precomputed amount)
-    if y_offset != 0.0:
-        offset = common.zeros_as(v_posed, shape=(1, 1, 3), xp=xp)
-        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=v_posed.dtype), xp=xp)
-        v_posed = v_posed + offset
-
     return v_posed
 
 
@@ -89,14 +78,12 @@ def forward_skeleton(
     j_shapedirs: Float[Array, "J 3 S"],
     parents: Int[Array, "J"],
     kinematic_fronts: list[tuple[list[int], list[int]]],
-    rest_pose_y_offset: float,
     # Inputs
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
     pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
-    ground_plane: bool = True,
     rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
@@ -123,9 +110,6 @@ def forward_skeleton(
         rotation_type=rotation_type,
     )
 
-    # Precomputed offset to place feet on ground plane
-    y_offset = rest_pose_y_offset if ground_plane else 0.0
-
     # Extract R and t from T_world
     R_world = T_world[..., :3, :3]
     t_world = T_world[..., :3, 3]
@@ -140,12 +124,6 @@ def forward_skeleton(
             global_translation,
             rotation_type,
         )
-
-    # Apply ground plane offset (shift Y up by precomputed amount)
-    if y_offset != 0.0:
-        offset = common.zeros_as(t_world, shape=(1, 1, 3), xp=xp)
-        offset = common.set(offset, (0, 0, 1), xp.asarray(y_offset, dtype=t_world.dtype), xp=xp)
-        t_world = t_world + offset
 
     # Reconstruct T from R and t
     return _build_transform_matrix(xp, R_world, t_world)
