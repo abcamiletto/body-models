@@ -49,7 +49,7 @@ class BodyModel(ABC):
         Compute mesh vertices.
 
         Signature varies by model. Outputs are in Y-up coordinate system
-        with feet at floor level (Y=0), in meters.
+        in meters.
 
         Returns:
             Mesh vertices [B, V, 3] in meters.
@@ -61,7 +61,7 @@ class BodyModel(ABC):
         Compute skeleton joint transforms.
 
         Signature varies by model. Outputs are in Y-up coordinate system
-        with feet at floor level (Y=0), in meters.
+        in meters.
 
         Returns:
             World-space 4x4 transformation matrices [B, J, 4, 4] in meters.

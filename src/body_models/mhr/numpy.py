@@ -75,7 +75,7 @@ class MHR(BodyModel):
 
         inv_bind = data["inverse_bind_pose"]
         t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
-        self.bind_inv_linear = SO3.conversions.from_quat_xyzw_to_rotmat(q) * s[..., None]
+        self.bind_inv_linear = SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s[..., None]
         self.bind_inv_translation = t
 
         # Load pose correctives weights

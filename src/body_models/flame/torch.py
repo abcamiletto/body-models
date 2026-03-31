@@ -9,7 +9,9 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, identity_as
+from nanomanifold import SO3
+
+from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
@@ -146,7 +148,7 @@ class FLAME(BodyModel, nn.Module):
         if expression is None:
             expression = torch.zeros((B, 100), device=device, dtype=dtype)
         if pose is None:
-            pose = identity_as(
+            pose = SO3.identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -192,7 +194,7 @@ class FLAME(BodyModel, nn.Module):
         if expression is None:
             expression = torch.zeros((B, 100), device=device, dtype=dtype)
         if pose is None:
-            pose = identity_as(
+            pose = SO3.identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -222,19 +224,19 @@ class FLAME(BodyModel, nn.Module):
         return {
             "shape": torch.zeros((1, 300), device=device, dtype=dtype),
             "expression": torch.zeros((batch_size, 100), device=device, dtype=dtype),
-            "pose": identity_as(
+            "pose": SO3.identity_as(
                 torch.zeros((batch_size, 100), device=device, dtype=dtype),
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "head_rotation": identity_as(
+            "head_rotation": SO3.identity_as(
                 torch.zeros((batch_size, 100), device=device, dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "global_rotation": identity_as(
+            "global_rotation": SO3.identity_as(
                 torch.zeros((batch_size, 100), device=device, dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

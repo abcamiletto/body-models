@@ -9,7 +9,9 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, identity_as
+from nanomanifold import SO3
+
+from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import SMPL_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
@@ -170,13 +172,13 @@ class SMPL(BodyModel, nn.Module):
         pelvis_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         return {
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
-            "body_pose": identity_as(
+            "body_pose": SO3.identity_as(
                 body_pose_ref,
                 batch_dims=(batch_size, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "pelvis_rotation": identity_as(
+            "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

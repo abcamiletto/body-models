@@ -2,15 +2,17 @@
 
 # body-models
 
-A unified library for parametric human body models. 
+A unified library for parametric human body models.
 
-Provides a ~shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, and MHR body models.
+Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, and MHR body models with PyTorch, NumPy, and JAX backends.
 
-Supports:
-- PyTorch, NumPy, and JAX backends
-- forward kinematics disentangled from mesh skinning (`forward_skeleton` and `forward_vertices` methods)
-- out-of-the-box lower-resolution mesh forward pass (`simplify` argument to the constructor)
-- arbitrary number of leading dimensions
+## Features
+
+- **Multi-backend**: PyTorch, NumPy, and JAX
+- **Disentangled outputs**: separate `forward_vertices` (mesh) and `forward_skeleton` (joint transforms)
+- **Mesh simplification**: lower-resolution forward pass via `simplify` constructor argument
+- **Vertex subsets**: compute only specific vertices via `vertex_indices` argument
+- **Rotation representations**: axis-angle, quaternion, 6D, rotation matrix, and projected matrix (`rotation_type` constructor argument)
 
 ## Installation
 
@@ -138,7 +140,7 @@ Available backends:
 - `body_models.<model>.numpy` - NumPy
 - `body_models.<model>.jax` - JAX/Flax (differentiable)
 
-## Common Properties
+## Common Interface
 
 All models inherit from `BodyModel` and share these properties:
 
@@ -148,21 +150,8 @@ All models inherit from `BodyModel` and share these properties:
 | `num_vertices` | `int` | Number of mesh vertices |
 | `joint_names` | `list[str]` | Joint names |
 | `faces` | `[F, 3]` | Mesh face indices |
+| `skin_weights` | `[V, J]` | Skinning weights |
 | `rest_vertices` | `[V, 3]` | Vertices in rest pose |
-
-### Mesh Simplification
-
-All models support mesh simplification via the `simplify` constructor argument:
-
-```python
-# Reduce face count by half (2x simplification)
-model = SMPL(gender="neutral", simplify=2.0)
-
-# Reduce to ~1/4 of original faces
-model = SMPLX(gender="neutral", simplify=4.0)
-```
-
-The `simplify` parameter is a divisor for the face count. A value of `2.0` produces a mesh with half the faces, `4.0` produces quarter, etc. Default is `1.0` (no simplification). Skinning weights and blend shapes are automatically mapped to the simplified mesh.
 
 ### Common Methods
 
@@ -176,6 +165,51 @@ vertices = model.forward_vertices(**params)
 # Compute joint transforms [B, J, 4, 4] in meters
 transforms = model.forward_skeleton(**params)
 ```
+
+### Mesh Simplification
+
+All models support mesh simplification via the `simplify` constructor argument:
+
+```python
+# Reduce face count by half (2x simplification)
+model = SMPL(gender="neutral", simplify=2.0)
+
+# Reduce to ~1/4 of original faces
+model = SMPLX(gender="neutral", simplify=4.0)
+```
+
+The `simplify` parameter is a divisor for the face count. Default is `1.0` (no simplification). Skinning weights and blend shapes are automatically mapped to the simplified mesh.
+
+### Vertex Subsets
+
+All mesh-based models support computing only specific vertices:
+
+```python
+# Only compute vertices 0, 100, 200
+vertices = model.forward_vertices(**params, vertex_indices=[0, 100, 200])
+# Returns [B, 3, 3] instead of [B, V, 3]
+```
+
+This avoids computing the full mesh when you only need a few vertices (e.g. for landmark loss).
+
+### Rotation Representations
+
+SMPL, SMPL-X, FLAME, and ANNY support multiple rotation representations via the `rotation_type` constructor argument:
+
+```python
+model = SMPL(gender="neutral", rotation_type="sixd")  # Use 6D rotations
+```
+
+Supported types:
+| Type | Shape per joint | Description |
+|------|----------------|-------------|
+| `"axis_angle"` | `[3]` | Axis-angle (default) |
+| `"quat"` | `[4]` | Quaternion (wxyz convention) |
+| `"sixd"` | `[6]` | 6D continuous representation |
+| `"rotmat"` | `[3, 3]` | Rotation matrix (assumed SO(3)) |
+| `"matrix"` | `[3, 3]` | General 3x3 matrix (SVD-projected to SO(3)) |
+
+The `"matrix"` type is useful when optimizing rotations without constraints -- inputs are projected to the nearest valid rotation matrix via SVD. The `"rotmat"` type assumes inputs are already valid rotation matrices and skips the projection.
 
 ## Supported Models
 
@@ -207,8 +241,8 @@ args = smpl.from_native_args(shape, body_pose, pelvis_rotation, global_translati
 vertices = model.forward_vertices(**args)
 transforms = model.forward_skeleton(**args)
 
-# Convert outputs back to native format (removes feet offset, extracts joint positions)
-result = smpl.to_native_outputs(vertices, transforms, model._feet_offset)
+# Convert outputs back to native format
+result = smpl.to_native_outputs(vertices, transforms)
 ```
 
 ### SMPL-X
@@ -247,7 +281,7 @@ vertices = model.forward_vertices(**args)
 transforms = model.forward_skeleton(**args)
 
 # Convert outputs back to native format
-result = smplx.to_native_outputs(vertices, transforms, model._feet_offset)
+result = smplx.to_native_outputs(vertices, transforms)
 ```
 
 ### SKEL
@@ -364,7 +398,6 @@ result = mhr.to_native_outputs(vertices, transforms)
 The unified API returns outputs in:
 - **Y-up** coordinate system
 - **Meters** as the unit
-- Feet at floor level (Y=0)
 
 Use the `to_native_outputs()` conversion functions to get outputs in the original library conventions.
 
