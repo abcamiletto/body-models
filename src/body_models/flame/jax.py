@@ -9,7 +9,9 @@ from flax import nnx
 from jaxtyping import Float, Int
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, identity_as
+from nanomanifold import SO3
+
+from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
@@ -132,7 +134,7 @@ class FLAME(BodyModel, nnx.Module):
         if expression is None:
             expression = jnp.zeros((B, 100), dtype=jnp.float32)
         if pose is None:
-            pose = identity_as(
+            pose = SO3.identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -176,7 +178,7 @@ class FLAME(BodyModel, nnx.Module):
         if expression is None:
             expression = jnp.zeros((B, 100), dtype=jnp.float32)
         if pose is None:
-            pose = identity_as(
+            pose = SO3.identity_as(
                 expression,
                 batch_dims=(B, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
@@ -204,19 +206,19 @@ class FLAME(BodyModel, nnx.Module):
         return {
             "shape": jnp.zeros((1, 300), dtype=dtype),
             "expression": jnp.zeros((batch_size, 100), dtype=dtype),
-            "pose": identity_as(
+            "pose": SO3.identity_as(
                 jnp.zeros((batch_size, 100), dtype=dtype),
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "head_rotation": identity_as(
+            "head_rotation": SO3.identity_as(
                 jnp.zeros((batch_size, 100), dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "global_rotation": identity_as(
+            "global_rotation": SO3.identity_as(
                 jnp.zeros((batch_size, 100), dtype=dtype),
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,

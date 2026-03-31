@@ -8,7 +8,7 @@ from jaxtyping import Float
 from nanomanifold import SO3
 
 from .. import common
-from ..rotations import RotationType, convert
+from ..rotations import RotationType
 from .io import PHENOTYPE_VARIATIONS
 
 Array = Any  # Generic array type (numpy, torch, jax)
@@ -107,7 +107,7 @@ def forward_vertices(
     vertices = vertices @ coord_rotation.T + coord_translation
     if global_rotation is not None:
         global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
-        R_global = convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
+        R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
         vertices = (R_global @ vertices.mT).mT
     if global_translation is not None:
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
@@ -198,7 +198,7 @@ def forward_skeleton(
         G = common.eye_as(transforms, batch_dims=(B,), xp=xp)
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
-            R_global = convert(global_rotation, src=rotation_type, dst="matrix", xp=xp)
+            R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
             G = common.set(G, idx_R, R_global, copy=False, xp=xp)
         if global_translation is not None:
             global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
@@ -451,7 +451,7 @@ def _pose_to_transform(
     rotation_type: RotationType,
 ) -> Float[Array, "B J 4 4"]:
     """Convert per-joint rotations to 4x4 transforms."""
-    R = convert(pose, src=rotation_type, dst="matrix", xp=xp)
+    R = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B, J = R.shape[:2]
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
