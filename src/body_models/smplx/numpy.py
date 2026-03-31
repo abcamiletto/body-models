@@ -29,7 +29,6 @@ class SMPLX(BodyModel):
         gender: str | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
-        ground_plane: bool = True,
         rotation_type: core.RotationType = "axis_angle",
         use_hand_pca: bool = False,  # Accepted for compatibility, not used
     ):
@@ -41,7 +40,6 @@ class SMPLX(BodyModel):
 
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
-        self.ground_plane = ground_plane
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)
@@ -93,9 +91,6 @@ class SMPLX(BodyModel):
 
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = get_joint_names(data)
-
-        # Precompute Y offset for ground plane (min Y of rest pose mesh)
-        self._rest_pose_y_offset = float(-v_template_full[:, 1].min())
 
         # Precomputed joint regression matrices
         self._j_template = J_regressor @ v_template_full
@@ -149,7 +144,6 @@ class SMPLX(BodyModel):
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
-            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
@@ -158,7 +152,6 @@ class SMPLX(BodyModel):
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            ground_plane=self.ground_plane,
             rotation_type=self.rotation_type,
         )
 
@@ -180,7 +173,6 @@ class SMPLX(BodyModel):
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
-            rest_pose_y_offset=self._rest_pose_y_offset,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
@@ -189,7 +181,6 @@ class SMPLX(BodyModel):
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
-            ground_plane=self.ground_plane,
             rotation_type=self.rotation_type,
         )
 

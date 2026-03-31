@@ -97,7 +97,7 @@ def test_forward_vertices_torch(idx: int) -> None:
     """Test PyTorch forward_vertices matches reference."""
     from body_models.smpl.torch import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, ground_plane=False)
+    model = SMPL(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     with torch.no_grad():
@@ -116,7 +116,7 @@ def test_forward_vertices_numpy(idx: int) -> None:
     """Test NumPy forward_vertices matches reference."""
     from body_models.smpl.numpy import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, ground_plane=False)
+    model = SMPL(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     verts = model.forward_vertices(
@@ -135,7 +135,7 @@ def test_forward_vertices_jax(idx: int) -> None:
     jnp = pytest.importorskip("jax.numpy")
     from body_models.smpl.jax import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, ground_plane=False)
+    model = SMPL(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     verts = model.forward_vertices(
@@ -153,7 +153,7 @@ def test_forward_skeleton_torch(idx: int) -> None:
     """Test PyTorch forward_skeleton matches reference joint positions."""
     from body_models.smpl.torch import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, ground_plane=False)
+    model = SMPL(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     with torch.no_grad():
@@ -174,7 +174,7 @@ def test_forward_skeleton_numpy(idx: int) -> None:
     """Test NumPy forward_skeleton matches reference joint positions."""
     from body_models.smpl.numpy import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, ground_plane=False)
+    model = SMPL(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     transforms = model.forward_skeleton(
@@ -195,7 +195,7 @@ def test_forward_skeleton_jax(idx: int) -> None:
     jnp = pytest.importorskip("jax.numpy")
     from body_models.smpl.jax import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, ground_plane=False)
+    model = SMPL(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     transforms = model.forward_skeleton(
@@ -216,8 +216,8 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
     """Test SMPL matches axis-angle across rotation representations."""
     SMPL = _smpl_backend(backend)
     inputs, _ = load_test_case(0)
-    native_model = SMPL(model_path=MODEL_PATH, ground_plane=False)
-    rotated_model = SMPL(model_path=MODEL_PATH, ground_plane=False, rotation_type=rotation_type)
+    native_model = SMPL(model_path=MODEL_PATH)
+    rotated_model = SMPL(model_path=MODEL_PATH, rotation_type=rotation_type)
 
     rotated_inputs = convert_rotation_inputs(inputs, rotation_type)
     native_kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
@@ -292,7 +292,7 @@ def test_forward_accelerator_optional_defaults() -> None:
     if device is None:
         pytest.skip("No accelerator available (cuda or mps)")
 
-    model = SMPL(model_path=MODEL_PATH, ground_plane=True).to(device)
+    model = SMPL(model_path=MODEL_PATH).to(device)
     B = 2
     params = model.get_rest_pose(batch_size=B)
     params["body_pose"] = torch.randn(B, model.NUM_BODY_JOINTS, 3, device=device, dtype=torch.float32)
