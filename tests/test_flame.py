@@ -16,7 +16,7 @@ import pytest
 import torch
 
 from accelerator_utils import get_accelerator_device
-from body_models.rotations import convert
+from nanomanifold import SO3
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "flame"
@@ -25,7 +25,7 @@ INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5
 RTOL, ATOL = 1e-4, 1e-4
-ROTATION_TYPES = ["axis_angle", "quat", "quat_wxyz", "quat_xyzw", "sixd", "matrix", "rotmat"]
+ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 
 requires_model = pytest.mark.skipif(
     not MODEL_PATH.exists(),
@@ -63,8 +63,8 @@ def convert_rotation_inputs(inputs: dict[str, np.ndarray], rotation_type: str) -
     return {
         "shape": inputs["shape"],
         "expression": inputs["expression"],
-        "pose": convert(inputs["pose"], src="axis_angle", dst=rotation_type, xp=np),
-        "head_rotation": convert(inputs["head_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+        "pose": SO3.convert(inputs["pose"], src="axis_angle", dst=rotation_type, xp=np),
+        "head_rotation": SO3.convert(inputs["head_rotation"], src="axis_angle", dst=rotation_type, xp=np),
         "global_translation": inputs["global_translation"],
     }
 

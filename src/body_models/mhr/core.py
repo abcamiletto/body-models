@@ -263,9 +263,9 @@ def _forward_skeleton_core(
 
     # Convert euler to quaternion and apply pre-rotation
     q_local = SO3.canonicalize(
-        SO3.conversions.from_euler_to_quat_xyzw(euler, convention="xyz", xp=xp), xyzw=True, xp=xp
+        SO3.conversions.from_euler_to_quat(euler, src_convention="xyz", dst_convention="xyzw", xp=xp), convention="xyzw", xp=xp
     )
-    q_l = SO3.canonicalize(SO3.multiply(joint_pre_rotations, q_local, xyzw=True, xp=xp), xyzw=True, xp=xp)
+    q_l = SO3.canonicalize(SO3.multiply(joint_pre_rotations, q_local, convention="xyzw", xp=xp), convention="xyzw", xp=xp)
 
     # Scale from joint params
     s_l = xp.exp(_LN2 * j_p[..., 6:7])  # [B, J, 1]
@@ -299,7 +299,7 @@ def _compose_global_trs(
     num_joints: int,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"]]:
     """Compose local TRS transforms into global via batched FK."""
-    r_l = SO3.conversions.from_quat_xyzw_to_rotmat(q_l, xp=xp)  # [B, J, 3, 3]
+    r_l = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)  # [B, J, 3, 3]
 
     t_results: list[Float[Array, "B 3"] | None] = [None] * num_joints
     s_results: list[Float[Array, "B 1"] | None] = [None] * num_joints
@@ -387,7 +387,7 @@ def extract_skeleton_state(
 
     # Extract pure rotation and convert to quaternion
     R_pure = R / s[..., None]
-    q = SO3.conversions.from_rotmat_to_quat_xyzw(R_pure, xp=xp)
+    q = SO3.conversions.from_rotmat_to_quat(R_pure, convention="xyzw", xp=xp)
 
     return xp.concat([t, q, s], axis=-1)
 

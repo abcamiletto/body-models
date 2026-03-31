@@ -6,7 +6,9 @@ from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 
 from .. import common
-from ..rotations import RotationType, convert, identity_as
+from nanomanifold import SO3
+
+from ..rotations import RotationType
 
 Array = Any  # Generic array type (numpy, torch, jax)
 
@@ -163,19 +165,19 @@ def _forward_core(
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
     # Build full pose with pelvis rotation
-    body_pose_matrices = convert(body_pose, src=rotation_type, dst="matrix", xp=xp)
+    body_pose_matrices = SO3.convert(body_pose, src=rotation_type, dst="rotmat", xp=xp)
     if pelvis_rotation is None:
-        pelvis_matrices = identity_as(
+        pelvis_matrices = SO3.identity_as(
             body_pose_matrices,
             batch_dims=(B, 1),
-            rotation_type="matrix",
+            rotation_type="rotmat",
             xp=xp,
         )
     else:
-        pelvis_matrices = convert(
+        pelvis_matrices = SO3.convert(
             pelvis_rotation,
             src=rotation_type,
-            dst="matrix",
+            dst="rotmat",
             xp=xp,
         )[:, None]
     pose_matrices = xp.concat([pelvis_matrices, body_pose_matrices], axis=1)
@@ -260,7 +262,7 @@ def _apply_global_transform(
 ) -> Float[Array, "B N 3"]:
     """Apply global rotation and translation to points [B, N, 3]."""
     if rotation is not None:
-        R = convert(rotation, src=rotation_type, dst="matrix", xp=xp)
+        R = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
         points = (R @ points.mT).mT
     if translation is not None:
         points = points + translation[:, None]
@@ -277,7 +279,7 @@ def _apply_global_transform_to_rt(
 ) -> tuple[Float[Array, "B J 3 3"], Float[Array, "B J 3"]]:
     """Apply global rotation and translation to R, t components."""
     if rotation is not None:
-        R_global = convert(rotation, src=rotation_type, dst="matrix", xp=xp)
+        R_global = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
         # Transform t: R_global @ t
         t = (R_global @ t.mT).mT
         # Transform R: R_global @ R (broadcast R_global over J dimension)

@@ -9,7 +9,9 @@ from flax import nnx
 from jaxtyping import Float, Int
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, identity_as
+from nanomanifold import SO3
+
+from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
@@ -197,26 +199,26 @@ class SMPLX(BodyModel, nnx.Module):
         pelvis_ref = jnp.zeros((batch_size, 3), dtype=dtype)
         return {
             "shape": jnp.zeros((1, 10), dtype=dtype),
-            "body_pose": identity_as(
+            "body_pose": SO3.identity_as(
                 body_pose_ref,
                 batch_dims=(batch_size, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "hand_pose": identity_as(
+            "hand_pose": SO3.identity_as(
                 hand_pose_ref,
                 batch_dims=(batch_size, self.NUM_HAND_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "head_pose": identity_as(
+            "head_pose": SO3.identity_as(
                 head_pose_ref,
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
             "expression": jnp.zeros((batch_size, 10), dtype=dtype),
-            "pelvis_rotation": identity_as(
+            "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
