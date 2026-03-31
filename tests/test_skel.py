@@ -6,6 +6,8 @@
 """
 
 import json
+from contextlib import nullcontext
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,29 @@ def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
         "joints": np.load(OUTPUTS_DIR / str(idx) / "joints.npy"),
     }
     return inputs, outputs
+
+
+def _skel_backend(backend: str):
+    if backend == "jax":
+        pytest.importorskip("jax.numpy")
+    module = import_module(f"body_models.skel.{backend}")
+    return getattr(module, "SKEL"), module.from_native_args
+
+
+def _backend_array(backend: str, value: np.ndarray):
+    if backend == "torch":
+        return torch.tensor(value)
+    if backend == "jax":
+        import jax.numpy as jnp
+
+        return jnp.array(value)
+    return value
+
+
+def _to_numpy(backend: str, value):
+    if backend == "torch":
+        return value.numpy()
+    return np.asarray(value)
 
 
 # ============================================================================
@@ -126,6 +151,33 @@ def test_forward_vertices_jax(idx: int) -> None:
 
     np.testing.assert_allclose(np.asarray(result["vertices"][0]), ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(np.asarray(result["joints"][0]), ref["joints"], rtol=RTOL, atol=ATOL)
+
+
+@requires_model
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_vertex_subset_matches_full_output(backend: str) -> None:
+    """Test vertex_indices returns the same vertices as slicing the full output."""
+    SKEL, from_native_args = _skel_backend(backend)
+    inputs, _ = load_test_case(0)
+    model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
+    args = from_native_args(
+        shape=_backend_array(backend, inputs["shape"])[None],
+        body_pose=_backend_array(backend, inputs["body_pose"])[None],
+        global_translation=_backend_array(backend, inputs["global_translation"])[None],
+    )
+    vertex_indices = [0, 10, 1, 10, 25]
+
+    context = torch.no_grad() if backend == "torch" else nullcontext()
+    with context:
+        vertices_full = model.forward_vertices(**args)
+        vertices_subset = model.forward_vertices(**args, vertex_indices=vertex_indices)
+
+    np.testing.assert_allclose(
+        _to_numpy(backend, vertices_subset),
+        _to_numpy(backend, vertices_full)[:, vertex_indices],
+        rtol=RTOL,
+        atol=ATOL,
+    )
 
 
 # ============================================================================

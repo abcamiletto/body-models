@@ -35,7 +35,7 @@ class ANNY(BodyModel, nn.Module):
             Note: Simplified meshes use triangular faces instead of quads.
 
     Forward API:
-        forward_vertices(gender, age, muscle, weight, height, proportions, pose, ...)
+        forward_vertices(gender, age, muscle, weight, height, proportions, pose, ..., vertex_indices=None)
         forward_skeleton(gender, age, muscle, weight, height, proportions, pose, ...)
 
         Phenotype parameters: [B] tensors in [0, 1]
@@ -223,6 +223,7 @@ class ANNY(BodyModel, nn.Module):
         pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
+        vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute mesh vertices [B, V, 3]."""
         return core.forward_vertices(
@@ -251,6 +252,7 @@ class ANNY(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
             xp=torch,
         )
