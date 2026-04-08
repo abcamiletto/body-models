@@ -18,10 +18,6 @@ COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], 
 COORD_TRANSLATION = np.array([0.0, 0.852, 0.0], dtype=np.float32)
 
 
-def _front_pairs(fronts: tuple[list[list[int]], list[list[int]]]) -> list[tuple[list[int], list[int]]]:
-    return [(list(joint_ids), list(parent_ids)) for joint_ids, parent_ids in zip(fronts[0], fronts[1])]
-
-
 def forward_vertices(
     # Model data
     template_vertices: Float[Array, "V 3"],
@@ -34,7 +30,7 @@ def forward_vertices(
     lbs_weights: Float[Array, "V J"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: tuple[list[list[int]], list[list[int]]],
+    kinematic_fronts: list[tuple[list[int], list[int]]],
     coord_rotation: Float[Array, "3 3"],
     coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
@@ -75,7 +71,6 @@ def forward_vertices(
         lbs_weights = lbs_weights[vertex_indices]
 
     pose_T = _pose_to_transform(xp, pose, rotation_type)
-    fronts = _front_pairs(kinematic_fronts)
     coeffs, _, bone_transforms = _forward_core(
         xp=xp,
         template_bone_heads=template_bone_heads,
@@ -85,7 +80,7 @@ def forward_vertices(
         bone_rolls_rotmat=bone_rolls_rotmat,
         phenotype_mask=phenotype_mask,
         anchors=anchors,
-        kinematic_fronts=fronts,
+        kinematic_fronts=kinematic_fronts,
         y_axis=y_axis,
         degenerate_rotation=degenerate_rotation,
         extrapolate_phenotypes=extrapolate_phenotypes,
@@ -96,7 +91,6 @@ def forward_vertices(
         height=height,
         proportions=proportions,
         pose_T=pose_T,
-        joint_indices=None,
     )
 
     # Vertex blendshapes
@@ -130,7 +124,7 @@ def forward_skeleton(
     bone_rolls_rotmat: Float[Array, "J 3 3"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: tuple[list[list[int]], list[list[int]]],
+    kinematic_fronts: list[tuple[list[int], list[int]]],
     coord_rotation: Float[Array, "3 3"],
     coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
@@ -165,12 +159,11 @@ def forward_skeleton(
         xp = get_namespace(gender)
 
     pose_T = _pose_to_transform(xp, pose, rotation_type)
-    fronts = _front_pairs(kinematic_fronts)
     if joint_indices is not None:
-        joint_indices = common.normalize_indices(joint_indices, template_bone_heads.shape[0], name="joint_indices")
-        parents = common.parent_list_from_fronts(fronts, template_bone_heads.shape[0])
+        joint_indices = common.normalize_joint_indices(joint_indices, template_bone_heads.shape[0])
+        parents = common.parent_list_from_fronts(kinematic_fronts, template_bone_heads.shape[0])
         active_joints = common.required_joint_set(parents, joint_indices)
-        fronts = common.prune_kinematic_fronts(fronts, active_joints)
+        kinematic_fronts = common.prune_kinematic_fronts(kinematic_fronts, active_joints)
     _, bone_poses, _ = _forward_core(
         xp=xp,
         template_bone_heads=template_bone_heads,
@@ -180,7 +173,7 @@ def forward_skeleton(
         bone_rolls_rotmat=bone_rolls_rotmat,
         phenotype_mask=phenotype_mask,
         anchors=anchors,
-        kinematic_fronts=fronts,
+        kinematic_fronts=kinematic_fronts,
         y_axis=y_axis,
         degenerate_rotation=degenerate_rotation,
         extrapolate_phenotypes=extrapolate_phenotypes,
@@ -241,7 +234,7 @@ def _forward_core(
     height: Float[Array, "B"],
     proportions: Float[Array, "B"],
     pose_T: Float[Array, "B J 4 4"],
-    joint_indices: list[int] | None,
+    joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B S"], Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
     """Core forward: returns (blendshape_coeffs, bone_poses, bone_transforms)."""
     # Phenotype -> blendshape coefficients

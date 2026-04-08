@@ -1,5 +1,7 @@
 """Common utilities for multi-backend array operations."""
 
+from __future__ import annotations
+
 import builtins
 from typing import Any
 
@@ -103,29 +105,23 @@ def eye_as(ref: Array, *, batch_dims: tuple[int, ...], xp: Any = None) -> Array:
     return eye
 
 
-def normalize_indices(indices: Any, size: int, *, name: str = "indices") -> list[int]:
-    """Normalize a 1D index collection to validated Python ints."""
+def normalize_joint_indices(indices: Any, size: int) -> list[int]:
     values = indices.tolist() if hasattr(indices, "tolist") else indices
-    arr = np.asarray(values, dtype=np.int64).reshape(-1)
-    if np.any((arr < 0) | (arr >= size)):
-        raise IndexError(f"{name} must be in [0, {size})")
-    return [int(i) for i in arr.tolist()]
+    values = np.asarray(values, dtype=np.int64).reshape(-1)
+    if np.any((values < 0) | (values >= size)):
+        raise IndexError(f"joint_indices must be in [0, {size})")
+    return values.tolist()
 
 
-def to_parent_list(parents: Any) -> list[int]:
-    values = parents.tolist() if hasattr(parents, "tolist") else parents
-    return [int(p) for p in values]
-
-
-def required_joint_set(parents: Any, joint_indices: list[int]) -> builtins.set[int]:
+def required_joint_set(parents: Any, joint_indices: list[int]) -> set[int]:
     """Return requested joints plus all ancestors needed for FK."""
-    parents_list = to_parent_list(parents)
-    active: builtins.set[int] = builtins.set()
+    parents = parents.tolist() if hasattr(parents, "tolist") else list(parents)
+    active: set[int] = builtins.set()
     for joint in joint_indices:
         cur = joint
         while cur >= 0 and cur not in active:
             active.add(cur)
-            cur = parents_list[cur]
+            cur = parents[cur]
     return active
 
 
@@ -133,17 +129,17 @@ def parent_list_from_fronts(fronts: list[tuple[list[int], list[int]]], num_joint
     parents = [-1] * num_joints
     for joints, parent_ids in fronts:
         for joint, parent in zip(joints, parent_ids):
-            parents[int(joint)] = int(parent)
+            parents[joint] = parent
     return parents
 
 
 def prune_kinematic_fronts(
     fronts: list[tuple[list[int], list[int]]],
-    active_joints: builtins.set[int],
+    active_joints: set[int],
 ) -> list[tuple[list[int], list[int]]]:
     pruned: list[tuple[list[int], list[int]]] = []
     for joints, parents in fronts:
-        pairs = [(int(joint), int(parent)) for joint, parent in zip(joints, parents) if joint in active_joints]
+        pairs = [(joint, parent) for joint, parent in zip(joints, parents) if joint in active_joints]
         if pairs:
             pruned.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
     return pruned

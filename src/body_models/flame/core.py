@@ -72,7 +72,6 @@ def forward_vertices(
         pose=pose,
         head_rotation=head_rotation,
         skeleton_only=False,
-        joint_indices=None,
         rotation_type=rotation_type,
     )
     assert v_t is not None  # guaranteed when skeleton_only=False
@@ -125,7 +124,7 @@ def forward_skeleton(
         xp = get_namespace(shape)
     active_fronts = kinematic_fronts
     if joint_indices is not None:
-        joint_indices = common.normalize_indices(joint_indices, len(parents), name="joint_indices")
+        joint_indices = common.normalize_joint_indices(joint_indices, len(parents))
         active_joints = common.required_joint_set(parents, joint_indices)
         active_fronts = common.prune_kinematic_fronts(kinematic_fronts, active_joints)
 
@@ -184,8 +183,8 @@ def _forward_core(
     pose: Float[Array, "B 4 N"] | Float[Array, "B 4 3 3"],
     head_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
     skeleton_only: bool,
-    joint_indices: list[int] | None,
     rotation_type: RotationType,
+    joint_indices: list[int] | None = None,
 ) -> tuple[
     Float[Array, "B V 3"] | None,
     Float[Array, "B 5 3"],
