@@ -295,6 +295,15 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
     )
 
 
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_constructor_rejects_removed_use_hand_pca_kwarg(backend: str) -> None:
+    """Removed compatibility kwargs should not linger in the public constructor."""
+    SMPLX = _smplx_backend(backend)
+
+    with pytest.raises(TypeError, match="use_hand_pca"):
+        SMPLX(model_path=MODEL_PATH, use_hand_pca=True)
+
+
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================
