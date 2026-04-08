@@ -4,7 +4,20 @@ from pathlib import Path
 from .. import config
 from ..common import simplify_mesh
 
-__all__ = ["get_model_path", "simplify_mesh"]
+__all__ = ["get_model_path", "simplify_mesh", "normalize_constructor_args"]
+
+
+def normalize_constructor_args(
+    model_path: Path | str | None = None,
+    gender: str | None = None,
+) -> tuple[Path | str | None, str]:
+    if gender is None and isinstance(model_path, str) and model_path in {"male", "female"}:
+        return None, model_path
+
+    if gender not in {"male", "female"}:
+        raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
+
+    return model_path, gender
 
 
 def get_model_path(model_path: Path | str | None, gender: str) -> Path:

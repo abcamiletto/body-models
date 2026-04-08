@@ -1,5 +1,6 @@
 """Interface contract tests for all model classes/backends."""
 
+import inspect
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ import pytest
 ASSET_DIR = Path(__file__).parent / "assets"
 MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr"]
 BACKENDS = ["torch", "numpy", "jax"]
+GENDERED_MODELS = {"smpl", "smplx", "skel"}
 
 
 def _get_model_file(model_name: str) -> Path:
@@ -78,3 +80,26 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert model.rest_vertices.ndim == 2
     assert model.rest_vertices.shape[0] == model.num_vertices
     assert model.rest_vertices.shape[1] == 3
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("model_name", MODELS)
+def test_constructor_core_kwargs(model_name: str, backend: str) -> None:
+    if backend == "jax":
+        pytest.importorskip("jax")
+        pytest.importorskip("flax")
+
+    module = import_module(f"body_models.{model_name}.{backend}")
+    cls = getattr(module, _class_name(model_name))
+    params = inspect.signature(cls.__init__).parameters
+
+    assert "model_path" in params
+    assert "simplify" in params
+
+    if model_name in GENDERED_MODELS:
+        assert "gender" in params
+    else:
+        assert "gender" not in params
+
+    if model_name == "skel":
+        assert list(params)[1:4] == ["model_path", "gender", "simplify"]
