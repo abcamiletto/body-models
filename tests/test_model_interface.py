@@ -1,4 +1,5 @@
 """Interface contract tests for all model classes/backends."""
+
 from importlib import import_module
 from pathlib import Path
 from typing import Any
