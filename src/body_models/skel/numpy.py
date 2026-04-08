@@ -252,6 +252,7 @@ class SKEL(BodyModel):
         pose: Float[np.ndarray, "B 46"],
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
         """Compute skeleton joint transforms [B, 24, 4, 4]."""
         return core.forward_skeleton(
@@ -274,6 +275,7 @@ class SKEL(BodyModel):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:

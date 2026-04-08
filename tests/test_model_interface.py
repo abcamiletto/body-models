@@ -4,6 +4,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 ASSET_DIR = Path(__file__).parent / "assets"
@@ -78,3 +79,22 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert model.rest_vertices.ndim == 2
     assert model.rest_vertices.shape[0] == model.num_vertices
     assert model.rest_vertices.shape[1] == 3
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("model_name", MODELS)
+def test_forward_skeleton_joint_indices_matches_full_output(model_name: str, backend: str) -> None:
+    model = _build_model(model_name, backend)
+
+    params = model.get_rest_pose(batch_size=1)
+    full = model.forward_skeleton(**params)
+
+    mid = min(1, model.num_joints - 1)
+    joint_indices = [model.num_joints - 1, 0, mid]
+    subset = model.forward_skeleton(**params, joint_indices=joint_indices)
+
+    full_np = np.asarray(full)
+    subset_np = np.asarray(subset)
+
+    assert subset_np.shape[-3] == len(joint_indices)
+    np.testing.assert_allclose(subset_np, full_np[..., joint_indices, :, :], atol=1e-6, rtol=1e-6)

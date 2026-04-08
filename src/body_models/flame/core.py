@@ -72,6 +72,7 @@ def forward_vertices(
         pose=pose,
         head_rotation=head_rotation,
         skeleton_only=False,
+        joint_indices=None,
         rotation_type=rotation_type,
     )
     assert v_t is not None  # guaranteed when skeleton_only=False
@@ -109,6 +110,7 @@ def forward_skeleton(
     head_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
@@ -121,6 +123,11 @@ def forward_skeleton(
 
     if xp is None:
         xp = get_namespace(shape)
+    active_fronts = kinematic_fronts
+    if joint_indices is not None:
+        joint_indices = common.normalize_indices(joint_indices, len(parents), name="joint_indices")
+        active_joints = common.required_joint_set(parents, joint_indices)
+        active_fronts = common.prune_kinematic_fronts(kinematic_fronts, active_joints)
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -132,12 +139,13 @@ def forward_skeleton(
         exprdirs_full=exprdirs_full,
         J_regressor=J_regressor,
         parents=parents,
-        kinematic_fronts=kinematic_fronts,
+        kinematic_fronts=active_fronts,
         shape=shape,
         expression=expression,
         pose=pose,
         head_rotation=head_rotation,
         skeleton_only=True,
+        joint_indices=joint_indices,
         rotation_type=rotation_type,
     )
 
@@ -176,6 +184,7 @@ def _forward_core(
     pose: Float[Array, "B 4 N"] | Float[Array, "B 4 3 3"],
     head_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
     skeleton_only: bool,
+    joint_indices: list[int] | None,
     rotation_type: RotationType,
 ) -> tuple[
     Float[Array, "B V 3"] | None,
@@ -225,7 +234,7 @@ def _forward_core(
     j_rest = j_t[:, 1:] - j_t[:, parents[1:]]  # [B, J-1, 3]
     t_local = xp.concat([j0, j_rest], axis=1)  # [B, J, 3]
 
-    T_world = _batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts)
+    T_world = _batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts, joint_indices)
 
     return v_t, j_t, pose_matrices, T_world
 
@@ -235,6 +244,7 @@ def _batched_forward_kinematics(
     R: Float[Array, "B J 3 3"],
     t: Float[Array, "B J 3"],
     fronts: list[tuple[list[int], list[int]]],
+    joint_indices: list[int] | None = None,
 ) -> Float[Array, "B J 4 4"]:
     """Batched forward kinematics using precomputed kinematic fronts.
 
@@ -259,7 +269,9 @@ def _batched_forward_kinematics(
         for idx, joint in enumerate(joints):
             T_world[joint] = T_cur[:, idx]
 
-    return xp.stack(T_world, axis=1)
+    if joint_indices is None:
+        return xp.stack(T_world, axis=1)
+    return xp.stack([T_world[j] for j in joint_indices], axis=1)
 
 
 def _build_transform_matrix(

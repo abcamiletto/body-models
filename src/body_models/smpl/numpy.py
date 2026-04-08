@@ -133,6 +133,7 @@ class SMPL(BodyModel):
         pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
         return core.forward_skeleton(
             j_template=self._j_template,
@@ -144,6 +145,7 @@ class SMPL(BodyModel):
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
             rotation_type=self.rotation_type,
         )
 
