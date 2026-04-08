@@ -327,21 +327,20 @@ class ANNY(BodyModel, nn.Module):
         return {name: self._anchors[name].data for name in self._anchors}
 
 
-def _build_kinematic_fronts(parents: list[int]) -> tuple[list[list[int]], list[list[int]]]:
+def _build_kinematic_fronts(parents: list[int]) -> list[tuple[list[int], list[int]]]:
     """Group joints by depth for parallel forward kinematics."""
     n = len(parents)
     assigned = [False] * n
     level = [i for i in range(n) if parents[i] < 0]
-    indices, parent_ids = [], []
+    fronts = []
 
     while level:
-        indices.append(level)
-        parent_ids.append([parents[i] for i in level])
+        fronts.append((level, [parents[i] for i in level]))
         for j in level:
             assigned[j] = True
         level = [i for i in range(n) if not assigned[i] and parents[i] in level]
 
-    return indices, parent_ids
+    return fronts
 
 
 # Data loading

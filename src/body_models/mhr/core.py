@@ -203,7 +203,7 @@ def forward_skeleton(
         xp = get_namespace(pose)
     active_fronts = kinematic_fronts
     if joint_indices is not None:
-        joint_indices = common.normalize_indices(joint_indices, num_joints, name="joint_indices")
+        joint_indices = common.normalize_joint_indices(joint_indices, num_joints)
         parents = common.parent_list_from_fronts(kinematic_fronts, num_joints)
         active_joints = common.required_joint_set(parents, joint_indices)
         active_fronts = common.prune_kinematic_fronts(kinematic_fronts, active_joints)

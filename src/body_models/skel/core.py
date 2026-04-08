@@ -175,10 +175,10 @@ def forward_skeleton(
         global_translation = common.zeros_as(pose, shape=(B, 3), xp=xp)
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
-    full_parents = [-1, *common.to_parent_list(parents)]
+    full_parents = [-1, *parents]
     active_joints = None
     if joint_indices is not None:
-        joint_indices = common.normalize_indices(joint_indices, NUM_JOINTS, name="joint_indices")
+        joint_indices = common.normalize_joint_indices(joint_indices, NUM_JOINTS)
         active_joints = common.required_joint_set(full_parents, joint_indices)
 
     # Shape blend shapes -> joint positions (use full-resolution for accurate skeleton)
@@ -452,7 +452,7 @@ def _propagate_transforms(
     active_joints: set[int] | None = None,
 ) -> Float[Array, "B 24 4 4"]:
     """Propagate local transforms to world space."""
-    full_parents = [-1, *common.to_parent_list(parents)]
+    full_parents = [-1, *parents]
     G_list: list[Float[Array, "B 4 4"] | None] = [None] * NUM_JOINTS
     G_list[0] = G_local[:, 0]
     for i in range(1, NUM_JOINTS):
