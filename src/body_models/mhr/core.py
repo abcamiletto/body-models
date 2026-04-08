@@ -289,6 +289,8 @@ def _pose_to_joint_params(
 ) -> Float[Array, "B J 7"]:
     """Convert pose vector to per-joint parameters [B, J, 7]."""
     B = pose.shape[0]
+    # Match upstream MHR: identity/expression slots exist in the parameter transform,
+    # but skeleton_state is computed with those slots zero-padded, so FK stays pose-only.
     pad = common.zeros_as(pose, shape=(B, shape_dim), xp=xp)
     j_p = xp.einsum("dn,bn->bd", parameter_transform, xp.concat([pose, pad], axis=-1))
     return j_p.reshape(B, num_joints, 7)

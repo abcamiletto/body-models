@@ -393,6 +393,10 @@ transforms = model.forward_skeleton(**args)
 result = mhr.to_native_outputs(vertices, transforms)
 ```
 
+`forward_skeleton()` keeps the same kwargs surface as `forward_vertices()`, but
+matching the original MHR repo only `pose` affects the skeleton state;
+`shape` and `expression` only deform the mesh.
+
 ## Coordinate System
 
 The unified API returns outputs in:
