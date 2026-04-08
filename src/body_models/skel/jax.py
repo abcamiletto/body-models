@@ -12,7 +12,7 @@ from scipy import sparse
 
 from ..base import BodyModel
 from . import core
-from .io import get_model_path, simplify_mesh
+from .io import get_model_path, normalize_constructor_args, simplify_mesh
 
 __all__ = ["SKEL", "from_native_args", "to_native_outputs"]
 
@@ -21,8 +21,8 @@ class SKEL(BodyModel, nnx.Module):
     """SKEL body model with JAX/Flax NNX backend.
 
     Args:
-        gender: One of "male" or "female" (no neutral).
         model_path: Path to the SKEL model file or directory.
+        gender: One of "male" or "female" (no neutral).
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
 
     Note:
@@ -34,8 +34,8 @@ class SKEL(BodyModel, nnx.Module):
     NUM_JOINTS = 24
     NUM_POSE_PARAMS = 46
 
-    def __init__(self, gender: str, model_path: Path | str | None = None, simplify: float = 1.0):
-        assert gender in ("male", "female")
+    def __init__(self, model_path: Path | str | None = None, gender: str | None = None, simplify: float = 1.0):
+        model_path, gender = normalize_constructor_args(model_path, gender)
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
         self.gender = gender
 

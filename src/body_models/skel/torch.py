@@ -14,15 +14,15 @@ from array_api_compat import get_namespace
 
 from ..base import BodyModel
 from . import core
-from .io import get_model_path, simplify_mesh
+from .io import get_model_path, normalize_constructor_args, simplify_mesh
 
 
 class SKEL(BodyModel, nn.Module):
     """SKEL body model with anatomically realistic skeletal articulation.
 
     Args:
-        gender: One of "male" or "female" (no neutral).
         model_path: Path to the SKEL model file or directory.
+        gender: One of "male" or "female" (no neutral).
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
 
     Note:
@@ -59,8 +59,8 @@ class SKEL(BodyModel, nn.Module):
     _scapula_l_axes: Float[Tensor, "3 3"]
     _spine_axes: Float[Tensor, "3 3"]
 
-    def __init__(self, gender: str, model_path: Path | str | None = None, simplify: float = 1.0):
-        assert gender in ("male", "female")
+    def __init__(self, model_path: Path | str | None = None, gender: str | None = None, simplify: float = 1.0):
+        model_path, gender = normalize_constructor_args(model_path, gender)
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
         super().__init__()
         self.gender = gender

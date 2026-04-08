@@ -75,6 +75,22 @@ def _to_numpy(backend: str, value):
     return np.asarray(value)
 
 
+@requires_model
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_constructor_supports_model_path_first(backend: str) -> None:
+    SKEL, _ = _skel_backend(backend)
+    normalized_model = SKEL(model_path=MODEL_PATH, gender="male")
+    assert normalized_model.gender == "male"
+
+
+def test_normalize_constructor_args_supports_legacy_gender_positional() -> None:
+    from body_models.skel.io import normalize_constructor_args
+
+    model_path, gender = normalize_constructor_args("male", None)
+    assert model_path is None
+    assert gender == "male"
+
+
 # ============================================================================
 # Numerical precision tests (all backends)
 # ============================================================================
