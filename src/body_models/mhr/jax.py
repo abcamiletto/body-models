@@ -31,12 +31,6 @@ class MHR(BodyModel, nnx.Module):
         shape: [B, 45] identity blendshapes
         pose: [B, 204] joint parameters
         expression: [B, 72] facial blendshapes (optional)
-
-    Upstream parity:
-        The original MHR repo zero-pads identity/expression when producing joint
-        parameters, so skeleton state depends on pose but not shape/expression.
-        This wrapper keeps shape/expression in forward_skeleton() for API symmetry
-        with forward_vertices() and from_native_args().
     """
 
     SHAPE_DIM = 45
@@ -177,11 +171,7 @@ class MHR(BodyModel, nnx.Module):
         global_rotation: Float[jax.Array, "B 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B J 4 4"]:
-        """Compute skeleton transforms [B, J, 4, 4] in meters.
-
-        shape/expression are accepted for parity with the original MHR forward()
-        signature, but upstream skeleton_state is pose-only.
-        """
+        """Compute skeleton transforms [B, J, 4, 4] in meters."""
         return core.forward_skeleton(
             joint_offsets=self.joint_offsets[...],
             joint_pre_rotations=self.joint_pre_rotations[...],
