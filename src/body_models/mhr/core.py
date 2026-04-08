@@ -10,6 +10,7 @@ from nanomanifold import SO3
 from .. import common
 
 Array = Any  # Generic array type (numpy, torch, jax)
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 _LN2 = math.log(2)
 
@@ -82,7 +83,7 @@ def forward_vertices(
     parameter_transform: Float[Array, "D N"],
     bind_inv_linear: Float[Array, "J 3 3"],
     bind_inv_translation: Float[Array, "J 3"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
     expr_dim: int,
@@ -183,13 +184,14 @@ def forward_skeleton(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
     # Inputs
     pose: Float[Array, "B 204"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
     *,
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
@@ -200,6 +202,29 @@ def forward_skeleton(
 
     if xp is None:
         xp = get_namespace(pose)
+    active_fronts = kinematic_fronts
+    if joint_indices is not None:
+        joint_indices = [int(joint) for joint in joint_indices]
+        if any(joint < 0 or joint >= num_joints for joint in joint_indices):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+
+        parents = [-1] * num_joints
+        for joints, joint_parents in kinematic_fronts:
+            for joint, parent in zip(joints, joint_parents):
+                parents[joint] = parent
+
+        active_joints = set()
+        for joint in joint_indices:
+            cur = joint
+            while cur >= 0 and cur not in active_joints:
+                active_joints.add(cur)
+                cur = parents[cur]
+
+        active_fronts = []
+        for joints, joint_parents in kinematic_fronts:
+            pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
+            if pairs:
+                active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
 
     t_g, r_g, s_g, _ = _forward_skeleton_core(
         xp=xp,
@@ -207,9 +232,10 @@ def forward_skeleton(
         joint_offsets=joint_offsets,
         joint_pre_rotations=joint_pre_rotations,
         parameter_transform=parameter_transform,
-        kinematic_fronts=kinematic_fronts,
+        kinematic_fronts=active_fronts,
         num_joints=num_joints,
         shape_dim=shape_dim,
+        joint_indices=joint_indices,
     )
 
     # Build 4x4 transforms (in meters)
@@ -246,9 +272,10 @@ def _forward_skeleton_core(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
+    joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"], Float[Array, "B J 7"]]:
     """Compute global skeleton transforms from pose.
 
@@ -275,7 +302,7 @@ def _forward_skeleton_core(
     s_l = xp.exp(_LN2 * j_p[..., 6:7])  # [B, J, 1]
 
     # Forward kinematics
-    t_g, r_g, s_g = _compose_global_trs(xp, t_l, q_l, s_l, kinematic_fronts, num_joints)
+    t_g, r_g, s_g = _compose_global_trs(xp, t_l, q_l, s_l, kinematic_fronts, num_joints, joint_indices)
 
     return t_g, r_g, s_g, j_p
 
@@ -299,8 +326,9 @@ def _compose_global_trs(
     t_l: Float[Array, "B J 3"],
     q_l: Float[Array, "B J 4"],
     s_l: Float[Array, "B J 1"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
+    joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"]]:
     """Compose local TRS transforms into global via batched FK."""
     r_l = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)  # [B, J, 3, 3]
@@ -322,9 +350,14 @@ def _compose_global_trs(
                 r_ps = r_results[p] * s_results[p][:, :, None]
                 t_results[j] = xp.squeeze(r_ps @ t_l[:, j, :, None], axis=-1) + t_results[p]
 
-    t_g = xp.stack(t_results, axis=1)
-    s_g = xp.stack(s_results, axis=1)
-    r_g = xp.stack(r_results, axis=1)
+    if joint_indices is None:
+        t_g = xp.stack(t_results, axis=1)
+        s_g = xp.stack(s_results, axis=1)
+        r_g = xp.stack(r_results, axis=1)
+    else:
+        t_g = xp.stack([t_results[j] for j in joint_indices], axis=1)
+        s_g = xp.stack([s_results[j] for j in joint_indices], axis=1)
+        r_g = xp.stack([r_results[j] for j in joint_indices], axis=1)
 
     return t_g, r_g, s_g
 

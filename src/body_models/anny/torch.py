@@ -20,6 +20,8 @@ from ..utils import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
 
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
 
 class ANNY(BodyModel, nn.Module):
     """ANNY body model with phenotype-based morphology.
@@ -268,6 +270,7 @@ class ANNY(BodyModel, nn.Module):
         pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[Tensor, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4]."""
         return core.forward_skeleton(
@@ -293,6 +296,7 @@ class ANNY(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
             rotation_type=self.rotation_type,
             xp=torch,
         )
@@ -325,21 +329,20 @@ class ANNY(BodyModel, nn.Module):
         return {name: self._anchors[name].data for name in self._anchors}
 
 
-def _build_kinematic_fronts(parents: list[int]) -> tuple[list[list[int]], list[list[int]]]:
+def _build_kinematic_fronts(parents: list[int]) -> list[Front]:
     """Group joints by depth for parallel forward kinematics."""
     n = len(parents)
     assigned = [False] * n
     level = [i for i in range(n) if parents[i] < 0]
-    indices, parent_ids = [], []
+    fronts: list[Front] = []
 
     while level:
-        indices.append(level)
-        parent_ids.append([parents[i] for i in level])
+        fronts.append((level, [parents[i] for i in level]))
         for j in level:
             assigned[j] = True
         level = [i for i in range(n) if not assigned[i] and parents[i] in level]
 
-    return indices, parent_ids
+    return fronts
 
 
 # Data loading

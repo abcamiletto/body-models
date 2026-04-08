@@ -168,6 +168,7 @@ class FLAME(BodyModel):
         head_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[np.ndarray, "B 5 4 4"]:
         """Compute skeleton joint transforms [B, 5, 4, 4]."""
         B = shape.shape[0] if shape.ndim > 1 and shape.shape[0] > 1 else (pose.shape[0] if pose is not None else 1)
@@ -195,6 +196,7 @@ class FLAME(BodyModel):
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
             rotation_type=self.rotation_type,
         )
 
