@@ -6,6 +6,8 @@ from jaxtyping import Int
 from .. import config
 from ..common import simplify_mesh
 
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
 SMPL_JOINT_NAMES = [
     "pelvis",
     "left_hip",
@@ -136,7 +138,7 @@ def _load_smpl_pkl(model_path: Path) -> dict:
     }
 
 
-def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[int], list[int]]]:
+def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
     """Compute kinematic fronts for batched FK."""
     n_joints = len(parents)
     depths = [-1] * n_joints
@@ -151,7 +153,7 @@ def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[i
         depths[i] = d
 
     max_depth = max(depths)
-    fronts = []
+    fronts: list[Front] = []
     for d in range(0, max_depth + 1):
         joints = [i for i in range(n_joints) if depths[i] == d]
         if d == 0:

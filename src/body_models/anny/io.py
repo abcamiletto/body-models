@@ -11,6 +11,8 @@ from nanomanifold import SO3
 from .. import config
 from ..utils import download_and_extract, get_cache_dir
 
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
 ANNY_URL = "https://github.com/naver/anny/archive/refs/heads/main.zip"
 
 PHENOTYPE_VARIATIONS = {
@@ -61,12 +63,12 @@ def download_model() -> Path:
     return cache_dir
 
 
-def build_kinematic_fronts(parents: list[int]) -> list[tuple[list[int], list[int]]]:
+def build_kinematic_fronts(parents: list[int]) -> list[Front]:
     """Group joints by depth for parallel forward kinematics."""
     n = len(parents)
     assigned = [False] * n
     level = [i for i in range(n) if parents[i] < 0]
-    fronts = []
+    fronts: list[Front] = []
 
     while level:
         fronts.append((level, [parents[i] for i in level]))

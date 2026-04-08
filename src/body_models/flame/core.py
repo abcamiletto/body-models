@@ -11,6 +11,7 @@ from nanomanifold import SO3
 from ..rotations import RotationType
 
 Array = Any  # Generic array type (numpy, torch, jax)
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
 def forward_vertices(
@@ -25,7 +26,7 @@ def forward_vertices(
     lbs_weights: Float[Array, "V 5"],
     J_regressor: Float[Array, "5 V_full"],
     parents: Int[Array, "5"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B N_shape"],
     expression: Float[Array, "B N_expr"],
@@ -101,7 +102,7 @@ def forward_skeleton(
     exprdirs_full: Float[Array, "V_full 3 N_expr"],
     J_regressor: Float[Array, "5 V_full"],
     parents: Int[Array, "5"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B N_shape"],
     expression: Float[Array, "B N_expr"],
@@ -191,7 +192,7 @@ def _forward_core(
     exprdirs_full: Float[Array, "V_full 3 N_expr"],
     J_regressor: Float[Array, "5 V_full"],
     parents: Int[Array, "5"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     shape: Float[Array, "B N_shape"],
     expression: Float[Array, "B N_expr"],
     pose: Float[Array, "B 4 N"] | Float[Array, "B 4 3 3"],
@@ -256,7 +257,7 @@ def _batched_forward_kinematics(
     xp,
     R: Float[Array, "B J 3 3"],
     t: Float[Array, "B J 3"],
-    fronts: list[tuple[list[int], list[int]]],
+    fronts: list[Front],
     joint_indices: list[int] | None = None,
 ) -> Float[Array, "B J 4 4"]:
     """Batched forward kinematics using precomputed kinematic fronts.

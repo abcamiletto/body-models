@@ -11,6 +11,8 @@ from .. import config
 from ..common import simplify_mesh
 from ..utils import download_and_extract, get_cache_dir
 
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
 __all__ = [
     "get_model_path",
     "download_model",
@@ -148,13 +150,13 @@ def _build_dense_skinning(
     return dense_indices, dense_weights
 
 
-def compute_kinematic_fronts(parents: np.ndarray) -> list[tuple[list[int], list[int]]]:
+def compute_kinematic_fronts(parents: np.ndarray) -> list[Front]:
     """Compute kinematic fronts for batched FK. Returns [(joint_indices, parent_indices), ...]."""
     parents_list = parents.tolist()
 
     n_joints = len(parents_list)
     processed: set[int] = set()
-    fronts: list[tuple[list[int], list[int]]] = []
+    fronts: list[Front] = []
 
     while len(processed) < n_joints:
         joints: list[int] = []
