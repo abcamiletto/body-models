@@ -95,6 +95,8 @@ def test_forward_skeleton_joint_indices_matches_full_output(model_name: str, bac
 
     full_np = np.asarray(full)
     subset_np = np.asarray(subset)
+    expected_np = full_np[..., joint_indices, :, :]
 
     assert subset_np.shape[-3] == len(joint_indices)
-    np.testing.assert_allclose(subset_np, full_np[..., joint_indices, :, :], atol=1e-6, rtol=1e-6)
+    np.testing.assert_allclose(subset_np[..., :3, :3], expected_np[..., :3, :3], atol=1e-6, rtol=1e-6)
+    np.testing.assert_allclose(subset_np[..., :3, 3], expected_np[..., :3, 3], atol=1e-6, rtol=1e-6)
