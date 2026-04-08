@@ -9,7 +9,7 @@ from scipy import sparse
 
 from ..base import BodyModel
 from . import core
-from .io import get_model_path, normalize_constructor_args, simplify_mesh
+from .io import get_model_path, simplify_mesh
 
 __all__ = ["SKEL", "from_native_args", "to_native_outputs"]
 
@@ -32,7 +32,8 @@ class SKEL(BodyModel):
     NUM_POSE_PARAMS = 46
 
     def __init__(self, model_path: Path | str | None = None, gender: str | None = None, simplify: float = 1.0):
-        model_path, gender = normalize_constructor_args(model_path, gender)
+        if gender not in {"male", "female"}:
+            raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
         self.gender = gender
 
