@@ -155,6 +155,7 @@ class MHR(BodyModel):
         expression: Float[np.ndarray, "B 72"] | None = None,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[np.ndarray, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4] in meters."""
         return core.forward_skeleton(
@@ -167,6 +168,7 @@ class MHR(BodyModel):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:

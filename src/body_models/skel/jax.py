@@ -255,6 +255,7 @@ class SKEL(BodyModel, nnx.Module):
         pose: Float[jax.Array, "B 46"],
         global_rotation: Float[jax.Array, "B 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[jax.Array, "B 24 4 4"]:
         """Compute skeleton joint transforms [B, 24, 4, 4]."""
         return core.forward_skeleton(
@@ -277,6 +278,7 @@ class SKEL(BodyModel, nnx.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:

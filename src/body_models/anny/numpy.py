@@ -176,6 +176,7 @@ class ANNY(BodyModel):
         pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[np.ndarray, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4]."""
         return core.forward_skeleton(
@@ -201,6 +202,7 @@ class ANNY(BodyModel):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
             rotation_type=self.rotation_type,
         )
 

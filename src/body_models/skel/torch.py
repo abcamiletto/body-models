@@ -307,6 +307,7 @@ class SKEL(BodyModel, nn.Module):
         pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[Tensor, "B 24 4 4"]:
         """Compute skeleton joint transforms [B, 24, 4, 4]."""
         return core.forward_skeleton(
@@ -329,6 +330,7 @@ class SKEL(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
             xp=torch,
         )
 
