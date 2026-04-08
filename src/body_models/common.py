@@ -113,10 +113,10 @@ def normalize_joint_indices(indices: Any, size: int) -> list[int]:
     return values.tolist()
 
 
-def required_joint_set(parents: Any, joint_indices: list[int]) -> set[int]:
+def required_joint_set(parents: Any, joint_indices: list[int]) -> builtins.set[int]:
     """Return requested joints plus all ancestors needed for FK."""
     parents = parents.tolist() if hasattr(parents, "tolist") else list(parents)
-    active: set[int] = builtins.set()
+    active: builtins.set[int] = builtins.set()
     for joint in joint_indices:
         cur = joint
         while cur >= 0 and cur not in active:
@@ -135,7 +135,7 @@ def parent_list_from_fronts(fronts: list[tuple[list[int], list[int]]], num_joint
 
 def prune_kinematic_fronts(
     fronts: list[tuple[list[int], list[int]]],
-    active_joints: set[int],
+    active_joints: builtins.set[int],
 ) -> list[tuple[list[int], list[int]]]:
     pruned: list[tuple[list[int], list[int]]] = []
     for joints, parents in fronts:
