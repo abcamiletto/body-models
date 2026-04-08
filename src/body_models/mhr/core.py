@@ -203,10 +203,27 @@ def forward_skeleton(
         xp = get_namespace(pose)
     active_fronts = kinematic_fronts
     if joint_indices is not None:
-        joint_indices = common.normalize_joint_indices(joint_indices, num_joints)
-        parents = common.parent_list_from_fronts(kinematic_fronts, num_joints)
-        active_joints = common.required_joint_set(parents, joint_indices)
-        active_fronts = common.prune_kinematic_fronts(kinematic_fronts, active_joints)
+        joint_indices = [int(joint) for joint in joint_indices]
+        if any(joint < 0 or joint >= num_joints for joint in joint_indices):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+
+        parents = [-1] * num_joints
+        for joints, joint_parents in kinematic_fronts:
+            for joint, parent in zip(joints, joint_parents):
+                parents[joint] = parent
+
+        active_joints = set()
+        for joint in joint_indices:
+            cur = joint
+            while cur >= 0 and cur not in active_joints:
+                active_joints.add(cur)
+                cur = parents[cur]
+
+        active_fronts = []
+        for joints, joint_parents in kinematic_fronts:
+            pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
+            if pairs:
+                active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
 
     t_g, r_g, s_g, _ = _forward_skeleton_core(
         xp=xp,

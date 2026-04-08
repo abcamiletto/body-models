@@ -178,8 +178,16 @@ def forward_skeleton(
     full_parents = [-1, *parents]
     active_joints = None
     if joint_indices is not None:
-        joint_indices = common.normalize_joint_indices(joint_indices, NUM_JOINTS)
-        active_joints = common.required_joint_set(full_parents, joint_indices)
+        joint_indices = [int(joint) for joint in joint_indices]
+        if any(joint < 0 or joint >= NUM_JOINTS for joint in joint_indices):
+            raise IndexError(f"joint_indices must be in [0, {NUM_JOINTS})")
+
+        active_joints = set()
+        for joint in joint_indices:
+            cur = joint
+            while cur >= 0 and cur not in active_joints:
+                active_joints.add(cur)
+                cur = full_parents[cur]
 
     # Shape blend shapes -> joint positions (use full-resolution for accurate skeleton)
     v_shaped_full = v_template_full + xp.einsum("vdi,bi->bvd", shapedirs_full, shape)
