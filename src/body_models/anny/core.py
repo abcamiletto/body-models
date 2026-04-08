@@ -12,6 +12,7 @@ from ..rotations import RotationType
 from .io import PHENOTYPE_VARIATIONS
 
 Array = Any  # Generic array type (numpy, torch, jax)
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 # Coordinate transform constants (Z-up to Y-up)
 COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=np.float32)
@@ -30,7 +31,7 @@ def forward_vertices(
     lbs_weights: Float[Array, "V J"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: tuple[list[list[int]], list[list[int]]],
+    kinematic_fronts: list[Front],
     coord_rotation: Float[Array, "3 3"],
     coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
@@ -124,7 +125,7 @@ def forward_skeleton(
     bone_rolls_rotmat: Float[Array, "J 3 3"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: tuple[list[list[int]], list[list[int]]],
+    kinematic_fronts: list[Front],
     coord_rotation: Float[Array, "3 3"],
     coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
@@ -140,6 +141,7 @@ def forward_skeleton(
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
     xp: Any = None,
@@ -158,6 +160,30 @@ def forward_skeleton(
         xp = get_namespace(gender)
 
     pose_T = _pose_to_transform(xp, pose, rotation_type)
+    active_fronts = kinematic_fronts
+    if joint_indices is not None:
+        joint_indices = [int(joint) for joint in joint_indices]
+        num_joints = template_bone_heads.shape[0]
+        if any(joint < 0 or joint >= num_joints for joint in joint_indices):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+
+        parents = [-1] * num_joints
+        for joints, joint_parents in kinematic_fronts:
+            for joint, parent in zip(joints, joint_parents):
+                parents[joint] = parent
+
+        active_joints = set()
+        for joint in joint_indices:
+            cur = joint
+            while cur >= 0 and cur not in active_joints:
+                active_joints.add(cur)
+                cur = parents[cur]
+
+        active_fronts = []
+        for joints, joint_parents in kinematic_fronts:
+            pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
+            if pairs:
+                active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
     _, bone_poses, _ = _forward_core(
         xp=xp,
         template_bone_heads=template_bone_heads,
@@ -167,7 +193,7 @@ def forward_skeleton(
         bone_rolls_rotmat=bone_rolls_rotmat,
         phenotype_mask=phenotype_mask,
         anchors=anchors,
-        kinematic_fronts=kinematic_fronts,
+        kinematic_fronts=active_fronts,
         y_axis=y_axis,
         degenerate_rotation=degenerate_rotation,
         extrapolate_phenotypes=extrapolate_phenotypes,
@@ -178,6 +204,7 @@ def forward_skeleton(
         height=height,
         proportions=proportions,
         pose_T=pose_T,
+        joint_indices=joint_indices,
     )
 
     # Coordinate transform
@@ -216,7 +243,7 @@ def _forward_core(
     bone_rolls_rotmat: Float[Array, "J 3 3"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: tuple[list[list[int]], list[list[int]]],
+    kinematic_fronts: list[Front],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
@@ -227,6 +254,7 @@ def _forward_core(
     height: Float[Array, "B"],
     proportions: Float[Array, "B"],
     pose_T: Float[Array, "B J 4 4"],
+    joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B S"], Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
     """Core forward: returns (blendshape_coeffs, bone_poses, bone_transforms)."""
     # Phenotype -> blendshape coefficients
@@ -261,7 +289,9 @@ def _forward_core(
     delta_T = common.set(pose_T, (slice(None), 0), new_root, copy=True, xp=xp)
 
     # Forward kinematics
-    bone_poses, bone_transforms = _forward_kinematics(xp, kinematic_fronts, rest_poses, delta_T, base_T)
+    bone_poses, bone_transforms = _forward_kinematics(
+        xp, kinematic_fronts, rest_poses, delta_T, base_T, joint_indices=joint_indices
+    )
     return coeffs, bone_poses, bone_transforms
 
 
@@ -403,10 +433,11 @@ def _invert_transform(xp, T: Float[Array, "*batch 4 4"]) -> Float[Array, "*batch
 
 def _forward_kinematics(
     xp,
-    fronts: tuple[list[list[int]], list[list[int]]],
+    fronts: list[Front],
     rest_poses: Float[Array, "B J 4 4"],
     delta_T: Float[Array, "B J 4 4"],
     base_T: Float[Array, "B 4 4"],
+    joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
     """Parallel forward kinematics (autograd-compatible)."""
     B, J = rest_poses.shape[:2]
@@ -417,8 +448,7 @@ def _forward_kinematics(
     poses: list[Float[Array, "B 4 4"] | None] = [None] * J
     transforms: list[Float[Array, "B 4 4"] | None] = [None] * J
 
-    indices_list, parents_list = fronts
-    for joint_ids, parent_ids in zip(indices_list, parents_list):
+    for joint_ids, parent_ids in fronts:
         roots = [(j, p) for j, p in zip(joint_ids, parent_ids) if p == -1]
         children_list = [(j, p) for j, p in zip(joint_ids, parent_ids) if p >= 0]
 
@@ -440,8 +470,12 @@ def _forward_kinematics(
                 poses[joint_id] = child_poses[:, idx]
                 transforms[joint_id] = child_transforms[:, idx]
 
-    poses_tensor = xp.stack(poses, axis=1)
-    transforms_tensor = xp.stack(transforms, axis=1)
+    if joint_indices is None:
+        poses_tensor = xp.stack(poses, axis=1)
+        transforms_tensor = xp.stack(transforms, axis=1)
+    else:
+        poses_tensor = xp.stack([poses[j] for j in joint_indices], axis=1)
+        transforms_tensor = xp.stack([transforms[j] for j in joint_indices], axis=1)
     return poses_tensor, transforms_tensor
 
 

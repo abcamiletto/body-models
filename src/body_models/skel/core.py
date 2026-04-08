@@ -156,6 +156,7 @@ def forward_skeleton(
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
     *,
     xp: Any = None,
 ) -> Float[Array, "B 24 4 4"]:
@@ -174,6 +175,19 @@ def forward_skeleton(
         global_translation = common.zeros_as(pose, shape=(B, 3), xp=xp)
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
+    full_parents = [-1, *parents]
+    active_joints = None
+    if joint_indices is not None:
+        joint_indices = [int(joint) for joint in joint_indices]
+        if any(joint < 0 or joint >= NUM_JOINTS for joint in joint_indices):
+            raise IndexError(f"joint_indices must be in [0, {NUM_JOINTS})")
+
+        active_joints = set()
+        for joint in joint_indices:
+            cur = joint
+            while cur >= 0 and cur not in active_joints:
+                active_joints.add(cur)
+                cur = full_parents[cur]
 
     # Shape blend shapes -> joint positions (use full-resolution for accurate skeleton)
     v_shaped_full = v_template_full + xp.einsum("vdi,bi->bvd", shapedirs_full, shape)
@@ -197,7 +211,7 @@ def forward_skeleton(
         scapula_l_axes=scapula_l_axes,
         spine_axes=spine_axes,
     )
-    G = _propagate_transforms(xp, G_local, parents)
+    G = _propagate_transforms(xp, G_local, parents, joint_indices=joint_indices, active_joints=active_joints)
 
     # Apply global transform
     rot = G[:, :, :3, :3]
@@ -212,7 +226,7 @@ def forward_skeleton(
     trans = trans + feet_offset
 
     # Build output transform
-    last_row = common.zeros_as(rot, shape=(B, NUM_JOINTS, 1, 4), xp=xp)
+    last_row = common.zeros_as(rot, shape=(B, rot.shape[1], 1, 4), xp=xp)
     last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     G = xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
     return G
@@ -442,12 +456,20 @@ def _propagate_transforms(
     xp,
     G_local: Float[Array, "B 24 4 4"],
     parents: list[int],
+    joint_indices: list[int] | None = None,
+    active_joints: set[int] | None = None,
 ) -> Float[Array, "B 24 4 4"]:
     """Propagate local transforms to world space."""
-    G_list = [G_local[:, 0]]
+    full_parents = [-1, *parents]
+    G_list: list[Float[Array, "B 4 4"] | None] = [None] * NUM_JOINTS
+    G_list[0] = G_local[:, 0]
     for i in range(1, NUM_JOINTS):
-        G_list.append(G_list[parents[i - 1]] @ G_local[:, i])
-    return xp.stack(G_list, axis=1)
+        if active_joints is not None and i not in active_joints:
+            continue
+        G_list[i] = G_list[full_parents[i]] @ G_local[:, i]
+    if joint_indices is None:
+        return xp.stack(G_list, axis=1)
+    return xp.stack([G_list[j] for j in joint_indices], axis=1)
 
 
 def _homog_matrix(

@@ -285,6 +285,7 @@ class MHR(BodyModel, nn.Module):
         expression: Float[Tensor, "B 72"] | None = None,
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
+        joint_indices=None,
     ) -> Float[Tensor, "B J 4 4"]:
         """Compute skeleton transforms [B, J, 4, 4] in meters."""
         return core.forward_skeleton(
@@ -297,6 +298,7 @@ class MHR(BodyModel, nn.Module):
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
+            joint_indices=joint_indices,
             xp=torch,
         )
 

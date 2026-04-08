@@ -9,6 +9,7 @@ from .. import config
 from ..common import simplify_mesh
 
 __all__ = ["get_model_path", "get_joint_names", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
 def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
@@ -73,7 +74,7 @@ def get_joint_names(model_data: dict) -> list[str]:
     return [name for name, _ in sorted(joint2num.items(), key=lambda item: int(item[1]))]
 
 
-def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[int], list[int]]]:
+def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
     """Compute kinematic fronts for batched FK.
 
     Returns list of (joint_indices, parent_indices) tuples, one per depth level.
@@ -94,7 +95,7 @@ def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[i
 
     # Group joints by depth
     max_depth = max(depths)
-    fronts: list[tuple[list[int], list[int]]] = []
+    fronts: list[Front] = []
 
     # Add root level
     root_joints = [i for i in range(n_joints) if depths[i] == 0]

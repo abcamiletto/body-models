@@ -6,6 +6,8 @@ from jaxtyping import Int
 from .. import config
 from ..common import simplify_mesh
 
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
 FLAME_JOINT_NAMES = ["root", "neck", "jaw", "left_eye", "right_eye"]
 
 __all__ = ["FLAME_JOINT_NAMES", "get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
@@ -53,7 +55,7 @@ def load_model_data(model_path: Path) -> dict:
     return model_data
 
 
-def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[int], list[int]]]:
+def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
     """Compute kinematic fronts for batched FK."""
     n_joints = len(parents)
     depths = [-1] * n_joints
@@ -68,7 +70,7 @@ def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[tuple[list[i
         depths[i] = d
 
     max_depth = max(depths)
-    fronts = []
+    fronts: list[Front] = []
     for d in range(0, max_depth + 1):
         joints = [i for i in range(n_joints) if depths[i] == d]
         if d == 0:
