@@ -11,6 +11,7 @@ from nanomanifold import SO3
 from ..rotations import RotationType, is_rotmat_type
 
 Array = Any  # Generic array type (numpy, torch, jax)
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
 def forward_vertices(
@@ -24,7 +25,7 @@ def forward_vertices(
     j_shapedirs: Float[Array, "55 3 S"],
     j_exprdirs: Float[Array, "55 3 E"],
     parents: Int[Array, "55"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
     # Inputs
     shape: Float[Array, "B 10"],
@@ -111,7 +112,7 @@ def forward_skeleton(
     j_shapedirs: Float[Array, "J 3 S"],
     j_exprdirs: Float[Array, "J 3 E"],
     parents: Int[Array, "J"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
     # Inputs
     shape: Float[Array, "B 10"],
@@ -214,7 +215,7 @@ def _forward_core(
     j_shapedirs: Float[Array, "J 3 S"],
     j_exprdirs: Float[Array, "J 3 E"],
     parents: Int[Array, "J"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
     shape: Float[Array, "*batch 10"],
     expression: Float[Array, "*batch 10"],
@@ -290,7 +291,7 @@ def _batched_forward_kinematics(
     xp,
     R: Float[Array, "*batch J 3 3"],
     t: Float[Array, "*batch J 3"],
-    fronts: list[tuple[list[int], list[int]]],
+    fronts: list[Front],
     joint_indices: list[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Batched forward kinematics using precomputed kinematic fronts.

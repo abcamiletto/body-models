@@ -20,6 +20,8 @@ from ..utils import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
 
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
 
 class ANNY(BodyModel, nn.Module):
     """ANNY body model with phenotype-based morphology.
@@ -327,12 +329,12 @@ class ANNY(BodyModel, nn.Module):
         return {name: self._anchors[name].data for name in self._anchors}
 
 
-def _build_kinematic_fronts(parents: list[int]) -> list[tuple[list[int], list[int]]]:
+def _build_kinematic_fronts(parents: list[int]) -> list[Front]:
     """Group joints by depth for parallel forward kinematics."""
     n = len(parents)
     assigned = [False] * n
     level = [i for i in range(n) if parents[i] < 0]
-    fronts = []
+    fronts: list[Front] = []
 
     while level:
         fronts.append((level, [parents[i] for i in level]))

@@ -12,6 +12,7 @@ from ..rotations import RotationType
 from .io import PHENOTYPE_VARIATIONS
 
 Array = Any  # Generic array type (numpy, torch, jax)
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 # Coordinate transform constants (Z-up to Y-up)
 COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=np.float32)
@@ -30,7 +31,7 @@ def forward_vertices(
     lbs_weights: Float[Array, "V J"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     coord_rotation: Float[Array, "3 3"],
     coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
@@ -124,7 +125,7 @@ def forward_skeleton(
     bone_rolls_rotmat: Float[Array, "J 3 3"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     coord_rotation: Float[Array, "3 3"],
     coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
@@ -242,7 +243,7 @@ def _forward_core(
     bone_rolls_rotmat: Float[Array, "J 3 3"],
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
@@ -432,7 +433,7 @@ def _invert_transform(xp, T: Float[Array, "*batch 4 4"]) -> Float[Array, "*batch
 
 def _forward_kinematics(
     xp,
-    fronts: list[tuple[list[int], list[int]]],
+    fronts: list[Front],
     rest_poses: Float[Array, "B J 4 4"],
     delta_T: Float[Array, "B J 4 4"],
     base_T: Float[Array, "B 4 4"],

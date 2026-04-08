@@ -10,6 +10,7 @@ from nanomanifold import SO3
 from .. import common
 
 Array = Any  # Generic array type (numpy, torch, jax)
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 _LN2 = math.log(2)
 
@@ -82,7 +83,7 @@ def forward_vertices(
     parameter_transform: Float[Array, "D N"],
     bind_inv_linear: Float[Array, "J 3 3"],
     bind_inv_translation: Float[Array, "J 3"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
     expr_dim: int,
@@ -183,7 +184,7 @@ def forward_skeleton(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
     # Inputs
@@ -271,7 +272,7 @@ def _forward_skeleton_core(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
     joint_indices: list[int] | None = None,
@@ -325,7 +326,7 @@ def _compose_global_trs(
     t_l: Float[Array, "B J 3"],
     q_l: Float[Array, "B J 4"],
     s_l: Float[Array, "B J 1"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     num_joints: int,
     joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"]]:

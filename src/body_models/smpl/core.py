@@ -11,6 +11,7 @@ from nanomanifold import SO3
 from ..rotations import RotationType
 
 Array = Any  # Generic array type (numpy, torch, jax)
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
 def forward_vertices(
@@ -22,7 +23,7 @@ def forward_vertices(
     j_template: Float[Array, "24 3"],
     j_shapedirs: Float[Array, "24 3 S"],
     parents: Int[Array, "24"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
@@ -86,7 +87,7 @@ def forward_skeleton(
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
     parents: Int[Array, "J"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
@@ -166,7 +167,7 @@ def _forward_core(
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
     parents: Int[Array, "J"],
-    kinematic_fronts: list[tuple[list[int], list[int]]],
+    kinematic_fronts: list[Front],
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
     pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
@@ -229,7 +230,7 @@ def _batched_forward_kinematics(
     xp,
     R: Float[Array, "B J 3 3"],
     t: Float[Array, "B J 3"],
-    fronts: list[tuple[list[int], list[int]]],
+    fronts: list[Front],
     joint_indices: list[int] | None = None,
 ) -> Float[Array, "B J 4 4"]:
     """Batched forward kinematics using precomputed kinematic fronts.
