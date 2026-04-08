@@ -115,15 +115,11 @@ def _get_attr(obj: Any, path: str) -> Any:
 
 def _load_checkpoint_numpy(checkpoint_path: Path) -> Any:
     try:
-        from ptloader import CheckpointError, load
+        from ptloader import load
     except ImportError as exc:
         raise ImportError("ptloader is required to load MHR checkpoints without torch.") from exc
 
-    try:
-        return load(checkpoint_path, weights_only=True)
-    except (CheckpointError, ValueError):
-        # Keep one fallback with explicit permissive mode for older ptloader variants.
-        return load(checkpoint_path, weights_only=True, torchscript_mode="permissive")
+    return load(checkpoint_path, weights_only=True)
 
 
 def _build_dense_skinning(
