@@ -210,6 +210,29 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
     )
 
 
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_skeleton_is_invariant_to_shape_and_expression(backend: str) -> None:
+    """Match upstream MHR: identity/expression deform the mesh, not the skeleton."""
+    MHR = _mhr_backend(backend)
+    model = MHR(model_path=MODEL_PATH)
+    inputs, _ = load_test_case(0)
+
+    base_kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
+    alt_kwargs = dict(base_kwargs)
+    alt_kwargs["shape"] = _backend_array(backend, (inputs["shape"] + 0.35).astype(np.float32))[None]
+    alt_kwargs["expression"] = _backend_array(backend, (-0.5 * inputs["expression"] + 0.1).astype(np.float32))[None]
+
+    context = torch.no_grad() if backend == "torch" else nullcontext()
+    with context:
+        base_verts = model.forward_vertices(**base_kwargs)
+        alt_verts = model.forward_vertices(**alt_kwargs)
+        base_skel = model.forward_skeleton(**base_kwargs)
+        alt_skel = model.forward_skeleton(**alt_kwargs)
+
+    np.testing.assert_allclose(_to_numpy(backend, alt_skel), _to_numpy(backend, base_skel), rtol=RTOL, atol=ATOL)
+    assert not np.allclose(_to_numpy(backend, alt_verts), _to_numpy(backend, base_verts), rtol=RTOL, atol=ATOL)
+
+
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================

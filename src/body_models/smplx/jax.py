@@ -33,7 +33,6 @@ class SMPLX(BodyModel, nnx.Module):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
-        use_hand_pca: bool = False,  # Accepted for compatibility, not used
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")

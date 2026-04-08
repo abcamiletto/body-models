@@ -148,7 +148,7 @@ def load_models(args: argparse.Namespace) -> dict[str, BodyModel]:
 
     if args.skel and Path(args.skel).exists():
         print(f"Loading SKEL from {args.skel}", flush=True)
-        models["SKEL"] = SKEL(args.skel_gender, Path(args.skel))
+        models["SKEL"] = SKEL(Path(args.skel), args.skel_gender)
 
     if args.anny and Path(args.anny).exists():
         print(f"Loading ANNY from {args.anny}", flush=True)
