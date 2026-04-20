@@ -27,7 +27,7 @@ class SMPL(BodyModel, nn.Module):
     v_template_full: Tensor
     lbs_weights: Tensor
     J_regressor: Tensor
-    parents: Tensor
+    parents: list[int]
     _faces: Tensor
 
     def __init__(
@@ -58,7 +58,8 @@ class SMPL(BodyModel, nn.Module):
         shapedirs = shapedirs_full
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -74,7 +75,6 @@ class SMPL(BodyModel, nn.Module):
         self.register_buffer("v_template_full", torch.as_tensor(v_template_full))
         self.register_buffer("lbs_weights", torch.as_tensor(lbs_weights))
         self.register_buffer("J_regressor", torch.as_tensor(J_regressor))
-        self.register_buffer("parents", torch.as_tensor(parents))
         self.register_buffer("_faces", torch.as_tensor(faces))
 
         # Use nn.Parameter for blend shapes (for proper device handling)
@@ -82,6 +82,7 @@ class SMPL(BodyModel, nn.Module):
         self.shapedirs_full = nn.Parameter(torch.as_tensor(shapedirs_full), requires_grad=False)
         self.posedirs = nn.Parameter(torch.as_tensor(posedirs.reshape(-1, posedirs.shape[-1]).T), requires_grad=False)
 
+        self.parents = parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = list(SMPL_JOINT_NAMES)
 

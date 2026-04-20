@@ -162,6 +162,7 @@ class ANNY(BodyModel, nn.Module):
         self.register_buffer("lbs_weights", lbs_weights, persistent=False)
 
         self._faces = data["faces"]
+        self.parents = [int(parent) for parent in data["bone_parents"]]
         self.bone_parents = data["bone_parents"]
         self.bone_labels = data["bone_labels"]
         self._kinematic_fronts = _build_kinematic_fronts(data["bone_parents"])

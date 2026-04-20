@@ -76,6 +76,7 @@ class ANNY(BodyModel):
         self.lbs_weights = data["lbs_weights"]
         self._faces = data["faces"]
         self.bone_labels = data["bone_labels"]
+        self.parents = [int(parent) for parent in data["bone_parents"]]
         self.bone_parents = data["bone_parents"]
         self._kinematic_fronts = data["kinematic_fronts"]
 

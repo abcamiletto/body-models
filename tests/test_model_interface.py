@@ -65,6 +65,9 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert isinstance(model.joint_names, list)
     assert len(model.joint_names) == model.num_joints
     assert all(isinstance(name, str) for name in model.joint_names)
+    assert isinstance(model.parents, list)
+    assert len(model.parents) == model.num_joints
+    assert all(isinstance(parent, int) for parent in model.parents)
 
     params = model.get_rest_pose(batch_size=1)
     skeleton = model.forward_skeleton(**params)

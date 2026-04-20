@@ -54,7 +54,8 @@ class SMPLX(BodyModel, nnx.Module):
         shapedirs = shapedirs_full
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -70,7 +71,6 @@ class SMPLX(BodyModel, nnx.Module):
         self.v_template_full = nnx.Variable(jnp.asarray(v_template_full))
         self.lbs_weights = nnx.Variable(jnp.asarray(lbs_weights))
         self.J_regressor = nnx.Variable(jnp.asarray(J_regressor))
-        self.parents = nnx.Variable(jnp.asarray(parents))
         self._faces = nnx.Variable(jnp.asarray(faces))
 
         # Hand pose mean
@@ -91,6 +91,7 @@ class SMPLX(BodyModel, nnx.Module):
         self.exprdirs_full = nnx.Variable(jnp.asarray(shapedirs_full[:, :, 300:400]))
         self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
 
+        self.parents = parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = get_joint_names(data)
 
@@ -147,7 +148,7 @@ class SMPLX(BodyModel, nnx.Module):
             j_template=self._j_template[...],
             j_shapedirs=self._j_shapedirs[...],
             j_exprdirs=self._j_exprdirs[...],
-            parents=self.parents[...],
+            parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
             shape=shape,
@@ -178,7 +179,7 @@ class SMPLX(BodyModel, nnx.Module):
             j_template=self._j_template[...],
             j_shapedirs=self._j_shapedirs[...],
             j_exprdirs=self._j_exprdirs[...],
-            parents=self.parents[...],
+            parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
             shape=shape,

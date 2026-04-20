@@ -89,6 +89,7 @@ class SKEL(BodyModel, nnx.Module):
         kintree = np.asarray(data["osim_kintree_table"], dtype=np.int64)
         id_to_col = {kintree[1, i]: i for i in range(kintree.shape[1])}
         self.parent_list = [id_to_col[kintree[0, i]] for i in range(1, kintree.shape[1])]
+        self.parents = [-1, *self.parent_list]
         self.parent = nnx.Variable(jnp.asarray(self.parent_list, dtype=jnp.int32))
 
         # Child indices for bone orientation
