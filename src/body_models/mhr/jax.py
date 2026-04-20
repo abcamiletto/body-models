@@ -96,7 +96,7 @@ class MHR(BodyModel, nnx.Module):
         self.corrective_W2 = nnx.Variable(jnp.asarray(corrective_weights["W2"]))
 
         joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
-        self.parents = nnx.Variable(jnp.asarray(joint_parents))
+        self.parents = joint_parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
         self._num_joints = len(joint_parents)
         self._joint_names = list(data["joint_names"])

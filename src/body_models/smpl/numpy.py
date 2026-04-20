@@ -48,7 +48,8 @@ class SMPL(BodyModel):
         shapedirs = shapedirs_full
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -66,7 +67,7 @@ class SMPL(BodyModel):
         self.posedirs = posedirs.reshape(-1, posedirs.shape[-1]).T
         self.lbs_weights = lbs_weights
         self.J_regressor = J_regressor
-        self.parents = parents
+        self.parents = parents.tolist()
         self._faces = faces
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = list(SMPL_JOINT_NAMES)

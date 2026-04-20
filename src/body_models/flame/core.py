@@ -25,7 +25,7 @@ def forward_vertices(
     posedirs: Float[Array, "P V*3"],
     lbs_weights: Float[Array, "V 5"],
     J_regressor: Float[Array, "5 V_full"],
-    parents: Int[Array, "5"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B N_shape"],
@@ -101,7 +101,7 @@ def forward_skeleton(
     shapedirs_full: Float[Array, "V_full 3 N_shape"],
     exprdirs_full: Float[Array, "V_full 3 N_expr"],
     J_regressor: Float[Array, "5 V_full"],
-    parents: Int[Array, "5"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B N_shape"],
@@ -126,7 +126,6 @@ def forward_skeleton(
     active_fronts = kinematic_fronts
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
-        parents = parents.tolist() if hasattr(parents, "tolist") else list(parents)
         if any(joint < 0 or joint >= len(parents) for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {len(parents)})")
 
@@ -191,7 +190,7 @@ def _forward_core(
     exprdirs: Float[Array, "V 3 N_expr"] | None,
     exprdirs_full: Float[Array, "V_full 3 N_expr"],
     J_regressor: Float[Array, "5 V_full"],
-    parents: Int[Array, "5"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     shape: Float[Array, "B N_shape"],
     expression: Float[Array, "B N_expr"],

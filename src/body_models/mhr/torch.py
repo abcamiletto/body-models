@@ -5,6 +5,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
@@ -50,7 +51,6 @@ class MHR(BodyModel, nn.Module):
     joint_offsets: Tensor
     joint_pre_rotations: Tensor
     parameter_transform: Tensor
-    parents: Tensor
     bind_inv_linear: Tensor
     bind_inv_translation: Tensor
     _faces: Tensor
@@ -120,8 +120,8 @@ class MHR(BodyModel, nn.Module):
         self.register_buffer("corrective_W1", torch.from_numpy(corrective_weights["W1"]))
         self.register_buffer("corrective_W2", torch.from_numpy(corrective_weights["W2"]))
 
-        joint_parents = data["joint_parents"]
-        self.register_buffer("parents", torch.from_numpy(joint_parents).to(torch.int64))
+        joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
+        self.parents = joint_parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
         self._joint_names = list(data["joint_names"])
 

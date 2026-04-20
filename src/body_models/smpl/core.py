@@ -22,7 +22,7 @@ def forward_vertices(
     lbs_weights: Float[Array, "V 24"],
     j_template: Float[Array, "24 3"],
     j_shapedirs: Float[Array, "24 3 S"],
-    parents: Int[Array, "24"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B 10"],
@@ -86,7 +86,7 @@ def forward_skeleton(
     # Model data
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
-    parents: Int[Array, "J"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     # Inputs
     shape: Float[Array, "B 10"],
@@ -108,7 +108,6 @@ def forward_skeleton(
     active_fronts = kinematic_fronts
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
-        parents = parents.tolist() if hasattr(parents, "tolist") else list(parents)
         if any(joint < 0 or joint >= len(parents) for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {len(parents)})")
 
@@ -166,7 +165,7 @@ def _forward_core(
     shapedirs: Float[Array, "V D 10"] | None,
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
-    parents: Int[Array, "J"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],

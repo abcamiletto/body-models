@@ -57,10 +57,8 @@ class FLAME(BodyModel):
         shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)  # (V, 3, 400)
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
-
-        # Fix parent of root (may be -1 or large value in file)
-        parents[0] = 0
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         # Apply mesh simplification if requested
         if simplify > 1.0:
@@ -78,7 +76,7 @@ class FLAME(BodyModel):
         self.v_template_full = v_template_full
         self.lbs_weights = lbs_weights
         self.J_regressor = J_regressor
-        self.parents = parents
+        self.parents = parents.tolist()
         self._faces = faces
 
         # FLAME 2023 has combined shape (300) + expression (100) in shapedirs
