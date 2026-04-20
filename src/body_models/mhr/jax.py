@@ -95,7 +95,8 @@ class MHR(BodyModel, nnx.Module):
         self.corrective_W1 = nnx.Variable(jnp.asarray(corrective_weights["W1"]))
         self.corrective_W2 = nnx.Variable(jnp.asarray(corrective_weights["W2"]))
 
-        joint_parents = data["joint_parents"]
+        joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
+        self.parents = nnx.Variable(jnp.asarray(joint_parents))
         self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
         self._num_joints = len(joint_parents)
         self._joint_names = list(data["joint_names"])
@@ -126,8 +127,11 @@ class MHR(BodyModel, nnx.Module):
         return self.base_vertices[...] * 0.01
 
     @property
-    def skin_weights(self) -> Float[jax.Array, "V K"]:
-        return self._skin_weights[...]
+    def skin_weights(self) -> Float[jax.Array, "V J"]:
+        dense = jnp.zeros((self._skin_weights[...].shape[0], self.num_joints), dtype=self._skin_weights[...].dtype)
+        return dense.at[jnp.arange(self._skin_weights[...].shape[0])[:, None], self._skin_indices[...]].set(
+            self._skin_weights[...]
+        )
 
     def forward_vertices(
         self,
