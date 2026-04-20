@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import numpy as np
-from scipy.spatial.transform import Rotation
+from nanomanifold import SO3
 
 
 class BodyModel(ABC):
@@ -112,7 +112,7 @@ class BodyModel(ABC):
             if parent_index >= 0:
                 local[joint_index] = np.linalg.solve(world[parent_index], world[joint_index])
 
-        bone_wxyzs = Rotation.from_matrix(local[:, :3, :3]).as_quat()[:, [3, 0, 1, 2]]
+        bone_wxyzs = SO3.conversions.from_rotmat_to_quat(local[:, :3, :3], convention="wxyz", xp=np)
         bone_positions = local[:, :3, 3]
         return {"bone_wxyzs": bone_wxyzs, "bone_positions": bone_positions.copy()}
 

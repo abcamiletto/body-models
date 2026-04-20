@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from scipy.spatial.transform import Rotation
+from nanomanifold import SO3
 
 ASSET_DIR = Path(__file__).parent / "assets"
 MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr"]
@@ -144,6 +144,6 @@ def test_viser_exports_match_model_outputs(model_name: str, backend: str) -> Non
     np.testing.assert_allclose(bones["bone_positions"], local_skeleton[:, :3, 3], atol=1e-6, rtol=1e-6)
     np.testing.assert_allclose(mesh["bone_positions"], bones["bone_positions"], atol=1e-6, rtol=1e-6)
 
-    bone_rotmats = Rotation.from_quat(bones["bone_wxyzs"][:, [1, 2, 3, 0]]).as_matrix()
+    bone_rotmats = SO3.conversions.from_quat_to_rotmat(bones["bone_wxyzs"], convention="wxyz", xp=np)
     np.testing.assert_allclose(bone_rotmats, local_skeleton[:, :3, :3], atol=1e-6, rtol=1e-6)
     np.testing.assert_allclose(mesh["bone_wxyzs"], bones["bone_wxyzs"], atol=1e-6, rtol=1e-6)
