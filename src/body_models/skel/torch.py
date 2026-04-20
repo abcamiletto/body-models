@@ -122,6 +122,7 @@ class SKEL(BodyModel, nn.Module):
         kintree = torch.tensor(data["osim_kintree_table"], dtype=torch.int64)
         id_to_col = {kintree[1, i].item(): i for i in range(kintree.shape[1])}
         self.parent_list = [id_to_col[kintree[0, i].item()] for i in range(1, kintree.shape[1])]
+        self.parents = [-1, *self.parent_list]
         self.register_buffer("parent", torch.tensor(self.parent_list, dtype=torch.int64))
 
         # Child indices for bone orientation

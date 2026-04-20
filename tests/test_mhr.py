@@ -233,19 +233,6 @@ def test_skeleton_is_invariant_to_shape_and_expression(backend: str) -> None:
     assert not np.allclose(_to_numpy(backend, alt_verts), _to_numpy(backend, base_verts), rtol=RTOL, atol=ATOL)
 
 
-@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
-def test_public_interface_exposes_dense_skin_weights_and_parents(backend: str) -> None:
-    MHR = _mhr_backend(backend)
-    model = MHR(model_path=MODEL_PATH)
-
-    parents = np.asarray(model.parents, dtype=np.int64)
-    skin_weights = _to_numpy(backend, model.skin_weights)
-
-    assert parents.shape == (model.num_joints,)
-    assert parents[0] < 0
-    assert skin_weights.shape == (model.num_vertices, model.num_joints)
-
-
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================

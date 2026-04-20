@@ -83,8 +83,9 @@ class MHR(BodyModel):
         self.corrective_W1 = corrective_weights["W1"]
         self.corrective_W2 = corrective_weights["W2"]
 
-        self.parents = np.asarray(data["joint_parents"], dtype=np.int64)
-        self._kinematic_fronts = compute_kinematic_fronts(self.parents)
+        joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
+        self.parents = joint_parents.tolist()
+        self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
         self._joint_names = list(data["joint_names"])
 
     @property

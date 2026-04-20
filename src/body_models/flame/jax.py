@@ -60,10 +60,8 @@ class FLAME(BodyModel, nnx.Module):
         shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)  # (V, 3, 400)
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
-
-        # Fix parent of root (may be -1 or large value in file)
-        parents[0] = 0
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         # Apply mesh simplification if requested
         if simplify > 1.0:
@@ -81,7 +79,6 @@ class FLAME(BodyModel, nnx.Module):
         self.v_template_full = nnx.Variable(jnp.asarray(v_template_full))
         self.lbs_weights = nnx.Variable(jnp.asarray(lbs_weights))
         self.J_regressor = nnx.Variable(jnp.asarray(J_regressor))
-        self.parents = nnx.Variable(jnp.asarray(parents))
         self._faces = nnx.Variable(jnp.asarray(faces))
 
         # FLAME 2023 has combined shape (300) + expression (100) in shapedirs
@@ -91,6 +88,7 @@ class FLAME(BodyModel, nnx.Module):
         self.exprdirs = nnx.Variable(jnp.asarray(shapedirs[:, :, 300:]))
         self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
 
+        self.parents = parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = list(FLAME_JOINT_NAMES)
 
@@ -151,7 +149,7 @@ class FLAME(BodyModel, nnx.Module):
             posedirs=self.posedirs[...],
             lbs_weights=self.lbs_weights[...],
             J_regressor=self.J_regressor[...],
-            parents=self.parents[...],
+            parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             expression=expression,
@@ -191,7 +189,7 @@ class FLAME(BodyModel, nnx.Module):
             shapedirs_full=self.shapedirs_full[...],
             exprdirs_full=self.exprdirs_full[...],
             J_regressor=self.J_regressor[...],
-            parents=self.parents[...],
+            parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             expression=expression,
