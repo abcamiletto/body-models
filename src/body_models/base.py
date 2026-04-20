@@ -85,14 +85,6 @@ class BodyModel(ABC):
             zero-initialized or set to identity poses.
         """
 
-    @staticmethod
-    def _to_numpy(value: Any) -> np.ndarray:
-        if hasattr(value, "detach"):
-            value = value.detach()
-        if hasattr(value, "cpu"):
-            value = value.cpu()
-        return np.asarray(value)
-
     def to_viser_bones(self, **params: Any) -> dict[str, np.ndarray]:
         """Export parent-relative bone poses in the format expected by ``viser``."""
         if "joint_indices" in params:
@@ -100,7 +92,7 @@ class BodyModel(ABC):
         if not params:
             params = self.get_rest_pose(batch_size=1)
 
-        skeleton = self._to_numpy(self.forward_skeleton(**params))
+        skeleton = np.asarray(self.forward_skeleton(**params))
         if skeleton.shape[0] != 1:
             raise ValueError(f"to_viser_bones() expects batch size 1, got {skeleton.shape[0]}")
         if len(self.parents) != self.num_joints:
@@ -124,11 +116,11 @@ class BodyModel(ABC):
         if "joint_indices" in bind_params:
             raise ValueError("to_viser_skinned_mesh() requires the full skeleton; do not pass joint_indices.")
 
-        vertices = self._to_numpy(self.forward_vertices(**bind_params))
+        vertices = np.asarray(self.forward_vertices(**bind_params))
         if vertices.shape[0] != 1:
             raise ValueError(f"to_viser_skinned_mesh() expects batch size 1, got {vertices.shape[0]}")
 
-        faces = self._to_numpy(self.faces)
+        faces = np.asarray(self.faces)
         if faces.shape[1] == 4:
             faces = np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
         elif faces.shape[1] != 3:
@@ -137,6 +129,6 @@ class BodyModel(ABC):
         return {
             "vertices": vertices[0].copy(),
             "faces": faces.copy(),
-            "skin_weights": self._to_numpy(self.skin_weights).copy(),
+            "skin_weights": np.asarray(self.skin_weights).copy(),
             **self.to_viser_bones(**bind_params),
         }
