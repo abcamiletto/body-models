@@ -162,8 +162,7 @@ class ANNY(BodyModel, nn.Module):
         self.register_buffer("lbs_weights", lbs_weights, persistent=False)
 
         self._faces = data["faces"]
-        self.parents = data["bone_parents"]
-        self.bone_parents = self.parents
+        self.parents = data["parents"]
         self.bone_labels = data["bone_labels"]
         self._kinematic_fronts = _build_kinematic_fronts(self.parents)
         self.extrapolate_phenotypes = extrapolate_phenotypes
@@ -360,7 +359,7 @@ _RIG_CONFIGS = {
 def _load_data(data_dir: Path, cache_dir: Path, rig: str, eyes: bool, tongue: bool) -> dict:
     """Load ANNY model data (cached)."""
     cache_key = hashlib.md5(f"{rig}_{eyes}_{tongue}".encode()).hexdigest()
-    cache_file = cache_dir / f"data_{cache_key}.pth"
+    cache_file = cache_dir / f"data_v2_{cache_key}.pth"
     if cache_file.exists():
         return torch.load(cache_file, weights_only=True)
 
@@ -391,7 +390,7 @@ def _load_data(data_dir: Path, cache_dir: Path, rig: str, eyes: bool, tongue: bo
         rig_data = rig_data["bones"]
     weights_data = json.loads((rig_dir / weights_file).read_text())
 
-    bone_labels, bone_parents = _build_skeleton(rig_data)
+    bone_labels, parents = _build_skeleton(rig_data)
     bone_indices, bone_weights = _build_skin_weights(weights_data, bone_labels, len(verts), dtype)
 
     # Load blendshapes
@@ -415,7 +414,7 @@ def _load_data(data_dir: Path, cache_dir: Path, rig: str, eyes: bool, tongue: bo
         "bone_tails_blendshapes": tails_bs,
         "bone_rolls_rotmat": rolls,
         "bone_labels": bone_labels,
-        "bone_parents": bone_parents,
+        "parents": parents,
         "vertex_bone_weights": bone_weights,
         "vertex_bone_indices": bone_indices,
     }
