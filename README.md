@@ -211,6 +211,36 @@ Supported types:
 
 The `"matrix"` type is useful when optimizing rotations without constraints -- inputs are projected to the nearest valid rotation matrix via SVD. The `"rotmat"` type assumes inputs are already valid rotation matrices and skips the projection.
 
+### viser Export
+
+All models can export skinned-mesh data directly for `viser.SceneApi.add_mesh_skinned()`:
+
+```python
+import viser
+from body_models.smplx.torch import SMPLX
+
+server = viser.ViserServer()
+server.scene.set_up_direction("+y")
+
+model = SMPLX(gender="neutral")
+bind_pose_params = model.get_rest_pose(batch_size=1)
+
+body = server.scene.add_mesh_skinned(
+    "/body",
+    **model.to_viser_skinned_mesh(bind_pose_params=bind_pose_params),
+)
+
+# Later, update only the bones from any forward_skeleton() parameter dict.
+pose_params = model.get_rest_pose(batch_size=1)
+bones = model.to_viser_bones(pose_params=pose_params)
+body.bone_wxyzs = bones["bone_wxyzs"]
+body.bone_positions = bones["bone_positions"]
+```
+
+- `bind_pose_params` is the parameter dict used to build the bind mesh and bind skeleton.
+- `pose_params` is the parameter dict passed to `forward_skeleton()` for the current pose.
+- Both helpers require `batch_size=1`, the full mesh, and the full joint set.
+
 ## Supported Models
 
 ### SMPL
