@@ -3,7 +3,7 @@
 from typing import Any
 
 from array_api_compat import get_namespace
-from jaxtyping import Float, Int
+from jaxtyping import Float
 
 from .. import common
 from nanomanifold import SO3
