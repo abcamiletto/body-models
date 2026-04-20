@@ -51,7 +51,6 @@ class MHR(BodyModel, nn.Module):
     joint_offsets: Tensor
     joint_pre_rotations: Tensor
     parameter_transform: Tensor
-    parents: list[int]
     bind_inv_linear: Tensor
     bind_inv_translation: Tensor
     _faces: Tensor

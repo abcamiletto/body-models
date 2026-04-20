@@ -42,7 +42,6 @@ class FLAME(BodyModel, nn.Module):
     v_template_full: Tensor
     lbs_weights: Tensor
     J_regressor: Tensor
-    parents: list[int]
     _faces: Tensor
 
     def __init__(

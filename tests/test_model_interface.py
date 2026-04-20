@@ -68,6 +68,7 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert isinstance(model.parents, list)
     assert len(model.parents) == model.num_joints
     assert all(isinstance(parent, int) for parent in model.parents)
+    assert model.skin_weights.shape == (model.num_vertices, model.num_joints)
 
     params = model.get_rest_pose(batch_size=1)
     skeleton = model.forward_skeleton(**params)
