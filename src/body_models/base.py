@@ -85,14 +85,13 @@ class BodyModel(ABC):
             zero-initialized or set to identity poses.
         """
 
-    def to_viser_bones(self, **params: Any) -> dict[str, np.ndarray]:
-        """Export parent-relative bone poses in the format expected by ``viser``."""
-        if "joint_indices" in params:
+    def to_viser_bones(self, pose_params: dict[str, Any] | None = None) -> dict[str, np.ndarray]:
+        """Export parent-relative bone poses for ``viser`` from a ``forward_skeleton()`` parameter dict."""
+        pose_params = self.get_rest_pose(batch_size=1) if pose_params is None else dict(pose_params)
+        if "joint_indices" in pose_params:
             raise ValueError("to_viser_bones() requires the full skeleton; do not pass joint_indices.")
-        if not params:
-            params = self.get_rest_pose(batch_size=1)
 
-        skeleton = np.asarray(self.forward_skeleton(**params))
+        skeleton = np.asarray(self.forward_skeleton(**pose_params))
         if skeleton.shape[0] != 1:
             raise ValueError(f"to_viser_bones() expects batch size 1, got {skeleton.shape[0]}")
         if len(self.parents) != self.num_joints:
@@ -108,15 +107,15 @@ class BodyModel(ABC):
         bone_positions = local[:, :3, 3]
         return {"bone_wxyzs": bone_wxyzs, "bone_positions": bone_positions.copy()}
 
-    def to_viser_skinned_mesh(self, bind_params: dict[str, Any] | None = None) -> dict[str, np.ndarray]:
-        """Export bind-pose mesh data in the format expected by ``viser``."""
-        bind_params = self.get_rest_pose(batch_size=1) if bind_params is None else dict(bind_params)
-        if "vertex_indices" in bind_params:
+    def to_viser_skinned_mesh(self, bind_pose_params: dict[str, Any] | None = None) -> dict[str, np.ndarray]:
+        """Export bind-pose mesh data for ``viser`` from a ``forward_vertices()`` / ``forward_skeleton()`` parameter dict."""
+        bind_pose_params = self.get_rest_pose(batch_size=1) if bind_pose_params is None else dict(bind_pose_params)
+        if "vertex_indices" in bind_pose_params:
             raise ValueError("to_viser_skinned_mesh() requires the full mesh; do not pass vertex_indices.")
-        if "joint_indices" in bind_params:
+        if "joint_indices" in bind_pose_params:
             raise ValueError("to_viser_skinned_mesh() requires the full skeleton; do not pass joint_indices.")
 
-        vertices = np.asarray(self.forward_vertices(**bind_params))
+        vertices = np.asarray(self.forward_vertices(**bind_pose_params))
         if vertices.shape[0] != 1:
             raise ValueError(f"to_viser_skinned_mesh() expects batch size 1, got {vertices.shape[0]}")
 
@@ -130,5 +129,5 @@ class BodyModel(ABC):
             "vertices": vertices[0].copy(),
             "faces": faces.copy(),
             "skin_weights": np.asarray(self.skin_weights).copy(),
-            **self.to_viser_bones(**bind_params),
+            **self.to_viser_bones(bind_pose_params),
         }
