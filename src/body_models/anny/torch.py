@@ -162,9 +162,10 @@ class ANNY(BodyModel, nn.Module):
         self.register_buffer("lbs_weights", lbs_weights, persistent=False)
 
         self._faces = data["faces"]
-        self.bone_parents = data["bone_parents"]
+        self.parents = data["bone_parents"]
+        self.bone_parents = self.parents
         self.bone_labels = data["bone_labels"]
-        self._kinematic_fronts = _build_kinematic_fronts(data["bone_parents"])
+        self._kinematic_fronts = _build_kinematic_fronts(self.parents)
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type

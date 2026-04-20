@@ -13,6 +13,8 @@ class BodyModel(ABC):
             ...
     """
 
+    parents: list[int]
+
     @property
     @abstractmethod
     def faces(self) -> Any:
