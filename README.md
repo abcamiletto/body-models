@@ -223,22 +223,22 @@ server = viser.ViserServer()
 server.scene.set_up_direction("+y")
 
 model = SMPLX(gender="neutral")
-bind_pose_params = model.get_rest_pose(batch_size=1)
+forward_kwargs = model.get_rest_pose(batch_size=1)
 
 body = server.scene.add_mesh_skinned(
     "/body",
-    **model.to_viser_skinned_mesh(bind_pose_params=bind_pose_params),
+    **model.to_viser_skinned_mesh(**forward_kwargs),
 )
 
 # Later, update only the bones from any forward_skeleton() parameter dict.
-pose_params = model.get_rest_pose(batch_size=1)
-bones = model.to_viser_bones(pose_params=pose_params)
+bones = model.to_viser_bones(**forward_kwargs)
 body.bone_wxyzs = bones["bone_wxyzs"]
 body.bone_positions = bones["bone_positions"]
 ```
 
-- `bind_pose_params` is the parameter dict used to build the bind mesh and bind skeleton.
-- `pose_params` is the parameter dict passed to `forward_skeleton()` for the current pose.
+- `forward_kwargs` is the same kwargs dict you would pass to `forward_vertices()` or `forward_skeleton()`.
+- Use `to_viser_skinned_mesh(**forward_kwargs)` when the mesh or bind skeleton changes.
+- Use `to_viser_bones(**forward_kwargs)` when you only want updated bone poses.
 - Both helpers require `batch_size=1`, the full mesh, and the full joint set.
 
 ## Supported Models
