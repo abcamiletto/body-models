@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from nanomanifold import SO3
 
 ASSET_DIR = Path(__file__).parent / "assets"
 MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr"]
@@ -104,3 +105,45 @@ def test_forward_skeleton_joint_indices_matches_full_output(model_name: str, bac
     assert subset_np.shape[-3] == len(joint_indices)
     np.testing.assert_allclose(subset_np[..., :3, :3], expected_np[..., :3, :3], atol=1e-6, rtol=1e-6)
     np.testing.assert_allclose(subset_np[..., :3, 3], expected_np[..., :3, 3], atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("model_name", MODELS)
+def test_viser_exports_match_model_outputs(model_name: str, backend: str) -> None:
+    model = _build_model(model_name, backend)
+
+    forward_kwargs = model.get_rest_pose(batch_size=1)
+    mesh = model.to_viser_skinned_mesh(**forward_kwargs)
+    bones = model.to_viser_bones(**forward_kwargs)
+
+    assert set(mesh) == {"vertices", "faces", "bone_wxyzs", "bone_positions", "skin_weights"}
+    assert set(bones) == {"bone_wxyzs", "bone_positions"}
+
+    full_vertices = np.asarray(model.forward_vertices(**forward_kwargs))[0]
+    full_skeleton = np.asarray(model.forward_skeleton(**forward_kwargs))[0]
+    local_skeleton = full_skeleton.copy()
+    for joint_index, parent_index in enumerate(model.parents):
+        if parent_index >= 0:
+            local_skeleton[joint_index] = np.linalg.solve(full_skeleton[parent_index], full_skeleton[joint_index])
+
+    np.testing.assert_allclose(mesh["vertices"], full_vertices, atol=1e-6, rtol=1e-6)
+    assert mesh["vertices"].shape == (model.num_vertices, 3)
+    assert mesh["faces"].ndim == 2
+    assert mesh["faces"].shape[1] == 3
+    assert mesh["skin_weights"].shape == (model.num_vertices, model.num_joints)
+    assert bones["bone_positions"].shape == (model.num_joints, 3)
+    assert bones["bone_wxyzs"].shape == (model.num_joints, 4)
+
+    if np.asarray(model.faces).shape[1] == 4:
+        assert mesh["faces"].shape[0] == model.faces.shape[0] * 2
+    else:
+        np.testing.assert_array_equal(mesh["faces"], np.asarray(model.faces))
+
+    np.testing.assert_allclose(mesh["skin_weights"], np.asarray(model.skin_weights), atol=1e-6, rtol=1e-6)
+
+    np.testing.assert_allclose(bones["bone_positions"], local_skeleton[:, :3, 3], atol=1e-6, rtol=1e-6)
+    np.testing.assert_allclose(mesh["bone_positions"], bones["bone_positions"], atol=1e-6, rtol=1e-6)
+
+    bone_rotmats = SO3.conversions.from_quat_to_rotmat(bones["bone_wxyzs"], convention="wxyz", xp=np)
+    np.testing.assert_allclose(bone_rotmats, local_skeleton[:, :3, :3], atol=1e-6, rtol=1e-6)
+    np.testing.assert_allclose(mesh["bone_wxyzs"], bones["bone_wxyzs"], atol=1e-6, rtol=1e-6)
