@@ -112,15 +112,15 @@ def test_forward_skeleton_joint_indices_matches_full_output(model_name: str, bac
 def test_viser_exports_match_model_outputs(model_name: str, backend: str) -> None:
     model = _build_model(model_name, backend)
 
-    bind_params = model.get_rest_pose(batch_size=1)
-    mesh = model.to_viser_skinned_mesh(bind_params)
-    bones = model.to_viser_bones(**bind_params)
+    pose_params = model.get_rest_pose(batch_size=1)
+    mesh = model.to_viser_skinned_mesh(bind_pose_params=pose_params)
+    bones = model.to_viser_bones(pose_params=pose_params)
 
     assert set(mesh) == {"vertices", "faces", "bone_wxyzs", "bone_positions", "skin_weights"}
     assert set(bones) == {"bone_wxyzs", "bone_positions"}
 
-    full_vertices = np.asarray(model.forward_vertices(**bind_params))[0]
-    full_skeleton = np.asarray(model.forward_skeleton(**bind_params))[0]
+    full_vertices = np.asarray(model.forward_vertices(**pose_params))[0]
+    full_skeleton = np.asarray(model.forward_skeleton(**pose_params))[0]
     local_skeleton = full_skeleton.copy()
     for joint_index, parent_index in enumerate(model.parents):
         if parent_index >= 0:
