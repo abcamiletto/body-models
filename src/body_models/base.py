@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+import numpy as np
+from scipy.spatial.transform import Rotation
+
 
 class BodyModel(ABC):
     """Abstract base class for body models.
@@ -81,3 +84,59 @@ class BodyModel(ABC):
             Dictionary with model-specific parameter keys. All arrays are
             zero-initialized or set to identity poses.
         """
+
+    @staticmethod
+    def _to_numpy(value: Any) -> np.ndarray:
+        if hasattr(value, "detach"):
+            value = value.detach()
+        if hasattr(value, "cpu"):
+            value = value.cpu()
+        return np.asarray(value)
+
+    def to_viser_bones(self, **params: Any) -> dict[str, np.ndarray]:
+        """Export parent-relative bone poses in the format expected by ``viser``."""
+        if "joint_indices" in params:
+            raise ValueError("to_viser_bones() requires the full skeleton; do not pass joint_indices.")
+        if not params:
+            params = self.get_rest_pose(batch_size=1)
+
+        skeleton = self._to_numpy(self.forward_skeleton(**params))
+        if skeleton.shape[0] != 1:
+            raise ValueError(f"to_viser_bones() expects batch size 1, got {skeleton.shape[0]}")
+        if len(self.parents) != self.num_joints:
+            raise ValueError(f"Expected {self.num_joints} joint parents, got {len(self.parents)}")
+
+        world = skeleton[0]
+        local = world.copy()
+        for joint_index, parent_index in enumerate(self.parents):
+            if parent_index >= 0:
+                local[joint_index] = np.linalg.solve(world[parent_index], world[joint_index])
+
+        bone_wxyzs = Rotation.from_matrix(local[:, :3, :3]).as_quat()[:, [3, 0, 1, 2]]
+        bone_positions = local[:, :3, 3]
+        return {"bone_wxyzs": bone_wxyzs, "bone_positions": bone_positions.copy()}
+
+    def to_viser_skinned_mesh(self, bind_params: dict[str, Any] | None = None) -> dict[str, np.ndarray]:
+        """Export bind-pose mesh data in the format expected by ``viser``."""
+        bind_params = self.get_rest_pose(batch_size=1) if bind_params is None else dict(bind_params)
+        if "vertex_indices" in bind_params:
+            raise ValueError("to_viser_skinned_mesh() requires the full mesh; do not pass vertex_indices.")
+        if "joint_indices" in bind_params:
+            raise ValueError("to_viser_skinned_mesh() requires the full skeleton; do not pass joint_indices.")
+
+        vertices = self._to_numpy(self.forward_vertices(**bind_params))
+        if vertices.shape[0] != 1:
+            raise ValueError(f"to_viser_skinned_mesh() expects batch size 1, got {vertices.shape[0]}")
+
+        faces = self._to_numpy(self.faces)
+        if faces.shape[1] == 4:
+            faces = np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
+        elif faces.shape[1] != 3:
+            raise ValueError(f"Expected triangular or quad faces, got shape {faces.shape}")
+
+        return {
+            "vertices": vertices[0].copy(),
+            "faces": faces.copy(),
+            "skin_weights": self._to_numpy(self.skin_weights).copy(),
+            **self.to_viser_bones(**bind_params),
+        }
