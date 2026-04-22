@@ -56,14 +56,6 @@ def forward_vertices(
     B = pose_rot.shape[0]
     shape = _broadcast_shape(shape, batch_size=B, xp=xp)
     pose_rot_full = _orient_pose_rot_full(xp, pose_rot, t_pose_world, parents_full)
-    use_pose_correctives = (
-        apply_correctives
-        and corrective_bindpose is not None
-        and corrective_W1 is not None
-        and corrective_W2_rows is not None
-        and corrective_W2_cols is not None
-        and corrective_W2_values is not None
-    )
 
     _rest_shape_full, world_bind_pose_fit = _prepare_identity(
         xp=xp,
@@ -80,7 +72,15 @@ def forward_vertices(
     )
     rest_shape_active = _shape_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, shape)
 
-    if use_pose_correctives:
+    if apply_correctives:
+        if (
+            corrective_bindpose is None
+            or corrective_W1 is None
+            or corrective_W2_rows is None
+            or corrective_W2_cols is None
+            or corrective_W2_values is None
+        ):
+            raise ValueError("apply_correctives=True requires SOMA corrective weights.")
         rest_shape_active, world_bind_pose = _repose_to_bind_pose(
             xp=xp,
             rest_shape=rest_shape_active,
