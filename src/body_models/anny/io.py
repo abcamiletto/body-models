@@ -180,7 +180,7 @@ def _load_data_numpy(
     tongue: bool,
     dtype: Any = np.float32,
 ) -> dict:
-    """Load ANNY model data with NumPy, optionally reading legacy torch caches via ptloader."""
+    """Load ANNY model data with NumPy."""
     stem = _cache_file_stem(rig, eyes, tongue)
     cache_npz = cache_dir / f"{stem}.npz"
     cache_pth = cache_dir / f"{stem}.pth"
@@ -191,14 +191,13 @@ def _load_data_numpy(
     if cache_pth.exists():
         try:
             from ptloader import load as ptload
+        except ImportError as exc:
+            raise ImportError("ptloader is required to load legacy ANNY .pth caches.") from exc
 
-            data = ptload(cache_pth, weights_only=True)
-            # Store converted cache in a torch-free format for future loads.
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            _save_npz_cache(cache_npz, data)
-            return data
-        except ImportError:
-            pass
+        data = ptload(cache_pth, weights_only=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        _save_npz_cache(cache_npz, data)
+        return data
 
     world_T = (
         0.1
