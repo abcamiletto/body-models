@@ -145,7 +145,7 @@ def _load_sparse_checkpoint_numpy(checkpoint_path: Path) -> dict[str, Any]:
     try:
         from ptloader import load
     except ImportError as exc:
-        raise ImportError("ptloader is required to load SOMA checkpoints without torch.") from exc
+        raise ImportError("ptloader is required to load SOMA corrective checkpoints.") from exc
 
     return load(
         checkpoint_path,
@@ -156,23 +156,6 @@ def _load_sparse_checkpoint_numpy(checkpoint_path: Path) -> dict[str, Any]:
             ("torch", "Size"): tuple,
         },
     )
-
-
-def _load_sparse_checkpoint_torch(checkpoint_path: Path) -> dict[str, Any]:
-    try:
-        import torch
-    except ImportError as exc:
-        raise ImportError(
-            "Loading SOMA pose correctives requires either ptloader support for this checkpoint "
-            "or PyTorch to be installed."
-        ) from exc
-
-    _orig_validate = torch._utils._validate_loaded_sparse_tensors
-    torch._utils._validate_loaded_sparse_tensors = lambda: None
-    try:
-        return torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    finally:
-        torch._utils._validate_loaded_sparse_tensors = _orig_validate
 
 
 def _as_sparse_coo(value: Any) -> _SparseCoo:
@@ -225,10 +208,7 @@ def load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
             }
 
     checkpoint_path = asset_dir / SOMA_CORRECTIVES_ASSET
-    try:
-        ckpt = _load_sparse_checkpoint_numpy(checkpoint_path)
-    except Exception:
-        ckpt = _load_sparse_checkpoint_torch(checkpoint_path)
+    ckpt = _load_sparse_checkpoint_numpy(checkpoint_path)
 
     W1_sparse = _as_sparse_coo(ckpt["W1"])
     W2_sparse = _as_sparse_coo(ckpt["W2"])

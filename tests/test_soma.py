@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from body_models.soma.io import get_model_path
+from body_models.soma.io import SOMA_CORRECTIVES_ASSET, _load_sparse_checkpoint_numpy, get_model_path
 
 
 @pytest.fixture(scope="module")
@@ -121,3 +121,11 @@ def test_apply_correctives_requires_weights(model_path: Path) -> None:
 
     verts = model.forward_vertices(**params, apply_correctives=False)
     assert verts.shape == (1, model.num_vertices, 3)
+
+
+def test_corrective_checkpoint_loads_with_ptloader(model_path: Path) -> None:
+    checkpoint = _load_sparse_checkpoint_numpy(model_path / SOMA_CORRECTIVES_ASSET)
+
+    assert "bindpose" in checkpoint
+    assert "W1" in checkpoint
+    assert "W2" in checkpoint
