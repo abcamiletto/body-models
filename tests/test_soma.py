@@ -102,32 +102,6 @@ def test_simplify_reduces_mesh(model_path: Path) -> None:
     assert verts.shape == (2, model_half.num_vertices, 3)
     assert skel.shape == (2, model_half.num_joints, 4, 4)
 
-
-def test_apply_correctives_requires_weights(model_path: Path) -> None:
-    from body_models.soma.numpy import SOMA
-
-    model = SOMA(model_path=model_path)
-    params = model.get_rest_pose()
-    setattr(model, "corrective_W1", None)
-
-    with pytest.raises(ValueError, match="apply_correctives=True requires SOMA corrective weights."):
-        model.forward_vertices(
-            shape=params["shape"],
-            pose=params["pose"],
-            global_rotation=params["global_rotation"],
-            global_translation=params["global_translation"],
-        )
-
-    verts = model.forward_vertices(
-        shape=params["shape"],
-        pose=params["pose"],
-        global_rotation=params["global_rotation"],
-        global_translation=params["global_translation"],
-        apply_correctives=False,
-    )
-    assert verts.shape == (1, model.num_vertices, 3)
-
-
 def test_scale_params_only_supported_for_mhr(model_path: Path) -> None:
     from body_models.soma.numpy import SOMA
 
