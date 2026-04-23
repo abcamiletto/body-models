@@ -15,6 +15,13 @@ def setup_model_paths(monkeypatch):
 
     # Create a mock config that returns test asset paths
     def mock_get_model_path(model: str) -> Path | None:
+        if model.startswith("smpl-"):
+            return ASSET_DIR / "smpl" / "model" / "SMPL_NEUTRAL.npz"
+        if model.startswith("smplx-"):
+            return ASSET_DIR / "smplx" / "model" / "SMPLX_NEUTRAL.npz"
+        if model == "flame":
+            return ASSET_DIR / "flame" / "model" / "FLAME_NEUTRAL.pkl"
+
         asset_path = ASSET_DIR / model / "model"
         if asset_path.exists():
             return asset_path

@@ -19,10 +19,14 @@ def get_model_file(model_name: str) -> Path:
     if not model_dir.exists():
         return model_dir  # Will trigger skip
 
-    # Find the model file
-    for ext in [".npz", ".pkl"]:
-        for f in model_dir.glob(f"*{ext}"):
-            return f
+    if model_name == "smpl":
+        return model_dir / "SMPL_NEUTRAL.npz"
+    if model_name == "smplx":
+        return model_dir / "SMPLX_NEUTRAL.npz"
+    if model_name == "flame":
+        return model_dir / "FLAME_NEUTRAL.pkl"
+    if model_name == "skel":
+        return model_dir / "skel_male.pkl"
 
     return model_dir
 
