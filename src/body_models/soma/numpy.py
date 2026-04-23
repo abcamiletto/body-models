@@ -1,20 +1,26 @@
 """NumPy backend for SOMA model."""
 
-from pathlib import Path
+from pathlib import Path as _Path
 
-import numpy as np
-from jaxtyping import Float, Int
-from nanomanifold import SO3
+import numpy as _np
+from jaxtyping import Float as _Float, Int as _Int
+from nanomanifold import SO3 as _SO3
 
-from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import compute_kinematic_fronts, get_model_path, load_model_data, load_pose_correctives_weights, simplify_mesh
+from ..base import BodyModel as _BodyModel
+from ..rotations import VALID_ROTATION_TYPES as _VALID_ROTATION_TYPES
+from . import core as _core
+from .io import (
+    compute_kinematic_fronts as _compute_kinematic_fronts,
+    get_model_path as _get_model_path,
+    load_model_data as _load_model_data,
+    load_pose_correctives_weights as _load_pose_correctives_weights,
+    simplify_mesh as _simplify_mesh,
+)
 
 __all__ = ["SOMA"]
 
 
-class SOMA(BodyModel):
+class SOMA(_BodyModel):
     """SOMA body model with NumPy backend."""
 
     SHAPE_DIM = 128
@@ -22,19 +28,19 @@ class SOMA(BodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: _Path | str | None = None,
         *,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: _core.RotationType = "axis_angle",
     ) -> None:
-        if rotation_type not in VALID_ROTATION_TYPES:
+        if rotation_type not in _VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
 
         self.rotation_type = rotation_type
-        resolved_path = get_model_path(model_path)
-        data = load_model_data(resolved_path)
-        corrective_weights = load_pose_correctives_weights(resolved_path)
+        resolved_path = _get_model_path(model_path)
+        data = _load_model_data(resolved_path)
+        corrective_weights = _load_pose_correctives_weights(resolved_path)
 
         mean_full = data["mean"]
         shapedirs_full = data["shapedirs"]
@@ -43,10 +49,10 @@ class SOMA(BodyModel):
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
-            mean_active, faces, vertex_map = simplify_mesh(mean_full, faces.astype(int), target_faces)
+            mean_active, faces, vertex_map = _simplify_mesh(mean_full, faces.astype(int), target_faces)
             shapedirs_active = shapedirs_full[:, vertex_map]
             skin_weights_active = skin_weights_full[vertex_map]
-            self._vertex_map = np.asarray(vertex_map, dtype=np.int64)
+            self._vertex_map = _np.asarray(vertex_map, dtype=_np.int64)
         else:
             mean_active = mean_full
             shapedirs_active = shapedirs_full
@@ -54,34 +60,34 @@ class SOMA(BodyModel):
             self._vertex_map = None
 
         self.mean_full = mean_full
-        self.mean_active = np.asarray(mean_active, dtype=np.float32)
+        self.mean_active = _np.asarray(mean_active, dtype=_np.float32)
         self.shapedirs_full = shapedirs_full
-        self.shapedirs_active = np.asarray(shapedirs_active, dtype=np.float32)
+        self.shapedirs_active = _np.asarray(shapedirs_active, dtype=_np.float32)
         self.eigenvalues = data["eigenvalues"]
         self.bind_shape_full = data["bind_shape"]
         self.bind_pose_world = data["bind_pose_world"]
         self.bind_pose_local = data["bind_pose_local"]
         self.t_pose_world = data["t_pose_world"]
         self.joint_regressor = data["joint_regressor"]
-        self.corrective_bindpose = np.asarray(corrective_weights["bindpose"], dtype=np.float32)
-        self.corrective_W1 = np.asarray(corrective_weights["W1"], dtype=np.float32)
-        self.corrective_W2_rows = np.asarray(corrective_weights["W2_rows"], dtype=np.int64)
-        self.corrective_W2_cols = np.asarray(corrective_weights["W2_cols"], dtype=np.int64)
-        self.corrective_W2_values = np.asarray(corrective_weights["W2_values"], dtype=np.float32)
+        self.corrective_bindpose = _np.asarray(corrective_weights["bindpose"], dtype=_np.float32)
+        self.corrective_W1 = _np.asarray(corrective_weights["W1"], dtype=_np.float32)
+        self.corrective_W2_rows = _np.asarray(corrective_weights["W2_rows"], dtype=_np.int64)
+        self.corrective_W2_cols = _np.asarray(corrective_weights["W2_cols"], dtype=_np.int64)
+        self.corrective_W2_values = _np.asarray(corrective_weights["W2_values"], dtype=_np.float32)
         self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
         self._skin_weights_full = skin_weights_full
-        self._skin_weights_active = np.asarray(skin_weights_active, dtype=np.float32)
-        self._faces = np.asarray(faces, dtype=np.int64)
+        self._skin_weights_active = _np.asarray(skin_weights_active, dtype=_np.float32)
+        self._faces = _np.asarray(faces, dtype=_np.int64)
 
         self.parents = list(data["parents"])
         self._parents_full = data["joint_parents_full"].tolist()
         self._joint_children_full = data["joint_children_full"]
         self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
-        self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
+        self._kinematic_fronts_full = _compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data["joint_names"])
 
     @property
-    def faces(self) -> Int[np.ndarray, "F 3"]:
+    def faces(self) -> _Int[_np.ndarray, "F 3"]:
         return self._faces
 
     @property
@@ -97,23 +103,23 @@ class SOMA(BodyModel):
         return self.mean_active.shape[0]
 
     @property
-    def skin_weights(self) -> Float[np.ndarray, "V J"]:
+    def skin_weights(self) -> _Float[_np.ndarray, "V J"]:
         return self._skin_weights_active[:, 1:]
 
     @property
-    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
+    def rest_vertices(self) -> _Float[_np.ndarray, "V 3"]:
         return self.mean_active * 0.01
 
     def forward_vertices(
         self,
-        shape: Float[np.ndarray, "B|1 128"],
-        pose: Float[np.ndarray, "B 77 N"] | Float[np.ndarray, "B 77 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        shape: _Float[_np.ndarray, "B|1 128"],
+        pose: _Float[_np.ndarray, "B 77 N"] | _Float[_np.ndarray, "B 77 3 3"],
+        global_rotation: _Float[_np.ndarray, "B N"] | _Float[_np.ndarray, "B 3 3"] | None = None,
+        global_translation: _Float[_np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
-    ) -> Float[np.ndarray, "B V 3"]:
-        return core.forward_vertices(
+    ) -> _Float[_np.ndarray, "B V 3"]:
+        return _core.forward_vertices(
             mean_full=self.mean_full,
             mean_active=self.mean_active,
             shapedirs_full=self.shapedirs_full,
@@ -147,14 +153,14 @@ class SOMA(BodyModel):
 
     def forward_skeleton(
         self,
-        shape: Float[np.ndarray, "B|1 128"],
-        pose: Float[np.ndarray, "B 77 N"] | Float[np.ndarray, "B 77 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        shape: _Float[_np.ndarray, "B|1 128"],
+        pose: _Float[_np.ndarray, "B 77 N"] | _Float[_np.ndarray, "B 77 3 3"],
+        global_rotation: _Float[_np.ndarray, "B N"] | _Float[_np.ndarray, "B 3 3"] | None = None,
+        global_translation: _Float[_np.ndarray, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
-    ) -> Float[np.ndarray, "B 77 4 4"]:
-        return core.forward_skeleton(
+    ) -> _Float[_np.ndarray, "B 77 4 4"]:
+        return _core.forward_skeleton(
             mean_full=self.mean_full,
             shapedirs_full=self.shapedirs_full,
             eigenvalues=self.eigenvalues,
@@ -177,22 +183,22 @@ class SOMA(BodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
-        pose_ref = np.zeros((batch_size, self.num_joints, 3), dtype=dtype)
-        rot_ref = np.zeros((batch_size, 3), dtype=dtype)
+    def get_rest_pose(self, batch_size: int = 1, dtype=_np.float32) -> dict[str, _np.ndarray]:
+        pose_ref = _np.zeros((batch_size, self.num_joints, 3), dtype=dtype)
+        rot_ref = _np.zeros((batch_size, 3), dtype=dtype)
         return {
-            "shape": np.zeros((1, self.SHAPE_DIM), dtype=dtype),
-            "pose": SO3.identity_as(
+            "shape": _np.zeros((1, self.SHAPE_DIM), dtype=dtype),
+            "pose": _SO3.identity_as(
                 pose_ref,
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
-                xp=np,
+                xp=_np,
             ),
-            "global_rotation": SO3.identity_as(
+            "global_rotation": _SO3.identity_as(
                 rot_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
-                xp=np,
+                xp=_np,
             ),
-            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": _np.zeros((batch_size, 3), dtype=dtype),
         }
