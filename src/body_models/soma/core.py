@@ -697,10 +697,9 @@ def _rotation_between_vectors(
     axis = cross / xp.where(cross_norm > 1e-8, cross_norm, xp.ones_like(cross_norm))
 
     antiparallel = dot[:, 0] < -1.0 + 1e-6
-    x_vec = common.zeros_as(target, shape=target.shape, xp=xp)
-    x_vec = common.set(x_vec, (slice(None), 0), xp.asarray(1.0, dtype=target.dtype), xp=xp)
-    y_vec = common.zeros_as(target, shape=target.shape, xp=xp)
-    y_vec = common.set(y_vec, (slice(None), 1), xp.asarray(1.0, dtype=target.dtype), xp=xp)
+    basis = common.eye_as(target, batch_dims=(target.shape[0],), xp=xp)
+    x_vec = basis[:, 0]
+    y_vec = basis[:, 1]
     w = xp.where(xp.abs(source_unit[:, 0:1]) > 0.6, y_vec, x_vec)
     antiparallel_axis = xp.linalg.cross(source_unit, w)
     antiparallel_axis_norm = xp.linalg.vector_norm(antiparallel_axis, axis=-1, keepdims=True)
@@ -715,6 +714,7 @@ def _rotation_between_vectors(
     pi = xp.asarray(3.141592653589793, dtype=target.dtype)
     angle = xp.where(antiparallel, pi, angle)
     return SO3.conversions.from_axis_angle_to_rotmat(angle[..., None] * axis, xp=xp)
+
 
 def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
     return (

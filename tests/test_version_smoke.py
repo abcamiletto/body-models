@@ -1,5 +1,6 @@
 """Lightweight smoke tests used for Python/dependency version compatibility in CI."""
 
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +8,13 @@ import numpy as np
 import pytest
 
 ASSET_DIR = Path(__file__).parent / "assets"
+MODEL_FILES = {
+    "smpl": "SMPL_NEUTRAL.npz",
+    "smplx": "SMPLX_NEUTRAL.npz",
+    "flame": "FLAME_NEUTRAL.pkl",
+    "skel": "skel_male.pkl",
+}
+CLASS_NAMES = {name: ("FLAME" if name == "flame" else name.upper()) for name in (*MODEL_FILES, "anny", "mhr", "soma")}
 MODEL_CASES = (
     pytest.param("smpl", {}, id="smpl"),
     pytest.param("smplx", {}, id="smplx"),
@@ -17,6 +25,8 @@ MODEL_CASES = (
     pytest.param("soma", {"model_type": "soma"}, id="soma"),
     pytest.param("soma", {"model_type": "anny"}, id="soma-anny"),
     pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr"),
+    pytest.param("soma", {"model_type": "smpl"}, id="soma-smpl"),
+    pytest.param("soma", {"model_type": "smplx"}, id="soma-smplx"),
 )
 BACKENDS = ("numpy", "torch", "jax")
 
@@ -32,110 +42,18 @@ def get_model_file(model_name: str) -> Path:
     if not model_dir.exists():
         return model_dir
 
-    if model_name == "smpl":
-        return model_dir / "SMPL_NEUTRAL.npz"
-    if model_name == "smplx":
-        return model_dir / "SMPLX_NEUTRAL.npz"
-    if model_name == "flame":
-        return model_dir / "FLAME_NEUTRAL.pkl"
-    if model_name == "skel":
-        return model_dir / "skel_male.pkl"
-    return model_dir
+    filename = MODEL_FILES.get(model_name)
+    return model_dir if filename is None else model_dir / filename
 
 
 def get_model(backend: str, model_name: str, model_path: Path, **kwargs) -> Any:
     """Instantiate a model for a specific backend."""
-    if backend == "numpy":
-        if model_name == "smpl":
-            from body_models.smpl.numpy import SMPL
-
-            return SMPL(model_path=model_path)
-        if model_name == "smplx":
-            from body_models.smplx.numpy import SMPLX
-
-            return SMPLX(model_path=model_path)
-        if model_name == "skel":
-            from body_models.skel.numpy import SKEL
-
-            return SKEL(gender="male", model_path=model_path)
-        if model_name == "flame":
-            from body_models.flame.numpy import FLAME
-
-            return FLAME(model_path=model_path)
-        if model_name == "anny":
-            from body_models.anny.numpy import ANNY
-
-            return ANNY(model_path=model_path)
-        if model_name == "mhr":
-            from body_models.mhr.numpy import MHR
-
-            return MHR(model_path=model_path)
-        if model_name == "soma":
-            from body_models.soma.numpy import SOMA
-
-            return SOMA(model_path=model_path, **kwargs)
-
-    if backend == "torch":
-        if model_name == "smpl":
-            from body_models.smpl.torch import SMPL
-
-            return SMPL(model_path=model_path)
-        if model_name == "smplx":
-            from body_models.smplx.torch import SMPLX
-
-            return SMPLX(model_path=model_path)
-        if model_name == "skel":
-            from body_models.skel.torch import SKEL
-
-            return SKEL(gender="male", model_path=model_path)
-        if model_name == "flame":
-            from body_models.flame.torch import FLAME
-
-            return FLAME(model_path=model_path)
-        if model_name == "anny":
-            from body_models.anny.torch import ANNY
-
-            return ANNY(model_path=model_path)
-        if model_name == "mhr":
-            from body_models.mhr.torch import MHR
-
-            return MHR(model_path=model_path)
-        if model_name == "soma":
-            from body_models.soma.torch import SOMA
-
-            return SOMA(model_path=model_path, **kwargs)
-
-    if backend == "jax":
-        if model_name == "smpl":
-            from body_models.smpl.jax import SMPL
-
-            return SMPL(model_path=model_path)
-        if model_name == "smplx":
-            from body_models.smplx.jax import SMPLX
-
-            return SMPLX(model_path=model_path)
-        if model_name == "skel":
-            from body_models.skel.jax import SKEL
-
-            return SKEL(gender="male", model_path=model_path)
-        if model_name == "flame":
-            from body_models.flame.jax import FLAME
-
-            return FLAME(model_path=model_path)
-        if model_name == "anny":
-            from body_models.anny.jax import ANNY
-
-            return ANNY(model_path=model_path)
-        if model_name == "mhr":
-            from body_models.mhr.jax import MHR
-
-            return MHR(model_path=model_path)
-        if model_name == "soma":
-            from body_models.soma.jax import SOMA
-
-            return SOMA(model_path=model_path, **kwargs)
-
-    raise ValueError(f"Unsupported backend/model combination: {backend}/{model_name}")
+    module = import_module(f"body_models.{model_name}.{backend}")
+    model_class = getattr(module, CLASS_NAMES[model_name])
+    ctor_kwargs = {"model_path": model_path, **kwargs}
+    if model_name == "skel":
+        ctor_kwargs["gender"] = "male"
+    return model_class(**ctor_kwargs)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
