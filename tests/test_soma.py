@@ -108,7 +108,7 @@ def test_apply_correctives_requires_weights(model_path: Path) -> None:
 
     model = SOMA(model_path=model_path)
     params = model.get_rest_pose()
-    model.corrective_W1 = None
+    setattr(model, "corrective_W1", None)
 
     with pytest.raises(ValueError, match="apply_correctives=True requires SOMA corrective weights."):
         model.forward_vertices(

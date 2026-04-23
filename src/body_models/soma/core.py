@@ -515,8 +515,7 @@ def _repose_to_bind_pose(
     T_local = _build_transform_matrix(xp, bind_rot, local_t)
     T_world = _forward_kinematics(xp, T_local, kinematic_fronts)
 
-    y_shift = xp.min(T_world[:, :, 1, 3], axis=1)
-    y_shift = y_shift.values if hasattr(y_shift, "values") else y_shift[0] if isinstance(y_shift, tuple) else y_shift
+    y_shift = xp.amin(T_world[:, :, 1, 3], axis=1)
     T_world = common.set(
         T_world,
         (slice(None), slice(None), 1, 3),
