@@ -33,17 +33,17 @@ def forward_vertices(
     parents_full: list[int],
     shape: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    corrective_bindpose: Float[Array, "Jf 3 3"],
+    corrective_W1: Float[Array, "D K"],
+    corrective_W2_rows: Int[Array, "NNZ"],
+    corrective_W2_cols: Int[Array, "NNZ"],
+    corrective_W2_values: Float[Array, "NNZ"],
     rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
     rest_shape_active: Float[Array, "B|1 Va 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     vertex_map: Int[Array, "Va"] | None = None,
-    corrective_bindpose: Float[Array, "Jf 3 3"] | None = None,
-    corrective_W1: Float[Array, "D K"] | None = None,
-    corrective_W2_rows: Int[Array, "NNZ"] | None = None,
-    corrective_W2_cols: Int[Array, "NNZ"] | None = None,
-    corrective_W2_values: Float[Array, "NNZ"] | None = None,
     corrective_use_tanh: bool = True,
     apply_correctives: bool = True,
     rotation_type: RotationType = "axis_angle",
@@ -77,14 +77,6 @@ def forward_vertices(
     )
 
     if apply_correctives:
-        if (
-            corrective_bindpose is None
-            or corrective_W1 is None
-            or corrective_W2_rows is None
-            or corrective_W2_cols is None
-            or corrective_W2_values is None
-        ):
-            raise ValueError("apply_correctives=True requires SOMA corrective weights.")
         rest_shape_active, world_bind_pose = _repose_to_bind_pose(
             xp=xp,
             rest_shape=rest_shape_active,
