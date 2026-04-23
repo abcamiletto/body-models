@@ -24,13 +24,6 @@ SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
-IDENTITY_MODEL_TYPES = ("mhr", "anny", "smpl", "smplx")
-SOMA_IDENTITY_ASSETS = {
-    "mhr": ("MHR/SOMA_wrap_lod1.obj", "MHR/base_body_lod1.obj"),
-    "anny": ("Anny/SOMA_wrap.obj", "Anny/base_body.obj"),
-    "smpl": ("SMPL/SOMA_wrap.obj", "SMPL/base_body.obj"),
-    "smplx": ("SMPLX/SOMA_wrap.obj", "SMPLX/base_body.obj"),
-}
 
 __all__ = [
     "get_model_path",
@@ -50,6 +43,67 @@ class _SparseCoo:
     values: Float[np.ndarray, "NNZ"]
     size: tuple[int, ...]
     is_coalesced: bool
+
+
+@dataclass(frozen=True)
+class _ModelTypeSpec:
+    identity_dim: int
+    num_scale_params: int | None = None
+    default_identity_value: float = 0.0
+    source_scale: float = 1.0
+    output_scale: float = 1.0
+    config_key: str | None = None
+    asset_dir: str | None = None
+    source_mesh_name: str | None = None
+    target_mesh_name: str | None = None
+    requires_direct_file: bool = False
+    filename_hint: str | None = None
+    use_laplacian: bool = True
+
+
+MODEL_TYPE_SPECS = {
+    "soma": _ModelTypeSpec(identity_dim=128),
+    "mhr": _ModelTypeSpec(
+        identity_dim=45,
+        num_scale_params=68,
+        source_scale=100.0,
+        config_key="mhr",
+        asset_dir="MHR",
+        source_mesh_name="base_body_lod1.obj",
+        target_mesh_name="SOMA_wrap_lod1.obj",
+    ),
+    "anny": _ModelTypeSpec(
+        identity_dim=6,
+        default_identity_value=0.5,
+        output_scale=100.0,
+        config_key="anny",
+        asset_dir="Anny",
+        source_mesh_name="base_body.obj",
+        target_mesh_name="SOMA_wrap.obj",
+        use_laplacian=False,
+    ),
+    "smpl": _ModelTypeSpec(
+        identity_dim=10,
+        output_scale=100.0,
+        config_key="smpl-neutral",
+        asset_dir="SMPL",
+        source_mesh_name="base_body.obj",
+        target_mesh_name="SOMA_wrap.obj",
+        requires_direct_file=True,
+        filename_hint="SMPL_NEUTRAL",
+    ),
+    "smplx": _ModelTypeSpec(
+        identity_dim=10,
+        output_scale=100.0,
+        config_key="smplx-neutral",
+        asset_dir="SMPLX",
+        source_mesh_name="base_body.obj",
+        target_mesh_name="SOMA_wrap.obj",
+        requires_direct_file=True,
+        filename_hint="SMPLX_NEUTRAL",
+    ),
+}
+IDENTITY_MODEL_TYPES = tuple(name for name, spec in MODEL_TYPE_SPECS.items() if spec.asset_dir is not None)
 
 
 def get_model_path(model_path: Path | str | None = None) -> Path:
@@ -100,11 +154,16 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
     import urllib.request
 
     normalized = model_type.lower()
-    if normalized not in SOMA_IDENTITY_ASSETS:
+    spec = MODEL_TYPE_SPECS.get(normalized)
+    if spec is None or spec.asset_dir is None:
         raise ValueError(f"Unsupported SOMA identity assets: {model_type}")
 
     asset_dir = Path(model_dir)
-    missing = [name for name in SOMA_IDENTITY_ASSETS[normalized] if not (asset_dir / name).exists()]
+    asset_names = (
+        f"{spec.asset_dir}/{spec.target_mesh_name}",
+        f"{spec.asset_dir}/{spec.source_mesh_name}",
+    )
+    missing = [name for name in asset_names if not (asset_dir / name).exists()]
     if missing:
         print(f"Downloading SOMA {normalized} assets to {asset_dir}...")
         for name in missing:
@@ -116,28 +175,19 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
 
 def get_identity_model_path(model_type: str) -> Path | None:
     normalized = model_type.lower()
-    if normalized == "mhr":
-        return config.get_model_path("mhr")
-    if normalized == "anny":
-        return config.get_model_path("anny")
-
-    if normalized == "smpl":
-        model_path = config.get_model_path("smpl-neutral")
-        filename = "SMPL_NEUTRAL"
-    elif normalized == "smplx":
-        model_path = config.get_model_path("smplx-neutral")
-        filename = "SMPLX_NEUTRAL"
-    else:
+    spec = MODEL_TYPE_SPECS.get(normalized)
+    if spec is None or spec.config_key is None:
         raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
 
+    model_path = config.get_model_path(spec.config_key)
     if model_path is None:
         return None
 
     path = Path(model_path)
-    if path.is_dir():
+    if spec.requires_direct_file and path.is_dir():
         raise ValueError(
             f"Directory paths are no longer supported for {normalized}: {path}\n"
-            f"Please set {normalized}-neutral to a direct {filename}.npz or {filename}.pkl path."
+            f"Please set {spec.config_key} to a direct {spec.filename_hint}.npz or {spec.filename_hint}.pkl path."
         )
     return path
 
@@ -295,32 +345,21 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
             return {name: np.asarray(data[name]).copy() for name in data.files}
 
     normalized = model_type.lower()
-    if normalized not in IDENTITY_MODEL_TYPES:
+    spec = MODEL_TYPE_SPECS.get(normalized)
+    if spec is None or spec.asset_dir is None or spec.source_mesh_name is None or spec.target_mesh_name is None:
         raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
 
     ensure_identity_assets(asset_dir, normalized)
-    if normalized == "mhr":
-        mesh_dir = asset_dir / "MHR"
-        source_mesh_name = "base_body_lod1.obj"
-        target_mesh_name = "SOMA_wrap_lod1.obj"
-    elif normalized == "anny":
-        mesh_dir = asset_dir / "Anny"
-        source_mesh_name = "base_body.obj"
-        target_mesh_name = "SOMA_wrap.obj"
-    else:
-        mesh_dir = asset_dir / normalized.upper()
-        source_mesh_name = "base_body.obj"
-        target_mesh_name = "SOMA_wrap.obj"
-
-    source_vertices, source_faces = _load_mesh(mesh_dir / source_mesh_name)
-    target_vertices, target_faces = _load_mesh(mesh_dir / target_mesh_name)
+    mesh_dir = asset_dir / spec.asset_dir
+    source_vertices, source_faces = _load_mesh(mesh_dir / spec.source_mesh_name)
+    target_vertices, target_faces = _load_mesh(mesh_dir / spec.target_mesh_name)
     source_tetrahedra, face_ids, bary_coords = _compute_identity_correspondence(
         source_vertices=source_vertices,
         source_faces=source_faces,
         target_vertices=target_vertices,
     )
 
-    if normalized == "anny":
+    if not spec.use_laplacian:
         unknown_ids = np.empty((0,), dtype=np.int64)
         anchor_ids = np.empty((0,), dtype=np.int64)
         solve_matrix = np.empty((0, 0), dtype=np.float32)
