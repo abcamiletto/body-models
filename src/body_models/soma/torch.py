@@ -10,12 +10,17 @@ from nanomanifold import SO3 as _SO3
 from torch import Tensor as _Tensor
 
 from ..base import BodyModel as _BodyModel
+from ..mhr.torch import MHR as _MHR
 from ..rotations import VALID_ROTATION_TYPES as _VALID_ROTATION_TYPES
-from ._identity_torch import TorchIdentityBackend as _TorchIdentityBackend
+from ..smpl.torch import SMPL as _SMPL
+from ..smplx.torch import SMPLX as _SMPLX
 from . import core as _core
 from .io import (
+    IDENTITY_MODEL_TYPES as _IDENTITY_MODEL_TYPES,
     compute_kinematic_fronts as _compute_kinematic_fronts,
+    get_identity_model_path as _get_identity_model_path,
     get_model_path as _get_model_path,
+    load_identity_transfer_data as _load_identity_transfer_data,
     load_model_data as _load_model_data,
     load_pose_correctives_weights as _load_pose_correctives_weights,
     simplify_mesh as _simplify_mesh,
@@ -29,7 +34,7 @@ class SOMA(_BodyModel, _nn.Module):
 
     SHAPE_DIM = 128
     NUM_JOINTS = 77
-    VALID_MODEL_TYPES = ("soma", "mhr", "smpl", "smplx")
+    VALID_MODEL_TYPES = ("soma", *_IDENTITY_MODEL_TYPES)
 
     mean_full: _Tensor
     mean_active: _Tensor
@@ -49,7 +54,17 @@ class SOMA(_BodyModel, _nn.Module):
     _skin_weights_full: _Tensor
     _skin_weights_active: _Tensor
     _faces: _Tensor
-    _identity_backend: _TorchIdentityBackend | None
+    _vertex_map: _Tensor | None
+    _identity_source_tetrahedra: _Tensor
+    _identity_face_ids: _Tensor
+    _identity_bary_coords: _Tensor
+    _identity_unknown_ids: _Tensor
+    _identity_anchor_ids: _Tensor
+    _identity_solve_matrix: _Tensor
+    _identity_anchor_matrix: _Tensor
+    _identity_rhs_base: _Tensor
+    _identity_mhr_model: _MHR | None
+    _identity_linear_model: _SMPL | _SMPLX | None
 
     def __init__(
         self,
@@ -73,12 +88,12 @@ class SOMA(_BodyModel, _nn.Module):
         self.rotation_type = rotation_type
         resolved_path = _get_model_path(model_path)
         data = _load_model_data(resolved_path)
+        corrective_weights = _load_pose_correctives_weights(resolved_path)
 
         mean_full = data["mean"]
         shapedirs_full = data["shapedirs"]
         faces = data["faces"]
         skin_weights_full = data["skin_weights_full"]
-        corrective_weights = _load_pose_correctives_weights(resolved_path)
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -110,26 +125,62 @@ class SOMA(_BodyModel, _nn.Module):
         self.register_buffer("_skin_weights_full", _torch.as_tensor(skin_weights_full))
         self.register_buffer("_skin_weights_active", _torch.as_tensor(skin_weights_active))
         self.register_buffer("_faces", _torch.as_tensor(_np.asarray(faces, dtype=_np.int64)))
-        self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
 
+        self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
         self.parents = list(data["parents"])
         self._parents_full = data["joint_parents_full"].tolist()
         self._joint_children_full = data["joint_children_full"]
         self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
         self._kinematic_fronts_full = _compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data["joint_names"])
-        self._identity_backend = None
-        if self.model_type != "soma":
-            self._identity_backend = _TorchIdentityBackend(
-                self.model_type,
-                resolved_path,
-                data["facial_inner_vertices"],
-            )
-            self.identity_dim = self._identity_backend.identity_dim
-            self.num_scale_params = self._identity_backend.scale_dim
-        else:
+
+        self._identity_mhr_model = None
+        self._identity_linear_model = None
+        self._identity_source_scale = 1.0
+        self._identity_output_scale = 1.0
+
+        if self.model_type == "soma":
             self.identity_dim = self.SHAPE_DIM
             self.num_scale_params = None
+            return
+
+        transfer_data = _load_identity_transfer_data(resolved_path, self.model_type)
+        self.register_buffer(
+            "_identity_source_tetrahedra",
+            _torch.as_tensor(transfer_data["source_tetrahedra"], dtype=_torch.int64),
+        )
+        self.register_buffer("_identity_face_ids", _torch.as_tensor(transfer_data["face_ids"], dtype=_torch.int64))
+        self.register_buffer("_identity_bary_coords", _torch.as_tensor(transfer_data["bary_coords"]))
+        self.register_buffer(
+            "_identity_unknown_ids", _torch.as_tensor(transfer_data["unknown_ids"], dtype=_torch.int64)
+        )
+        self.register_buffer("_identity_anchor_ids", _torch.as_tensor(transfer_data["anchor_ids"], dtype=_torch.int64))
+        self.register_buffer("_identity_solve_matrix", _torch.as_tensor(transfer_data["solve_matrix"]))
+        self.register_buffer("_identity_anchor_matrix", _torch.as_tensor(transfer_data["anchor_matrix"]))
+        self.register_buffer("_identity_rhs_base", _torch.as_tensor(transfer_data["rhs_base"]))
+
+        if self.model_type == "mhr":
+            self.identity_dim = 45
+            self.num_scale_params = 68
+            self._identity_source_scale = 100.0
+            self._identity_mhr_model = _MHR(model_path=_get_identity_model_path("mhr"), simplify=1.0)
+            return
+
+        self.identity_dim = 10
+        self.num_scale_params = None
+        self._identity_output_scale = 100.0
+        if self.model_type == "smplx":
+            self._identity_linear_model = _SMPLX(
+                model_path=_get_identity_model_path("smplx"),
+                gender="neutral",
+                simplify=1.0,
+            )
+        else:
+            self._identity_linear_model = _SMPL(
+                model_path=_get_identity_model_path("smpl"),
+                gender="neutral",
+                simplify=1.0,
+            )
 
     @property
     def faces(self) -> _Int[_Tensor, "F 3"]:
@@ -145,7 +196,7 @@ class SOMA(_BodyModel, _nn.Module):
 
     @property
     def num_vertices(self) -> int:
-        return self.mean_active.shape[0]
+        return int(self.mean_active.shape[0])
 
     @property
     def skin_weights(self) -> _Float[_Tensor, "V J"]:
@@ -171,9 +222,7 @@ class SOMA(_BodyModel, _nn.Module):
             shape=shape,
             identity=identity,
             scale_params=scale_params,
-            batch_size=pose.shape[0],
-            dtype=pose.dtype,
-            device=pose.device,
+            ref=pose,
         )
         return _core.forward_vertices(
             mean_full=self.mean_full,
@@ -226,9 +275,7 @@ class SOMA(_BodyModel, _nn.Module):
             shape=shape,
             identity=identity,
             scale_params=scale_params,
-            batch_size=pose.shape[0],
-            dtype=pose.dtype,
-            device=pose.device,
+            ref=pose,
         )
         return _core.forward_skeleton(
             mean_full=self.mean_full,
@@ -276,11 +323,58 @@ class SOMA(_BodyModel, _nn.Module):
         }
         if self.model_type == "soma":
             params["shape"] = _torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype)
-        else:
-            params["identity"] = _torch.zeros((1, self.identity_dim), device=device, dtype=dtype)
-            if self.num_scale_params is not None:
-                params["scale_params"] = _torch.zeros((1, self.num_scale_params), device=device, dtype=dtype)
+            return params
+
+        params["identity"] = _torch.zeros((1, self.identity_dim), device=device, dtype=dtype)
+        if self.num_scale_params is not None:
+            params["scale_params"] = _torch.zeros((1, self.num_scale_params), device=device, dtype=dtype)
         return params
+
+    def _identity_rest_shape(
+        self,
+        identity: _Tensor,
+        scale_params: _Tensor | None,
+    ) -> _Tensor:
+        if self.model_type == "mhr":
+            model = self._identity_mhr_model
+            if model is None:
+                raise RuntimeError("Missing MHR identity backend for SOMA.")
+            rest_shape = _core.mhr_identity_shape(
+                model=model,
+                identity=identity,
+                scale_params=scale_params,
+                num_scale_params=self.num_scale_params or 0,
+                xp=_torch,
+            )
+        else:
+            model = self._identity_linear_model
+            if model is None:
+                raise RuntimeError("Missing linear identity backend for SOMA.")
+            rest_shape = _core.linear_identity_shape(
+                mean=model.v_template_full,
+                shapedirs=model.shapedirs_full,
+                identity=identity,
+                xp=_torch,
+            )
+
+        if self._identity_source_scale != 1.0:
+            rest_shape = rest_shape * self._identity_source_scale
+
+        rest_shape = _core.transfer_identity_rest_shape(
+            source_shape=rest_shape,
+            source_tetrahedra=self._identity_source_tetrahedra,
+            face_ids=self._identity_face_ids,
+            bary_coords=self._identity_bary_coords,
+            unknown_ids=self._identity_unknown_ids,
+            anchor_ids=self._identity_anchor_ids,
+            solve_matrix=self._identity_solve_matrix,
+            anchor_matrix=self._identity_anchor_matrix,
+            rhs_base=self._identity_rhs_base,
+            xp=_torch,
+        )
+        if self._identity_output_scale != 1.0:
+            rest_shape = rest_shape * self._identity_output_scale
+        return rest_shape
 
     def _resolve_identity_inputs(
         self,
@@ -288,32 +382,23 @@ class SOMA(_BodyModel, _nn.Module):
         shape: _Tensor | None,
         identity: _Tensor | None,
         scale_params: _Tensor | None,
-        batch_size: int,
-        dtype: _torch.dtype,
-        device: _torch.device,
+        ref: _Tensor,
     ) -> tuple[_Tensor | None, _Tensor | None, _Tensor | None]:
-        if self.model_type == "soma":
-            if identity is not None:
-                if shape is not None:
-                    raise ValueError("Pass either shape or identity for SOMA model_type='soma', not both.")
-                shape = identity
-            if shape is None:
-                raise ValueError("SOMA model_type='soma' requires shape or identity coefficients.")
+        shape, identity, scale_params = _core.resolve_identity_inputs(
+            model_type=self.model_type,
+            shape=shape,
+            identity=identity,
+            scale_params=scale_params,
+            batch_size=ref.shape[0],
+            identity_dim=self.identity_dim,
+            num_scale_params=self.num_scale_params,
+            ref=ref,
+            xp=_torch,
+        )
+        if identity is None:
             return shape, None, None
 
-        if shape is not None:
-            raise ValueError("shape is only supported for SOMA model_type='soma'. Use identity for other backends.")
-
-        if identity is None:
-            identity = _torch.zeros((1, self.identity_dim), device=device, dtype=dtype)
-        if identity.shape[0] == 1 and batch_size > 1:
-            identity = identity.expand(batch_size, -1)
-        if scale_params is not None and scale_params.shape[0] == 1 and batch_size > 1:
-            scale_params = scale_params.expand(batch_size, -1)
-
-        identity_backend = self._identity_backend
-        assert identity_backend is not None
-        rest_shape_full = identity_backend(identity, scale_params)
+        rest_shape_full = self._identity_rest_shape(identity, scale_params)
         if self._vertex_map is None:
             rest_shape_active = rest_shape_full
         else:

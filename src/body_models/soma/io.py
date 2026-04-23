@@ -6,10 +6,11 @@ import hashlib
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from scipy import linalg as scipy_linalg
+from scipy import sparse as scipy_sparse
 from scipy.sparse import csc_matrix
 
 from .. import config
@@ -22,6 +23,7 @@ SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
+IDENTITY_MODEL_TYPES = ("mhr", "smpl", "smplx")
 SOMA_IDENTITY_ASSETS = {
     "mhr": ("MHR/SOMA_wrap_lod1.obj", "MHR/base_body_lod1.obj"),
     "smpl": ("SMPL/SOMA_wrap.obj", "SMPL/base_body.obj"),
@@ -32,6 +34,8 @@ __all__ = [
     "get_model_path",
     "download_model",
     "load_model_data",
+    "get_identity_model_path",
+    "load_identity_transfer_data",
     "load_pose_correctives_weights",
     "compute_kinematic_fronts",
     "simplify_mesh",
@@ -108,6 +112,35 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
         print("Done")
 
 
+def get_identity_model_path(model_type: str) -> Path | None:
+    normalized = model_type.lower()
+    if normalized == "mhr":
+        return config.get_model_path("mhr")
+
+    if normalized == "smpl":
+        model_keys = ("smpl-neutral", "smpl")
+        filename = "SMPL_NEUTRAL"
+    elif normalized == "smplx":
+        model_keys = ("smplx-neutral", "smplx")
+        filename = "SMPLX_NEUTRAL"
+    else:
+        raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
+
+    for model_key in model_keys:
+        model_path = config.get_model_path(model_key)
+        if model_path is None:
+            continue
+        path = Path(model_path)
+        if path.is_dir():
+            for suffix in ("npz", "pkl"):
+                candidate = path / f"{filename}.{suffix}"
+                if candidate.exists():
+                    return candidate
+            continue
+        return path
+    return None
+
+
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
     """Compute kinematic fronts for batched FK."""
     parents_list = parents.tolist() if isinstance(parents, np.ndarray) else list(parents)
@@ -135,6 +168,181 @@ def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
 
 def _missing_assets(model_dir: Path) -> list[str]:
     return [name for name in SOMA_ASSETS if not (model_dir / name).exists()]
+
+
+def _identity_transfer_cache_file(asset_dir: Path, model_type: str) -> Path:
+    preprocessed_dir = get_cache_dir() / "soma" / "preprocessed"
+    preprocessed_dir.mkdir(parents=True, exist_ok=True)
+    key = hashlib.md5(f"identity-transfer-v1:{model_type}:{asset_dir.resolve()}".encode()).hexdigest()
+    return preprocessed_dir / f"identity_transfer_{key}.npz"
+
+
+def _load_mesh(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    try:
+        import trimesh
+    except ImportError as exc:
+        raise ImportError(f"SOMA identity backends require trimesh to load {path.name}.") from exc
+
+    mesh = cast(Any, trimesh.load(path, maintain_order=True, process=False))
+    return np.asarray(mesh.vertices, dtype=np.float32), np.asarray(mesh.faces, dtype=np.int64)
+
+
+def _fabricate_tet(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> np.ndarray:
+    return p0 + np.cross(p1 - p0, p2 - p0, axis=-1)
+
+
+def _compute_barycentric_coords_3d(
+    p: np.ndarray,
+    v0: np.ndarray,
+    v1: np.ndarray,
+    v2: np.ndarray,
+    v3: np.ndarray,
+) -> np.ndarray:
+    T = np.stack([v1 - v0, v2 - v0, v3 - v0], axis=-1)
+    rhs = p - v0
+    b123 = np.linalg.solve(T, rhs[..., None]).squeeze(-1)
+    b0 = 1.0 - b123.sum(axis=-1, keepdims=True)
+    return np.concatenate([b0, b123], axis=-1).astype(np.float32, copy=False)
+
+
+def _compute_identity_correspondence(
+    source_vertices: np.ndarray,
+    source_faces: np.ndarray,
+    target_vertices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    try:
+        import trimesh
+    except ImportError as exc:
+        raise ImportError("SOMA identity backends require trimesh to precompute topology transfer.") from exc
+
+    mesh = trimesh.Trimesh(vertices=source_vertices, faces=source_faces, process=False)
+    _closest_points, _distance, face_ids = mesh.nearest.on_surface(target_vertices)
+    face_ids = np.asarray(face_ids, dtype=np.int64)
+
+    fabricated = _fabricate_tet(
+        source_vertices[source_faces[:, 0]],
+        source_vertices[source_faces[:, 1]],
+        source_vertices[source_faces[:, 2]],
+    )
+    source_tetrahedra = np.concatenate(
+        [source_faces, np.arange(len(source_faces), dtype=np.int64)[:, None] + len(source_vertices)],
+        axis=1,
+    )
+    source_vertices_tet = np.concatenate([source_vertices, fabricated], axis=0)
+    tet_indices = source_tetrahedra[face_ids]
+    bary_coords = _compute_barycentric_coords_3d(
+        target_vertices,
+        source_vertices_tet[tet_indices[:, 0]],
+        source_vertices_tet[tet_indices[:, 1]],
+        source_vertices_tet[tet_indices[:, 2]],
+        source_vertices_tet[tet_indices[:, 3]],
+    )
+    return source_tetrahedra, face_ids, bary_coords
+
+
+def _build_cotangent_laplacian(vertices: np.ndarray, faces: np.ndarray) -> scipy_sparse.csr_matrix:
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
+
+    e0 = v2 - v1
+    e1 = v0 - v2
+    e2 = v1 - v0
+
+    def _cotangent(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        dot = np.sum(a * b, axis=-1)
+        cross = np.cross(a, b, axis=-1)
+        return dot / (np.linalg.norm(cross, axis=-1) + 1e-8)
+
+    cot0 = _cotangent(e1, e2)
+    cot1 = _cotangent(e2, e0)
+    cot2 = _cotangent(e0, e1)
+
+    row_ids = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 2], faces[:, 0], faces[:, 0], faces[:, 1]])
+    col_ids = np.concatenate([faces[:, 2], faces[:, 1], faces[:, 0], faces[:, 2], faces[:, 1], faces[:, 0]])
+    values = np.concatenate([cot0, cot0, cot1, cot1, cot2, cot2]).astype(np.float32, copy=False)
+
+    num_vertices = len(vertices)
+    weights = scipy_sparse.coo_matrix((values, (row_ids, col_ids)), shape=(num_vertices, num_vertices)).tocsr()
+    weights = ((weights + weights.T) * 0.5).tocsr()
+    row_sums = np.asarray(weights.sum(axis=1)).ravel()
+    return (scipy_sparse.diags(row_sums) - weights).tocsr()
+
+
+def _build_identity_laplacian_data(
+    target_vertices: np.ndarray,
+    target_faces: np.ndarray,
+    unknown_ids: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    laplacian = _build_cotangent_laplacian(target_vertices, target_faces)
+    unknown_ids = np.asarray(np.unique(unknown_ids), dtype=np.int64)
+    anchor_mask = np.ones(len(target_vertices), dtype=bool)
+    anchor_mask[unknown_ids] = False
+    anchor_ids = np.flatnonzero(anchor_mask).astype(np.int64)
+
+    lap_u = laplacian[unknown_ids]
+    solve_matrix = (-laplacian[unknown_ids][:, unknown_ids].toarray()).astype(np.float32, copy=False)
+    anchor_matrix = (-laplacian[unknown_ids][:, anchor_ids].toarray()).astype(np.float32, copy=False)
+    rhs_base = (-(lap_u @ target_vertices)).astype(np.float32, copy=False)
+    return unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base
+
+
+def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, np.ndarray]:
+    cache_file = _identity_transfer_cache_file(asset_dir, model_type)
+    if cache_file.exists():
+        with np.load(cache_file, allow_pickle=False) as data:
+            return {name: np.asarray(data[name]).copy() for name in data.files}
+
+    normalized = model_type.lower()
+    if normalized not in IDENTITY_MODEL_TYPES:
+        raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
+
+    ensure_identity_assets(asset_dir, normalized)
+    if normalized == "mhr":
+        mesh_dir = asset_dir / "MHR"
+        source_mesh_name = "base_body_lod1.obj"
+        target_mesh_name = "SOMA_wrap_lod1.obj"
+    else:
+        mesh_dir = asset_dir / normalized.upper()
+        source_mesh_name = "base_body.obj"
+        target_mesh_name = "SOMA_wrap.obj"
+
+    source_vertices, source_faces = _load_mesh(mesh_dir / source_mesh_name)
+    target_vertices, target_faces = _load_mesh(mesh_dir / target_mesh_name)
+    source_tetrahedra, face_ids, bary_coords = _compute_identity_correspondence(
+        source_vertices=source_vertices,
+        source_faces=source_faces,
+        target_vertices=target_vertices,
+    )
+
+    facial_inner_vertices = load_model_data(asset_dir)["facial_inner_vertices"]
+    unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base = _build_identity_laplacian_data(
+        target_vertices=target_vertices,
+        target_faces=target_faces,
+        unknown_ids=facial_inner_vertices,
+    )
+
+    np.savez_compressed(
+        cache_file,
+        source_tetrahedra=source_tetrahedra,
+        face_ids=face_ids,
+        bary_coords=bary_coords,
+        unknown_ids=unknown_ids,
+        anchor_ids=anchor_ids,
+        solve_matrix=solve_matrix,
+        anchor_matrix=anchor_matrix,
+        rhs_base=rhs_base,
+    )
+    return {
+        "source_tetrahedra": source_tetrahedra,
+        "face_ids": face_ids,
+        "bary_coords": bary_coords,
+        "unknown_ids": unknown_ids,
+        "anchor_ids": anchor_ids,
+        "solve_matrix": solve_matrix,
+        "anchor_matrix": anchor_matrix,
+        "rhs_base": rhs_base,
+    }
 
 
 def _correctives_cache_file(asset_dir: Path) -> Path:
