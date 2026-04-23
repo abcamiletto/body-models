@@ -53,7 +53,8 @@ class SMPLX(BodyModel):
         shapedirs = shapedirs_full
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -69,7 +70,7 @@ class SMPLX(BodyModel):
         self.v_template_full = v_template_full
         self.lbs_weights = lbs_weights
         self.J_regressor = J_regressor
-        self.parents = parents
+        self.parents = parents.tolist()
         self._faces = faces
 
         # Hand pose mean

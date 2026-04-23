@@ -83,7 +83,9 @@ class MHR(BodyModel):
         self.corrective_W1 = corrective_weights["W1"]
         self.corrective_W2 = corrective_weights["W2"]
 
-        self._kinematic_fronts = compute_kinematic_fronts(data["joint_parents"])
+        joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
+        self.parents = joint_parents.tolist()
+        self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
         self._joint_names = list(data["joint_names"])
 
     @property
@@ -111,8 +113,10 @@ class MHR(BodyModel):
         return self.base_vertices * 0.01
 
     @property
-    def skin_weights(self) -> Float[np.ndarray, "V K"]:
-        return self._skin_weights
+    def skin_weights(self) -> Float[np.ndarray, "V J"]:
+        dense = np.zeros((self._skin_weights.shape[0], self.num_joints), dtype=self._skin_weights.dtype)
+        dense[np.arange(self._skin_weights.shape[0])[:, None], self._skin_indices] = self._skin_weights
+        return dense
 
     def forward_vertices(
         self,

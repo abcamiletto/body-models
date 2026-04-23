@@ -5,6 +5,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
@@ -119,7 +120,9 @@ class MHR(BodyModel, nn.Module):
         self.register_buffer("corrective_W1", torch.from_numpy(corrective_weights["W1"]))
         self.register_buffer("corrective_W2", torch.from_numpy(corrective_weights["W2"]))
 
-        self._kinematic_fronts = compute_kinematic_fronts(data["joint_parents"])
+        joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
+        self.parents = joint_parents.tolist()
+        self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
         self._joint_names = list(data["joint_names"])
 
     @property
@@ -144,8 +147,12 @@ class MHR(BodyModel, nn.Module):
 
     @property
     def skin_weights(self) -> Float[Tensor, "V J"]:
-        V, K = self._skin_weights.shape
-        dense = torch.zeros(V, self.num_joints, device=self._skin_weights.device, dtype=self._skin_weights.dtype)
+        dense = torch.zeros(
+            self._skin_weights.shape[0],
+            self.num_joints,
+            device=self._skin_weights.device,
+            dtype=self._skin_weights.dtype,
+        )
         dense.scatter_(1, self._skin_indices, self._skin_weights)
         return dense
 

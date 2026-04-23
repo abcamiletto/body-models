@@ -42,7 +42,6 @@ class FLAME(BodyModel, nn.Module):
     v_template_full: Tensor
     lbs_weights: Tensor
     J_regressor: Tensor
-    parents: Tensor
     _faces: Tensor
 
     def __init__(
@@ -67,10 +66,8 @@ class FLAME(BodyModel, nn.Module):
         shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)  # (V, 3, 400)
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
-
-        # Fix parent of root (may be -1 or large value in file)
-        parents[0] = 0
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         # Apply mesh simplification if requested
         if simplify > 1.0:
@@ -88,7 +85,6 @@ class FLAME(BodyModel, nn.Module):
         self.register_buffer("v_template_full", torch.as_tensor(v_template_full))
         self.register_buffer("lbs_weights", torch.as_tensor(lbs_weights))
         self.register_buffer("J_regressor", torch.as_tensor(J_regressor))
-        self.register_buffer("parents", torch.as_tensor(parents))
         self.register_buffer("_faces", torch.as_tensor(faces))
 
         # FLAME 2023 has combined shape (300) + expression (100) in shapedirs
@@ -104,6 +100,7 @@ class FLAME(BodyModel, nn.Module):
         posedirs_t = torch.as_tensor(posedirs, dtype=torch.float32)
         self.posedirs = nn.Parameter(posedirs_t.reshape(-1, posedirs_t.shape[-1]).T, requires_grad=False)
 
+        self.parents = parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = list(FLAME_JOINT_NAMES)
 

@@ -79,7 +79,7 @@ class ANNY(BodyModel, nnx.Module):
         self.lbs_weights = nnx.Variable(jnp.asarray(data["lbs_weights"]))
         self._faces = nnx.Variable(jnp.asarray(data["faces"]))
         self.bone_labels = data["bone_labels"]
-        self.bone_parents = data["bone_parents"]
+        self.parents = data["parents"]
         self._kinematic_fronts = data["kinematic_fronts"]
 
         # Constants

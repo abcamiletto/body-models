@@ -148,7 +148,7 @@ def load_model_data_numpy(
     lbs_weights[rows, data["vertex_bone_indices"]] = data["vertex_bone_weights"]
 
     # Build kinematic fronts
-    kinematic_fronts = build_kinematic_fronts(data["bone_parents"])
+    kinematic_fronts = build_kinematic_fronts(data["parents"])
 
     return {
         "template_vertices": data["template_vertices"].astype(dtype),
@@ -162,14 +162,14 @@ def load_model_data_numpy(
         "lbs_weights": lbs_weights.astype(dtype),
         "faces": data["faces"],
         "bone_labels": data["bone_labels"],
-        "bone_parents": data["bone_parents"],
+        "parents": data["parents"],
         "kinematic_fronts": kinematic_fronts,
     }
 
 
 def _cache_file_stem(rig: str, eyes: bool, tongue: bool) -> str:
     cache_key = hashlib.md5(f"{rig}_{eyes}_{tongue}".encode()).hexdigest()
-    return f"data_{cache_key}"
+    return f"data_v2_{cache_key}"
 
 
 def _load_data_numpy(
@@ -225,7 +225,7 @@ def _load_data_numpy(
         rig_data = rig_data["bones"]
     weights_data = json.loads((rig_dir / weights_file).read_text())
 
-    bone_labels, bone_parents = _build_skeleton(rig_data)
+    bone_labels, parents = _build_skeleton(rig_data)
     bone_indices, bone_weights = _build_skin_weights(weights_data, bone_labels, len(verts), dtype)
 
     blendshapes_dict = _load_blendshapes(data_dir, verts, world_T, dtype)
@@ -252,7 +252,7 @@ def _load_data_numpy(
         "bone_tails_blendshapes": tails_bs,
         "bone_rolls_rotmat": rolls,
         "bone_labels": bone_labels,
-        "bone_parents": bone_parents,
+        "parents": parents,
         "vertex_bone_weights": bone_weights,
         "vertex_bone_indices": bone_indices,
     }
@@ -265,7 +265,7 @@ def _load_data_numpy(
 def _save_npz_cache(cache_file: Path, data: dict) -> None:
     arrays = {k: v for k, v in data.items() if isinstance(v, np.ndarray)}
     arrays["bone_labels"] = np.asarray(data["bone_labels"], dtype=object)
-    arrays["bone_parents"] = np.asarray(data["bone_parents"], dtype=np.int64)
+    arrays["parents"] = np.asarray(data["parents"], dtype=np.int64)
     np.savez_compressed(cache_file, **arrays)
 
 
@@ -273,7 +273,7 @@ def _load_npz_cache(cache_file: Path) -> dict:
     raw = np.load(cache_file, allow_pickle=True)
     out = dict(raw)
     out["bone_labels"] = [str(x) for x in out["bone_labels"].tolist()]
-    out["bone_parents"] = [int(x) for x in out["bone_parents"].tolist()]
+    out["parents"] = [int(x) for x in out["parents"].tolist()]
     return out
 
 

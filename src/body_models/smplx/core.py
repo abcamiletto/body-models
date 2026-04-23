@@ -3,7 +3,7 @@
 from typing import Any
 
 from array_api_compat import get_namespace
-from jaxtyping import Float, Int
+from jaxtyping import Float
 
 from .. import common
 from nanomanifold import SO3
@@ -24,7 +24,7 @@ def forward_vertices(
     j_template: Float[Array, "55 3"],
     j_shapedirs: Float[Array, "55 3 S"],
     j_exprdirs: Float[Array, "55 3 E"],
-    parents: Int[Array, "55"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
     # Inputs
@@ -111,7 +111,7 @@ def forward_skeleton(
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
     j_exprdirs: Float[Array, "J 3 E"],
-    parents: Int[Array, "J"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
     # Inputs
@@ -138,7 +138,6 @@ def forward_skeleton(
     active_fronts = kinematic_fronts
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
-        parents = parents.tolist() if hasattr(parents, "tolist") else list(parents)
         if any(joint < 0 or joint >= len(parents) for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {len(parents)})")
 
@@ -214,7 +213,7 @@ def _forward_core(
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
     j_exprdirs: Float[Array, "J 3 E"],
-    parents: Int[Array, "J"],
+    parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
     shape: Float[Array, "*batch 10"],
