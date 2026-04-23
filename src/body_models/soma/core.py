@@ -268,35 +268,7 @@ def _shape_to_rest_vertices(
     return mean[None] + xp.einsum("bs,svc->bvc", coeffs, shapedirs)
 
 
-def _prepare_identity(
-    xp,
-    mean: Float[Array, "V 3"],
-    shapedirs: Float[Array, "S V 3"],
-    eigenvalues: Float[Array, "S"],
-    bind_shape: Float[Array, "V 3"],
-    bind_pose_world: Float[Array, "J 4 4"],
-    joint_regressor: Float[Array, "J V"],
-    joint_children_full: list[list[int]],
-    skinned_vertex_indices_full: list[list[int]],
-    parents_full: list[int],
-    shape: Float[Array, "B S"],
-) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
-    rest_shape = _shape_to_rest_vertices(xp, mean, shapedirs, eigenvalues, shape)
-    joint_positions = xp.einsum("jv,bvc->bjc", joint_regressor, rest_shape)
-    world_bind_pose = _fit_joint_rotations(
-        xp=xp,
-        bind_shape=bind_shape,
-        bind_pose_world=bind_pose_world,
-        joint_children_full=joint_children_full,
-        skinned_vertex_indices_full=skinned_vertex_indices_full,
-        parents_full=parents_full,
-        joint_positions=joint_positions,
-        target_shape=rest_shape,
-    )
-    return rest_shape, world_bind_pose
-
-
-def _prepare_identity_from_rest_shape(
+def _fit_rest_shape_to_bind_pose(
     xp,
     bind_shape: Float[Array, "V 3"],
     bind_pose_world: Float[Array, "J 4 4"],
@@ -337,32 +309,20 @@ def _prepare_identity_from_inputs(
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     if rest_shape is not None:
         rest_shape = _broadcast_rest_shape(rest_shape, batch_size=batch_size, xp=xp)
-        return _prepare_identity_from_rest_shape(
-            xp=xp,
-            bind_shape=bind_shape,
-            bind_pose_world=bind_pose_world,
-            joint_regressor=joint_regressor,
-            joint_children_full=joint_children_full,
-            skinned_vertex_indices_full=skinned_vertex_indices_full,
-            parents_full=parents_full,
-            rest_shape=rest_shape,
-        )
-
-    if shape is None:
-        raise ValueError("SOMA forward pass requires either shape or a precomputed rest_shape.")
-    shape = _broadcast_shape(shape, batch_size=batch_size, xp=xp)
-    return _prepare_identity(
+    else:
+        if shape is None:
+            raise ValueError("SOMA forward pass requires either shape or a precomputed rest_shape.")
+        shape = _broadcast_shape(shape, batch_size=batch_size, xp=xp)
+        rest_shape = _shape_to_rest_vertices(xp, mean, shapedirs, eigenvalues, shape)
+    return _fit_rest_shape_to_bind_pose(
         xp=xp,
-        mean=mean,
-        shapedirs=shapedirs,
-        eigenvalues=eigenvalues,
         bind_shape=bind_shape,
         bind_pose_world=bind_pose_world,
         joint_regressor=joint_regressor,
         joint_children_full=joint_children_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
-        shape=shape,
+        rest_shape=rest_shape,
     )
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -17,44 +16,6 @@ from ..smpl.torch import SMPL
 from ..smplx.torch import SMPLX
 from ..utils import get_cache_dir
 from .io import ensure_identity_assets
-
-
-@dataclass(frozen=True)
-class _IdentitySpec:
-    source_mesh_relpath: str
-    target_mesh_relpath: str
-    identity_dim: int
-    scale_dim: int | None
-    source_model_scale_to_transfer: float
-    transfer_scale_to_soma_core: float
-
-
-_IDENTITY_SPECS = {
-    "mhr": _IdentitySpec(
-        "MHR/base_body_lod1.obj",
-        "MHR/SOMA_wrap_lod1.obj",
-        identity_dim=45,
-        scale_dim=68,
-        source_model_scale_to_transfer=100.0,
-        transfer_scale_to_soma_core=1.0,
-    ),
-    "smpl": _IdentitySpec(
-        "SMPL/base_body.obj",
-        "SMPL/SOMA_wrap.obj",
-        identity_dim=10,
-        scale_dim=None,
-        source_model_scale_to_transfer=1.0,
-        transfer_scale_to_soma_core=100.0,
-    ),
-    "smplx": _IdentitySpec(
-        "SMPLX/base_body.obj",
-        "SMPLX/SOMA_wrap.obj",
-        identity_dim=10,
-        scale_dim=None,
-        source_model_scale_to_transfer=1.0,
-        transfer_scale_to_soma_core=100.0,
-    ),
-}
 
 
 def _resolve_identity_model_path(*model_keys: str, filename: str) -> Path | None:
@@ -400,29 +361,44 @@ class _RestShapeTransfer(nn.Module):
 
 class TorchIdentityBackend(nn.Module):
     _mhr_model: MHR | None
-    _smpl_model: SMPL | None
-    _smplx_model: SMPLX | None
+    _smpl_like_model: SMPL | SMPLX | None
 
     def __init__(self, model_type: str, soma_asset_dir: Path, facial_inner_vertices: np.ndarray) -> None:
         super().__init__()
         normalized = model_type.lower()
-        if normalized not in _IDENTITY_SPECS:
+        if normalized not in {"mhr", "smpl", "smplx"}:
             raise ValueError(
                 f"Unsupported SOMA model_type: {model_type}. Supported identity backends are soma, mhr, smpl, smplx."
             )
-        spec = _IDENTITY_SPECS[normalized]
-        asset_paths = ensure_identity_assets(soma_asset_dir, normalized)
-        source_vertices, source_faces = _parse_obj(asset_paths[spec.source_mesh_relpath])
-        target_vertices, target_faces = _parse_obj(asset_paths[spec.target_mesh_relpath])
-
         self.model_type = normalized
-        self.identity_dim = spec.identity_dim
-        self.scale_dim = spec.scale_dim
-        self._source_model_scale_to_transfer = spec.source_model_scale_to_transfer
-        self._transfer_scale_to_soma_core = spec.transfer_scale_to_soma_core
         self._mhr_model = None
-        self._smpl_model = None
-        self._smplx_model = None
+        self._smpl_like_model = None
+
+        ensure_identity_assets(soma_asset_dir, normalized)
+        if normalized == "mhr":
+            source_mesh_path = soma_asset_dir / "MHR" / "base_body_lod1.obj"
+            target_mesh_path = soma_asset_dir / "MHR" / "SOMA_wrap_lod1.obj"
+            self.identity_dim = 45
+            self.scale_dim = 68
+            self._source_model_scale_to_transfer = 100.0
+            self._transfer_scale_to_soma_core = 1.0
+            self._mhr_model = MHR(model_path=config.get_model_path("mhr"), simplify=1.0)
+        else:
+            source_mesh_path = soma_asset_dir / normalized.upper() / "base_body.obj"
+            target_mesh_path = soma_asset_dir / normalized.upper() / "SOMA_wrap.obj"
+            self.identity_dim = 10
+            self.scale_dim = None
+            self._source_model_scale_to_transfer = 1.0
+            self._transfer_scale_to_soma_core = 100.0
+            if normalized == "smplx":
+                model_path = _resolve_identity_model_path("smplx-neutral", "smplx", filename="SMPLX_NEUTRAL")
+                self._smpl_like_model = SMPLX(model_path=model_path, gender="neutral", simplify=1.0)
+            else:
+                model_path = _resolve_identity_model_path("smpl-neutral", "smpl", filename="SMPL_NEUTRAL")
+                self._smpl_like_model = SMPL(model_path=model_path, gender="neutral", simplify=1.0)
+
+        source_vertices, source_faces = _parse_obj(source_mesh_path)
+        target_vertices, target_faces = _parse_obj(target_mesh_path)
         self._rest_shape_transfer = _RestShapeTransfer(
             source_vertices=source_vertices,
             source_faces=source_faces,
@@ -432,18 +408,6 @@ class TorchIdentityBackend(nn.Module):
             asset_dir=soma_asset_dir,
             model_type=normalized,
         )
-
-        if normalized == "mhr":
-            model_path = config.get_model_path("mhr")
-            self._mhr_model = MHR(model_path=model_path, simplify=1.0)
-        elif normalized == "smplx":
-            model_path = _resolve_identity_model_path("smplx-neutral", "smplx", filename="SMPLX_NEUTRAL")
-            self._smplx_model = SMPLX(model_path=model_path, gender="neutral", simplify=1.0)
-        elif normalized == "smpl":
-            model_path = _resolve_identity_model_path("smpl-neutral", "smpl", filename="SMPL_NEUTRAL")
-            self._smpl_model = SMPL(model_path=model_path, gender="neutral", simplify=1.0)
-        else:
-            raise AssertionError(f"Unexpected SOMA identity backend: {normalized}")
 
     def _broadcast(self, value: torch.Tensor | None, batch_size: int, dim: int, *, device, dtype) -> torch.Tensor:
         if value is None:
@@ -479,7 +443,7 @@ class TorchIdentityBackend(nn.Module):
         return rest_shape
 
     def _rest_shape_smplx_like(self, identity: torch.Tensor) -> torch.Tensor:
-        model = self._smplx_model or self._smpl_model
+        model = self._smpl_like_model
         assert model is not None
         identity_dim = identity.shape[1]
         dirs = model.shapedirs_full[..., :identity_dim]
