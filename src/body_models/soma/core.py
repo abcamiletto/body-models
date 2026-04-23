@@ -203,6 +203,129 @@ def forward_skeleton(
     return public
 
 
+def transfer_identity_rest_shape(
+    source_shape: Float[Array, "B Vs 3"],
+    source_tetrahedra: Int[Array, "Fs 4"],
+    face_ids: Int[Array, "Vt"],
+    bary_coords: Float[Array, "Vt 4"],
+    unknown_ids: Int[Array, "U"],
+    anchor_ids: Int[Array, "A"],
+    solve_matrix: Float[Array, "U U"],
+    anchor_matrix: Float[Array, "U A"],
+    rhs_base: Float[Array, "U 3"],
+    *,
+    xp: Any = None,
+) -> Float[Array, "B Vt 3"]:
+    if xp is None:
+        xp = get_namespace(source_shape)
+
+    tetra_faces = source_tetrahedra[:, :3]
+    f0 = source_shape[:, tetra_faces[:, 0]]
+    f1 = source_shape[:, tetra_faces[:, 1]]
+    f2 = source_shape[:, tetra_faces[:, 2]]
+    fabricated = f0 + xp.linalg.cross(f1 - f0, f2 - f0)
+    source_shape_tet = xp.concat([source_shape, fabricated], axis=1)
+
+    tet_indices = source_tetrahedra[face_ids]
+    v0 = source_shape_tet[:, tet_indices[:, 0]]
+    v1 = source_shape_tet[:, tet_indices[:, 1]]
+    v2 = source_shape_tet[:, tet_indices[:, 2]]
+    v3 = source_shape_tet[:, tet_indices[:, 3]]
+    bc = bary_coords[None]
+    target_shape = v0 * bc[..., 0:1] + v1 * bc[..., 1:2] + v2 * bc[..., 2:3] + v3 * bc[..., 3:4]
+
+    if unknown_ids.shape[0] == 0:
+        return target_shape
+
+    B = target_shape.shape[0]
+    num_unknown = unknown_ids.shape[0]
+    num_anchor = anchor_ids.shape[0]
+    anchor_vertices = target_shape[:, anchor_ids]
+    anchor_vertices = xp.reshape(anchor_vertices.swapaxes(0, 1), (num_anchor, B * 3))
+    rhs = xp.broadcast_to(rhs_base[:, None, :], (num_unknown, B, 3)).reshape(num_unknown, B * 3)
+    rhs = rhs - anchor_matrix @ anchor_vertices
+    unknown_vertices = xp.linalg.solve(solve_matrix, rhs)
+    unknown_vertices = xp.reshape(unknown_vertices, (num_unknown, B, 3)).swapaxes(0, 1)
+    return common.set(target_shape, (slice(None), unknown_ids), unknown_vertices, xp=xp)
+
+
+def linear_identity_shape(
+    mean: Float[Array, "V 3"],
+    shapedirs: Float[Array, "V 3 S"] | Float[Array, "V 3 I"],
+    identity: Float[Array, "B I"],
+    *,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    if xp is None:
+        xp = get_namespace(identity)
+    identity_dim = identity.shape[1]
+    return mean[None] + xp.einsum("bi,vci->bvc", identity, shapedirs[..., :identity_dim])
+
+
+def mhr_identity_shape(
+    model: Any,
+    identity: Float[Array, "B I"],
+    scale_params: Float[Array, "B K"] | None,
+    num_scale_params: int,
+    *,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    if xp is None:
+        xp = get_namespace(identity)
+
+    batch_size = identity.shape[0]
+    if scale_params is None:
+        scale_params = common.zeros_as(identity, shape=(batch_size, num_scale_params), xp=xp)
+    zero_pose = common.zeros_as(identity, shape=(batch_size, model.pose_dim), xp=xp)
+    zero_pose = common.set(zero_pose, (slice(None), slice(-num_scale_params, None)), scale_params, xp=xp)
+    expression = common.zeros_as(identity, shape=(batch_size, model.EXPR_DIM), xp=xp)
+    return model.forward_vertices(shape=identity, pose=zero_pose, expression=expression)
+
+
+def resolve_identity_inputs(
+    model_type: str,
+    shape: Float[Array, "B|1 S"] | None,
+    identity: Float[Array, "B|1 I"] | None,
+    scale_params: Float[Array, "B|1 K"] | None,
+    *,
+    batch_size: int,
+    identity_dim: int,
+    num_scale_params: int | None,
+    ref: Array,
+    xp: Any = None,
+) -> tuple[Float[Array, "B|1 S"] | None, Float[Array, "B I"] | None, Float[Array, "B K"] | None]:
+    if xp is None:
+        xp = get_namespace(ref)
+
+    if model_type == "soma":
+        if identity is not None:
+            if shape is not None:
+                raise ValueError("Pass either shape or identity for SOMA model_type='soma', not both.")
+            shape = identity
+        if shape is None:
+            raise ValueError("SOMA model_type='soma' requires shape or identity coefficients.")
+        return shape, None, None
+
+    if shape is not None:
+        raise ValueError("shape is only supported for SOMA model_type='soma'. Use identity for other backends.")
+
+    if identity is None:
+        identity = common.zeros_as(ref, shape=(1, identity_dim), xp=xp)
+    if identity.shape[0] == 1 and batch_size > 1:
+        identity = xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
+
+    if num_scale_params is None:
+        if scale_params is not None:
+            raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
+        return None, identity, scale_params
+
+    if scale_params is None:
+        scale_params = common.zeros_as(ref, shape=(1, num_scale_params), xp=xp)
+    if scale_params.shape[0] == 1 and batch_size > 1:
+        scale_params = xp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+    return None, identity, scale_params
+
+
 def apply_pose_correctives(
     pose_rot_full: Float[Array, "B J 3 3"],
     bindpose: Float[Array, "J 3 3"],

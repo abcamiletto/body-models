@@ -39,9 +39,7 @@ def _make_upstream_layer(model_type: str, upstream_data_root: Path):
 
     identity_model_kwargs: dict[str, str] | None = None
     if model_type == "smplx":
-        identity_model_kwargs = {
-            "model_path": str((ASSET_DIR / "smplx" / "model" / "SMPLX_NEUTRAL.npz").resolve())
-        }
+        identity_model_kwargs = {"model_path": str((ASSET_DIR / "smplx" / "model" / "SMPLX_NEUTRAL.npz").resolve())}
 
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         layer = SOMALayer(
@@ -69,9 +67,7 @@ def _sample_inputs(
         "global_translation": torch.tensor(rng.standard_normal((1, 3)).astype(np.float32) * 0.01),
     }
     if num_scale_params is not None:
-        inputs["scale_params"] = torch.tensor(
-            rng.standard_normal((1, num_scale_params)).astype(np.float32) * 0.05
-        )
+        inputs["scale_params"] = torch.tensor(rng.standard_normal((1, num_scale_params)).astype(np.float32) * 0.05)
     return inputs
 
 
