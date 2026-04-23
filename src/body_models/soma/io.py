@@ -56,9 +56,7 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
                 return model_path
             if (model_path / SOMA_CORE_ASSET).exists():
                 return download_model(model_path)
-            raise FileNotFoundError(
-                f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}."
-            )
+            raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
         raise FileNotFoundError(
             f"SOMA model path {model_path} is invalid. "
             f"Expected a directory containing {SOMA_CORE_ASSET} or the file itself."
@@ -88,7 +86,7 @@ def download_model(model_dir: Path | str | None = None) -> Path:
 
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
     """Compute kinematic fronts for batched FK."""
-    parents_list = parents.tolist() if hasattr(parents, "tolist") else list(parents)
+    parents_list = parents.tolist() if isinstance(parents, np.ndarray) else list(parents)
 
     n_joints = len(parents_list)
     processed: set[int] = set()
@@ -172,7 +170,7 @@ def _as_sparse_coo(value: Any) -> _SparseCoo:
     raise TypeError(f"Unsupported SOMA sparse tensor type: {type(value)!r}")
 
 
-def _as_numpy_array(value: Any, *, dtype: np.dtype[Any]) -> np.ndarray:
+def _as_numpy_array(value: Any, *, dtype: Any) -> np.ndarray:
     if isinstance(value, np.ndarray):
         return np.asarray(value, dtype=dtype)
     if hasattr(value, "detach") and hasattr(value, "cpu"):
