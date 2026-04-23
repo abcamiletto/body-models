@@ -20,7 +20,7 @@ from nanomanifold import SO3
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "flame"
-MODEL_PATH = ASSET_DIR / "model"
+MODEL_PATH = ASSET_DIR / "model" / "FLAME_NEUTRAL.pkl"
 INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
 NUM_CASES = 5

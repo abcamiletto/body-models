@@ -20,22 +20,22 @@ def get_model_path(model_path: Path | str | None) -> Path:
     if model_path is None:
         raise FileNotFoundError(
             "FLAME model not found. Download from https://flame.is.tue.mpg.de/ "
-            "and run: body-models set flame /path/to/flame"
+            "and run: body-models set flame /path/to/FLAME_NEUTRAL.pkl"
         )
 
     model_path = Path(model_path)
 
+    if model_path.is_dir():
+        raise ValueError(
+            f"Directory paths are no longer supported: {model_path}\n"
+            "Please provide a direct path to the model file, e.g.:\n"
+            f"  FLAME(model_path='{model_path}/FLAME_NEUTRAL.pkl')"
+        )
+
     if model_path.is_file():
         return model_path
 
-    if model_path.is_dir():
-        # Try common FLAME model filenames
-        for candidate_name in ["FLAME_NEUTRAL.pkl", "FLAME_NEUTRAL.npz", "flame2023.pkl", "generic_model.pkl"]:
-            candidate = model_path / candidate_name
-            if candidate.exists():
-                return candidate
-
-    raise FileNotFoundError(f"FLAME model not found in {model_path}")
+    raise FileNotFoundError(f"FLAME model file not found: {model_path}")
 
 
 def load_model_data(model_path: Path) -> dict:
