@@ -22,6 +22,17 @@ def _backend_model(backend: str, model_path: Path):
     return getattr(module, "SOMA")(model_path=model_path)
 
 
+def test_backend_modules_only_export_soma() -> None:
+    for backend in ("torch", "numpy", "jax"):
+        if backend == "jax":
+            pytest.importorskip("jax")
+            pytest.importorskip("flax")
+
+        module = import_module(f"body_models.soma.{backend}")
+        public_names = sorted(name for name in vars(module) if not name.startswith("_"))
+        assert public_names == ["SOMA"]
+
+
 def test_backends_match(model_path: Path) -> None:
     pytest.importorskip("torch")
     pytest.importorskip("jax")
