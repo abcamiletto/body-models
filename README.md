@@ -4,7 +4,7 @@
 
 A unified library for parametric human body models.
 
-Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, and MHR body models with PyTorch, NumPy, and JAX backends.
+Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, and SOMA body models with PyTorch, NumPy, and JAX backends.
 
 ## Features
 
@@ -44,15 +44,27 @@ Note: NumPy/JAX backends can load MHR torch checkpoints without installing PyTor
 
 ### Auto-download models
 
-ANNY and MHR models are automatically downloaded on first use:
+ANNY, MHR, and SOMA models are automatically downloaded on first use:
 
 ```python
 from body_models.anny.torch import ANNY
 from body_models.mhr.torch import MHR
+from body_models.soma.torch import SOMA
 
 model = ANNY()  # Downloads automatically (CC0 license)
 model = MHR()   # Downloads automatically (Apache 2.0)
+model = SOMA()  # Downloads SOMA_neutral.npz from SOMA-X
 ```
+
+You can also prefetch them and save the cache paths into config:
+
+```bash
+body-models download anny
+body-models download mhr
+body-models download soma
+```
+
+SOMA is implemented natively in `body-models`; it does not require installing `py-soma-x`.
 
 ### Registration-required models
 
@@ -62,7 +74,29 @@ SMPL, SMPL-X, SKEL, and FLAME require registration. Download from:
 - SKEL: https://skel.is.tue.mpg.de/
 - FLAME: https://flame.is.tue.mpg.de/
 
-SMPL `.pkl` and `.npz` files are both supported directly. Configure the paths (per gender):
+You can let the CLI download all supported models into the platform cache and save those paths into config:
+
+```bash
+body-models download anny
+body-models download mhr
+body-models download soma
+body-models download smpl
+body-models download smplx
+body-models download skel
+body-models download flame
+body-models download all
+```
+
+Or set credentials via environment variables first:
+
+```bash
+SMPL_USERNAME=you@example.com SMPL_PASSWORD=... body-models download smpl
+SMPLX_USERNAME=you@example.com SMPLX_PASSWORD=... body-models download smplx
+SKEL_USERNAME=you@example.com SKEL_PASSWORD=... body-models download skel
+FLAME_USERNAME=you@example.com FLAME_PASSWORD=... body-models download flame
+```
+
+SMPL `.pkl` and `.npz` files are both supported directly. You can also configure paths manually (per gender):
 
 ```bash
 body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl
@@ -71,6 +105,7 @@ body-models set smpl-female /path/to/SMPL_FEMALE.pkl
 body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel
 body-models set flame /path/to/flame
+body-models set soma /path/to/soma-assets
 ```
 
 Or pass file paths directly:
@@ -104,6 +139,7 @@ Current settings:
   flame: (not set)
   anny: (not set)
   mhr: (not set)
+  soma: (not set)
 ```
 
 Manage paths:
@@ -111,6 +147,7 @@ Manage paths:
 ```bash
 body-models set <model> <path>   # Set model path
 body-models unset <model>        # Remove from config
+body-models download <model>     # Download anny, mhr, soma, smpl, smplx, skel, flame, or all
 ```
 
 ## Quick Start
