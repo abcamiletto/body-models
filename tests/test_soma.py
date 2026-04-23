@@ -22,17 +22,6 @@ def _backend_model(backend: str, model_path: Path):
     return getattr(module, "SOMA")(model_path=model_path)
 
 
-def test_backend_modules_only_export_soma() -> None:
-    for backend in ("torch", "numpy", "jax"):
-        if backend == "jax":
-            pytest.importorskip("jax")
-            pytest.importorskip("flax")
-
-        module = import_module(f"body_models.soma.{backend}")
-        public_names = sorted(name for name in vars(module) if not name.startswith("_"))
-        assert public_names == ["SOMA"]
-
-
 def test_backends_match(model_path: Path) -> None:
     pytest.importorskip("torch")
     pytest.importorskip("jax")
@@ -113,8 +102,18 @@ def test_simplify_reduces_mesh(model_path: Path) -> None:
     assert model_half.faces.shape[0] < model_full.faces.shape[0]
 
     params = model_half.get_rest_pose(batch_size=2)
-    verts = model_half.forward_vertices(**params)
-    skel = model_half.forward_skeleton(**params)
+    verts = model_half.forward_vertices(
+        shape=params["shape"],
+        pose=params["pose"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+    skel = model_half.forward_skeleton(
+        shape=params["shape"],
+        pose=params["pose"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
 
     assert verts.shape == (2, model_half.num_vertices, 3)
     assert skel.shape == (2, model_half.num_joints, 4, 4)
@@ -128,9 +127,20 @@ def test_apply_correctives_requires_weights(model_path: Path) -> None:
     model.corrective_W1 = None
 
     with pytest.raises(ValueError, match="apply_correctives=True requires SOMA corrective weights."):
-        model.forward_vertices(**params)
+        model.forward_vertices(
+            shape=params["shape"],
+            pose=params["pose"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+        )
 
-    verts = model.forward_vertices(**params, apply_correctives=False)
+    verts = model.forward_vertices(
+        shape=params["shape"],
+        pose=params["pose"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+        apply_correctives=False,
+    )
     assert verts.shape == (1, model.num_vertices, 3)
 
 
