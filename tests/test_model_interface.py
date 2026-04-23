@@ -9,7 +9,7 @@ import pytest
 from nanomanifold import SO3
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr"]
+MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr", "soma"]
 BACKENDS = ["torch", "numpy", "jax"]
 
 

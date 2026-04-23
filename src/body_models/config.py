@@ -17,6 +17,7 @@ MODELS = [
     "anny",
     "mhr",
     "flame",
+    "soma",
 ]
 
 
