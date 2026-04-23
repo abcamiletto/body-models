@@ -31,8 +31,10 @@ def forward_vertices(
     skinned_vertex_indices_full: list[list[int]],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"],
+    shape: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
+    rest_shape_active: Float[Array, "B|1 Va 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
@@ -50,17 +52,18 @@ def forward_vertices(
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
     if xp is None:
-        xp = get_namespace(shape)
+        xp = get_namespace(shape if shape is not None else rest_shape_full)
 
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B = pose_rot.shape[0]
-    shape = _broadcast_shape(shape, batch_size=B, xp=xp)
     pose_rot_full = _orient_pose_rot_full(xp, pose_rot, t_pose_world, parents_full)
-
-    _rest_shape_full, world_bind_pose_fit = _prepare_identity(
+    rest_shape_full, rest_shape_active, world_bind_pose_fit = _prepare_rest_shapes(
         xp=xp,
-        mean=mean_full,
-        shapedirs=shapedirs_full,
+        batch_size=B,
+        mean_full=mean_full,
+        mean_active=mean_active,
+        shapedirs_full=shapedirs_full,
+        shapedirs_active=shapedirs_active,
         eigenvalues=eigenvalues,
         bind_shape=bind_shape_full,
         bind_pose_world=bind_pose_world,
@@ -69,8 +72,9 @@ def forward_vertices(
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
         shape=shape,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
     )
-    rest_shape_active = _shape_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, shape)
 
     if apply_correctives:
         if (
@@ -138,8 +142,9 @@ def forward_skeleton(
     skinned_vertex_indices_full: list[list[int]],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"],
+    shape: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    rest_shape_full: Float[Array, "B|1 V 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
@@ -150,14 +155,13 @@ def forward_skeleton(
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
     if xp is None:
-        xp = get_namespace(shape)
+        xp = get_namespace(shape if shape is not None else rest_shape_full)
 
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B = pose_rot.shape[0]
-    shape = _broadcast_shape(shape, batch_size=B, xp=xp)
-
-    rest_shape_full, world_bind_pose = _prepare_identity(
+    rest_shape_full, world_bind_pose = _prepare_identity_from_inputs(
         xp=xp,
+        batch_size=B,
         mean=mean_full,
         shapedirs=shapedirs_full,
         eigenvalues=eigenvalues,
@@ -168,6 +172,7 @@ def forward_skeleton(
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
         shape=shape,
+        rest_shape=rest_shape_full,
     )
     if apply_correctives:
         rest_shape_full, world_bind_pose = _repose_to_bind_pose(
@@ -246,6 +251,12 @@ def _broadcast_shape(shape: Array, *, batch_size: int, xp: Any) -> Array:
     return shape
 
 
+def _broadcast_rest_shape(rest_shape: Array, *, batch_size: int, xp: Any) -> Array:
+    if rest_shape.shape[0] == 1 and batch_size > 1:
+        return xp.broadcast_to(rest_shape, (batch_size, *rest_shape.shape[1:]))
+    return rest_shape
+
+
 def _shape_to_rest_vertices(
     xp,
     mean: Float[Array, "V 3"],
@@ -283,6 +294,120 @@ def _prepare_identity(
         target_shape=rest_shape,
     )
     return rest_shape, world_bind_pose
+
+
+def _prepare_identity_from_rest_shape(
+    xp,
+    bind_shape: Float[Array, "V 3"],
+    bind_pose_world: Float[Array, "J 4 4"],
+    joint_regressor: Float[Array, "J V"],
+    joint_children_full: list[list[int]],
+    skinned_vertex_indices_full: list[list[int]],
+    parents_full: list[int],
+    rest_shape: Float[Array, "B V 3"],
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    joint_positions = xp.einsum("jv,bvc->bjc", joint_regressor, rest_shape)
+    world_bind_pose = _fit_joint_rotations(
+        xp=xp,
+        bind_shape=bind_shape,
+        bind_pose_world=bind_pose_world,
+        joint_children_full=joint_children_full,
+        skinned_vertex_indices_full=skinned_vertex_indices_full,
+        parents_full=parents_full,
+        joint_positions=joint_positions,
+        target_shape=rest_shape,
+    )
+    return rest_shape, world_bind_pose
+
+
+def _prepare_identity_from_inputs(
+    xp,
+    batch_size: int,
+    mean: Float[Array, "V 3"],
+    shapedirs: Float[Array, "S V 3"],
+    eigenvalues: Float[Array, "S"],
+    bind_shape: Float[Array, "V 3"],
+    bind_pose_world: Float[Array, "J 4 4"],
+    joint_regressor: Float[Array, "J V"],
+    joint_children_full: list[list[int]],
+    skinned_vertex_indices_full: list[list[int]],
+    parents_full: list[int],
+    shape: Float[Array, "B|1 S"] | None,
+    rest_shape: Float[Array, "B|1 V 3"] | None,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    if rest_shape is not None:
+        rest_shape = _broadcast_rest_shape(rest_shape, batch_size=batch_size, xp=xp)
+        return _prepare_identity_from_rest_shape(
+            xp=xp,
+            bind_shape=bind_shape,
+            bind_pose_world=bind_pose_world,
+            joint_regressor=joint_regressor,
+            joint_children_full=joint_children_full,
+            skinned_vertex_indices_full=skinned_vertex_indices_full,
+            parents_full=parents_full,
+            rest_shape=rest_shape,
+        )
+
+    if shape is None:
+        raise ValueError("SOMA forward pass requires either shape or a precomputed rest_shape.")
+    shape = _broadcast_shape(shape, batch_size=batch_size, xp=xp)
+    return _prepare_identity(
+        xp=xp,
+        mean=mean,
+        shapedirs=shapedirs,
+        eigenvalues=eigenvalues,
+        bind_shape=bind_shape,
+        bind_pose_world=bind_pose_world,
+        joint_regressor=joint_regressor,
+        joint_children_full=joint_children_full,
+        skinned_vertex_indices_full=skinned_vertex_indices_full,
+        parents_full=parents_full,
+        shape=shape,
+    )
+
+
+def _prepare_rest_shapes(
+    xp,
+    batch_size: int,
+    mean_full: Float[Array, "Vf 3"],
+    mean_active: Float[Array, "Va 3"],
+    shapedirs_full: Float[Array, "S Vf 3"],
+    shapedirs_active: Float[Array, "S Va 3"],
+    eigenvalues: Float[Array, "S"],
+    bind_shape: Float[Array, "Vf 3"],
+    bind_pose_world: Float[Array, "Jf 4 4"],
+    joint_regressor: Float[Array, "Jf Vf"],
+    joint_children_full: list[list[int]],
+    skinned_vertex_indices_full: list[list[int]],
+    parents_full: list[int],
+    shape: Float[Array, "B|1 S"] | None,
+    rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
+    rest_shape_active: Float[Array, "B|1 Va 3"] | None,
+) -> tuple[Float[Array, "B Vf 3"], Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
+    full_shape, world_bind_pose = _prepare_identity_from_inputs(
+        xp=xp,
+        batch_size=batch_size,
+        mean=mean_full,
+        shapedirs=shapedirs_full,
+        eigenvalues=eigenvalues,
+        bind_shape=bind_shape,
+        bind_pose_world=bind_pose_world,
+        joint_regressor=joint_regressor,
+        joint_children_full=joint_children_full,
+        skinned_vertex_indices_full=skinned_vertex_indices_full,
+        parents_full=parents_full,
+        shape=shape,
+        rest_shape=rest_shape_full,
+    )
+    if rest_shape_active is not None:
+        active_shape = _broadcast_rest_shape(rest_shape_active, batch_size=batch_size, xp=xp)
+    else:
+        if shape is None:
+            active_shape = full_shape
+        else:
+            shape = _broadcast_shape(shape, batch_size=batch_size, xp=xp)
+            active_shape = _shape_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, shape)
+    return full_shape, active_shape, world_bind_pose
 
 
 def _repose_to_bind_pose(

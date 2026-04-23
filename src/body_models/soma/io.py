@@ -22,6 +22,11 @@ SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
+SOMA_IDENTITY_ASSETS = {
+    "mhr": ("MHR/SOMA_wrap_lod1.obj", "MHR/base_body_lod1.obj"),
+    "smpl": ("SMPL/SOMA_wrap.obj", "SMPL/base_body.obj"),
+    "smplx": ("SMPLX/SOMA_wrap.obj", "SMPLX/base_body.obj"),
+}
 
 __all__ = [
     "get_model_path",
@@ -82,6 +87,27 @@ def download_model(model_dir: Path | str | None = None) -> Path:
             urllib.request.urlretrieve(f"{SOMA_BASE_URL}/{name}", cache_dir / name)
         print("Done")
     return cache_dir
+
+
+def ensure_identity_assets(model_dir: Path, model_type: str) -> dict[str, Path]:
+    """Ensure supplementary SOMA assets exist for a given identity backend."""
+    import urllib.request
+
+    normalized = model_type.lower()
+    if normalized not in SOMA_IDENTITY_ASSETS:
+        raise ValueError(f"Unsupported SOMA identity assets: {model_type}")
+
+    asset_dir = Path(model_dir)
+    paths = {name: asset_dir / name for name in SOMA_IDENTITY_ASSETS[normalized]}
+    missing = [name for name, path in paths.items() if not path.exists()]
+    if missing:
+        print(f"Downloading SOMA {normalized} assets to {asset_dir}...")
+        for name in missing:
+            path = asset_dir / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            urllib.request.urlretrieve(f"{SOMA_BASE_URL}/{name}", path)
+        print("Done")
+    return paths
 
 
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
@@ -404,6 +430,7 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
         "joint_names_full": joint_names_full,
         "joint_regressor": joint_regressor,
         "skin_weights_full": skin_weights,
+        "facial_inner_vertices": facial_inner,
         "skinned_vertex_indices_full": skinned_vertex_indices_full,
         "joint_children_full": joint_children_full,
         "kinematic_fronts_full": compute_kinematic_fronts(joint_parents_full),
