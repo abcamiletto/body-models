@@ -8,6 +8,7 @@ from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
+from ..anny import core as anny_core
 from .. import common
 from ..rotations import RotationType
 
@@ -272,6 +273,65 @@ def mhr_identity_shape(
     zero_pose = common.set(zero_pose, (slice(None), slice(-num_scale_params, None)), scale_params, xp=xp)
     expression = common.zeros_as(identity, shape=(batch_size, model.EXPR_DIM), xp=xp)
     return model.forward_vertices(shape=identity, pose=zero_pose, expression=expression)
+
+
+def anny_identity_shape(
+    template_vertices: Float[Array, "V 3"],
+    blendshapes: Float[Array, "S V 3"],
+    phenotype_mask: Float[Array, "S P"],
+    anchors: dict[str, Float[Array, "A"]],
+    identity: Float[Array, "B 6"],
+    *,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    if xp is None:
+        xp = get_namespace(identity)
+    return anny_core.identity_shape(
+        template_vertices=template_vertices,
+        blendshapes=blendshapes,
+        phenotype_mask=phenotype_mask,
+        anchors=anchors,
+        identity=identity,
+        xp=xp,
+    )
+
+
+def fit_rigid_transform(
+    source_points: Float[Array, "V 3"],
+    target_points: Float[Array, "V 3"],
+    *,
+    xp: Any = None,
+) -> tuple[Float[Array, "3 3"], Float[Array, "3"]]:
+    if xp is None:
+        xp = get_namespace(source_points)
+
+    source_center = xp.mean(source_points, axis=0)
+    target_center = xp.mean(target_points, axis=0)
+    source_centered = source_points - source_center
+    target_centered = target_points - target_center
+    covariance = source_centered.swapaxes(-2, -1) @ target_centered
+    U, _S, Vh = xp.linalg.svd(covariance)
+    reflection = common.eye_as(covariance, batch_dims=(), xp=xp)
+    det = xp.linalg.det(Vh.swapaxes(-2, -1) @ U.swapaxes(-2, -1))
+    reflection = common.set(reflection, (-1, -1), xp.where(det < 0, -1.0, 1.0), xp=xp)
+    rotation = Vh.swapaxes(-2, -1) @ reflection @ U.swapaxes(-2, -1)
+    translation = target_center - source_center @ rotation.swapaxes(-2, -1)
+    return rotation, translation
+
+
+def apply_rigid_transform(
+    points: Float[Array, "B V 3"],
+    rotation: Float[Array, "3 3"],
+    translation: Float[Array, "3"] | None = None,
+    *,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    if xp is None:
+        xp = get_namespace(points)
+    points = points @ rotation.swapaxes(-2, -1)
+    if translation is not None:
+        points = points + translation
+    return points
 
 
 def resolve_identity_inputs(

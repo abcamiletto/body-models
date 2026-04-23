@@ -10,6 +10,7 @@ from body_models.soma.io import get_model_path
 
 MODEL_TYPE_SEEDS = {
     "soma": 11,
+    "anny": 17,
     "mhr": 22,
     "smpl": 33,
     "smplx": 44,
@@ -38,6 +39,8 @@ def _sample_inputs(model_type: str) -> dict[str, np.ndarray]:
     }
     if model_type == "soma":
         inputs["identity"] = (rng.standard_normal((1, 128)) * 0.1).astype(np.float32)
+    elif model_type == "anny":
+        inputs["identity"] = rng.uniform(0.2, 0.8, size=(1, 6)).astype(np.float32)
     elif model_type == "mhr":
         inputs["identity"] = (rng.standard_normal((1, 45)) * 0.1).astype(np.float32)
         inputs["scale_params"] = (rng.standard_normal((1, 68)) * 0.05).astype(np.float32)
@@ -46,7 +49,7 @@ def _sample_inputs(model_type: str) -> dict[str, np.ndarray]:
     return inputs
 
 
-@pytest.mark.parametrize("model_type", ["soma", "mhr", "smpl", "smplx"])
+@pytest.mark.parametrize("model_type", ["soma", "anny", "mhr", "smpl", "smplx"])
 def test_backends_match(model_type: str, model_path: Path) -> None:
     pytest.importorskip("torch")
     pytest.importorskip("jax")
