@@ -89,7 +89,7 @@ def download_model(model_dir: Path | str | None = None) -> Path:
     return cache_dir
 
 
-def ensure_identity_assets(model_dir: Path, model_type: str) -> dict[str, Path]:
+def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
     """Ensure supplementary SOMA assets exist for a given identity backend."""
     import urllib.request
 
@@ -98,8 +98,7 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> dict[str, Path]:
         raise ValueError(f"Unsupported SOMA identity assets: {model_type}")
 
     asset_dir = Path(model_dir)
-    paths = {name: asset_dir / name for name in SOMA_IDENTITY_ASSETS[normalized]}
-    missing = [name for name, path in paths.items() if not path.exists()]
+    missing = [name for name in SOMA_IDENTITY_ASSETS[normalized] if not (asset_dir / name).exists()]
     if missing:
         print(f"Downloading SOMA {normalized} assets to {asset_dir}...")
         for name in missing:
@@ -107,7 +106,6 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> dict[str, Path]:
             path.parent.mkdir(parents=True, exist_ok=True)
             urllib.request.urlretrieve(f"{SOMA_BASE_URL}/{name}", path)
         print("Done")
-    return paths
 
 
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
