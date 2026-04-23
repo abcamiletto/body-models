@@ -1,6 +1,7 @@
 """JAX backend for SOMA model using Flax NNX."""
 
 from pathlib import Path as _Path
+from typing import cast as _cast
 
 import jax as _jax
 import jax.numpy as _jnp
@@ -35,6 +36,8 @@ class SOMA(_BodyModel, _nnx.Module):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = ("soma", *_IDENTITY_MODEL_TYPES)
+    _identity_mhr_model: _MHR
+    _identity_linear_model: _SMPL | _SMPLX
 
     def __init__(
         self,
@@ -295,27 +298,22 @@ class SOMA(_BodyModel, _nnx.Module):
 
     def _identity_rest_shape(
         self,
-        identity: _jax.Array,
-        scale_params: _jax.Array | None,
-    ) -> _jax.Array:
+        identity: _Float[_jax.Array, "B I"],
+        scale_params: _Float[_jax.Array, "B K"] | None,
+    ) -> _Float[_jax.Array, "B V 3"]:
         if self.model_type == "mhr":
-            model = getattr(self, "_identity_mhr_model", None)
-            if model is None:
-                raise RuntimeError("Missing MHR identity backend for SOMA.")
+            num_scale_params = _cast(int, self.num_scale_params)
             rest_shape = _core.mhr_identity_shape(
-                model=model,
+                model=self._identity_mhr_model,
                 identity=identity,
                 scale_params=scale_params,
-                num_scale_params=self.num_scale_params or 0,
+                num_scale_params=num_scale_params,
                 xp=_jnp,
             )
         else:
-            model = getattr(self, "_identity_linear_model", None)
-            if model is None:
-                raise RuntimeError("Missing linear identity backend for SOMA.")
             rest_shape = _core.linear_identity_shape(
-                mean=model.v_template_full[...],
-                shapedirs=model.shapedirs_full[...],
+                mean=self._identity_linear_model.v_template_full[...],
+                shapedirs=self._identity_linear_model.shapedirs_full[...],
                 identity=identity,
                 xp=_jnp,
             )
@@ -342,11 +340,15 @@ class SOMA(_BodyModel, _nnx.Module):
     def _resolve_identity_inputs(
         self,
         *,
-        shape: _jax.Array | None,
-        identity: _jax.Array | None,
-        scale_params: _jax.Array | None,
-        ref: _jax.Array,
-    ) -> tuple[_jax.Array | None, _jax.Array | None, _jax.Array | None]:
+        shape: _Float[_jax.Array, "B|1 128"] | None,
+        identity: _Float[_jax.Array, "B|1 I"] | None,
+        scale_params: _Float[_jax.Array, "B|1 K"] | None,
+        ref: _Float[_jax.Array, "B ..."],
+    ) -> tuple[
+        _Float[_jax.Array, "B|1 128"] | None,
+        _Float[_jax.Array, "B V 3"] | None,
+        _Float[_jax.Array, "B V 3"] | None,
+    ]:
         shape, identity, scale_params = _core.resolve_identity_inputs(
             model_type=self.model_type,
             shape=shape,

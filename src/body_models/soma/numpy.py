@@ -1,6 +1,7 @@
 """NumPy backend for SOMA model."""
 
 from pathlib import Path as _Path
+from typing import cast as _cast
 
 import numpy as _np
 from jaxtyping import Float as _Float, Int as _Int
@@ -32,6 +33,36 @@ class SOMA(_BodyModel):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = ("soma", *_IDENTITY_MODEL_TYPES)
+
+    mean_full: _Float[_np.ndarray, "Vf 3"]
+    mean_active: _Float[_np.ndarray, "Va 3"]
+    shapedirs_full: _Float[_np.ndarray, "128 Vf 3"]
+    shapedirs_active: _Float[_np.ndarray, "128 Va 3"]
+    eigenvalues: _Float[_np.ndarray, "128"]
+    bind_shape_full: _Float[_np.ndarray, "Vf 3"]
+    bind_pose_world: _Float[_np.ndarray, "78 4 4"]
+    bind_pose_local: _Float[_np.ndarray, "78 4 4"]
+    t_pose_world: _Float[_np.ndarray, "78 4 4"]
+    joint_regressor: _Float[_np.ndarray, "78 Vf"]
+    corrective_bindpose: _Float[_np.ndarray, "78 3 3"]
+    corrective_W1: _Float[_np.ndarray, "D K"]
+    corrective_W2_rows: _Int[_np.ndarray, "NNZ"]
+    corrective_W2_cols: _Int[_np.ndarray, "NNZ"]
+    corrective_W2_values: _Float[_np.ndarray, "NNZ"]
+    _skin_weights_full: _Float[_np.ndarray, "Vf 78"]
+    _skin_weights_active: _Float[_np.ndarray, "Va 78"]
+    _faces: _Int[_np.ndarray, "F 3"]
+    _vertex_map: _Int[_np.ndarray, "Va"] | None
+    _identity_source_tetrahedra: _Int[_np.ndarray, "Fs 4"]
+    _identity_face_ids: _Int[_np.ndarray, "Vt"]
+    _identity_bary_coords: _Float[_np.ndarray, "Vt 4"]
+    _identity_unknown_ids: _Int[_np.ndarray, "U"]
+    _identity_anchor_ids: _Int[_np.ndarray, "A"]
+    _identity_solve_matrix: _Float[_np.ndarray, "U U"]
+    _identity_anchor_matrix: _Float[_np.ndarray, "U A"]
+    _identity_rhs_base: _Float[_np.ndarray, "U 3"]
+    _identity_mhr_model: _MHR
+    _identity_linear_model: _SMPL | _SMPLX
 
     def __init__(
         self,
@@ -100,8 +131,6 @@ class SOMA(_BodyModel):
         self._kinematic_fronts_full = _compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data["joint_names"])
 
-        self._identity_mhr_model = None
-        self._identity_linear_model = None
         self._identity_source_scale = 1.0
         self._identity_output_scale = 1.0
 
@@ -290,27 +319,22 @@ class SOMA(_BodyModel):
 
     def _identity_rest_shape(
         self,
-        identity: _np.ndarray,
-        scale_params: _np.ndarray | None,
-    ) -> _np.ndarray:
+        identity: _Float[_np.ndarray, "B I"],
+        scale_params: _Float[_np.ndarray, "B K"] | None,
+    ) -> _Float[_np.ndarray, "B V 3"]:
         if self.model_type == "mhr":
-            model = self._identity_mhr_model
-            if model is None:
-                raise RuntimeError("Missing MHR identity backend for SOMA.")
+            num_scale_params = _cast(int, self.num_scale_params)
             rest_shape = _core.mhr_identity_shape(
-                model=model,
+                model=self._identity_mhr_model,
                 identity=identity,
                 scale_params=scale_params,
-                num_scale_params=self.num_scale_params or 0,
+                num_scale_params=num_scale_params,
                 xp=_np,
             )
         else:
-            model = self._identity_linear_model
-            if model is None:
-                raise RuntimeError("Missing linear identity backend for SOMA.")
             rest_shape = _core.linear_identity_shape(
-                mean=model.v_template_full,
-                shapedirs=model.shapedirs_full,
+                mean=self._identity_linear_model.v_template_full,
+                shapedirs=self._identity_linear_model.shapedirs_full,
                 identity=identity,
                 xp=_np,
             )
@@ -337,11 +361,15 @@ class SOMA(_BodyModel):
     def _resolve_identity_inputs(
         self,
         *,
-        shape: _np.ndarray | None,
-        identity: _np.ndarray | None,
-        scale_params: _np.ndarray | None,
-        ref: _np.ndarray,
-    ) -> tuple[_np.ndarray | None, _np.ndarray | None, _np.ndarray | None]:
+        shape: _Float[_np.ndarray, "B|1 128"] | None,
+        identity: _Float[_np.ndarray, "B|1 I"] | None,
+        scale_params: _Float[_np.ndarray, "B|1 K"] | None,
+        ref: _Float[_np.ndarray, "B ..."],
+    ) -> tuple[
+        _Float[_np.ndarray, "B|1 128"] | None,
+        _Float[_np.ndarray, "B V 3"] | None,
+        _Float[_np.ndarray, "B V 3"] | None,
+    ]:
         shape, identity, scale_params = _core.resolve_identity_inputs(
             model_type=self.model_type,
             shape=shape,

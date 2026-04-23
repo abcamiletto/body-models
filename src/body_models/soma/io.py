@@ -12,6 +12,7 @@ import numpy as np
 from scipy import linalg as scipy_linalg
 from scipy import sparse as scipy_sparse
 from scipy.sparse import csc_matrix
+from jaxtyping import Float, Int
 
 from .. import config
 from ..common import simplify_mesh
@@ -44,8 +45,8 @@ __all__ = [
 
 @dataclass(frozen=True)
 class _SparseCoo:
-    indices: np.ndarray
-    values: np.ndarray
+    indices: Int[np.ndarray, "D NNZ"]
+    values: Float[np.ndarray, "NNZ"]
     size: tuple[int, ...]
     is_coalesced: bool
 
@@ -118,27 +119,25 @@ def get_identity_model_path(model_type: str) -> Path | None:
         return config.get_model_path("mhr")
 
     if normalized == "smpl":
-        model_keys = ("smpl-neutral", "smpl")
+        model_path = config.get_model_path("smpl-neutral")
         filename = "SMPL_NEUTRAL"
     elif normalized == "smplx":
-        model_keys = ("smplx-neutral", "smplx")
+        model_path = config.get_model_path("smplx-neutral")
         filename = "SMPLX_NEUTRAL"
     else:
         raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
 
-    for model_key in model_keys:
-        model_path = config.get_model_path(model_key)
-        if model_path is None:
-            continue
-        path = Path(model_path)
-        if path.is_dir():
-            for suffix in ("npz", "pkl"):
-                candidate = path / f"{filename}.{suffix}"
-                if candidate.exists():
-                    return candidate
-            continue
-        return path
-    return None
+    if model_path is None:
+        return None
+
+    path = Path(model_path)
+    if path.is_dir():
+        for suffix in ("npz", "pkl"):
+            candidate = path / f"{filename}.{suffix}"
+            if candidate.exists():
+                return candidate
+        raise FileNotFoundError(f"SOMA identity backend requires {filename}.npz or {filename}.pkl in {path}.")
+    return path
 
 
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
@@ -388,32 +387,10 @@ def _load_sparse_checkpoint_numpy(checkpoint_path: Path) -> dict[str, Any]:
     )
 
 
-def _as_sparse_coo(value: Any) -> _SparseCoo:
-    if isinstance(value, _SparseCoo):
-        return value
-    if hasattr(value, "coalesce") and hasattr(value, "indices") and hasattr(value, "values"):
-        sparse = value.coalesce()
-        return _SparseCoo(
-            indices=sparse.indices().detach().cpu().numpy().astype(np.int64, copy=False),
-            values=sparse.values().detach().cpu().numpy().astype(np.float32, copy=False),
-            size=tuple(int(v) for v in sparse.shape),
-            is_coalesced=True,
-        )
-    raise TypeError(f"Unsupported SOMA sparse tensor type: {type(value)!r}")
-
-
-def _as_numpy_array(value: Any, *, dtype: Any) -> np.ndarray:
-    if isinstance(value, np.ndarray):
-        return np.asarray(value, dtype=dtype)
-    if hasattr(value, "detach") and hasattr(value, "cpu"):
-        return value.detach().cpu().numpy().astype(dtype, copy=False)
-    return np.asarray(value, dtype=dtype)
-
-
-def _as_dense_float32(value: Any) -> np.ndarray:
+def _as_dense_float32(value: np.ndarray | _SparseCoo) -> np.ndarray:
     if isinstance(value, np.ndarray):
         return np.asarray(value, dtype=np.float32)
-    return _dense_from_sparse(_as_sparse_coo(value))
+    return _dense_from_sparse(value)
 
 
 def _dense_from_sparse(sparse: _SparseCoo) -> np.ndarray:
@@ -440,10 +417,9 @@ def load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
     checkpoint_path = asset_dir / SOMA_CORRECTIVES_ASSET
     ckpt = _load_sparse_checkpoint_numpy(checkpoint_path)
 
-    W1_sparse = _as_sparse_coo(ckpt["W1"])
-    W2_sparse = _as_sparse_coo(ckpt["W2"])
-
-    bindpose = _as_numpy_array(ckpt["bindpose"], dtype=np.float32)
+    W1_sparse = cast(_SparseCoo, ckpt["W1"])
+    W2_sparse = cast(_SparseCoo, ckpt["W2"])
+    bindpose = np.asarray(cast(np.ndarray, ckpt["bindpose"]), dtype=np.float32)
     cors_per_joint = int(ckpt["C_max"])
     W1 = _dense_from_sparse(W1_sparse)
     W2_rows = W2_sparse.indices[0].astype(np.int64, copy=False)
@@ -451,11 +427,11 @@ def load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
     W2_values = W2_sparse.values.astype(np.float32, copy=False)
 
     if "M1_mask" in ckpt:
-        M1_mask = _as_dense_float32(ckpt["M1_mask"])
+        M1_mask = _as_dense_float32(cast(np.ndarray | _SparseCoo, ckpt["M1_mask"]))
         W1 *= np.repeat(np.repeat(M1_mask, 6, axis=0), cors_per_joint, axis=1)
 
     if "M2_mask" in ckpt:
-        M2_mask = _as_dense_float32(ckpt["M2_mask"])
+        M2_mask = _as_dense_float32(cast(np.ndarray | _SparseCoo, ckpt["M2_mask"]))
         scale = M2_mask[W2_rows // cors_per_joint, W2_cols // 3].astype(np.float32, copy=False)
         keep = scale != 0.0
         W2_rows = W2_rows[keep]
