@@ -24,9 +24,10 @@ SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
-IDENTITY_MODEL_TYPES = ("mhr", "smpl", "smplx")
+IDENTITY_MODEL_TYPES = ("mhr", "anny", "smpl", "smplx")
 SOMA_IDENTITY_ASSETS = {
     "mhr": ("MHR/SOMA_wrap_lod1.obj", "MHR/base_body_lod1.obj"),
+    "anny": ("Anny/SOMA_wrap.obj", "Anny/base_body.obj"),
     "smpl": ("SMPL/SOMA_wrap.obj", "SMPL/base_body.obj"),
     "smplx": ("SMPLX/SOMA_wrap.obj", "SMPLX/base_body.obj"),
 }
@@ -117,6 +118,8 @@ def get_identity_model_path(model_type: str) -> Path | None:
     normalized = model_type.lower()
     if normalized == "mhr":
         return config.get_model_path("mhr")
+    if normalized == "anny":
+        return config.get_model_path("anny")
 
     if normalized == "smpl":
         model_path = config.get_model_path("smpl-neutral")
@@ -171,7 +174,7 @@ def _missing_assets(model_dir: Path) -> list[str]:
 def _identity_transfer_cache_file(asset_dir: Path, model_type: str) -> Path:
     preprocessed_dir = get_cache_dir() / "soma" / "preprocessed"
     preprocessed_dir.mkdir(parents=True, exist_ok=True)
-    key = hashlib.md5(f"identity-transfer-v1:{model_type}:{asset_dir.resolve()}".encode()).hexdigest()
+    key = hashlib.md5(f"identity-transfer-v2:{model_type}:{asset_dir.resolve()}".encode()).hexdigest()
     return preprocessed_dir / f"identity_transfer_{key}.npz"
 
 
@@ -300,6 +303,10 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
         mesh_dir = asset_dir / "MHR"
         source_mesh_name = "base_body_lod1.obj"
         target_mesh_name = "SOMA_wrap_lod1.obj"
+    elif normalized == "anny":
+        mesh_dir = asset_dir / "Anny"
+        source_mesh_name = "base_body.obj"
+        target_mesh_name = "SOMA_wrap.obj"
     else:
         mesh_dir = asset_dir / normalized.upper()
         source_mesh_name = "base_body.obj"
@@ -313,15 +320,23 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
         target_vertices=target_vertices,
     )
 
-    facial_inner_vertices = load_model_data(asset_dir)["facial_inner_vertices"]
-    unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base = _build_identity_laplacian_data(
-        target_vertices=target_vertices,
-        target_faces=target_faces,
-        unknown_ids=facial_inner_vertices,
-    )
+    if normalized == "anny":
+        unknown_ids = np.empty((0,), dtype=np.int64)
+        anchor_ids = np.empty((0,), dtype=np.int64)
+        solve_matrix = np.empty((0, 0), dtype=np.float32)
+        anchor_matrix = np.empty((0, 0), dtype=np.float32)
+        rhs_base = np.empty((0, 3), dtype=np.float32)
+    else:
+        facial_inner_vertices = load_model_data(asset_dir)["facial_inner_vertices"]
+        unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base = _build_identity_laplacian_data(
+            target_vertices=target_vertices,
+            target_faces=target_faces,
+            unknown_ids=facial_inner_vertices,
+        )
 
     np.savez_compressed(
         cache_file,
+        source_vertices=source_vertices,
         source_tetrahedra=source_tetrahedra,
         face_ids=face_ids,
         bary_coords=bary_coords,
@@ -332,6 +347,7 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
         rhs_base=rhs_base,
     )
     return {
+        "source_vertices": source_vertices,
         "source_tetrahedra": source_tetrahedra,
         "face_ids": face_ids,
         "bary_coords": bary_coords,

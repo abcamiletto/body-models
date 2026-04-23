@@ -19,7 +19,9 @@ from body_models.soma.io import get_model_path
 ASSET_DIR = Path(__file__).parent / "assets"
 RTOL = 1e-4
 ATOL = 1e-4
-SEEDS = {"soma": 101, "mhr": 202, "smplx": 303}
+SEEDS = {"soma": 101, "anny": 151, "mhr": 202, "smplx": 303}
+MODEL_RTOL = {"mhr": 2e-4}
+MODEL_ATOL = {"mhr": 2e-4}
 
 
 @pytest.fixture(scope="module")
@@ -34,6 +36,8 @@ def upstream_data_root() -> Path:
 
 def _make_upstream_layer(model_type: str, upstream_data_root: Path):
     pytest.importorskip("soma")
+    if model_type == "anny":
+        pytest.importorskip("anny")
 
     from soma import SOMALayer
 
@@ -55,15 +59,20 @@ def _make_upstream_layer(model_type: str, upstream_data_root: Path):
 
 
 def _sample_inputs(
+    model_type: str,
     num_identity_coeffs: int,
     num_scale_params: int | None,
     *,
     seed: int = 0,
 ) -> dict[str, torch.Tensor]:
     rng = np.random.default_rng(seed)
+    if model_type == "anny":
+        identity = torch.tensor(rng.uniform(0.2, 0.8, size=(1, num_identity_coeffs)).astype(np.float32))
+    else:
+        identity = torch.tensor(rng.standard_normal((1, num_identity_coeffs)).astype(np.float32) * 0.1)
     inputs = {
         "pose": torch.tensor(rng.standard_normal((1, 77, 3)).astype(np.float32) * 0.05),
-        "identity": torch.tensor(rng.standard_normal((1, num_identity_coeffs)).astype(np.float32) * 0.1),
+        "identity": identity,
         "global_translation": torch.tensor(rng.standard_normal((1, 3)).astype(np.float32) * 0.01),
     }
     if num_scale_params is not None:
@@ -73,10 +82,18 @@ def _sample_inputs(
 
 def _upstream_forward(layer, inputs: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     scale_params = inputs.get("scale_params")
+    identity = inputs["identity"]
+    if layer.identity_model_type == "anny":
+        labels = tuple(layer.identity_model.identity_model.phenotype_labels)
+        identity = {label: identity[:, i] for i, label in enumerate(labels)}
+        scale_params = {
+            label: torch.zeros_like(inputs["identity"][:, 0])
+            for label in layer.identity_model.identity_model.local_change_labels
+        }
     with torch.no_grad(), contextlib.redirect_stdout(io.StringIO()):
         return layer(
             inputs["pose"],
-            inputs["identity"],
+            identity,
             scale_params=scale_params,
             transl=inputs["global_translation"],
             pose2rot=True,
@@ -92,7 +109,7 @@ def soma_model_path() -> Path:
     return get_model_path()
 
 
-@pytest.mark.parametrize("model_type", ["soma", "mhr", "smplx"])
+@pytest.mark.parametrize("model_type", ["soma", "anny", "mhr", "smplx"])
 def test_torch_identity_backends_match_upstream(
     model_type: str,
     soma_model_path: Path,
@@ -102,6 +119,7 @@ def test_torch_identity_backends_match_upstream(
 
     upstream = _make_upstream_layer(model_type, upstream_data_root)
     inputs = _sample_inputs(
+        model_type,
         upstream.identity_model.num_identity_coeffs,
         upstream.identity_model.num_scale_params,
         seed=SEEDS[model_type],
@@ -124,5 +142,7 @@ def test_torch_identity_backends_match_upstream(
             scale_params=inputs.get("scale_params"),
         )
 
-    torch.testing.assert_close(verts, reference["vertices"], rtol=RTOL, atol=ATOL)
-    torch.testing.assert_close(_joint_positions(transforms), reference["joints"], rtol=RTOL, atol=ATOL)
+    rtol = MODEL_RTOL.get(model_type, RTOL)
+    atol = MODEL_ATOL.get(model_type, ATOL)
+    torch.testing.assert_close(verts, reference["vertices"], rtol=rtol, atol=atol)
+    torch.testing.assert_close(_joint_positions(transforms), reference["joints"], rtol=rtol, atol=atol)

@@ -13,6 +13,7 @@ from .io import PHENOTYPE_VARIATIONS
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+IDENTITY_LABELS = ("gender", "age", "muscle", "weight", "height", "proportions")
 
 # Coordinate transform constants (Z-up to Y-up)
 COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=np.float32)
@@ -114,6 +115,35 @@ def forward_vertices(
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
         vertices = vertices + global_translation[:, None]
     return vertices
+
+
+def identity_shape(
+    template_vertices: Float[Array, "V 3"],
+    blendshapes: Float[Array, "S V 3"],
+    phenotype_mask: Float[Array, "S P"],
+    anchors: dict[str, Float[Array, "A"]],
+    identity: Float[Array, "B 6"],
+    *,
+    extrapolate_phenotypes: bool = False,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    """Compute ANNY rest vertices from the six public phenotype controls."""
+    if xp is None:
+        xp = get_namespace(identity)
+
+    coeffs = _phenotype_to_coeffs(
+        xp=xp,
+        phenotype_mask=phenotype_mask,
+        anchors=anchors,
+        extrapolate_phenotypes=extrapolate_phenotypes,
+        gender=identity[:, 0],
+        age=identity[:, 1],
+        muscle=identity[:, 2],
+        weight=identity[:, 3],
+        height=identity[:, 4],
+        proportions=identity[:, 5],
+    )
+    return template_vertices + xp.einsum("bs,svd->bvd", coeffs, blendshapes)
 
 
 def forward_skeleton(
