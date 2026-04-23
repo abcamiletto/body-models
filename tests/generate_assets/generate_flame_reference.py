@@ -15,7 +15,7 @@ inputs/outputs under `tests/assets/flame`.
 Usage:
     uv run scripts/generate_flame_reference.py /path/to/flame_model_dir/
 
-Note: The model directory must contain FLAME_NEUTRAL.pkl (converted to pure numpy format,
+Note: The model path must point to FLAME_NEUTRAL.pkl (converted to pure numpy format,
 without chumpy dependencies) and dummy embedding files (flame_static_embedding.pkl,
 flame_dynamic_embedding.npy).
 """
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "model_path",
         type=Path,
-        help="Path to FLAME model directory containing FLAME_NEUTRAL.pkl",
+        help="Path to FLAME_NEUTRAL.pkl",
     )
     args = parser.parse_args()
 

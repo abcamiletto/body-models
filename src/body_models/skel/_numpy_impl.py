@@ -18,7 +18,7 @@ class SKEL(BodyModel):
     """SKEL body model with NumPy backend.
 
     Args:
-        model_path: Path to the SKEL model file or directory.
+        model_path: Path to the SKEL model file, or a SKEL asset directory when using config-style layout.
         gender: One of "male" or "female" (no neutral).
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
 

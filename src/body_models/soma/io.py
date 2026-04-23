@@ -59,7 +59,10 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
     if model_path is not None:
         model_path = Path(model_path)
         if model_path.is_file():
-            model_path = model_path.parent
+            raise ValueError(
+                f"Expected a SOMA asset directory, got file: {model_path}\n"
+                f"Please provide a directory containing {SOMA_CORE_ASSET}."
+            )
         if model_path.is_dir():
             missing = _missing_assets(model_path)
             if not missing:
@@ -67,10 +70,7 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
             if (model_path / SOMA_CORE_ASSET).exists():
                 return download_model(model_path)
             raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
-        raise FileNotFoundError(
-            f"SOMA model path {model_path} is invalid. "
-            f"Expected a directory containing {SOMA_CORE_ASSET} or the file itself."
-        )
+        raise FileNotFoundError(f"SOMA model path {model_path} does not exist.")
 
     cache_path = get_cache_dir() / "soma"
     if not _missing_assets(cache_path):
@@ -132,11 +132,10 @@ def get_identity_model_path(model_type: str) -> Path | None:
 
     path = Path(model_path)
     if path.is_dir():
-        for suffix in ("npz", "pkl"):
-            candidate = path / f"{filename}.{suffix}"
-            if candidate.exists():
-                return candidate
-        raise FileNotFoundError(f"SOMA identity backend requires {filename}.npz or {filename}.pkl in {path}.")
+        raise ValueError(
+            f"Directory paths are no longer supported for {normalized}: {path}\n"
+            f"Please set {normalized}-neutral to a direct {filename}.npz or {filename}.pkl path."
+        )
     return path
 
 

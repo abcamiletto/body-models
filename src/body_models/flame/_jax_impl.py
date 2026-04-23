@@ -22,7 +22,7 @@ class FLAME(BodyModel, nnx.Module):
     """FLAME head model with JAX/Flax NNX backend.
 
     Args:
-        model_path: Path to the FLAME model file or directory.
+        model_path: Path to the FLAME model file.
         simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
     Forward API:
         forward_vertices(shape, expression, pose, head_rotation, global_rotation, global_translation, vertex_indices=None)

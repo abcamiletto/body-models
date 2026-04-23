@@ -47,10 +47,15 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
 
     if model_path is not None:
         model_path = Path(model_path)
+        if model_path.is_file():
+            raise ValueError(
+                f"Expected an MHR model directory, got file: {model_path}\n"
+                "Please provide a directory containing mhr_model.pt."
+            )
         if (model_path / "mhr_model.pt").exists():
             return model_path
-        if model_path.exists():
-            return model_path.parent
+        if model_path.is_dir():
+            raise FileNotFoundError(f"MHR model directory is missing mhr_model.pt: {model_path}")
         raise FileNotFoundError(f"MHR model path {model_path} does not exist")
 
     cache_path = get_cache_dir() / "mhr"
