@@ -19,7 +19,7 @@ from ..smpl.torch import SMPL as _SMPL
 from ..smplx.torch import SMPLX as _SMPLX
 from . import core as _core
 from .io import (
-    IDENTITY_MODEL_TYPES as _IDENTITY_MODEL_TYPES,
+    MODEL_TYPE_SPECS as _MODEL_TYPE_SPECS,
     compute_kinematic_fronts as _compute_kinematic_fronts,
     get_identity_model_path as _get_identity_model_path,
     get_model_path as _get_model_path,
@@ -37,7 +37,7 @@ class SOMA(_BodyModel, _nn.Module):
 
     SHAPE_DIM = 128
     NUM_JOINTS = 77
-    VALID_MODEL_TYPES = ("soma", *_IDENTITY_MODEL_TYPES)
+    VALID_MODEL_TYPES = tuple(_MODEL_TYPE_SPECS)
 
     mean_full: _Float[_Tensor, "Vf 3"]
     mean_active: _Float[_Tensor, "Va 3"]
@@ -132,6 +132,9 @@ class SOMA(_BodyModel, _nn.Module):
         self.register_buffer("_skin_weights_full", _torch.as_tensor(skin_weights_full))
         self.register_buffer("_skin_weights_active", _torch.as_tensor(skin_weights_active))
         self.register_buffer("_faces", _torch.as_tensor(_np.asarray(faces, dtype=_np.int64)))
+        self.register_buffer("_identity_internal_to_source_rotation", _torch.eye(3, dtype=self.mean_full.dtype))
+        self.register_buffer("_identity_internal_to_source_translation", _torch.zeros(3, dtype=self.mean_full.dtype))
+        self.register_buffer("_identity_source_to_soma_rotation", _torch.eye(3, dtype=self.mean_full.dtype))
 
         self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
         self.parents = list(data["parents"])
@@ -141,12 +144,14 @@ class SOMA(_BodyModel, _nn.Module):
         self._kinematic_fronts_full = _compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data["joint_names"])
 
-        self._identity_source_scale = 1.0
-        self._identity_output_scale = 1.0
+        spec = _MODEL_TYPE_SPECS[self.model_type]
+        self.identity_dim = spec.identity_dim
+        self.num_scale_params = spec.num_scale_params
+        self._default_identity_value = spec.default_identity_value
+        self._identity_source_scale = spec.source_scale
+        self._identity_output_scale = spec.output_scale
 
-        if self.model_type == "soma":
-            self.identity_dim = self.SHAPE_DIM
-            self.num_scale_params = None
+        if spec.asset_dir is None:
             return
 
         transfer_data = _load_identity_transfer_data(resolved_path, self.model_type)
@@ -163,52 +168,12 @@ class SOMA(_BodyModel, _nn.Module):
         self.register_buffer("_identity_solve_matrix", _torch.as_tensor(transfer_data["solve_matrix"]))
         self.register_buffer("_identity_anchor_matrix", _torch.as_tensor(transfer_data["anchor_matrix"]))
         self.register_buffer("_identity_rhs_base", _torch.as_tensor(transfer_data["rhs_base"]))
-
-        if self.model_type == "mhr":
-            self.identity_dim = 45
-            self.num_scale_params = 68
-            self._identity_source_scale = 100.0
-            self._identity_mhr_model = _MHR(model_path=_get_identity_model_path("mhr"), simplify=1.0)
-            return
-
-        if self.model_type == "anny":
-            self.identity_dim = len(_anny_core.IDENTITY_LABELS)
-            self.num_scale_params = None
-            self._identity_output_scale = 100.0
-            self._identity_anny_model = _ANNY(
-                model_path=_get_identity_model_path("anny"),
-                all_phenotypes=False,
-                simplify=1.0,
-            )
-            source_vertices = _torch.as_tensor(transfer_data["source_vertices"], dtype=self.mean_full.dtype)
-            rotation, translation = _core.fit_rigid_transform(
-                self._identity_anny_model.template_vertices,
-                source_vertices,
-                xp=_torch,
-            )
-            self.register_buffer("_identity_internal_to_source_rotation", rotation)
-            self.register_buffer("_identity_internal_to_source_translation", translation)
-            self.register_buffer(
-                "_identity_source_to_soma_rotation",
-                _torch.as_tensor(_anny_core.COORD_ROTATION, dtype=self.mean_full.dtype),
-            )
-            return
-
-        self.identity_dim = 10
-        self.num_scale_params = None
-        self._identity_output_scale = 100.0
-        if self.model_type == "smplx":
-            self._identity_linear_model = _SMPLX(
-                model_path=_get_identity_model_path("smplx"),
-                gender="neutral",
-                simplify=1.0,
-            )
-        else:
-            self._identity_linear_model = _SMPL(
-                model_path=_get_identity_model_path("smpl"),
-                gender="neutral",
-                simplify=1.0,
-            )
+        {
+            "mhr": self._init_mhr_identity_backend,
+            "anny": self._init_anny_identity_backend,
+            "smpl": self._init_linear_identity_backend,
+            "smplx": self._init_linear_identity_backend,
+        }[self.model_type](transfer_data)
 
     @property
     def faces(self) -> _Int[_Tensor, "F 3"]:
@@ -245,7 +210,7 @@ class SOMA(_BodyModel, _nn.Module):
         vertex_indices=None,
         apply_correctives: bool = True,
     ) -> _Float[_Tensor, "B V 3"]:
-        identity, rest_shape_full, rest_shape_active = self._resolve_identity_inputs(
+        identity, rest_shape_full, rest_shape_active = self._get_rest_shape(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -296,7 +261,7 @@ class SOMA(_BodyModel, _nn.Module):
         joint_indices=None,
         apply_correctives: bool = True,
     ) -> _Float[_Tensor, "B 77 4 4"]:
-        identity, rest_shape_full, _rest_shape_active = self._resolve_identity_inputs(
+        identity, rest_shape_full, _rest_shape_active = self._get_rest_shape(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -345,17 +310,39 @@ class SOMA(_BodyModel, _nn.Module):
             ),
             "global_translation": _torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
-        identity_value = 0.5 if self.model_type == "anny" else 0.0
-        params["identity"] = _torch.full((1, self.identity_dim), identity_value, device=device, dtype=dtype)
+        params["identity"] = _torch.full(
+            (1, self.identity_dim),
+            self._default_identity_value,
+            device=device,
+            dtype=dtype,
+        )
         if self.num_scale_params is not None:
             params["scale_params"] = _torch.zeros((1, self.num_scale_params), device=device, dtype=dtype)
         return params
 
-    def _identity_rest_shape(
+    def _get_rest_shape(
         self,
-        identity: _Float[_Tensor, "B I"],
-        scale_params: _Float[_Tensor, "B K"] | None,
-    ) -> _Float[_Tensor, "B V 3"]:
+        *,
+        identity: _Float[_Tensor, "B|1 I"] | None,
+        scale_params: _Float[_Tensor, "B|1 K"] | None,
+        ref: _Float[_Tensor, "B ..."],
+    ) -> tuple[_Float[_Tensor, "B|1 I"] | None, _Float[_Tensor, "B V 3"] | None, _Float[_Tensor, "B V 3"] | None]:
+        if identity is None:
+            identity = _torch.full(
+                (1, self.identity_dim), self._default_identity_value, device=ref.device, dtype=ref.dtype
+            )
+        identity, scale_params = _core.resolve_identity_inputs(
+            identity=identity,
+            scale_params=scale_params,
+            batch_size=ref.shape[0],
+            identity_dim=self.identity_dim,
+            num_scale_params=self.num_scale_params,
+            ref=ref,
+            xp=_torch,
+        )
+        if self.model_type == "soma":
+            return identity, None, None
+
         if self.model_type == "mhr":
             num_scale_params = _cast(int, self.num_scale_params)
             rest_shape = _core.mhr_identity_shape(
@@ -374,12 +361,6 @@ class SOMA(_BodyModel, _nn.Module):
                 identity=identity,
                 xp=_torch,
             )
-            rest_shape = _core.apply_rigid_transform(
-                rest_shape,
-                rotation=self._identity_internal_to_source_rotation,
-                translation=self._identity_internal_to_source_translation,
-                xp=_torch,
-            )
         else:
             rest_shape = _core.linear_identity_shape(
                 mean=self._identity_linear_model.v_template_full,
@@ -388,6 +369,12 @@ class SOMA(_BodyModel, _nn.Module):
                 xp=_torch,
             )
 
+        rest_shape = _core.apply_rigid_transform(
+            rest_shape,
+            rotation=self._identity_internal_to_source_rotation,
+            translation=self._identity_internal_to_source_translation,
+            xp=_torch,
+        )
         if self._identity_source_scale != 1.0:
             rest_shape = rest_shape * self._identity_source_scale
 
@@ -403,40 +390,42 @@ class SOMA(_BodyModel, _nn.Module):
             rhs_base=self._identity_rhs_base,
             xp=_torch,
         )
-        if self.model_type == "anny":
-            rest_shape = _core.apply_rigid_transform(
-                rest_shape,
-                rotation=self._identity_source_to_soma_rotation,
-                xp=_torch,
-            )
-        if self._identity_output_scale != 1.0:
-            rest_shape = rest_shape * self._identity_output_scale
-        return rest_shape
-
-    def _resolve_identity_inputs(
-        self,
-        *,
-        identity: _Float[_Tensor, "B|1 I"] | None,
-        scale_params: _Float[_Tensor, "B|1 K"] | None,
-        ref: _Float[_Tensor, "B ..."],
-    ) -> tuple[_Float[_Tensor, "B|1 I"] | None, _Float[_Tensor, "B V 3"] | None, _Float[_Tensor, "B V 3"] | None]:
-        if identity is None and self.model_type == "anny":
-            identity = _torch.full((1, self.identity_dim), 0.5, device=ref.device, dtype=ref.dtype)
-        identity, scale_params = _core.resolve_identity_inputs(
-            identity=identity,
-            scale_params=scale_params,
-            batch_size=ref.shape[0],
-            identity_dim=self.identity_dim,
-            num_scale_params=self.num_scale_params,
-            ref=ref,
+        rest_shape = _core.apply_rigid_transform(
+            rest_shape,
+            rotation=self._identity_source_to_soma_rotation,
             xp=_torch,
         )
-        if self.model_type == "soma":
-            return identity, None, None
+        if self._identity_output_scale != 1.0:
+            rest_shape = rest_shape * self._identity_output_scale
+        rest_shape_active = rest_shape if self._vertex_map is None else rest_shape[:, self._vertex_map]
+        return None, rest_shape, rest_shape_active
 
-        rest_shape_full = self._identity_rest_shape(identity, scale_params)
-        if self._vertex_map is None:
-            rest_shape_active = rest_shape_full
-        else:
-            rest_shape_active = rest_shape_full[:, self._vertex_map]
-        return None, rest_shape_full, rest_shape_active
+    def _init_mhr_identity_backend(self, _transfer_data: dict[str, _np.ndarray]) -> None:
+        self._identity_mhr_model = _MHR(model_path=_get_identity_model_path("mhr"), simplify=1.0)
+
+    def _init_anny_identity_backend(self, transfer_data: dict[str, _np.ndarray]) -> None:
+        self._identity_anny_model = _ANNY(
+            model_path=_get_identity_model_path("anny"),
+            all_phenotypes=False,
+            simplify=1.0,
+        )
+        source_vertices = _torch.as_tensor(transfer_data["source_vertices"], dtype=self.mean_full.dtype)
+        rotation, translation = _core.fit_rigid_transform(
+            self._identity_anny_model.template_vertices,
+            source_vertices,
+            xp=_torch,
+        )
+        self._identity_internal_to_source_rotation = rotation
+        self._identity_internal_to_source_translation = translation
+        self._identity_source_to_soma_rotation = _torch.as_tensor(
+            _anny_core.COORD_ROTATION,
+            dtype=self.mean_full.dtype,
+        )
+
+    def _init_linear_identity_backend(self, _transfer_data: dict[str, _np.ndarray]) -> None:
+        linear_model_cls = {"smpl": _SMPL, "smplx": _SMPLX}[self.model_type]
+        self._identity_linear_model = linear_model_cls(
+            model_path=_get_identity_model_path(self.model_type),
+            gender="neutral",
+            simplify=1.0,
+        )
