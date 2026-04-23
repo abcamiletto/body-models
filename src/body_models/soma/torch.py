@@ -11,6 +11,7 @@ from torch import Tensor as _Tensor
 
 from ..base import BodyModel as _BodyModel
 from ..rotations import VALID_ROTATION_TYPES as _VALID_ROTATION_TYPES
+from ._identity_torch import TorchIdentityBackend as _TorchIdentityBackend
 from . import core as _core
 from .io import (
     compute_kinematic_fronts as _compute_kinematic_fronts,
@@ -28,6 +29,7 @@ class SOMA(_BodyModel, _nn.Module):
 
     SHAPE_DIM = 128
     NUM_JOINTS = 77
+    VALID_MODEL_TYPES = ("soma", "mhr", "smpl", "smplx")
 
     mean_full: _Tensor
     mean_active: _Tensor
@@ -47,19 +49,27 @@ class SOMA(_BodyModel, _nn.Module):
     _skin_weights_full: _Tensor
     _skin_weights_active: _Tensor
     _faces: _Tensor
+    _identity_backend: _TorchIdentityBackend | None
 
     def __init__(
         self,
         model_path: _Path | str | None = None,
         *,
+        model_type: str = "soma",
         simplify: float = 1.0,
         rotation_type: _core.RotationType = "axis_angle",
     ) -> None:
+        normalized_model_type = model_type.lower()
+        if normalized_model_type not in self.VALID_MODEL_TYPES:
+            raise ValueError(
+                f"Invalid model_type: {model_type}. Supported SOMA model types are {', '.join(self.VALID_MODEL_TYPES)}."
+            )
         if rotation_type not in _VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
         super().__init__()
 
+        self.model_type = normalized_model_type
         self.rotation_type = rotation_type
         resolved_path = _get_model_path(model_path)
         data = _load_model_data(resolved_path)
@@ -108,6 +118,18 @@ class SOMA(_BodyModel, _nn.Module):
         self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
         self._kinematic_fronts_full = _compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data["joint_names"])
+        self._identity_backend = None
+        if self.model_type != "soma":
+            self._identity_backend = _TorchIdentityBackend(
+                self.model_type,
+                resolved_path,
+                data["facial_inner_vertices"],
+            )
+            self.identity_dim = self._identity_backend.identity_dim
+            self.num_scale_params = self._identity_backend.scale_dim
+        else:
+            self.identity_dim = self.SHAPE_DIM
+            self.num_scale_params = None
 
     @property
     def faces(self) -> _Int[_Tensor, "F 3"]:
@@ -135,13 +157,24 @@ class SOMA(_BodyModel, _nn.Module):
 
     def forward_vertices(
         self,
-        shape: _Float[_Tensor, "B|1 128"],
         pose: _Float[_Tensor, "B 77 N"] | _Float[_Tensor, "B 77 3 3"],
+        *,
+        shape: _Float[_Tensor, "B|1 128"] | None = None,
+        identity: _Float[_Tensor, "B|1 I"] | None = None,
+        scale_params: _Float[_Tensor, "B|1 K"] | None = None,
         global_rotation: _Float[_Tensor, "B N"] | _Float[_Tensor, "B 3 3"] | None = None,
         global_translation: _Float[_Tensor, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
     ) -> _Float[_Tensor, "B V 3"]:
+        shape, rest_shape_full, rest_shape_active = self._resolve_identity_inputs(
+            shape=shape,
+            identity=identity,
+            scale_params=scale_params,
+            batch_size=pose.shape[0],
+            dtype=pose.dtype,
+            device=pose.device,
+        )
         return _core.forward_vertices(
             mean_full=self.mean_full,
             mean_active=self.mean_active,
@@ -160,6 +193,8 @@ class SOMA(_BodyModel, _nn.Module):
             parents_full=self._parents_full,
             shape=shape,
             pose=pose,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
@@ -177,13 +212,24 @@ class SOMA(_BodyModel, _nn.Module):
 
     def forward_skeleton(
         self,
-        shape: _Float[_Tensor, "B|1 128"],
         pose: _Float[_Tensor, "B 77 N"] | _Float[_Tensor, "B 77 3 3"],
+        *,
+        shape: _Float[_Tensor, "B|1 128"] | None = None,
+        identity: _Float[_Tensor, "B|1 I"] | None = None,
+        scale_params: _Float[_Tensor, "B|1 K"] | None = None,
         global_rotation: _Float[_Tensor, "B N"] | _Float[_Tensor, "B 3 3"] | None = None,
         global_translation: _Float[_Tensor, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
     ) -> _Float[_Tensor, "B 77 4 4"]:
+        shape, rest_shape_full, _rest_shape_active = self._resolve_identity_inputs(
+            shape=shape,
+            identity=identity,
+            scale_params=scale_params,
+            batch_size=pose.shape[0],
+            dtype=pose.dtype,
+            device=pose.device,
+        )
         return _core.forward_skeleton(
             mean_full=self.mean_full,
             shapedirs_full=self.shapedirs_full,
@@ -200,6 +246,7 @@ class SOMA(_BodyModel, _nn.Module):
             parents_full=self._parents_full,
             shape=shape,
             pose=pose,
+            rest_shape_full=rest_shape_full,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
@@ -212,8 +259,7 @@ class SOMA(_BodyModel, _nn.Module):
         device = self.mean_active.device
         pose_ref = _torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
         rot_ref = _torch.zeros((batch_size, 3), device=device, dtype=dtype)
-        return {
-            "shape": _torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype),
+        params = {
             "pose": _SO3.identity_as(
                 pose_ref,
                 batch_dims=(batch_size, self.num_joints),
@@ -228,3 +274,48 @@ class SOMA(_BodyModel, _nn.Module):
             ),
             "global_translation": _torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+        if self.model_type == "soma":
+            params["shape"] = _torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype)
+        else:
+            params["identity"] = _torch.zeros((1, self.identity_dim), device=device, dtype=dtype)
+            if self.num_scale_params is not None:
+                params["scale_params"] = _torch.zeros((1, self.num_scale_params), device=device, dtype=dtype)
+        return params
+
+    def _resolve_identity_inputs(
+        self,
+        *,
+        shape: _Tensor | None,
+        identity: _Tensor | None,
+        scale_params: _Tensor | None,
+        batch_size: int,
+        dtype: _torch.dtype,
+        device: _torch.device,
+    ) -> tuple[_Tensor | None, _Tensor | None, _Tensor | None]:
+        if self.model_type == "soma":
+            if identity is not None:
+                if shape is not None:
+                    raise ValueError("Pass either shape or identity for SOMA model_type='soma', not both.")
+                shape = identity
+            if shape is None:
+                raise ValueError("SOMA model_type='soma' requires shape or identity coefficients.")
+            return shape, None, None
+
+        if shape is not None:
+            raise ValueError("shape is only supported for SOMA model_type='soma'. Use identity for other backends.")
+
+        if identity is None:
+            identity = _torch.zeros((1, self.identity_dim), device=device, dtype=dtype)
+        if identity.shape[0] == 1 and batch_size > 1:
+            identity = identity.expand(batch_size, -1)
+        if scale_params is not None and scale_params.shape[0] == 1 and batch_size > 1:
+            scale_params = scale_params.expand(batch_size, -1)
+
+        identity_backend = self._identity_backend
+        assert identity_backend is not None
+        rest_shape_full = identity_backend(identity, scale_params)
+        if self._vertex_map is None:
+            rest_shape_active = rest_shape_full
+        else:
+            rest_shape_active = rest_shape_full[:, self._vertex_map]
+        return None, rest_shape_full, rest_shape_active
