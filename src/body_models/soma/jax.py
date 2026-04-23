@@ -179,7 +179,6 @@ class SOMA(_BodyModel, _nnx.Module):
         self,
         pose: _Float[_jax.Array, "B 77 N"] | _Float[_jax.Array, "B 77 3 3"],
         *,
-        shape: _Float[_jax.Array, "B|1 128"] | None = None,
         identity: _Float[_jax.Array, "B|1 I"] | None = None,
         scale_params: _Float[_jax.Array, "B|1 K"] | None = None,
         global_rotation: _Float[_jax.Array, "B N"] | _Float[_jax.Array, "B 3 3"] | None = None,
@@ -187,8 +186,7 @@ class SOMA(_BodyModel, _nnx.Module):
         vertex_indices=None,
         apply_correctives: bool = True,
     ) -> _Float[_jax.Array, "B V 3"]:
-        shape, rest_shape_full, rest_shape_active = self._resolve_identity_inputs(
-            shape=shape,
+        identity, rest_shape_full, rest_shape_active = self._resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -209,7 +207,7 @@ class SOMA(_BodyModel, _nnx.Module):
             skinned_vertex_indices_full=self._skinned_vertex_indices_full,
             kinematic_fronts_full=self._kinematic_fronts_full,
             parents_full=self._parents_full,
-            shape=shape,
+            identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
@@ -231,7 +229,6 @@ class SOMA(_BodyModel, _nnx.Module):
         self,
         pose: _Float[_jax.Array, "B 77 N"] | _Float[_jax.Array, "B 77 3 3"],
         *,
-        shape: _Float[_jax.Array, "B|1 128"] | None = None,
         identity: _Float[_jax.Array, "B|1 I"] | None = None,
         scale_params: _Float[_jax.Array, "B|1 K"] | None = None,
         global_rotation: _Float[_jax.Array, "B N"] | _Float[_jax.Array, "B 3 3"] | None = None,
@@ -239,8 +236,7 @@ class SOMA(_BodyModel, _nnx.Module):
         joint_indices=None,
         apply_correctives: bool = True,
     ) -> _Float[_jax.Array, "B 77 4 4"]:
-        shape, rest_shape_full, _rest_shape_active = self._resolve_identity_inputs(
-            shape=shape,
+        identity, rest_shape_full, _rest_shape_active = self._resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -259,7 +255,7 @@ class SOMA(_BodyModel, _nnx.Module):
             skinned_vertex_indices_full=self._skinned_vertex_indices_full,
             kinematic_fronts_full=self._kinematic_fronts_full,
             parents_full=self._parents_full,
-            shape=shape,
+            identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
             global_rotation=global_rotation,
@@ -287,10 +283,6 @@ class SOMA(_BodyModel, _nnx.Module):
             ),
             "global_translation": _jnp.zeros((batch_size, 3), dtype=dtype),
         }
-        if self.model_type == "soma":
-            params["shape"] = _jnp.zeros((1, self.SHAPE_DIM), dtype=dtype)
-            return params
-
         params["identity"] = _jnp.zeros((1, self.identity_dim), dtype=dtype)
         if self.num_scale_params is not None:
             params["scale_params"] = _jnp.zeros((1, self.num_scale_params), dtype=dtype)
@@ -340,18 +332,15 @@ class SOMA(_BodyModel, _nnx.Module):
     def _resolve_identity_inputs(
         self,
         *,
-        shape: _Float[_jax.Array, "B|1 128"] | None,
         identity: _Float[_jax.Array, "B|1 I"] | None,
         scale_params: _Float[_jax.Array, "B|1 K"] | None,
         ref: _Float[_jax.Array, "B ..."],
     ) -> tuple[
-        _Float[_jax.Array, "B|1 128"] | None,
+        _Float[_jax.Array, "B|1 I"] | None,
         _Float[_jax.Array, "B V 3"] | None,
         _Float[_jax.Array, "B V 3"] | None,
     ]:
-        shape, identity, scale_params = _core.resolve_identity_inputs(
-            model_type=self.model_type,
-            shape=shape,
+        identity, scale_params = _core.resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
@@ -360,8 +349,8 @@ class SOMA(_BodyModel, _nnx.Module):
             ref=ref,
             xp=_jnp,
         )
-        if identity is None:
-            return shape, None, None
+        if self.model_type == "soma":
+            return identity, None, None
 
         rest_shape_full = self._identity_rest_shape(identity, scale_params)
         if self._vertex_map is None:
