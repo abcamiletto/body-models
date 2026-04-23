@@ -51,7 +51,8 @@ class SMPL(BodyModel, nnx.Module):
         shapedirs = shapedirs_full
         posedirs = np.asarray(data["posedirs"], dtype=np.float32)
         J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int32)
+        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+        parents[0] = -1
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -70,8 +71,8 @@ class SMPL(BodyModel, nnx.Module):
         self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
         self.lbs_weights = nnx.Variable(jnp.asarray(lbs_weights))
         self.J_regressor = nnx.Variable(jnp.asarray(J_regressor))
-        self.parents = nnx.Variable(jnp.asarray(parents))
         self._faces = nnx.Variable(jnp.asarray(faces))
+        self.parents = parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = list(SMPL_JOINT_NAMES)
 
@@ -121,7 +122,7 @@ class SMPL(BodyModel, nnx.Module):
             lbs_weights=self.lbs_weights[...],
             j_template=self._j_template[...],
             j_shapedirs=self._j_shapedirs[...],
-            parents=self.parents[...],
+            parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             body_pose=body_pose,
@@ -144,7 +145,7 @@ class SMPL(BodyModel, nnx.Module):
         return core.forward_skeleton(
             j_template=self._j_template[...],
             j_shapedirs=self._j_shapedirs[...],
-            parents=self.parents[...],
+            parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             body_pose=body_pose,
