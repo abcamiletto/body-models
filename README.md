@@ -103,8 +103,8 @@ body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl
 body-models set smpl-male /path/to/SMPL_MALE.pkl
 body-models set smpl-female /path/to/SMPL_FEMALE.pkl
 body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
-body-models set skel /path/to/skel
-body-models set flame /path/to/flame
+body-models set skel /path/to/skel_models_v1.1
+body-models set flame /path/to/FLAME_NEUTRAL.pkl
 body-models set soma /path/to/soma-assets
 ```
 

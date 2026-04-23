@@ -31,17 +31,19 @@ def forward_vertices(
     skinned_vertex_indices_full: list[list[int]],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"],
+    identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    corrective_bindpose: Float[Array, "Jf 3 3"],
+    corrective_W1: Float[Array, "D K"],
+    corrective_W2_rows: Int[Array, "NNZ"],
+    corrective_W2_cols: Int[Array, "NNZ"],
+    corrective_W2_values: Float[Array, "NNZ"],
+    rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
+    rest_shape_active: Float[Array, "B|1 Va 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     vertex_map: Int[Array, "Va"] | None = None,
-    corrective_bindpose: Float[Array, "Jf 3 3"] | None = None,
-    corrective_W1: Float[Array, "D K"] | None = None,
-    corrective_W2_rows: Int[Array, "NNZ"] | None = None,
-    corrective_W2_cols: Int[Array, "NNZ"] | None = None,
-    corrective_W2_values: Float[Array, "NNZ"] | None = None,
     corrective_use_tanh: bool = True,
     apply_correctives: bool = True,
     rotation_type: RotationType = "axis_angle",
@@ -50,17 +52,18 @@ def forward_vertices(
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
     if xp is None:
-        xp = get_namespace(shape)
+        xp = get_namespace(identity if identity is not None else rest_shape_full)
 
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B = pose_rot.shape[0]
-    shape = _broadcast_shape(shape, batch_size=B, xp=xp)
     pose_rot_full = _orient_pose_rot_full(xp, pose_rot, t_pose_world, parents_full)
-
-    _rest_shape_full, world_bind_pose_fit = _prepare_identity(
+    rest_shape_full, rest_shape_active, world_bind_pose_fit = _prepare_rest_shapes(
         xp=xp,
-        mean=mean_full,
-        shapedirs=shapedirs_full,
+        batch_size=B,
+        mean_full=mean_full,
+        mean_active=mean_active,
+        shapedirs_full=shapedirs_full,
+        shapedirs_active=shapedirs_active,
         eigenvalues=eigenvalues,
         bind_shape=bind_shape_full,
         bind_pose_world=bind_pose_world,
@@ -68,19 +71,12 @@ def forward_vertices(
         joint_children_full=joint_children_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
-        shape=shape,
+        identity=identity,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
     )
-    rest_shape_active = _shape_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, shape)
 
     if apply_correctives:
-        if (
-            corrective_bindpose is None
-            or corrective_W1 is None
-            or corrective_W2_rows is None
-            or corrective_W2_cols is None
-            or corrective_W2_values is None
-        ):
-            raise ValueError("apply_correctives=True requires SOMA corrective weights.")
         rest_shape_active, world_bind_pose = _repose_to_bind_pose(
             xp=xp,
             rest_shape=rest_shape_active,
@@ -138,8 +134,9 @@ def forward_skeleton(
     skinned_vertex_indices_full: list[list[int]],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"],
+    identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    rest_shape_full: Float[Array, "B|1 V 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
@@ -150,14 +147,13 @@ def forward_skeleton(
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
     if xp is None:
-        xp = get_namespace(shape)
+        xp = get_namespace(identity if identity is not None else rest_shape_full)
 
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B = pose_rot.shape[0]
-    shape = _broadcast_shape(shape, batch_size=B, xp=xp)
-
-    rest_shape_full, world_bind_pose = _prepare_identity(
+    rest_shape_full, world_bind_pose = _prepare_identity_from_inputs(
         xp=xp,
+        batch_size=B,
         mean=mean_full,
         shapedirs=shapedirs_full,
         eigenvalues=eigenvalues,
@@ -167,7 +163,8 @@ def forward_skeleton(
         joint_children_full=joint_children_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
-        shape=shape,
+        identity=identity,
+        rest_shape=rest_shape_full,
     )
     if apply_correctives:
         rest_shape_full, world_bind_pose = _repose_to_bind_pose(
@@ -196,6 +193,115 @@ def forward_skeleton(
     if joint_indices is not None:
         public = public[:, xp.asarray(joint_indices)]
     return public
+
+
+def transfer_identity_rest_shape(
+    source_shape: Float[Array, "B Vs 3"],
+    source_tetrahedra: Int[Array, "Fs 4"],
+    face_ids: Int[Array, "Vt"],
+    bary_coords: Float[Array, "Vt 4"],
+    unknown_ids: Int[Array, "U"],
+    anchor_ids: Int[Array, "A"],
+    solve_matrix: Float[Array, "U U"],
+    anchor_matrix: Float[Array, "U A"],
+    rhs_base: Float[Array, "U 3"],
+    *,
+    xp: Any = None,
+) -> Float[Array, "B Vt 3"]:
+    if xp is None:
+        xp = get_namespace(source_shape)
+
+    tetra_faces = source_tetrahedra[:, :3]
+    f0 = source_shape[:, tetra_faces[:, 0]]
+    f1 = source_shape[:, tetra_faces[:, 1]]
+    f2 = source_shape[:, tetra_faces[:, 2]]
+    fabricated = f0 + xp.linalg.cross(f1 - f0, f2 - f0)
+    source_shape_tet = xp.concat([source_shape, fabricated], axis=1)
+
+    tet_indices = source_tetrahedra[face_ids]
+    v0 = source_shape_tet[:, tet_indices[:, 0]]
+    v1 = source_shape_tet[:, tet_indices[:, 1]]
+    v2 = source_shape_tet[:, tet_indices[:, 2]]
+    v3 = source_shape_tet[:, tet_indices[:, 3]]
+    bc = bary_coords[None]
+    target_shape = v0 * bc[..., 0:1] + v1 * bc[..., 1:2] + v2 * bc[..., 2:3] + v3 * bc[..., 3:4]
+
+    if unknown_ids.shape[0] == 0:
+        return target_shape
+
+    B = target_shape.shape[0]
+    num_unknown = unknown_ids.shape[0]
+    num_anchor = anchor_ids.shape[0]
+    anchor_vertices = target_shape[:, anchor_ids]
+    anchor_vertices = xp.reshape(anchor_vertices.swapaxes(0, 1), (num_anchor, B * 3))
+    rhs = xp.broadcast_to(rhs_base[:, None, :], (num_unknown, B, 3)).reshape(num_unknown, B * 3)
+    rhs = rhs - anchor_matrix @ anchor_vertices
+    unknown_vertices = xp.linalg.solve(solve_matrix, rhs)
+    unknown_vertices = xp.reshape(unknown_vertices, (num_unknown, B, 3)).swapaxes(0, 1)
+    return common.set(target_shape, (slice(None), unknown_ids), unknown_vertices, xp=xp)
+
+
+def linear_identity_shape(
+    mean: Float[Array, "V 3"],
+    shapedirs: Float[Array, "V 3 S"] | Float[Array, "V 3 I"],
+    identity: Float[Array, "B I"],
+    *,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    if xp is None:
+        xp = get_namespace(identity)
+    identity_dim = identity.shape[1]
+    return mean[None] + xp.einsum("bi,vci->bvc", identity, shapedirs[..., :identity_dim])
+
+
+def mhr_identity_shape(
+    model: Any,
+    identity: Float[Array, "B I"],
+    scale_params: Float[Array, "B K"] | None,
+    num_scale_params: int,
+    *,
+    xp: Any = None,
+) -> Float[Array, "B V 3"]:
+    if xp is None:
+        xp = get_namespace(identity)
+
+    batch_size = identity.shape[0]
+    if scale_params is None:
+        scale_params = common.zeros_as(identity, shape=(batch_size, num_scale_params), xp=xp)
+    zero_pose = common.zeros_as(identity, shape=(batch_size, model.pose_dim), xp=xp)
+    zero_pose = common.set(zero_pose, (slice(None), slice(-num_scale_params, None)), scale_params, xp=xp)
+    expression = common.zeros_as(identity, shape=(batch_size, model.EXPR_DIM), xp=xp)
+    return model.forward_vertices(shape=identity, pose=zero_pose, expression=expression)
+
+
+def resolve_identity_inputs(
+    identity: Float[Array, "B|1 I"] | None,
+    scale_params: Float[Array, "B|1 K"] | None,
+    *,
+    batch_size: int,
+    identity_dim: int,
+    num_scale_params: int | None,
+    ref: Array,
+    xp: Any = None,
+) -> tuple[Float[Array, "B I"], Float[Array, "B K"] | None]:
+    if xp is None:
+        xp = get_namespace(ref)
+
+    if identity is None:
+        identity = common.zeros_as(ref, shape=(1, identity_dim), xp=xp)
+    if identity.shape[0] == 1 and batch_size > 1:
+        identity = xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
+
+    if num_scale_params is None:
+        if scale_params is not None:
+            raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
+        return identity, None
+
+    if scale_params is None:
+        scale_params = common.zeros_as(ref, shape=(1, num_scale_params), xp=xp)
+    if scale_params.shape[0] == 1 and batch_size > 1:
+        scale_params = xp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+    return identity, scale_params
 
 
 def apply_pose_correctives(
@@ -240,37 +346,39 @@ def apply_pose_correctives(
     return out.reshape(B, num_vertices, 3)
 
 
-def _broadcast_shape(shape: Array, *, batch_size: int, xp: Any) -> Array:
-    if shape.shape[0] == 1 and batch_size > 1:
-        return xp.broadcast_to(shape, (batch_size, shape.shape[-1]))
-    return shape
+def _broadcast_identity(identity: Array, *, batch_size: int, xp: Any) -> Array:
+    if identity.shape[0] == 1 and batch_size > 1:
+        return xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
+    return identity
 
 
-def _shape_to_rest_vertices(
+def _broadcast_rest_shape(rest_shape: Array, *, batch_size: int, xp: Any) -> Array:
+    if rest_shape.shape[0] == 1 and batch_size > 1:
+        return xp.broadcast_to(rest_shape, (batch_size, *rest_shape.shape[1:]))
+    return rest_shape
+
+
+def _identity_to_rest_vertices(
     xp,
     mean: Float[Array, "V 3"],
     shapedirs: Float[Array, "S V 3"],
     eigenvalues: Float[Array, "S"],
-    shape: Float[Array, "B S"],
+    identity: Float[Array, "B S"],
 ) -> Float[Array, "B V 3"]:
-    coeffs = shape * xp.sqrt(eigenvalues)[None]
+    coeffs = identity * xp.sqrt(eigenvalues)[None]
     return mean[None] + xp.einsum("bs,svc->bvc", coeffs, shapedirs)
 
 
-def _prepare_identity(
+def _fit_rest_shape_to_bind_pose(
     xp,
-    mean: Float[Array, "V 3"],
-    shapedirs: Float[Array, "S V 3"],
-    eigenvalues: Float[Array, "S"],
     bind_shape: Float[Array, "V 3"],
     bind_pose_world: Float[Array, "J 4 4"],
     joint_regressor: Float[Array, "J V"],
     joint_children_full: list[list[int]],
     skinned_vertex_indices_full: list[list[int]],
     parents_full: list[int],
-    shape: Float[Array, "B S"],
+    rest_shape: Float[Array, "B V 3"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
-    rest_shape = _shape_to_rest_vertices(xp, mean, shapedirs, eigenvalues, shape)
     joint_positions = xp.einsum("jv,bvc->bjc", joint_regressor, rest_shape)
     world_bind_pose = _fit_joint_rotations(
         xp=xp,
@@ -283,6 +391,84 @@ def _prepare_identity(
         target_shape=rest_shape,
     )
     return rest_shape, world_bind_pose
+
+
+def _prepare_identity_from_inputs(
+    xp,
+    batch_size: int,
+    mean: Float[Array, "V 3"],
+    shapedirs: Float[Array, "S V 3"],
+    eigenvalues: Float[Array, "S"],
+    bind_shape: Float[Array, "V 3"],
+    bind_pose_world: Float[Array, "J 4 4"],
+    joint_regressor: Float[Array, "J V"],
+    joint_children_full: list[list[int]],
+    skinned_vertex_indices_full: list[list[int]],
+    parents_full: list[int],
+    identity: Float[Array, "B|1 S"] | None,
+    rest_shape: Float[Array, "B|1 V 3"] | None,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    if rest_shape is not None:
+        rest_shape = _broadcast_rest_shape(rest_shape, batch_size=batch_size, xp=xp)
+    else:
+        if identity is None:
+            raise ValueError("SOMA forward pass requires either identity or a precomputed rest_shape.")
+        identity = _broadcast_identity(identity, batch_size=batch_size, xp=xp)
+        rest_shape = _identity_to_rest_vertices(xp, mean, shapedirs, eigenvalues, identity)
+    return _fit_rest_shape_to_bind_pose(
+        xp=xp,
+        bind_shape=bind_shape,
+        bind_pose_world=bind_pose_world,
+        joint_regressor=joint_regressor,
+        joint_children_full=joint_children_full,
+        skinned_vertex_indices_full=skinned_vertex_indices_full,
+        parents_full=parents_full,
+        rest_shape=rest_shape,
+    )
+
+
+def _prepare_rest_shapes(
+    xp,
+    batch_size: int,
+    mean_full: Float[Array, "Vf 3"],
+    mean_active: Float[Array, "Va 3"],
+    shapedirs_full: Float[Array, "S Vf 3"],
+    shapedirs_active: Float[Array, "S Va 3"],
+    eigenvalues: Float[Array, "S"],
+    bind_shape: Float[Array, "Vf 3"],
+    bind_pose_world: Float[Array, "Jf 4 4"],
+    joint_regressor: Float[Array, "Jf Vf"],
+    joint_children_full: list[list[int]],
+    skinned_vertex_indices_full: list[list[int]],
+    parents_full: list[int],
+    identity: Float[Array, "B|1 S"] | None,
+    rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
+    rest_shape_active: Float[Array, "B|1 Va 3"] | None,
+) -> tuple[Float[Array, "B Vf 3"], Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
+    full_shape, world_bind_pose = _prepare_identity_from_inputs(
+        xp=xp,
+        batch_size=batch_size,
+        mean=mean_full,
+        shapedirs=shapedirs_full,
+        eigenvalues=eigenvalues,
+        bind_shape=bind_shape,
+        bind_pose_world=bind_pose_world,
+        joint_regressor=joint_regressor,
+        joint_children_full=joint_children_full,
+        skinned_vertex_indices_full=skinned_vertex_indices_full,
+        parents_full=parents_full,
+        identity=identity,
+        rest_shape=rest_shape_full,
+    )
+    if rest_shape_active is not None:
+        active_shape = _broadcast_rest_shape(rest_shape_active, batch_size=batch_size, xp=xp)
+    else:
+        if identity is None:
+            active_shape = full_shape
+        else:
+            identity = _broadcast_identity(identity, batch_size=batch_size, xp=xp)
+            active_shape = _identity_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, identity)
+    return full_shape, active_shape, world_bind_pose
 
 
 def _repose_to_bind_pose(
@@ -307,8 +493,7 @@ def _repose_to_bind_pose(
     T_local = _build_transform_matrix(xp, bind_rot, local_t)
     T_world = _forward_kinematics(xp, T_local, kinematic_fronts)
 
-    y_shift = xp.min(T_world[:, :, 1, 3], axis=1)
-    y_shift = y_shift.values if hasattr(y_shift, "values") else y_shift[0] if isinstance(y_shift, tuple) else y_shift
+    y_shift = xp.amin(T_world[:, :, 1, 3], axis=1)
     T_world = common.set(
         T_world,
         (slice(None), slice(None), 1, 3),
