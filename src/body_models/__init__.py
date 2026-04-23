@@ -66,7 +66,9 @@ def main() -> None:
 
     @app.command()
     def download(
-        model: Annotated[Literal["smpl", "smplx", "skel", "flame", "anny", "mhr", "soma", "all"], typer.Argument()] = "all",
+        model: Annotated[
+            Literal["smpl", "smplx", "skel", "flame", "anny", "mhr", "soma", "all"], typer.Argument()
+        ] = "all",
     ):
         """Download model weights and save their paths."""
         if model in ("smpl", "all"):
