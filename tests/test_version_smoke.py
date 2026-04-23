@@ -7,12 +7,27 @@ import numpy as np
 import pytest
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ("smpl", "smplx", "skel", "flame", "anny", "mhr")
+MODEL_CASES = (
+    pytest.param("smpl", {}, id="smpl"),
+    pytest.param("smplx", {}, id="smplx"),
+    pytest.param("skel", {}, id="skel"),
+    pytest.param("flame", {}, id="flame"),
+    pytest.param("anny", {}, id="anny"),
+    pytest.param("mhr", {}, id="mhr"),
+    pytest.param("soma", {"model_type": "soma"}, id="soma"),
+    pytest.param("soma", {"model_type": "anny"}, id="soma-anny"),
+    pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr"),
+)
 BACKENDS = ("numpy", "torch", "jax")
 
 
 def get_model_file(model_name: str) -> Path:
     """Get the test asset path for a given model."""
+    if model_name == "soma":
+        from body_models.soma.io import get_model_path
+
+        return get_model_path()
+
     model_dir = ASSET_DIR / model_name / "model"
     if not model_dir.exists():
         return model_dir
@@ -28,7 +43,7 @@ def get_model_file(model_name: str) -> Path:
     return model_dir
 
 
-def get_model(backend: str, model_name: str, model_path: Path) -> Any:
+def get_model(backend: str, model_name: str, model_path: Path, **kwargs) -> Any:
     """Instantiate a model for a specific backend."""
     if backend == "numpy":
         if model_name == "smpl":
@@ -55,6 +70,10 @@ def get_model(backend: str, model_name: str, model_path: Path) -> Any:
             from body_models.mhr.numpy import MHR
 
             return MHR(model_path=model_path)
+        if model_name == "soma":
+            from body_models.soma.numpy import SOMA
+
+            return SOMA(model_path=model_path, **kwargs)
 
     if backend == "torch":
         if model_name == "smpl":
@@ -81,6 +100,10 @@ def get_model(backend: str, model_name: str, model_path: Path) -> Any:
             from body_models.mhr.torch import MHR
 
             return MHR(model_path=model_path)
+        if model_name == "soma":
+            from body_models.soma.torch import SOMA
+
+            return SOMA(model_path=model_path, **kwargs)
 
     if backend == "jax":
         if model_name == "smpl":
@@ -107,24 +130,29 @@ def get_model(backend: str, model_name: str, model_path: Path) -> Any:
             from body_models.mhr.jax import MHR
 
             return MHR(model_path=model_path)
+        if model_name == "soma":
+            from body_models.soma.jax import SOMA
+
+            return SOMA(model_path=model_path, **kwargs)
 
     raise ValueError(f"Unsupported backend/model combination: {backend}/{model_name}")
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-@pytest.mark.parametrize("model_name", MODELS)
-def test_forward_smoke(backend: str, model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_forward_smoke(backend: str, model_name: str, model_kwargs: dict[str, str]) -> None:
     """Ensure basic forward passes work across all backends and models."""
     if backend == "torch":
         pytest.importorskip("torch")
     if backend == "jax":
         pytest.importorskip("jax")
+        pytest.importorskip("flax")
 
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
 
-    model = get_model(backend, model_name, model_path)
+    model = get_model(backend, model_name, model_path, **model_kwargs)
     params = model.get_rest_pose(batch_size=1)
 
     if backend == "torch":

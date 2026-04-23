@@ -11,10 +11,32 @@ import pytest
 import torch
 
 ASSET_DIR = Path(__file__).parent / "assets"
+MODEL_CASES = [
+    pytest.param("smpl", {}, id="smpl"),
+    pytest.param("smplx", {}, id="smplx"),
+    pytest.param("skel", {}, id="skel"),
+    pytest.param("flame", {}, id="flame"),
+    pytest.param("anny", {}, id="anny"),
+    pytest.param("mhr", {}, id="mhr"),
+    pytest.param("soma", {"model_type": "soma"}, id="soma"),
+    pytest.param("soma", {"model_type": "anny"}, id="soma-anny"),
+    pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr"),
+]
+
+
+def get_compile_tolerances(model_name: str) -> tuple[float, float]:
+    if model_name == "soma":
+        return 1e-4, 1e-4
+    return 1e-5, 1e-5
 
 
 def get_model_file(model_name: str) -> Path:
     """Get the actual model file path for a given model."""
+    if model_name == "soma":
+        from body_models.soma.io import get_model_path
+
+        return get_model_path()
+
     model_dir = ASSET_DIR / model_name / "model"
     if not model_dir.exists():
         return model_dir  # Will trigger skip
@@ -31,7 +53,7 @@ def get_model_file(model_name: str) -> Path:
     return model_dir
 
 
-def get_torch_model(model_name: str, model_path: Path):
+def get_torch_model(model_name: str, model_path: Path, **kwargs):
     """Import and instantiate a PyTorch model by name."""
     if model_name == "smpl":
         from body_models.smpl.torch import SMPL
@@ -57,6 +79,10 @@ def get_torch_model(model_name: str, model_path: Path):
         from body_models.mhr.torch import MHR
 
         return MHR()
+    elif model_name == "soma":
+        from body_models.soma.torch import SOMA
+
+        return SOMA(model_path=model_path, **kwargs)
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -66,14 +92,14 @@ def get_torch_model(model_name: str, model_path: Path):
 # ============================================================================
 
 
-@pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
-def test_torch_compile_forward_vertices(model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_torch_compile_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile produces correct results for forward_vertices."""
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
 
-    model = get_torch_model(model_name, model_path)
+    model = get_torch_model(model_name, model_path, **model_kwargs)
     model.eval()
 
     # Compile model
@@ -90,17 +116,18 @@ def test_torch_compile_forward_vertices(model_name: str) -> None:
         result_compiled = compiled_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=1e-5, atol=1e-5)
+    rtol, atol = get_compile_tolerances(model_name)
+    np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=rtol, atol=atol)
 
 
-@pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
-def test_torch_compile_forward_skeleton(model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile produces correct results for forward_skeleton."""
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
 
-    model = get_torch_model(model_name, model_path)
+    model = get_torch_model(model_name, model_path, **model_kwargs)
     model.eval()
 
     # Compile model
@@ -117,7 +144,8 @@ def test_torch_compile_forward_skeleton(model_name: str) -> None:
         result_compiled = compiled_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=1e-5, atol=1e-5)
+    rtol, atol = get_compile_tolerances(model_name)
+    np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=rtol, atol=atol)
 
 
 # ============================================================================
@@ -125,14 +153,14 @@ def test_torch_compile_forward_skeleton(model_name: str) -> None:
 # ============================================================================
 
 
-@pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
-def test_torch_compile_fullgraph_forward_vertices(model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_torch_compile_fullgraph_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_vertices."""
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
 
-    model = get_torch_model(model_name, model_path)
+    model = get_torch_model(model_name, model_path, **model_kwargs)
     model.eval()
 
     # Compile with fullgraph=True - will fail if there are any graph breaks
@@ -150,14 +178,14 @@ def test_torch_compile_fullgraph_forward_vertices(model_name: str) -> None:
     assert result_compiled.shape[2] == 3
 
 
-@pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
-def test_torch_compile_fullgraph_forward_skeleton(model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_torch_compile_fullgraph_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_skeleton."""
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
 
-    model = get_torch_model(model_name, model_path)
+    model = get_torch_model(model_name, model_path, **model_kwargs)
     model.eval()
 
     # Compile with fullgraph=True - will fail if there are any graph breaks
@@ -180,7 +208,7 @@ def test_torch_compile_fullgraph_forward_skeleton(model_name: str) -> None:
 # ============================================================================
 
 
-def get_jax_model(model_name: str, model_path: Path):
+def get_jax_model(model_name: str, model_path: Path, **kwargs):
     """Import and instantiate a JAX model by name."""
     if model_name == "smpl":
         from body_models.smpl.jax import SMPL
@@ -206,20 +234,25 @@ def get_jax_model(model_name: str, model_path: Path):
         from body_models.mhr.jax import MHR
 
         return MHR()
+    elif model_name == "soma":
+        from body_models.soma.jax import SOMA
+
+        return SOMA(model_path=model_path, **kwargs)
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
 
-@pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
-def test_jax_jit_forward_vertices(model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_jax_jit_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test jax.jit produces correct results for forward_vertices."""
     jax = pytest.importorskip("jax")
+    pytest.importorskip("flax")
 
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
 
-    model = get_jax_model(model_name, model_path)
+    model = get_jax_model(model_name, model_path, **model_kwargs)
 
     # JIT compile
     jitted_fn = jax.jit(model.forward_vertices)
@@ -235,20 +268,22 @@ def test_jax_jit_forward_vertices(model_name: str) -> None:
     result_jitted_2 = jitted_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
-    np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
+    rtol, atol = get_compile_tolerances(model_name)
+    np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=rtol, atol=atol)
 
 
-@pytest.mark.parametrize("model_name", ["smpl", "smplx", "skel", "flame", "anny", "mhr"])
-def test_jax_jit_forward_skeleton(model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_jax_jit_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test jax.jit produces correct results for forward_skeleton."""
     jax = pytest.importorskip("jax")
+    pytest.importorskip("flax")
 
     model_path = get_model_file(model_name)
     if not model_path.exists():
         pytest.skip(f"Model assets not found: {model_path}")
 
-    model = get_jax_model(model_name, model_path)
+    model = get_jax_model(model_name, model_path, **model_kwargs)
 
     # JIT compile
     jitted_fn = jax.jit(model.forward_skeleton)
@@ -264,5 +299,6 @@ def test_jax_jit_forward_skeleton(model_name: str) -> None:
     result_jitted_2 = jitted_fn(**params)
 
     # Verify same results
-    np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
-    np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
+    rtol, atol = get_compile_tolerances(model_name)
+    np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=rtol, atol=atol)
