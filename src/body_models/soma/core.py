@@ -31,7 +31,7 @@ def forward_vertices(
     skinned_vertex_indices_full: list[list[int]],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"] | None,
+    identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     corrective_bindpose: Float[Array, "Jf 3 3"],
     corrective_W1: Float[Array, "D K"],
@@ -52,7 +52,7 @@ def forward_vertices(
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
     if xp is None:
-        xp = get_namespace(shape if shape is not None else rest_shape_full)
+        xp = get_namespace(identity if identity is not None else rest_shape_full)
 
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B = pose_rot.shape[0]
@@ -71,7 +71,7 @@ def forward_vertices(
         joint_children_full=joint_children_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
-        shape=shape,
+        identity=identity,
         rest_shape_full=rest_shape_full,
         rest_shape_active=rest_shape_active,
     )
@@ -134,7 +134,7 @@ def forward_skeleton(
     skinned_vertex_indices_full: list[list[int]],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"] | None,
+    identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rest_shape_full: Float[Array, "B|1 V 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -147,7 +147,7 @@ def forward_skeleton(
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
     if xp is None:
-        xp = get_namespace(shape if shape is not None else rest_shape_full)
+        xp = get_namespace(identity if identity is not None else rest_shape_full)
 
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B = pose_rot.shape[0]
@@ -163,7 +163,7 @@ def forward_skeleton(
         joint_children_full=joint_children_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
-        shape=shape,
+        identity=identity,
         rest_shape=rest_shape_full,
     )
     if apply_correctives:
@@ -275,8 +275,6 @@ def mhr_identity_shape(
 
 
 def resolve_identity_inputs(
-    model_type: str,
-    shape: Float[Array, "B|1 S"] | None,
     identity: Float[Array, "B|1 I"] | None,
     scale_params: Float[Array, "B|1 K"] | None,
     *,
@@ -285,21 +283,9 @@ def resolve_identity_inputs(
     num_scale_params: int | None,
     ref: Array,
     xp: Any = None,
-) -> tuple[Float[Array, "B|1 S"] | None, Float[Array, "B I"] | None, Float[Array, "B K"] | None]:
+) -> tuple[Float[Array, "B I"], Float[Array, "B K"] | None]:
     if xp is None:
         xp = get_namespace(ref)
-
-    if model_type == "soma":
-        if identity is not None:
-            if shape is not None:
-                raise ValueError("Pass either shape or identity for SOMA model_type='soma', not both.")
-            shape = identity
-        if shape is None:
-            raise ValueError("SOMA model_type='soma' requires shape or identity coefficients.")
-        return shape, None, None
-
-    if shape is not None:
-        raise ValueError("shape is only supported for SOMA model_type='soma'. Use identity for other backends.")
 
     if identity is None:
         identity = common.zeros_as(ref, shape=(1, identity_dim), xp=xp)
@@ -309,13 +295,13 @@ def resolve_identity_inputs(
     if num_scale_params is None:
         if scale_params is not None:
             raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
-        return None, identity, scale_params
+        return identity, None
 
     if scale_params is None:
         scale_params = common.zeros_as(ref, shape=(1, num_scale_params), xp=xp)
     if scale_params.shape[0] == 1 and batch_size > 1:
         scale_params = xp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
-    return None, identity, scale_params
+    return identity, scale_params
 
 
 def apply_pose_correctives(
@@ -360,10 +346,10 @@ def apply_pose_correctives(
     return out.reshape(B, num_vertices, 3)
 
 
-def _broadcast_shape(shape: Array, *, batch_size: int, xp: Any) -> Array:
-    if shape.shape[0] == 1 and batch_size > 1:
-        return xp.broadcast_to(shape, (batch_size, shape.shape[-1]))
-    return shape
+def _broadcast_identity(identity: Array, *, batch_size: int, xp: Any) -> Array:
+    if identity.shape[0] == 1 and batch_size > 1:
+        return xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
+    return identity
 
 
 def _broadcast_rest_shape(rest_shape: Array, *, batch_size: int, xp: Any) -> Array:
@@ -372,14 +358,14 @@ def _broadcast_rest_shape(rest_shape: Array, *, batch_size: int, xp: Any) -> Arr
     return rest_shape
 
 
-def _shape_to_rest_vertices(
+def _identity_to_rest_vertices(
     xp,
     mean: Float[Array, "V 3"],
     shapedirs: Float[Array, "S V 3"],
     eigenvalues: Float[Array, "S"],
-    shape: Float[Array, "B S"],
+    identity: Float[Array, "B S"],
 ) -> Float[Array, "B V 3"]:
-    coeffs = shape * xp.sqrt(eigenvalues)[None]
+    coeffs = identity * xp.sqrt(eigenvalues)[None]
     return mean[None] + xp.einsum("bs,svc->bvc", coeffs, shapedirs)
 
 
@@ -419,16 +405,16 @@ def _prepare_identity_from_inputs(
     joint_children_full: list[list[int]],
     skinned_vertex_indices_full: list[list[int]],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"] | None,
+    identity: Float[Array, "B|1 S"] | None,
     rest_shape: Float[Array, "B|1 V 3"] | None,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     if rest_shape is not None:
         rest_shape = _broadcast_rest_shape(rest_shape, batch_size=batch_size, xp=xp)
     else:
-        if shape is None:
-            raise ValueError("SOMA forward pass requires either shape or a precomputed rest_shape.")
-        shape = _broadcast_shape(shape, batch_size=batch_size, xp=xp)
-        rest_shape = _shape_to_rest_vertices(xp, mean, shapedirs, eigenvalues, shape)
+        if identity is None:
+            raise ValueError("SOMA forward pass requires either identity or a precomputed rest_shape.")
+        identity = _broadcast_identity(identity, batch_size=batch_size, xp=xp)
+        rest_shape = _identity_to_rest_vertices(xp, mean, shapedirs, eigenvalues, identity)
     return _fit_rest_shape_to_bind_pose(
         xp=xp,
         bind_shape=bind_shape,
@@ -455,7 +441,7 @@ def _prepare_rest_shapes(
     joint_children_full: list[list[int]],
     skinned_vertex_indices_full: list[list[int]],
     parents_full: list[int],
-    shape: Float[Array, "B|1 S"] | None,
+    identity: Float[Array, "B|1 S"] | None,
     rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
     rest_shape_active: Float[Array, "B|1 Va 3"] | None,
 ) -> tuple[Float[Array, "B Vf 3"], Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
@@ -471,17 +457,17 @@ def _prepare_rest_shapes(
         joint_children_full=joint_children_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         parents_full=parents_full,
-        shape=shape,
+        identity=identity,
         rest_shape=rest_shape_full,
     )
     if rest_shape_active is not None:
         active_shape = _broadcast_rest_shape(rest_shape_active, batch_size=batch_size, xp=xp)
     else:
-        if shape is None:
+        if identity is None:
             active_shape = full_shape
         else:
-            shape = _broadcast_shape(shape, batch_size=batch_size, xp=xp)
-            active_shape = _shape_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, shape)
+            identity = _broadcast_identity(identity, batch_size=batch_size, xp=xp)
+            active_shape = _identity_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, identity)
     return full_shape, active_shape, world_bind_pose
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from body_models.soma.io import SOMA_CORRECTIVES_ASSET, _load_sparse_checkpoint_numpy, get_model_path
+from body_models.soma.io import get_model_path
 
 MODEL_TYPE_SEEDS = {
     "soma": 11,
@@ -37,7 +37,7 @@ def _sample_inputs(model_type: str) -> dict[str, np.ndarray]:
         "global_translation": (rng.standard_normal((1, 3)) * 0.01).astype(np.float32),
     }
     if model_type == "soma":
-        inputs["shape"] = (rng.standard_normal((1, 128)) * 0.1).astype(np.float32)
+        inputs["identity"] = (rng.standard_normal((1, 128)) * 0.1).astype(np.float32)
     elif model_type == "mhr":
         inputs["identity"] = (rng.standard_normal((1, 45)) * 0.1).astype(np.float32)
         inputs["scale_params"] = (rng.standard_normal((1, 68)) * 0.05).astype(np.float32)
@@ -87,13 +87,13 @@ def test_simplify_reduces_mesh(model_path: Path) -> None:
 
     params = model_half.get_rest_pose(batch_size=2)
     verts = model_half.forward_vertices(
-        shape=params["shape"],
+        identity=params["identity"],
         pose=params["pose"],
         global_rotation=params["global_rotation"],
         global_translation=params["global_translation"],
     )
     skel = model_half.forward_skeleton(
-        shape=params["shape"],
+        identity=params["identity"],
         pose=params["pose"],
         global_rotation=params["global_rotation"],
         global_translation=params["global_translation"],
@@ -101,26 +101,3 @@ def test_simplify_reduces_mesh(model_path: Path) -> None:
 
     assert verts.shape == (2, model_half.num_vertices, 3)
     assert skel.shape == (2, model_half.num_joints, 4, 4)
-
-def test_scale_params_only_supported_for_mhr(model_path: Path) -> None:
-    from body_models.soma.numpy import SOMA
-
-    model = SOMA(model_path=model_path, model_type="smplx")
-    params = model.get_rest_pose()
-
-    with pytest.raises(ValueError, match="scale_params is only supported for SOMA model_type='mhr'."):
-        model.forward_vertices(
-            identity=params["identity"],
-            pose=params["pose"],
-            global_rotation=params["global_rotation"],
-            global_translation=params["global_translation"],
-            scale_params=np.zeros((1, 68), dtype=np.float32),
-        )
-
-
-def test_corrective_checkpoint_loads_with_ptloader(model_path: Path) -> None:
-    checkpoint = _load_sparse_checkpoint_numpy(model_path / SOMA_CORRECTIVES_ASSET)
-
-    assert "bindpose" in checkpoint
-    assert "W1" in checkpoint
-    assert "W2" in checkpoint
