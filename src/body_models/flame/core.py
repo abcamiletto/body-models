@@ -1,11 +1,11 @@
-"""Backend-agnostic FLAME computation using array_api_compat."""
+"""Backend-agnostic FLAME computation."""
 
 from typing import Any
 
-from array_api_compat import get_namespace
 from jaxtyping import Float
 
 from .. import common
+from ..common import get_namespace
 from nanomanifold import SO3
 
 from ..rotations import RotationType

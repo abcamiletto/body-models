@@ -10,9 +10,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 from torch import Tensor
 
-from array_api_compat import get_namespace
-
 from ..base import BodyModel
+from ..common import get_namespace
 from . import core
 from .io import get_model_path, simplify_mesh
 

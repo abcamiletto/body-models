@@ -1,15 +1,15 @@
-"""Backend-agnostic SOMA computation using array_api_compat."""
+"""Backend-agnostic SOMA computation."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from ..anny import core as anny_core
 from .. import common
+from ..common import get_namespace
 from ..rotations import RotationType
 
 Array = Any
