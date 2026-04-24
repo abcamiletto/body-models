@@ -22,31 +22,17 @@ MODEL_FILES = {
 }
 CLASS_NAMES = {name: ("FLAME" if name == "flame" else name.upper()) for name in (*MODEL_FILES, "anny", "mhr", "soma")}
 MODEL_CASES = (
-    pytest.param("smpl", {}, id="smpl"),
-    pytest.param("smplx", {}, id="smplx"),
-    pytest.param("skel", {}, id="skel"),
-    pytest.param("flame", {}, id="flame"),
-    pytest.param("anny", {}, id="anny"),
-    pytest.param("mhr", {}, id="mhr"),
-    pytest.param("soma", {"model_type": "soma"}, id="soma"),
-    pytest.param("soma", {"model_type": "anny"}, id="soma-anny"),
-    pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr"),
-    pytest.param("soma", {"model_type": "smpl"}, id="soma-smpl"),
-    pytest.param("soma", {"model_type": "smplx"}, id="soma-smplx"),
-)
-FAST_TORCH_COMPILE_CASES = MODEL_CASES[:6]
-SLOW_TORCH_COMPILE_CASES = tuple(
-    pytest.param(*case.values, id=case.id, marks=pytest.mark.slow) for case in MODEL_CASES[6:]
-)
-TORCH_COMPILE_CASES = FAST_TORCH_COMPILE_CASES + SLOW_TORCH_COMPILE_CASES
-FAST_FULLGRAPH_CASES = (
-    pytest.param("smpl", {}, id="smpl"),
-    pytest.param("mhr", {}, id="mhr"),
-)
-SLOW_FULLGRAPH_CASES = tuple(pytest.param(*case.values, id=case.id, marks=pytest.mark.slow) for case in MODEL_CASES[6:])
-FULLGRAPH_CASES = FAST_FULLGRAPH_CASES + SLOW_FULLGRAPH_CASES
-JAX_JIT_CASES = MODEL_CASES[:5] + tuple(
-    pytest.param(*case.values, id=case.id, marks=pytest.mark.slow) for case in MODEL_CASES[5:]
+    pytest.param("smpl", {}, id="smpl", marks=pytest.mark.fast),
+    pytest.param("smplx", {}, id="smplx", marks=pytest.mark.slow),
+    pytest.param("skel", {}, id="skel", marks=pytest.mark.slow),
+    pytest.param("flame", {}, id="flame", marks=pytest.mark.slow),
+    pytest.param("anny", {}, id="anny", marks=pytest.mark.slow),
+    pytest.param("mhr", {}, id="mhr", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "soma"}, id="soma", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "anny"}, id="soma-anny", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "smpl"}, id="soma-smpl", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "smplx"}, id="soma-smplx", marks=pytest.mark.slow),
 )
 COMPILE_TOLERANCES = {"soma": (1e-4, 1e-4)}
 TORCH_COMPILE_MODE = "reduce-overhead"
@@ -108,7 +94,7 @@ def clear_compile_caches() -> None:
 # ============================================================================
 
 
-@pytest.mark.parametrize(("model_name", "model_kwargs"), TORCH_COMPILE_CASES)
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile produces correct results for forward_vertices."""
     required_paths = get_required_model_files(model_name, model_kwargs)
@@ -138,7 +124,7 @@ def test_torch_compile_forward_vertices(model_name: str, model_kwargs: dict[str,
     np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=rtol, atol=atol)
 
 
-@pytest.mark.parametrize(("model_name", "model_kwargs"), TORCH_COMPILE_CASES)
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile produces correct results for forward_skeleton."""
     required_paths = get_required_model_files(model_name, model_kwargs)
@@ -173,7 +159,7 @@ def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str,
 # ============================================================================
 
 
-@pytest.mark.parametrize(("model_name", "model_kwargs"), FULLGRAPH_CASES)
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_fullgraph_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_vertices."""
     required_paths = get_required_model_files(model_name, model_kwargs)
@@ -200,7 +186,7 @@ def test_torch_compile_fullgraph_forward_vertices(model_name: str, model_kwargs:
     assert result_compiled.shape[2] == 3
 
 
-@pytest.mark.parametrize(("model_name", "model_kwargs"), FULLGRAPH_CASES)
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_fullgraph_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_skeleton."""
     required_paths = get_required_model_files(model_name, model_kwargs)
@@ -232,7 +218,7 @@ def test_torch_compile_fullgraph_forward_skeleton(model_name: str, model_kwargs:
 # ============================================================================
 
 
-@pytest.mark.parametrize(("model_name", "model_kwargs"), JAX_JIT_CASES)
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_jax_jit_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test jax.jit produces correct results for forward_vertices."""
     jax = pytest.importorskip("jax")
@@ -265,7 +251,7 @@ def test_jax_jit_forward_vertices(model_name: str, model_kwargs: dict[str, str])
     np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=rtol, atol=atol)
 
 
-@pytest.mark.parametrize(("model_name", "model_kwargs"), JAX_JIT_CASES)
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_jax_jit_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test jax.jit produces correct results for forward_skeleton."""
     jax = pytest.importorskip("jax")

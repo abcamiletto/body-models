@@ -75,5 +75,6 @@ ignore = [
 
 [tool.pytest.ini_options]
 markers = [
+    "fast: tests included in pull request CI",
     "slow: exhaustive or compiler-heavy tests excluded from fast CI",
 ]
