@@ -9,7 +9,7 @@ Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, a
 ## Features
 
 - **Multi-backend**: PyTorch, NumPy, and JAX
-- **Disentangled outputs**: separate `forward_vertices` (mesh) and `forward_skeleton` (joint transforms)
+- **Disentangled outputs**: separate `forward_vertices` (mesh) and `forward_skeleton` (joint transforms) for rigged models
 - **Mesh simplification**: lower-resolution forward pass via `simplify` constructor argument
 - **Vertex subsets**: compute only specific vertices via `vertex_indices` argument
 - **Rotation representations**: axis-angle, quaternion, 6D, rotation matrix, and projected matrix (`rotation_type` constructor argument)
@@ -53,9 +53,9 @@ from body_models.mhr.torch import MHR
 from body_models.soma.torch import SOMA
 
 model = ANNY()  # Downloads automatically (CC0 license)
+model = GarmentMeasurements()  # Downloads upstream data, then preprocesses with bpy via uv
 model = MHR()   # Downloads automatically (Apache 2.0)
 model = SOMA()  # Downloads SOMA_neutral.npz from SOMA-X
-model = GarmentMeasurements()  # Downloads upstream PCA mesh data (GPL-3.0)
 ```
 
 You can also prefetch them and save the cache paths into config:
@@ -184,7 +184,7 @@ Available backends:
 
 ## Common Interface
 
-All models inherit from `BodyModel` and share these properties:
+Rigged models inherit from `BodyModel` and share these properties:
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -474,14 +474,24 @@ from body_models.garment_measurements.torch import GarmentMeasurements  # or .nu
 
 model = GarmentMeasurements()
 
+params = model.get_rest_pose(batch_size=1)
+params["shape"][:, 0] = 0.5
 vertices = model.forward_vertices(
-    shape,               # [B, 15] PCA weights in standard deviation units
-    global_rotation,     # [B, 3] axis-angle (optional)
-    global_translation,  # [B, 3] (optional)
+    params["shape"],              # [B, C] PCA weights in standard deviation units
+    params["pose"],               # [B, J, 3] joint rotations
+    params["global_rotation"],    # [B, 3] axis-angle
+    params["global_translation"], # [B, 3]
 )
+skeleton = model.forward_skeleton(**params)
 ```
 
-This integration covers the upstream PCA body mesh (`point.pca` and `mean.obj`). The upstream FBX skeleton and measurement executable are not bundled into the Python backend.
+The runtime loads a preprocessed `garment_measurements.npz` asset containing the upstream PCA body mesh plus the FBX-derived skeleton, skinning weights, and mean-value-coordinate joint weights. You can pass either that generated file, a folder containing it, or the original upstream `GarmentMeasurements/data` folder. When an upstream folder is provided, `body-models` runs the self-contained PEP 723 generator through `uv` and stores the `.npz` in the platform cache.
+
+```bash
+uv run --python 3.11 --no-project src/body_models/garment_measurements/generate_asset.py \
+  /path/to/GarmentMeasurements/data /path/to/generated/garment_measurements/model
+body-models set garment-measurements /path/to/GarmentMeasurements/data
+```
 
 ## Coordinate System
 

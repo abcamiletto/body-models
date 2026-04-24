@@ -8,8 +8,6 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from garment_measurements_asset import get_garment_measurements_model_path
-
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets"
@@ -18,9 +16,6 @@ BACKENDS = ["torch", "numpy", "jax"]
 
 
 def _get_model_file(model_name: str) -> Path:
-    if model_name == "garment_measurements":
-        return get_garment_measurements_model_path()
-
     model_dir = ASSET_DIR / model_name / "model"
     if not model_dir.exists():
         return model_dir
@@ -33,6 +28,8 @@ def _get_model_file(model_name: str) -> Path:
         return model_dir / "FLAME_NEUTRAL.pkl"
     if model_name == "skel":
         return model_dir / "skel_male.pkl"
+    if model_name == "garment_measurements":
+        return model_dir / "garment_measurements.npz"
 
     return model_dir
 
@@ -58,7 +55,7 @@ def _build_model(model_name: str, backend: str) -> Any:
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["gender"] = "male"
         kwargs["model_path"] = model_path
-    elif model_name in {"smpl", "smplx", "flame"}:
+    elif model_name in {"smpl", "smplx", "flame", "garment_measurements"}:
         if not model_path.exists():
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["model_path"] = model_path

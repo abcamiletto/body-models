@@ -13,8 +13,6 @@ import numpy as np
 import pytest
 import torch
 
-from garment_measurements_asset import get_garment_measurements_model_path
-
 ASSET_DIR = Path(__file__).parent / "assets"
 MODEL_FILES = {
     "smpl": "SMPL_NEUTRAL.npz",
@@ -49,7 +47,7 @@ def get_compile_tolerances(model_name: str) -> tuple[float, float]:
 def get_model_file(model_name: str) -> Path:
     """Get the actual model file path for a given model."""
     if model_name == "garment_measurements":
-        return get_garment_measurements_model_path()
+        return ASSET_DIR / "garment_measurements" / "model" / "garment_measurements.npz"
 
     if model_name == "soma":
         from body_models.soma.io import get_model_path
@@ -203,6 +201,8 @@ def test_torch_compile_fullgraph_forward_skeleton(model_name: str, model_kwargs:
 
     model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
+    if not hasattr(model, "forward_skeleton"):
+        pytest.skip(f"{model_name} does not expose forward_skeleton")
     model.eval()
 
     # Compile with fullgraph=True - will fail if there are any graph breaks
@@ -271,6 +271,8 @@ def test_jax_jit_forward_skeleton(model_name: str, model_kwargs: dict[str, str])
 
     model_path = required_paths[0]
     model = get_model("jax", model_name, model_path, **model_kwargs)
+    if not hasattr(model, "forward_skeleton"):
+        pytest.skip(f"{model_name} does not expose forward_skeleton")
 
     # JIT compile
     jitted_fn = jax.jit(model.forward_skeleton)

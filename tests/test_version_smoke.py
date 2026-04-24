@@ -7,8 +7,6 @@ from typing import Any
 import numpy as np
 import pytest
 
-from garment_measurements_asset import get_garment_measurements_model_path
-
 ASSET_DIR = Path(__file__).parent / "assets"
 MODEL_FILES = {
     "smpl": "SMPL_NEUTRAL.npz",
@@ -38,7 +36,7 @@ BACKENDS = ("numpy", "torch", "jax")
 def get_model_file(model_name: str) -> Path:
     """Get the test asset path for a given model."""
     if model_name == "garment_measurements":
-        return get_garment_measurements_model_path()
+        return ASSET_DIR / "garment_measurements" / "model" / "garment_measurements.npz"
 
     if model_name == "soma":
         from body_models.soma.io import get_model_path
