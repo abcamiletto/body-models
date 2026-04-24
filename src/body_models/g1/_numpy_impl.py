@@ -33,6 +33,7 @@ class G1(BodyModel):
         self.parents = data["parents"]
         self.local_offsets = data["local_offsets"]
         self.rest_local_rotations = data["rest_local_rotations"]
+        self.joint_rotation_axes = data["joint_rotation_axes"]
         self._vertices = data["vertices"]
         self._faces = data["faces"]
         self.link_joint_indices = data["link_joint_indices"]
@@ -88,6 +89,7 @@ class G1(BodyModel):
         return core.forward_skeleton(
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
+            joint_rotation_axes=self.joint_rotation_axes,
             parents=self.parents,
             pose=pose,
             global_translation=global_translation,
@@ -111,6 +113,7 @@ class G1(BodyModel):
             faces=self._faces,
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
+            joint_rotation_axes=self.joint_rotation_axes,
             parents=self.parents,
             link_joint_indices=self.link_joint_indices,
             link_vertex_starts=self.link_vertex_starts,
@@ -141,6 +144,7 @@ class G1(BodyModel):
             qpos_joint_indices=self.qpos_joint_indices,
             qpos_joint_axes=self.qpos_joint_axes,
             qpos_joint_limits=self.qpos_joint_limits,
+            joint_rotation_axes=self.joint_rotation_axes,
             pose=pose,
             global_translation=global_translation,
             global_rotation=global_rotation,

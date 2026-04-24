@@ -152,6 +152,40 @@ def test_forward_vertices_rigidly_attaches_stl_links(backend: str) -> None:
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_scalar_pose_uses_xml_hinge_axes(backend: str) -> None:
+    model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
+    scalar_pose = np.zeros((1, model.num_joints, 1), dtype=np.float32)
+    rotmat_pose = np.tile(np.eye(3, dtype=np.float32), (1, model.num_joints, 1, 1))
+    scalar_pose[0, 1, 0] = 0.7
+    rotmat_pose[0, 1] = _rot_x(0.7)
+    global_translation = np.array([[10.0, 20.0, 30.0]], dtype=np.float32)
+
+    scalar_skeleton = _to_numpy(
+        model.forward_skeleton(
+            pose=_array(backend, scalar_pose),
+            global_translation=_array(backend, global_translation),
+        )
+    )
+    rotmat_skeleton = _to_numpy(
+        model.forward_skeleton(
+            pose=_array(backend, rotmat_pose),
+            global_translation=_array(backend, global_translation),
+        )
+    )
+    np.testing.assert_allclose(scalar_skeleton, rotmat_skeleton, atol=1e-6)
+
+    qpos = _to_numpy(
+        model.project_pose_to_qpos(
+            pose=_array(backend, scalar_pose),
+            global_translation=_array(backend, global_translation),
+            clamp_to_limits=False,
+        )
+    )
+    left_hip_qpos = model.qpos_joint_names.index("left_hip_pitch_skel")
+    np.testing.assert_allclose(qpos[0, 7 + left_hip_qpos], 0.7, atol=1e-6)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_project_pose_to_qpos_uses_xml_axis_limits_and_coordinate_transform(backend: str) -> None:
     model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
     pose = np.tile(np.eye(3, dtype=np.float32), (1, model.num_joints, 1, 1))

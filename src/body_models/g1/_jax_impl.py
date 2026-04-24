@@ -22,6 +22,7 @@ class G1(BodyModel, nnx.Module):
     NUM_JOINTS = 34
     local_offsets: nnx.Variable[jax.Array]
     rest_local_rotations: nnx.Variable[jax.Array]
+    joint_rotation_axes: nnx.Variable[jax.Array]
     link_geom_positions: nnx.Variable[jax.Array]
     link_geom_rotations: nnx.Variable[jax.Array]
     qpos_joint_axes: nnx.Variable[jax.Array]
@@ -49,6 +50,7 @@ class G1(BodyModel, nnx.Module):
         self.qpos_joint_indices = data["qpos_joint_indices"]
         self.local_offsets = nnx.Variable(jnp.asarray(data["local_offsets"]))
         self.rest_local_rotations = nnx.Variable(jnp.asarray(data["rest_local_rotations"]))
+        self.joint_rotation_axes = nnx.Variable(jnp.asarray(data["joint_rotation_axes"]))
         self.link_geom_positions = nnx.Variable(jnp.asarray(data["link_geom_positions"]))
         self.link_geom_rotations = nnx.Variable(jnp.asarray(data["link_geom_rotations"]))
         self.qpos_joint_axes = nnx.Variable(jnp.asarray(data["qpos_joint_axes"]))
@@ -96,6 +98,7 @@ class G1(BodyModel, nnx.Module):
         return core.forward_skeleton(
             local_offsets=self.local_offsets[...],
             rest_local_rotations=self.rest_local_rotations[...],
+            joint_rotation_axes=self.joint_rotation_axes[...],
             parents=self.parents,
             pose=pose,
             global_translation=global_translation,
@@ -119,6 +122,7 @@ class G1(BodyModel, nnx.Module):
             faces=self._faces[...],
             local_offsets=self.local_offsets[...],
             rest_local_rotations=self.rest_local_rotations[...],
+            joint_rotation_axes=self.joint_rotation_axes[...],
             parents=self.parents,
             link_joint_indices=self.link_joint_indices,
             link_vertex_starts=self.link_vertex_starts,
@@ -149,6 +153,7 @@ class G1(BodyModel, nnx.Module):
             qpos_joint_indices=self.qpos_joint_indices,
             qpos_joint_axes=self.qpos_joint_axes[...],
             qpos_joint_limits=self.qpos_joint_limits[...],
+            joint_rotation_axes=self.joint_rotation_axes[...],
             pose=pose,
             global_translation=global_translation,
             global_rotation=global_rotation,

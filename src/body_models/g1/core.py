@@ -20,6 +20,7 @@ SKIN_WEIGHTS_ERROR = "G1 is a rigid articulated model and does not define skin_w
 def forward_skeleton(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
+    joint_rotation_axes: Float[Array, "J 3"],
     parents: list[int],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
@@ -32,7 +33,7 @@ def forward_skeleton(
     """Compute world-space G1 joint transforms from local rotations."""
     if xp is None:
         xp = get_namespace(pose)
-    local_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+    local_rot = _pose_to_rotmat(pose, joint_rotation_axes, rotation_type=rotation_type, xp=xp)
     batch_size, num_joints = local_rot.shape[:2]
     dtype = local_rot.dtype
     if global_translation is None:
@@ -78,6 +79,7 @@ def forward_vertices(
     faces: Int[Array, "F 3"],
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
+    joint_rotation_axes: Float[Array, "J 3"],
     parents: list[int],
     link_joint_indices: list[int],
     link_vertex_starts: list[int],
@@ -102,6 +104,7 @@ def forward_vertices(
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
+        joint_rotation_axes=joint_rotation_axes,
         parents=parents,
         pose=pose,
         global_translation=global_translation,
@@ -152,6 +155,7 @@ def project_pose_to_qpos(
     qpos_joint_indices: list[int],
     qpos_joint_axes: Float[Array, "Q 3"],
     qpos_joint_limits: Float[Array, "Q 2"],
+    joint_rotation_axes: Float[Array, "J 3"],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
@@ -163,7 +167,7 @@ def project_pose_to_qpos(
     """Project local 3D rotations to MuJoCo root qpos plus one hinge angle per XML joint."""
     if xp is None:
         xp = get_namespace(pose)
-    rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+    rot = _pose_to_rotmat(pose, joint_rotation_axes, rotation_type=rotation_type, xp=xp)
     batch_size = rot.shape[0]
     dtype = rot.dtype
     if global_translation is None:
@@ -187,3 +191,17 @@ def project_pose_to_qpos(
         limits = xp.asarray(qpos_joint_limits, dtype=dtype)
         angles = xp.clip(angles, limits[None, :, 0], limits[None, :, 1])
     return xp.concat([root_t, root_quat, angles], axis=1)
+
+
+def _pose_to_rotmat(
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    joint_rotation_axes: Float[Array, "J 3"],
+    *,
+    rotation_type: RotationType,
+    xp: Any,
+) -> Float[Array, "B J 3 3"]:
+    if pose.ndim == 3 and pose.shape[-1] == 1:
+        axes = xp.asarray(joint_rotation_axes, dtype=pose.dtype)
+        axis_angle = pose * axes[None]
+        return SO3.conversions.from_axis_angle_to_rotmat(axis_angle, xp=xp)
+    return SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)

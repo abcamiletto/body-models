@@ -22,6 +22,7 @@ class G1(BodyModel, nn.Module):
     NUM_JOINTS = 34
     local_offsets: Tensor
     rest_local_rotations: Tensor
+    joint_rotation_axes: Tensor
     link_geom_positions: Tensor
     link_geom_rotations: Tensor
     qpos_joint_axes: Tensor
@@ -53,6 +54,7 @@ class G1(BodyModel, nn.Module):
         for key in [
             "local_offsets",
             "rest_local_rotations",
+            "joint_rotation_axes",
             "link_geom_positions",
             "link_geom_rotations",
             "qpos_joint_axes",
@@ -102,6 +104,7 @@ class G1(BodyModel, nn.Module):
         return core.forward_skeleton(
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
+            joint_rotation_axes=self.joint_rotation_axes,
             parents=self.parents,
             pose=pose,
             global_translation=global_translation,
@@ -125,6 +128,7 @@ class G1(BodyModel, nn.Module):
             faces=self._faces,
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
+            joint_rotation_axes=self.joint_rotation_axes,
             parents=self.parents,
             link_joint_indices=self.link_joint_indices,
             link_vertex_starts=self.link_vertex_starts,
@@ -155,6 +159,7 @@ class G1(BodyModel, nn.Module):
             qpos_joint_indices=self.qpos_joint_indices,
             qpos_joint_axes=self.qpos_joint_axes,
             qpos_joint_limits=self.qpos_joint_limits,
+            joint_rotation_axes=self.joint_rotation_axes,
             pose=pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
