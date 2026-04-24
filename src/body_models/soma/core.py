@@ -617,13 +617,12 @@ def _fit_joint_rotations(
     bind_rot = bind_pose_world[:, :3, :3]
     bind_pos = bind_pose_world[:, :3, 3]
 
-    R = common.zeros_as(bind_rot, shape=(B, J, 3, 3), xp=xp)
-    R = common.set(R, (..., slice(None), slice(None)), xp.broadcast_to(bind_rot[None], (B, J, 3, 3)), xp=xp)
+    rotations = [xp.broadcast_to(bind_rot[None, 0], (B, 3, 3))]
     for joint_index in range(1, J):
         children = joint_children_full[joint_index]
         if not children:
             parent_index = parents_full[joint_index]
-            R = common.set(R, (slice(None), joint_index), R[:, parent_index], copy=False, xp=xp)
+            rotations.append(rotations[parent_index])
             continue
 
         skinned_vids = skinned_vertex_indices_full[joint_index]
@@ -640,9 +639,10 @@ def _fit_joint_rotations(
         pos_children_orig = xp.einsum("bij,cj->bci", R_init, pos_children_orig)
         pos_children_new = joint_positions[:, child_idx, :] - joint_positions[:, joint_index : joint_index + 1, :]
         align_rot = _align_vectors(xp, pos_children_new, pos_children_orig)
-        R_joint = align_rot @ R_init @ R[:, joint_index]
-        R = common.set(R, (slice(None), joint_index), R_joint, copy=False, xp=xp)
+        R_joint = align_rot @ R_init @ bind_rot[None, joint_index]
+        rotations.append(R_joint)
 
+    R = xp.stack(rotations, axis=1)
     return _build_transform_matrix(xp, R, joint_positions)
 
 
