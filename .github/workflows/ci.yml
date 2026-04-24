@@ -53,7 +53,7 @@ jobs:
           - group: compile
             paths: tests/test_compile.py
           - group: interface
-            paths: tests/test_model_interface.py
+            paths: tests/test_common.py tests/test_model_interface.py
     env:
       UV_PYTHON: "3.12"
       GH_TOKEN: ${{ secrets.ASSETS_PAT }}
