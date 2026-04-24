@@ -3,6 +3,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
+
+from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "g1" / "model"
 
@@ -78,6 +81,11 @@ def _rot_x(angle: float) -> np.ndarray:
     return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]], dtype=np.float32)
 
 
+# ============================================================================
+# Metadata and forward tests
+# ============================================================================
+
+
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_g1_metadata_matches_kimodo_skeleton(backend: str) -> None:
     model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
@@ -149,3 +157,40 @@ def test_project_pose_to_qpos_uses_xml_axis_limits_and_coordinate_transform(back
     np.testing.assert_allclose(qpos[0, :3], [3.0, 1.0, 2.0], atol=1e-6)
     np.testing.assert_allclose(qpos[0, 3:7], [1.0, 0.0, 0.0, 0.0], atol=1e-6)
     np.testing.assert_allclose(qpos[0, 7], 0.5, atol=1e-6)
+
+
+# ============================================================================
+# Gradient tests (torch only)
+# ============================================================================
+
+
+@pytest.fixture
+def model_float64():
+    """Create G1 model in float64 for gradient checking."""
+    from body_models.g1.torch import G1
+
+    return G1(model_path=ASSET_DIR, rotation_type="rotmat").to(torch.float64).eval()
+
+
+def test_gradients_forward_vertices(model_float64) -> None:
+    """Test gradients flow correctly through forward_vertices."""
+    params = prepare_params(model_float64.get_rest_pose(batch_size=1, dtype=torch.float64))
+    inputs = tuple(params.values())
+
+    def fn(*tensors):
+        kwargs = dict(zip(params.keys(), tensors))
+        return model_float64.forward_vertices(**kwargs)
+
+    assert sampled_gradcheck(fn, inputs, n_samples=64)
+
+
+def test_gradients_forward_skeleton(model_float64) -> None:
+    """Test gradients flow correctly through forward_skeleton."""
+    params = prepare_params(model_float64.get_rest_pose(batch_size=1, dtype=torch.float64))
+    inputs = tuple(params.values())
+
+    def fn(*tensors):
+        kwargs = dict(zip(params.keys(), tensors))
+        return model_float64.forward_skeleton(**kwargs)
+
+    assert sampled_gradcheck(fn, inputs, n_samples=64)

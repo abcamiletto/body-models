@@ -78,11 +78,11 @@ def forward_vertices(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     parents: list[int],
-    link_joint_indices: Int[Array, "L"],
-    link_vertex_starts: Int[Array, "L"],
-    link_vertex_counts: Int[Array, "L"],
-    link_face_starts: Int[Array, "L"],
-    link_face_counts: Int[Array, "L"],
+    link_joint_indices: list[int],
+    link_vertex_starts: list[int],
+    link_vertex_counts: list[int],
+    link_face_starts: list[int],
+    link_face_counts: list[int],
     link_geom_positions: Float[Array, "L 3"],
     link_geom_rotations: Float[Array, "L 3 3"],
     link_names: list[str],
@@ -116,14 +116,14 @@ def forward_vertices(
 
     chunks = []
     per_link = []
-    for link_idx, joint_idx_value in enumerate(_to_int_list(link_joint_indices)):
-        start = int(_to_int_list(link_vertex_starts)[link_idx])
-        count = int(_to_int_list(link_vertex_counts)[link_idx])
-        f_start = int(_to_int_list(link_face_starts)[link_idx])
-        f_count = int(_to_int_list(link_face_counts)[link_idx])
+    for link_idx, joint_idx in enumerate(link_joint_indices):
+        start = link_vertex_starts[link_idx]
+        count = link_vertex_counts[link_idx]
+        f_start = link_face_starts[link_idx]
+        f_count = link_face_counts[link_idx]
         local_vertices = source_vertices[start : start + count]
-        R = joint_rot[:, joint_idx_value] @ geom_rot[link_idx]
-        t = joint_pos[:, joint_idx_value] + xp.squeeze(joint_rot[:, joint_idx_value] @ geom_pos[link_idx][None, :, None], axis=-1)
+        R = joint_rot[:, joint_idx] @ geom_rot[link_idx]
+        t = joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
         transformed = xp.squeeze(R[:, None] @ local_vertices[None, :, :, None], axis=-1) + t[:, None]
         chunks.append(transformed)
         if return_per_link:
@@ -132,7 +132,7 @@ def forward_vertices(
                     "name": link_names[link_idx],
                     "vertices": transformed,
                     "faces": faces[f_start : f_start + f_count] - start,
-                    "joint_index": joint_idx_value,
+                    "joint_index": joint_idx,
                 }
             )
 
@@ -145,7 +145,7 @@ def forward_vertices(
 
 
 def project_pose_to_qpos(
-    qpos_joint_indices: Int[Array, "Q"],
+    qpos_joint_indices: list[int],
     qpos_joint_axes: Float[Array, "Q 3"],
     qpos_joint_limits: Float[Array, "Q 2"],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
@@ -175,7 +175,7 @@ def project_pose_to_qpos(
     root_rot_mujoco = kimodo_to_mujoco[None] @ root_rot @ coord[None]
     root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
 
-    hinge_rots = rot[:, _to_int_list(qpos_joint_indices)]
+    hinge_rots = rot[:, qpos_joint_indices]
     axis_angle = SO3.conversions.from_rotmat_to_axis_angle(hinge_rots, xp=xp)
     axes = xp.asarray(qpos_joint_axes, dtype=dtype)
     angles = xp.sum(axis_angle * axes[None], axis=-1)
@@ -183,9 +183,3 @@ def project_pose_to_qpos(
         limits = xp.asarray(qpos_joint_limits, dtype=dtype)
         angles = xp.clip(angles, limits[None, :, 0], limits[None, :, 1])
     return xp.concat([root_t, root_quat, angles], axis=1)
-
-
-def _to_int_list(values) -> list[int]:
-    if hasattr(values, "detach"):
-        values = values.detach().cpu().numpy()
-    return [int(v) for v in values]

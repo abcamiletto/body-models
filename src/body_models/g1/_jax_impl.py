@@ -4,7 +4,6 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 from flax import nnx
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -36,28 +35,25 @@ class G1(BodyModel, nnx.Module):
         self.parents = data["parents"]
         self.link_names = data["link_names"]
         self.qpos_joint_names = data["qpos_joint_names"]
+        self.link_joint_indices = data["link_joint_indices"].tolist()
+        self.link_vertex_starts = data["link_vertex_starts"].tolist()
+        self.link_vertex_counts = data["link_vertex_counts"].tolist()
+        self.link_face_starts = data["link_face_starts"].tolist()
+        self.link_face_counts = data["link_face_counts"].tolist()
+        self.qpos_joint_indices = data["qpos_joint_indices"].tolist()
         for key in [
             "local_offsets",
             "rest_local_rotations",
             "rest_joints",
-            "vertices",
-            "skin_weights",
             "link_geom_positions",
             "link_geom_rotations",
             "qpos_joint_axes",
             "qpos_joint_limits",
         ]:
-            setattr(self, key if key not in {"vertices", "skin_weights"} else f"_{key}", nnx.Variable(jnp.asarray(data[key])))
-        for key in [
-            "faces",
-            "link_joint_indices",
-            "link_vertex_starts",
-            "link_vertex_counts",
-            "link_face_starts",
-            "link_face_counts",
-            "qpos_joint_indices",
-        ]:
-            setattr(self, f"_{key}", nnx.Variable(jnp.asarray(np.asarray(data[key], dtype=np.int64))))
+            setattr(self, key, nnx.Variable(jnp.asarray(data[key])))
+        self._vertices = nnx.Variable(jnp.asarray(data["vertices"]))
+        self._skin_weights = nnx.Variable(jnp.asarray(data["skin_weights"]))
+        self._faces = nnx.Variable(jnp.asarray(data["faces"]))
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
@@ -119,11 +115,11 @@ class G1(BodyModel, nnx.Module):
             local_offsets=self.local_offsets[...],
             rest_local_rotations=self.rest_local_rotations[...],
             parents=self.parents,
-            link_joint_indices=self._link_joint_indices[...],
-            link_vertex_starts=self._link_vertex_starts[...],
-            link_vertex_counts=self._link_vertex_counts[...],
-            link_face_starts=self._link_face_starts[...],
-            link_face_counts=self._link_face_counts[...],
+            link_joint_indices=self.link_joint_indices,
+            link_vertex_starts=self.link_vertex_starts,
+            link_vertex_counts=self.link_vertex_counts,
+            link_face_starts=self.link_face_starts,
+            link_face_counts=self.link_face_counts,
             link_geom_positions=self.link_geom_positions[...],
             link_geom_rotations=self.link_geom_rotations[...],
             link_names=self.link_names,
@@ -145,7 +141,7 @@ class G1(BodyModel, nnx.Module):
         clamp_to_limits: bool = True,
     ) -> Float[jax.Array, "B Q"]:
         return core.project_pose_to_qpos(
-            qpos_joint_indices=self._qpos_joint_indices[...],
+            qpos_joint_indices=self.qpos_joint_indices,
             qpos_joint_axes=self.qpos_joint_axes[...],
             qpos_joint_limits=self.qpos_joint_limits[...],
             pose=pose,

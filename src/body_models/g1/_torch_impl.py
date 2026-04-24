@@ -36,6 +36,12 @@ class G1(BodyModel, nn.Module):
         self.parents = data["parents"]
         self.link_names = data["link_names"]
         self.qpos_joint_names = data["qpos_joint_names"]
+        self.link_joint_indices = data["link_joint_indices"].tolist()
+        self.link_vertex_starts = data["link_vertex_starts"].tolist()
+        self.link_vertex_counts = data["link_vertex_counts"].tolist()
+        self.link_face_starts = data["link_face_starts"].tolist()
+        self.link_face_counts = data["link_face_counts"].tolist()
+        self.qpos_joint_indices = data["qpos_joint_indices"].tolist()
         for key in [
             "local_offsets",
             "rest_local_rotations",
@@ -46,23 +52,9 @@ class G1(BodyModel, nn.Module):
             "qpos_joint_limits",
         ]:
             self.register_buffer(key, torch.as_tensor(data[key], dtype=torch.float32))
-        for key in [
-            "vertices",
-            "faces",
-            "skin_weights",
-            "link_joint_indices",
-            "link_vertex_starts",
-            "link_vertex_counts",
-            "link_face_starts",
-            "link_face_counts",
-            "qpos_joint_indices",
-        ]:
-            tensor = torch.as_tensor(data[key])
-            if key in {"vertices", "skin_weights"}:
-                tensor = tensor.to(torch.float32)
-            else:
-                tensor = tensor.to(torch.int64)
-            self.register_buffer(f"_{key}", tensor)
+        self.register_buffer("_vertices", torch.as_tensor(data["vertices"], dtype=torch.float32))
+        self.register_buffer("_faces", torch.as_tensor(data["faces"], dtype=torch.int64))
+        self.register_buffer("_skin_weights", torch.as_tensor(data["skin_weights"], dtype=torch.float32))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -124,11 +116,11 @@ class G1(BodyModel, nn.Module):
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
             parents=self.parents,
-            link_joint_indices=self._link_joint_indices,
-            link_vertex_starts=self._link_vertex_starts,
-            link_vertex_counts=self._link_vertex_counts,
-            link_face_starts=self._link_face_starts,
-            link_face_counts=self._link_face_counts,
+            link_joint_indices=self.link_joint_indices,
+            link_vertex_starts=self.link_vertex_starts,
+            link_vertex_counts=self.link_vertex_counts,
+            link_face_starts=self.link_face_starts,
+            link_face_counts=self.link_face_counts,
             link_geom_positions=self.link_geom_positions,
             link_geom_rotations=self.link_geom_rotations,
             link_names=self.link_names,
@@ -150,7 +142,7 @@ class G1(BodyModel, nn.Module):
         clamp_to_limits: bool = True,
     ) -> Float[Tensor, "B Q"]:
         return core.project_pose_to_qpos(
-            qpos_joint_indices=self._qpos_joint_indices,
+            qpos_joint_indices=self.qpos_joint_indices,
             qpos_joint_axes=self.qpos_joint_axes,
             qpos_joint_limits=self.qpos_joint_limits,
             pose=pose,

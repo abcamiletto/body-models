@@ -19,6 +19,7 @@ MODEL_FILES = {
     "smplx": "SMPLX_NEUTRAL.npz",
     "flame": "FLAME_NEUTRAL.pkl",
     "skel": "skel_male.pkl",
+    "g1": None,
 }
 CLASS_NAMES = {name: ("FLAME" if name == "flame" else name.upper()) for name in (*MODEL_FILES, "anny", "mhr", "soma")}
 CLASS_NAMES["garment_measurements"] = "GarmentMeasurements"
@@ -30,6 +31,7 @@ MODEL_CASES = (
     pytest.param("anny", {}, id="anny", marks=pytest.mark.slow),
     pytest.param("mhr", {}, id="mhr", marks=pytest.mark.slow),
     pytest.param("soma", {"model_type": "soma"}, id="soma", marks=pytest.mark.slow),
+    pytest.param("g1", {}, id="g1", marks=pytest.mark.slow),
     pytest.param("soma", {"model_type": "anny"}, id="soma-anny", marks=pytest.mark.slow),
     pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr", marks=pytest.mark.slow),
     pytest.param("soma", {"model_type": "smpl"}, id="soma-smpl", marks=pytest.mark.slow),

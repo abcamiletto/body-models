@@ -153,8 +153,6 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
         raise FileNotFoundError("G1 model_path is required, or set the 'g1' path in body-models config.")
 
     path = Path(model_path)
-    if path.is_file():
-        path = path.parent.parent if path.name == "g1.xml" else path.parent
     xml_path = path / "xml" / "g1.xml"
     mesh_dir = path / "meshes" / "g1"
     if not xml_path.exists():
@@ -231,7 +229,7 @@ def _parse_joint_rest(root: ET.Element) -> tuple[np.ndarray, np.ndarray, np.ndar
     rest_joints = np.zeros((len(JOINT_NAMES), 3), dtype=np.float32)
     worldbody = root.find("worldbody")
     if worldbody is None:
-        return local_offsets, rest_local_rotations, rest_joints
+        raise ValueError("g1.xml is missing a worldbody")
 
     by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
 
@@ -292,7 +290,7 @@ def _parse_qpos_joints(
     by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
     worldbody = root.find("worldbody")
     if worldbody is None:
-        return np.zeros(0, dtype=np.int64), np.zeros((0, 3), dtype=np.float32), np.zeros((0, 2), dtype=np.float32), []
+        raise ValueError("g1.xml is missing a worldbody")
 
     for joint in worldbody.findall(".//joint"):
         name = joint.get("name")
