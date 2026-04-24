@@ -7,6 +7,7 @@ from typing import Any
 from jaxtyping import Float
 from nanomanifold import SE3, SO3
 
+from .. import common
 from ..rotations import RotationType
 
 Array = Any
@@ -263,15 +264,10 @@ def _global_quat_translation(
         quat = SO3.convert(_match_dtype(global_rotation, ref, xp=xp), src=rotation_type, dst="quat", xp=xp)
 
     if global_translation is None:
-        translation = _zeros_as(ref, shape=(batch_size, 3), xp=xp)
+        translation = common.zeros_as(ref, shape=(batch_size, 3), xp=xp)
     else:
         translation = _match_dtype(global_translation, ref, xp=xp)
     return quat, translation
-
-
-def _zeros_as(ref: Array, *, shape: tuple[int, ...], xp: Any) -> Array:
-    zero = xp.zeros_like(ref.reshape(-1)[:1])
-    return xp.broadcast_to(zero, shape)
 
 
 def _match_dtype(value: Array, ref: Array, *, xp: Any) -> Array:
