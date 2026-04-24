@@ -10,6 +10,8 @@ import torch
 from body_models.garment_measurements import io
 from gradient_utils import prepare_params, sampled_gradcheck
 
+pytestmark = pytest.mark.fast
+
 ASSET_DIR = Path(__file__).parent / "assets" / "garment_measurements"
 MODEL_PATH = ASSET_DIR / "model"
 MODEL_FILE = MODEL_PATH / "garment_measurements.npz"

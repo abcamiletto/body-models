@@ -3,8 +3,11 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from body_models.garment_measurements import io
+
+pytestmark = pytest.mark.fast
 
 
 def test_upstream_folder_is_preprocessed_to_platform_cache(tmp_path, monkeypatch) -> None:

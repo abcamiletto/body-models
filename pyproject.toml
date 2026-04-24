@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.9.3"
+version = "0.9.4"
 description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
@@ -45,6 +45,9 @@ dev = [
     "torch>=2.3.0",
     "jax>=0.4.33",
     "flax>=0.10.0",
+    "py-soma-x>=0.1.0",
+    "anny>=0.3.1",
+    "smplx>=0.1.28",
 ]
 
 [tool.uv.sources]
@@ -71,4 +74,10 @@ ignore = [
     "F722",  # jaxtyping annotations use syntax ruff doesn't understand
     "F821",  # jaxtyping dimension names appear as undefined
     "E741",  # ambiguous variable names (I, l, O) are standard in math notation
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "fast: tests included in pull request CI",
+    "slow: exhaustive or compiler-heavy tests excluded from fast CI",
 ]

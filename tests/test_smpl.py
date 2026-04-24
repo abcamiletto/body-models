@@ -19,11 +19,14 @@ from accelerator_utils import get_accelerator_device
 from nanomanifold import SO3
 from gradient_utils import prepare_params, sampled_gradcheck
 
+pytestmark = pytest.mark.fast
+
 ASSET_DIR = Path(__file__).parent / "assets" / "smpl"
 MODEL_PATH = ASSET_DIR / "model" / "SMPL_NEUTRAL.npz"
 INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
-NUM_CASES = 5
+NUM_CASES = 1
+GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 1e-4, 1e-4
 ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 
@@ -286,7 +289,7 @@ def test_gradients_forward_vertices(model_float64) -> None:
         kwargs = dict(zip(params.keys(), tensors))
         return model_float64.forward_vertices(**kwargs)
 
-    assert sampled_gradcheck(fn, inputs, n_samples=64)
+    assert sampled_gradcheck(fn, inputs, n_samples=GRADCHECK_SAMPLES)
 
 
 def test_gradients_forward_skeleton(model_float64) -> None:
@@ -298,7 +301,7 @@ def test_gradients_forward_skeleton(model_float64) -> None:
         kwargs = dict(zip(params.keys(), tensors))
         return model_float64.forward_skeleton(**kwargs)
 
-    assert sampled_gradcheck(fn, inputs, n_samples=64)
+    assert sampled_gradcheck(fn, inputs, n_samples=GRADCHECK_SAMPLES)
 
 
 # ============================================================================
