@@ -68,7 +68,6 @@ def forward_skeleton(
     trans = trans + global_translation[:, None]
 
     if joint_indices is not None:
-        joint_indices = [int(joint) for joint in joint_indices]
         if any(joint < 0 or joint >= num_joints for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {num_joints})")
         rot = rot[:, joint_indices]
@@ -195,7 +194,7 @@ def to_mujoco_qpos(
     axes = xp.asarray(qpos_joint_axes, dtype=dtype)
     hinge_rots = SO3.convert(rot[:, qpos_joint_indices], src="rotmat", dst="quat", xp=xp)
     angles = SO3.to_hinge(hinge_rots, axes, xp=xp)[..., 0]
-    if clamp_to_limits and axes.shape[0] > 0:
+    if clamp_to_limits:
         limits = xp.asarray(qpos_joint_limits, dtype=dtype)
         angles = xp.clip(angles, limits[None, :, 0], limits[None, :, 1])
     return xp.concat([root_t, root_quat, angles], axis=1)

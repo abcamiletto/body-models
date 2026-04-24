@@ -1,6 +1,6 @@
 """Unitree G1 rigid articulated model support."""
 
-import typing as _typing
+from typing import Any
 
 from . import core as _core
 
@@ -8,13 +8,13 @@ __all__ = ["to_mujoco_qpos"]
 
 
 def to_mujoco_qpos(
-    model: _typing.Any,
-    pose: _typing.Any,
-    global_translation: _typing.Any | None = None,
+    model: Any,
+    pose: Any,
+    global_translation: Any | None = None,
     *,
-    global_rotation: _typing.Any | None = None,
+    global_rotation: Any | None = None,
     clamp_to_limits: bool = True,
-) -> _typing.Any:
+) -> Any:
     """Convert a G1 pose to MuJoCo qpos."""
     return _core.to_mujoco_qpos(
         qpos_joint_indices=model.qpos_joint_indices,
