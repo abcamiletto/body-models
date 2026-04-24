@@ -156,7 +156,7 @@ def forward_vertices(
     return out
 
 
-def forward_mujoco_qpos(
+def to_mujoco_qpos(
     qpos_joint_indices: list[int],
     qpos_joint_axes: Float[Array, "Q 3"],
     qpos_joint_limits: Float[Array, "Q 2"],

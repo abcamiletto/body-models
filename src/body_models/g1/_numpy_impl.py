@@ -131,27 +131,6 @@ class G1(BodyModel):
             xp=np,
         )
 
-    def forward_mujoco_qpos(
-        self,
-        pose: Float[np.ndarray, "B 34 N"] | Float[np.ndarray, "B 34 3 3"],
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
-        *,
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        clamp_to_limits: bool = True,
-    ) -> Float[np.ndarray, "B Q"]:
-        return core.forward_mujoco_qpos(
-            qpos_joint_indices=self.qpos_joint_indices,
-            qpos_joint_axes=self.qpos_joint_axes,
-            qpos_joint_limits=self.qpos_joint_limits,
-            joint_rotation_axes=self.joint_rotation_axes,
-            pose=pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
-            clamp_to_limits=clamp_to_limits,
-            rotation_type=self.rotation_type,
-            xp=np,
-        )
-
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
         if self.rotation_type == "hinge":
             pose = np.zeros((batch_size, self.num_joints, 1), dtype=dtype)

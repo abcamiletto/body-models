@@ -146,27 +146,6 @@ class G1(BodyModel, nn.Module):
             xp=torch,
         )
 
-    def forward_mujoco_qpos(
-        self,
-        pose: Float[Tensor, "B 34 N"] | Float[Tensor, "B 34 3 3"],
-        global_translation: Float[Tensor, "B 3"] | None = None,
-        *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        clamp_to_limits: bool = True,
-    ) -> Float[Tensor, "B Q"]:
-        return core.forward_mujoco_qpos(
-            qpos_joint_indices=self.qpos_joint_indices,
-            qpos_joint_axes=self.qpos_joint_axes,
-            qpos_joint_limits=self.qpos_joint_limits,
-            joint_rotation_axes=self.joint_rotation_axes,
-            pose=pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
-            clamp_to_limits=clamp_to_limits,
-            rotation_type=self.rotation_type,
-            xp=torch,
-        )
-
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self._vertices.device
         if self.rotation_type == "hinge":

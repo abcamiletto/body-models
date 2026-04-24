@@ -140,27 +140,6 @@ class G1(BodyModel, nnx.Module):
             xp=jnp,
         )
 
-    def forward_mujoco_qpos(
-        self,
-        pose: Float[jax.Array, "B 34 N"] | Float[jax.Array, "B 34 3 3"],
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        *,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        clamp_to_limits: bool = True,
-    ) -> Float[jax.Array, "B Q"]:
-        return core.forward_mujoco_qpos(
-            qpos_joint_indices=self.qpos_joint_indices,
-            qpos_joint_axes=self.qpos_joint_axes[...],
-            qpos_joint_limits=self.qpos_joint_limits[...],
-            joint_rotation_axes=self.joint_rotation_axes[...],
-            pose=pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
-            clamp_to_limits=clamp_to_limits,
-            rotation_type=self.rotation_type,
-            xp=jnp,
-        )
-
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         if self.rotation_type == "hinge":
             pose = jnp.zeros((batch_size, self.num_joints, 1), dtype=dtype)
