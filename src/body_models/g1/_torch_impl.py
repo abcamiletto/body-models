@@ -45,7 +45,6 @@ class G1(BodyModel, nn.Module):
         for key in [
             "local_offsets",
             "rest_local_rotations",
-            "rest_joints",
             "link_geom_positions",
             "link_geom_rotations",
             "qpos_joint_axes",

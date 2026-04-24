@@ -5,10 +5,8 @@ from __future__ import annotations
 import struct
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import TypedDict
 
 import numpy as np
-from jaxtyping import Float, Int
 
 from .. import config
 
@@ -122,29 +120,6 @@ G1_MESH_JOINT_MAP = {
 }
 
 
-class G1ModelData(TypedDict):
-    joint_names: list[str]
-    parents: list[int]
-    local_offsets: Float[np.ndarray, "34 3"]
-    rest_local_rotations: Float[np.ndarray, "34 3 3"]
-    rest_joints: Float[np.ndarray, "34 3"]
-    vertices: Float[np.ndarray, "V 3"]
-    faces: Int[np.ndarray, "F 3"]
-    skin_weights: Float[np.ndarray, "V 34"]
-    link_joint_indices: Int[np.ndarray, "L"]
-    link_vertex_starts: Int[np.ndarray, "L"]
-    link_vertex_counts: Int[np.ndarray, "L"]
-    link_face_starts: Int[np.ndarray, "L"]
-    link_face_counts: Int[np.ndarray, "L"]
-    link_geom_positions: Float[np.ndarray, "L 3"]
-    link_geom_rotations: Float[np.ndarray, "L 3 3"]
-    link_names: list[str]
-    qpos_joint_indices: Int[np.ndarray, "Q"]
-    qpos_joint_axes: Float[np.ndarray, "Q 3"]
-    qpos_joint_limits: Float[np.ndarray, "Q 2"]
-    qpos_joint_names: list[str]
-
-
 def get_model_path(model_path: Path | str | None = None) -> Path:
     """Resolve a G1 asset directory containing ``xml/g1.xml`` and ``meshes/g1``."""
     if model_path is None:
@@ -162,7 +137,7 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
     return path
 
 
-def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -> G1ModelData:
+def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -> dict:
     model_dir = get_model_path(model_path)
     xml_path = model_dir / "xml" / "g1.xml"
     mesh_dir = model_dir / "meshes" / "g1"
@@ -170,7 +145,7 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     root = tree.getroot()
 
     class_axes, class_limits = _parse_joint_defaults(tree)
-    local_offsets, rest_local_rotations, rest_joints = _parse_joint_rest(root)
+    local_offsets, rest_local_rotations = _parse_joint_rest(root)
     mesh_transforms = _parse_mesh_local_transforms(root)
     qpos_joint_indices, qpos_joint_axes, qpos_joint_limits, qpos_joint_names = _parse_qpos_joints(
         root,
@@ -184,7 +159,6 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         "parents": PARENTS.copy(),
         "local_offsets": local_offsets.astype(dtype),
         "rest_local_rotations": rest_local_rotations.astype(dtype),
-        "rest_joints": rest_joints.astype(dtype),
         "vertices": vertices.astype(dtype),
         "faces": faces.astype(np.int64),
         "skin_weights": skin_weights.astype(dtype),
@@ -223,40 +197,37 @@ def _parse_joint_defaults(tree: ET.ElementTree) -> tuple[dict[str, np.ndarray], 
     return class_axes, class_limits
 
 
-def _parse_joint_rest(root: ET.Element) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _parse_joint_rest(root: ET.Element) -> tuple[np.ndarray, np.ndarray]:
     local_offsets = np.zeros((len(JOINT_NAMES), 3), dtype=np.float32)
     rest_local_rotations = np.repeat(np.eye(3, dtype=np.float32)[None], len(JOINT_NAMES), axis=0)
-    rest_joints = np.zeros((len(JOINT_NAMES), 3), dtype=np.float32)
     worldbody = root.find("worldbody")
     if worldbody is None:
         raise ValueError("g1.xml is missing a worldbody")
 
     by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
 
-    def walk(body: ET.Element, parent_pos: np.ndarray, parent_rot: np.ndarray) -> None:
+    def walk(body: ET.Element, parent_rot: np.ndarray) -> None:
         joint_name = _body_to_joint_name(body)
         body_pos = _parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32))
-        body_rot = _quat_wxyz_to_matrix(_parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32)))
+        body_quat = _parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32))
+        body_rot = _quat_wxyz_to_matrix(body_quat)
         offset_k = MUJOCO_TO_KIMODO @ body_pos
         rot_k = MUJOCO_TO_KIMODO @ body_rot @ MUJOCO_TO_KIMODO.T
-        pos_k = parent_pos + parent_rot @ offset_k
         global_rot = parent_rot @ rot_k
         if joint_name in by_name:
             idx = by_name[joint_name]
             if idx == 0:
                 local_offsets[idx] = 0
-                rest_joints[idx] = 0
             else:
                 local_offsets[idx] = offset_k
-                rest_joints[idx] = pos_k
             rest_local_rotations[idx] = rot_k
 
         for child in body.findall("body"):
-            walk(child, pos_k, global_rot)
+            walk(child, global_rot)
 
     for body in worldbody.findall("body"):
-        walk(body, np.zeros(3, dtype=np.float32), np.eye(3, dtype=np.float32))
-    return local_offsets, rest_local_rotations, rest_joints
+        walk(body, np.eye(3, dtype=np.float32))
+    return local_offsets, rest_local_rotations
 
 
 def _parse_mesh_local_transforms(root: ET.Element) -> dict[str, tuple[np.ndarray, np.ndarray]]:
@@ -300,8 +271,6 @@ def _parse_qpos_joints(
         if skel_name not in by_name:
             continue
         axis = _joint_axis(joint, class_axes)
-        if axis is None:
-            continue
         axis_k = MUJOCO_TO_KIMODO @ axis
         norm = np.linalg.norm(axis_k)
         if norm <= 1e-8:
@@ -372,7 +341,7 @@ def load_stl_mesh(path: Path, *, dtype=np.float32) -> tuple[np.ndarray, np.ndarr
     data = path.read_bytes()
     if _looks_like_binary_stl(data):
         return _load_binary_stl(data, dtype=dtype)
-    return _load_ascii_stl(data.decode("utf-8", errors="ignore"), dtype=dtype)
+    return _load_ascii_stl(data.decode("utf-8"), dtype=dtype)
 
 
 def _load_ascii_stl(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
@@ -421,11 +390,13 @@ def _body_to_joint_name(body: ET.Element) -> str:
     return name.removesuffix("_link") + "_skel"
 
 
-def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndarray | None:
+def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndarray:
     if joint.get("axis"):
         return np.asarray([float(x) for x in joint.get("axis").split()], dtype=np.float32)
     class_name = joint.get("class")
-    return None if class_name is None else class_axes.get(class_name)
+    if class_name in class_axes:
+        return class_axes[class_name]
+    raise ValueError(f"Missing axis for G1 joint {joint.get('name')}")
 
 
 def _joint_limit(joint: ET.Element, class_limits: dict[str, tuple[float, float]]) -> tuple[float, float]:

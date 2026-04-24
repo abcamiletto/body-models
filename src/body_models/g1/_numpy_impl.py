@@ -29,14 +29,10 @@ class G1(BodyModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
         data = load_model_data(model_path)
-        self._init_arrays(data)
-
-    def _init_arrays(self, data) -> None:
         self._joint_names = data["joint_names"]
         self.parents = data["parents"]
         self.local_offsets = data["local_offsets"]
         self.rest_local_rotations = data["rest_local_rotations"]
-        self.rest_joints = data["rest_joints"]
         self._vertices = data["vertices"]
         self._faces = data["faces"]
         self._skin_weights = data["skin_weights"]
