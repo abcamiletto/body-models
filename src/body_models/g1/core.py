@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from .. import common
-from ..rotations import RotationType
+from ..rotations import RotationType as SO3RotationType
 
 Array = Any
+RotationType = SO3RotationType | Literal["hinge"]
 
 MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
 SKIN_WEIGHTS_ERROR = "G1 is a rigid articulated model and does not define skin_weights."
+VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat", "hinge")
 
 
 def forward_skeleton(
@@ -57,7 +59,7 @@ def forward_skeleton(
     rot = xp.stack(rot_world, axis=1)
     trans = xp.stack(pos_world, axis=1)
     if global_rotation is not None:
-        global_rot = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
+        global_rot = _global_rotation_to_rotmat(global_rotation, rotation_type=rotation_type, xp=xp)
         rot = global_rot[:, None] @ rot
         trans = xp.squeeze(global_rot[:, None] @ trans[..., None], axis=-1)
     trans = trans + global_translation[:, None]
@@ -175,7 +177,7 @@ def project_pose_to_qpos(
     if global_rotation is None:
         root_rot = rot[:, 0]
     else:
-        root_rot = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp) @ rot[:, 0]
+        root_rot = _global_rotation_to_rotmat(global_rotation, rotation_type=rotation_type, xp=xp) @ rot[:, 0]
 
     coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
     kimodo_to_mujoco = coord.mT
@@ -200,8 +202,23 @@ def _pose_to_rotmat(
     rotation_type: RotationType,
     xp: Any,
 ) -> Float[Array, "B J 3 3"]:
-    if pose.ndim == 3 and pose.shape[-1] == 1:
+    if rotation_type == "hinge":
+        if pose.ndim != 3 or pose.shape[-1] != 1:
+            raise ValueError("G1 hinge poses must have shape [B, J, 1]")
         axes = xp.asarray(joint_rotation_axes, dtype=pose.dtype)
         axis_angle = pose * axes[None]
         return SO3.conversions.from_axis_angle_to_rotmat(axis_angle, xp=xp)
+    if pose.ndim == 3 and pose.shape[-1] == 1:
+        raise ValueError('G1 scalar hinge poses require rotation_type="hinge"')
     return SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+
+
+def _global_rotation_to_rotmat(
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"],
+    *,
+    rotation_type: RotationType,
+    xp: Any,
+) -> Float[Array, "B 3 3"]:
+    if rotation_type == "hinge":
+        return xp.asarray(global_rotation)
+    return SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)

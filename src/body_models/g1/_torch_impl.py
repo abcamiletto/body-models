@@ -9,7 +9,6 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import load_model_data
 
@@ -36,7 +35,7 @@ class G1(BodyModel, nn.Module):
         *,
         rotation_type: core.RotationType = "rotmat",
     ) -> None:
-        if rotation_type not in VALID_ROTATION_TYPES:
+        if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
@@ -170,6 +169,12 @@ class G1(BodyModel, nn.Module):
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self._vertices.device
+        if self.rotation_type == "hinge":
+            return {
+                "pose": torch.zeros((batch_size, self.num_joints, 1), device=device, dtype=dtype),
+                "global_rotation": torch.eye(3, device=device, dtype=dtype).expand(batch_size, 3, 3),
+                "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            }
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
         rot_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         return {

@@ -9,7 +9,6 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import load_model_data
 
@@ -34,7 +33,7 @@ class G1(BodyModel, nnx.Module):
         *,
         rotation_type: core.RotationType = "rotmat",
     ) -> None:
-        if rotation_type not in VALID_ROTATION_TYPES:
+        if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
         data = load_model_data(model_path)
@@ -163,6 +162,12 @@ class G1(BodyModel, nnx.Module):
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
+        if self.rotation_type == "hinge":
+            return {
+                "pose": jnp.zeros((batch_size, self.num_joints, 1), dtype=dtype),
+                "global_rotation": jnp.broadcast_to(jnp.eye(3, dtype=dtype), (batch_size, 3, 3)),
+                "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
+            }
         pose_ref = jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype)
         rot_ref = jnp.zeros((batch_size, 3), dtype=dtype)
         return {
