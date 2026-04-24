@@ -72,3 +72,9 @@ ignore = [
     "F821",  # jaxtyping dimension names appear as undefined
     "E741",  # ambiguous variable names (I, l, O) are standard in math notation
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "fast: tests included in pull request CI",
+    "slow: exhaustive or compiler-heavy tests excluded from fast CI",
+]

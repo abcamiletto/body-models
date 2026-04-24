@@ -22,19 +22,20 @@ MODEL_FILES = {
 }
 CLASS_NAMES = {name: ("FLAME" if name == "flame" else name.upper()) for name in (*MODEL_FILES, "anny", "mhr", "soma")}
 MODEL_CASES = (
-    pytest.param("smpl", {}, id="smpl"),
-    pytest.param("smplx", {}, id="smplx"),
-    pytest.param("skel", {}, id="skel"),
-    pytest.param("flame", {}, id="flame"),
-    pytest.param("anny", {}, id="anny"),
-    pytest.param("mhr", {}, id="mhr"),
-    pytest.param("soma", {"model_type": "soma"}, id="soma"),
-    pytest.param("soma", {"model_type": "anny"}, id="soma-anny"),
-    pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr"),
-    pytest.param("soma", {"model_type": "smpl"}, id="soma-smpl"),
-    pytest.param("soma", {"model_type": "smplx"}, id="soma-smplx"),
+    pytest.param("smpl", {}, id="smpl", marks=pytest.mark.fast),
+    pytest.param("smplx", {}, id="smplx", marks=pytest.mark.slow),
+    pytest.param("skel", {}, id="skel", marks=pytest.mark.slow),
+    pytest.param("flame", {}, id="flame", marks=pytest.mark.slow),
+    pytest.param("anny", {}, id="anny", marks=pytest.mark.slow),
+    pytest.param("mhr", {}, id="mhr", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "soma"}, id="soma", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "anny"}, id="soma-anny", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "smpl"}, id="soma-smpl", marks=pytest.mark.slow),
+    pytest.param("soma", {"model_type": "smplx"}, id="soma-smplx", marks=pytest.mark.slow),
 )
 COMPILE_TOLERANCES = {"soma": (1e-4, 1e-4)}
+TORCH_COMPILE_MODE = "reduce-overhead"
 
 
 def get_compile_tolerances(model_name: str) -> tuple[float, float]:
@@ -106,7 +107,7 @@ def test_torch_compile_forward_vertices(model_name: str, model_kwargs: dict[str,
     model.eval()
 
     # Compile model
-    compiled_fn = torch.compile(model.forward_vertices)
+    compiled_fn = torch.compile(model.forward_vertices, mode=TORCH_COMPILE_MODE)
 
     # Get test params
     params = model.get_rest_pose(batch_size=2)
@@ -136,7 +137,7 @@ def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str,
     model.eval()
 
     # Compile model
-    compiled_fn = torch.compile(model.forward_skeleton)
+    compiled_fn = torch.compile(model.forward_skeleton, mode=TORCH_COMPILE_MODE)
 
     # Get test params
     params = model.get_rest_pose(batch_size=2)
@@ -171,7 +172,7 @@ def test_torch_compile_fullgraph_forward_vertices(model_name: str, model_kwargs:
     model.eval()
 
     # Compile with fullgraph=True - will fail if there are any graph breaks
-    compiled_fn = torch.compile(model.forward_vertices, fullgraph=True)
+    compiled_fn = torch.compile(model.forward_vertices, fullgraph=True, mode=TORCH_COMPILE_MODE)
 
     # Get test params
     params = model.get_rest_pose(batch_size=2)
@@ -198,7 +199,7 @@ def test_torch_compile_fullgraph_forward_skeleton(model_name: str, model_kwargs:
     model.eval()
 
     # Compile with fullgraph=True - will fail if there are any graph breaks
-    compiled_fn = torch.compile(model.forward_skeleton, fullgraph=True)
+    compiled_fn = torch.compile(model.forward_skeleton, fullgraph=True, mode=TORCH_COMPILE_MODE)
 
     # Get test params
     params = model.get_rest_pose(batch_size=2)
