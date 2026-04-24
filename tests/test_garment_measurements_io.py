@@ -36,15 +36,27 @@ def test_upstream_folder_is_preprocessed_to_platform_cache(tmp_path, monkeypatch
 
 def test_run_asset_generator_uses_uv_pep723_script(tmp_path, monkeypatch) -> None:
     calls = []
+    monkeypatch.setattr(io.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None)
     monkeypatch.setattr(io.subprocess, "run", lambda cmd, check: calls.append((cmd, check)))
 
     io._run_asset_generator(tmp_path / "data", tmp_path / "out")
 
     cmd, check = calls[0]
     assert check is True
-    assert cmd[:5] == ["uv", "run", "--python", io.GENERATOR_PYTHON, "--no-project"]
+    assert cmd[:5] == ["/usr/bin/uv", "run", "--python", io.GENERATOR_PYTHON, "--no-project"]
     assert cmd[-2:] == [str(tmp_path / "data"), str(tmp_path / "out")]
     assert Path(cmd[-3]).name == "generate_asset.py"
+
+
+def test_run_asset_generator_fails_clearly_without_uv(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(io.shutil, "which", lambda name: None)
+
+    try:
+        io._run_asset_generator(tmp_path / "data", tmp_path / "out")
+    except RuntimeError as exc:
+        assert "requires `uv` on PATH" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
 
 
 def _write_minimal_preprocessed_model(path: Path) -> None:

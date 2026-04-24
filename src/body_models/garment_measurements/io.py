@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -150,20 +151,35 @@ def _preprocessed_output_dir(upstream_data: Path) -> Path:
 
 
 def _run_asset_generator(upstream_data: Path, output_dir: Path) -> None:
+    uv = shutil.which("uv")
+    if uv is None:
+        raise RuntimeError(
+            "GarmentMeasurements preprocessing requires `uv` on PATH because the FBX converter "
+            "is a self-contained PEP 723 script that installs bpy outside the runtime environment."
+        )
+
     script = Path(__file__).with_name("generate_asset.py")
+    output_file = output_dir / PREPROCESSED_FILENAME
+    command = [
+        uv,
+        "run",
+        "--python",
+        GENERATOR_PYTHON,
+        "--no-project",
+        str(script),
+        str(upstream_data),
+        str(output_dir),
+    ]
+
+    print("GarmentMeasurements: preprocessing upstream FBX data with bpy via uv.")
+    print(f"GarmentMeasurements: generated asset will be saved to {output_file}")
+    print(f"GarmentMeasurements: running {' '.join(command)}")
     subprocess.run(
-        [
-            "uv",
-            "run",
-            "--python",
-            GENERATOR_PYTHON,
-            "--no-project",
-            str(script),
-            str(upstream_data),
-            str(output_dir),
-        ],
+        command,
         check=True,
     )
+    print(f"GarmentMeasurements: generated {output_file}")
+    print(f"GarmentMeasurements: to reuse it directly, run `body-models set garment-measurements {output_dir}`")
 
 
 def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
