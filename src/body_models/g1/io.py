@@ -238,27 +238,24 @@ def _parse_joint_rest(root: ET.Element) -> tuple[np.ndarray, np.ndarray]:
 
     by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
 
-    def walk(body: ET.Element, parent_rot: np.ndarray) -> None:
+    def walk(body: ET.Element) -> None:
         joint_name = _body_to_joint_name(body)
         body_pos = _parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32))
         body_quat = _parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32))
         body_rot = _quat_wxyz_to_matrix(body_quat)
         offset_k = MUJOCO_TO_KIMODO @ body_pos
         rot_k = MUJOCO_TO_KIMODO @ body_rot @ MUJOCO_TO_KIMODO.T
-        global_rot = parent_rot @ rot_k
         if joint_name in by_name:
             idx = by_name[joint_name]
-            if idx == 0:
-                local_offsets[idx] = 0
-            else:
+            if idx != 0:
                 local_offsets[idx] = offset_k
             rest_local_rotations[idx] = rot_k
 
         for child in body.findall("body"):
-            walk(child, global_rot)
+            walk(child)
 
     for body in worldbody.findall("body"):
-        walk(body, np.eye(3, dtype=np.float32))
+        walk(body)
     return local_offsets, rest_local_rotations
 
 
@@ -340,7 +337,7 @@ def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarra
             vertices, faces = load_stl_mesh(path, dtype=dtype)
             vertices_by_link.append(vertices)
             faces_by_link.append(faces + vertex_offset)
-            geom_pos, geom_rot = mesh_transforms.get(mesh_file, (np.zeros(3, dtype=dtype), np.eye(3, dtype=dtype)))
+            geom_pos, geom_rot = mesh_transforms[mesh_file]
             joint_indices.append(joint_idx)
             vertex_starts.append(vertex_offset)
             vertex_counts.append(vertices.shape[0])
