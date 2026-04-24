@@ -115,19 +115,20 @@ def forward_vertices(
     geom_pos = xp.asarray(link_geom_positions, dtype=pose.dtype)
     geom_rot = xp.asarray(link_geom_rotations, dtype=pose.dtype)
 
-    chunks = []
-    per_link = []
+    if return_per_link:
+        per_link = []
+    else:
+        chunks = []
     for link_idx, joint_idx in enumerate(link_joint_indices):
         start = link_vertex_starts[link_idx]
         count = link_vertex_counts[link_idx]
-        f_start = link_face_starts[link_idx]
-        f_count = link_face_counts[link_idx]
         local_vertices = source_vertices[start : start + count]
         R = joint_rot[:, joint_idx] @ geom_rot[link_idx]
         t = joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
         transformed = xp.squeeze(R[:, None] @ local_vertices[None, :, :, None], axis=-1) + t[:, None]
-        chunks.append(transformed)
         if return_per_link:
+            f_start = link_face_starts[link_idx]
+            f_count = link_face_counts[link_idx]
             per_link.append(
                 {
                     "name": link_names[link_idx],
@@ -136,6 +137,8 @@ def forward_vertices(
                     "joint_index": joint_idx,
                 }
             )
+        else:
+            chunks.append(transformed)
 
     if return_per_link:
         return per_link
