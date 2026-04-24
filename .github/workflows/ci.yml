@@ -28,10 +28,30 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv run --group dev --extra torch --extra jax ty check
 
-  tests-core:
-    name: Tests Core (py3.12, locked)
+  tests-fast:
+    name: Tests Fast (${{ matrix.group }})
     if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: anny
+            paths: tests/test_anny.py
+          - group: flame
+            paths: tests/test_flame.py
+          - group: mhr
+            paths: tests/test_mhr.py
+          - group: skel
+            paths: tests/test_skel.py
+          - group: smpl
+            paths: tests/test_smpl.py
+          - group: smplx
+            paths: tests/test_smplx.py
+          - group: compile
+            paths: tests/test_compile.py
+          - group: interface
+            paths: tests/test_model_interface.py
     env:
       UV_PYTHON: "3.12"
       GH_TOKEN: ${{ secrets.ASSETS_PAT }}
@@ -54,7 +74,7 @@ jobs:
             "$ASSET_URL" -o /tmp/assets.tar.gz
           tar xzf /tmp/assets.tar.gz -C tests/
       - run: uv sync --group dev --all-extras --frozen
-      - run: uv run pytest -q tests/test_anny.py tests/test_flame.py tests/test_mhr.py tests/test_skel.py tests/test_smpl.py tests/test_smplx.py tests/test_compile.py tests/test_model_interface.py
+      - run: uv run pytest -q -m fast ${{ matrix.paths }}
 
   tests-version-smoke:
     name: Tests Version Smoke (py${{ matrix.python-version }}, ${{ matrix.resolution }})
