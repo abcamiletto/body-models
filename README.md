@@ -44,14 +44,16 @@ Note: NumPy/JAX backends can load MHR torch checkpoints without installing PyTor
 
 ### Auto-download models
 
-ANNY, MHR, and SOMA models are automatically downloaded on first use:
+ANNY, MHR, SOMA, and GarmentMeasurements models are automatically downloaded on first use:
 
 ```python
 from body_models.anny.torch import ANNY
+from body_models.garment_measurements.torch import GarmentMeasurements
 from body_models.mhr.torch import MHR
 from body_models.soma.torch import SOMA
 
 model = ANNY()  # Downloads automatically (CC0 license)
+model = GarmentMeasurements()  # Downloads upstream data, then preprocesses with bpy via uv
 model = MHR()   # Downloads automatically (Apache 2.0)
 model = SOMA()  # Downloads SOMA_neutral.npz from SOMA-X
 ```
@@ -60,6 +62,7 @@ You can also prefetch them and save the cache paths into config:
 
 ```bash
 body-models download anny
+body-models download garment-measurements
 body-models download mhr
 body-models download soma
 ```
@@ -78,6 +81,7 @@ You can let the CLI download all supported models into the platform cache and sa
 
 ```bash
 body-models download anny
+body-models download garment-measurements
 body-models download mhr
 body-models download soma
 body-models download smpl
@@ -106,7 +110,7 @@ body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel_models_v1.1
 body-models set flame /path/to/FLAME_NEUTRAL.pkl
 body-models set soma /path/to/soma-assets
-body-models set garment-measurements /path/to/garment_measurements/model
+body-models set garment-measurements /path/to/GarmentMeasurements/data
 ```
 
 Or pass file paths directly:
@@ -481,12 +485,12 @@ vertices = model.forward_vertices(
 skeleton = model.forward_skeleton(**params)
 ```
 
-The runtime loads a preprocessed `garment_measurements.npz` asset containing the upstream PCA body mesh plus the FBX-derived skeleton, skinning weights, and mean-value-coordinate joint weights. FBX parsing is intentionally kept out of the library runtime; generate the `.npz` asset offline from upstream `template/male.fbx` with the self-contained PEP 723 generator.
+The runtime loads a preprocessed `garment_measurements.npz` asset containing the upstream PCA body mesh plus the FBX-derived skeleton, skinning weights, and mean-value-coordinate joint weights. You can pass either that generated file, a folder containing it, or the original upstream `GarmentMeasurements/data` folder. When an upstream folder is provided, `body-models` runs the self-contained PEP 723 generator through `uv` and stores the `.npz` in the platform cache.
 
 ```bash
-uv run --python 3.11 --no-project tests/generate_assets/generate_garment_measurements_reference.py \
-  /path/to/GarmentMeasurements/data /path/to/garment_measurements/model
-body-models set garment-measurements /path/to/garment_measurements/model
+uv run --python 3.11 --no-project src/body_models/garment_measurements/generate_asset.py \
+  /path/to/GarmentMeasurements/data /path/to/generated/garment_measurements/model
+body-models set garment-measurements /path/to/GarmentMeasurements/data
 ```
 
 ## Coordinate System

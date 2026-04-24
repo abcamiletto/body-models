@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 import struct
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +17,7 @@ from ..utils import download_and_extract, get_cache_dir
 
 GARMENT_MEASUREMENTS_URL = "https://github.com/mbotsch/GarmentMeasurements/archive/refs/heads/main.zip"
 PREPROCESSED_FILENAME = "garment_measurements.npz"
+GENERATOR_PYTHON = "3.11"
 
 
 def get_model_path(model_path: Path | str | None = None) -> Path:
@@ -23,15 +27,15 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
 
     if model_path is not None:
         model_path = Path(model_path)
-        if _find_preprocessed_file(model_path) is not None or _find_pca_files(model_path) is not None:
+        if _find_preprocessed_file(model_path) is not None or _find_upstream_data_dir(model_path) is not None:
             return model_path
         raise FileNotFoundError(
             f"GarmentMeasurements model path {model_path} does not contain {PREPROCESSED_FILENAME} "
-            "or pca/point.pca and pca/mean.obj"
+            "or upstream pca/point.pca, pca/mean.obj, and template/male.fbx"
         )
 
     cache_path = get_cache_dir() / "garment_measurements"
-    if _find_preprocessed_file(cache_path) is not None or _find_pca_files(cache_path) is not None:
+    if _find_preprocessed_file(cache_path) is not None or _find_upstream_data_dir(cache_path) is not None:
         return cache_path
     return download_model()
 
@@ -66,11 +70,15 @@ def load_model_data(
     if model_file is not None:
         return load_preprocessed_model(model_file, dtype=dtype)
 
+    upstream_data = _find_upstream_data_dir(resolved_path)
+    if upstream_data is not None and require_skeleton:
+        return load_preprocessed_model(preprocess_model(upstream_data), dtype=dtype)
+
     if require_skeleton:
         raise FileNotFoundError(
-            f"Missing {PREPROCESSED_FILENAME} under {resolved_path}. Generate it from upstream male.fbx with "
-            "tests/generate_assets/generate_garment_measurements_reference.py and place it in the private "
-            "garment_measurements/model asset directory."
+            f"Missing {PREPROCESSED_FILENAME} under {resolved_path}. Provide either a preprocessed model file "
+            "or an upstream GarmentMeasurements data directory with pca/point.pca, pca/mean.obj, and "
+            "template/male.fbx."
         )
 
     files = _find_pca_files(resolved_path)
@@ -92,6 +100,27 @@ def load_model_data(
         "eigenvalues": eigenvalues,
         "faces": faces,
     }
+
+
+def preprocess_model(upstream_data: Path | str, output_dir: Path | str | None = None) -> Path:
+    """Generate ``garment_measurements.npz`` from an upstream GarmentMeasurements data directory."""
+    resolved_upstream = _find_upstream_data_dir(Path(upstream_data))
+    if resolved_upstream is None:
+        raise FileNotFoundError(
+            "Expected an upstream GarmentMeasurements data directory containing "
+            "pca/point.pca, pca/mean.obj, and template/male.fbx"
+        )
+
+    output_dir = Path(output_dir) if output_dir is not None else _preprocessed_output_dir(resolved_upstream)
+    output_file = output_dir / PREPROCESSED_FILENAME
+    if output_file.is_file():
+        return output_file
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    _run_asset_generator(resolved_upstream, output_dir)
+    if not output_file.is_file():
+        raise RuntimeError(f"GarmentMeasurements preprocessing did not produce {output_file}")
+    return output_file
 
 
 def load_preprocessed_model(model_path: Path | str, dtype: Any = np.float32) -> dict[str, Any]:
@@ -214,6 +243,16 @@ def _find_pca_files(model_path: Path) -> tuple[Path, Path] | None:
     return None
 
 
+def _find_upstream_data_dir(model_path: Path) -> Path | None:
+    for base in (model_path, model_path / "data"):
+        pca_path = base / "pca" / "point.pca"
+        obj_path = base / "pca" / "mean.obj"
+        fbx_path = base / "template" / "male.fbx"
+        if pca_path.is_file() and obj_path.is_file() and fbx_path.is_file():
+            return base
+    return None
+
+
 def _find_preprocessed_file(model_path: Path) -> Path | None:
     if model_path.is_file() and model_path.name == PREPROCESSED_FILENAME:
         return model_path
@@ -222,6 +261,33 @@ def _find_preprocessed_file(model_path: Path) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def _preprocessed_output_dir(upstream_data: Path) -> Path:
+    resolved = str(upstream_data.resolve())
+    digest = hashlib.sha256(resolved.encode()).hexdigest()[:12]
+    return get_cache_dir() / "garment_measurements" / "processed" / digest
+
+
+def _run_asset_generator(upstream_data: Path, output_dir: Path) -> None:
+    uv = shutil.which("uv")
+    if uv is None:
+        raise RuntimeError("GarmentMeasurements preprocessing requires `uv` on PATH to run the bpy asset generator")
+
+    script = Path(__file__).with_name("generate_asset.py")
+    subprocess.run(
+        [
+            uv,
+            "run",
+            "--python",
+            GENERATOR_PYTHON,
+            "--no-project",
+            str(script),
+            str(upstream_data),
+            str(output_dir),
+        ],
+        check=True,
+    )
 
 
 def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
@@ -247,6 +313,7 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
 
 __all__ = [
     "GARMENT_MEASUREMENTS_URL",
+    "GENERATOR_PYTHON",
     "PREPROCESSED_FILENAME",
     "download_model",
     "get_model_path",
@@ -254,4 +321,5 @@ __all__ = [
     "load_obj_mesh",
     "load_pca",
     "load_preprocessed_model",
+    "preprocess_model",
 ]
