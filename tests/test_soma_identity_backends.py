@@ -54,9 +54,6 @@ def _make_upstream_layer(model_type: str, upstream_data_root: Path):
             identity_model_type=model_type,
             identity_model_kwargs=identity_model_kwargs,
         )
-    # Our native SOMA implementation matches the upstream PyTorch rotation fitter.
-    # Keep the oracle on that path so these tests isolate identity-backend parity.
-    layer.skeleton_transfer.use_warp_for_rotations = False
     return layer
 
 

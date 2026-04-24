@@ -654,20 +654,8 @@ def _align_vectors(
     if target.shape[-2] == 1:
         return _rotation_between_vectors(xp, target[:, 0], source[:, 0])
 
+    # Match SOMALayer's default warp Kabsch path, which uses the plain covariance.
     H = xp.einsum("bni,bnj->bij", target, source)
-    p0, p1 = target[:, 0], target[:, 1]
-    q0, q1 = source[:, 0], source[:, 1]
-    n_target = xp.linalg.cross(p0, p1)
-    n_source = xp.linalg.cross(q0, q1)
-    len_target = xp.linalg.vector_norm(n_target, axis=-1, keepdims=True)
-    len_source = xp.linalg.vector_norm(n_source, axis=-1, keepdims=True)
-    scale_target = xp.linalg.vector_norm(p0, axis=-1, keepdims=True) / (len_target + 1e-8)
-    scale_source = xp.linalg.vector_norm(q0, axis=-1, keepdims=True) / (len_source + 1e-8)
-    valid = (len_target[:, 0] > 1e-9) & (len_source[:, 0] > 1e-9)
-    v_target = n_target * scale_target
-    v_source = n_source * scale_source
-    virtual = xp.einsum("bi,bj->bij", v_target, v_source)
-    H = xp.where(valid[:, None, None], H + virtual, H)
     return _kabsch(xp, H)
 
 
