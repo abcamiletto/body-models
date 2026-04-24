@@ -50,6 +50,8 @@ jobs:
             paths: tests/test_smplx.py
           - group: soma
             paths: tests/test_soma.py tests/test_soma_identity_backends.py
+          - group: garment-measurements
+            paths: tests/test_garment_measurements.py tests/test_garment_measurements_io.py
           - group: compile
             paths: tests/test_compile.py
           - group: interface

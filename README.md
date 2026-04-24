@@ -4,12 +4,12 @@
 
 A unified library for parametric human body models.
 
-Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, and SOMA body models with PyTorch, NumPy, and JAX backends.
+Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, and GarmentMeasurements body models with PyTorch, NumPy, and JAX backends.
 
 ## Features
 
 - **Multi-backend**: PyTorch, NumPy, and JAX
-- **Disentangled outputs**: separate `forward_vertices` (mesh) and `forward_skeleton` (joint transforms)
+- **Disentangled outputs**: separate `forward_vertices` (mesh) and `forward_skeleton` (joint transforms) for rigged models
 - **Mesh simplification**: lower-resolution forward pass via `simplify` constructor argument
 - **Vertex subsets**: compute only specific vertices via `vertex_indices` argument
 - **Rotation representations**: axis-angle, quaternion, 6D, rotation matrix, and projected matrix (`rotation_type` constructor argument)
@@ -44,14 +44,16 @@ Note: NumPy/JAX backends can load MHR torch checkpoints without installing PyTor
 
 ### Auto-download models
 
-ANNY, MHR, and SOMA models are automatically downloaded on first use:
+ANNY, MHR, SOMA, and GarmentMeasurements models are automatically downloaded on first use:
 
 ```python
 from body_models.anny.torch import ANNY
+from body_models.garment_measurements.torch import GarmentMeasurements
 from body_models.mhr.torch import MHR
 from body_models.soma.torch import SOMA
 
 model = ANNY()  # Downloads automatically (CC0 license)
+model = GarmentMeasurements()  # Downloads upstream data, then preprocesses with bpy via uv
 model = MHR()   # Downloads automatically (Apache 2.0)
 model = SOMA()  # Downloads SOMA_neutral.npz from SOMA-X
 ```
@@ -60,6 +62,7 @@ You can also prefetch them and save the cache paths into config:
 
 ```bash
 body-models download anny
+body-models download garment-measurements
 body-models download mhr
 body-models download soma
 ```
@@ -78,6 +81,7 @@ You can let the CLI download all supported models into the platform cache and sa
 
 ```bash
 body-models download anny
+body-models download garment-measurements
 body-models download mhr
 body-models download soma
 body-models download smpl
@@ -106,6 +110,7 @@ body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel_models_v1.1
 body-models set flame /path/to/FLAME_NEUTRAL.pkl
 body-models set soma /path/to/soma-assets
+body-models set garment-measurements /path/to/GarmentMeasurements/data
 ```
 
 Or pass file paths directly:
@@ -179,7 +184,7 @@ Available backends:
 
 ## Common Interface
 
-All models inherit from `BodyModel` and share these properties:
+Rigged models inherit from `BodyModel` and share these properties:
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -205,7 +210,7 @@ transforms = model.forward_skeleton(**params)
 
 ### Mesh Simplification
 
-All models support mesh simplification via the `simplify` constructor argument:
+Most skinned mesh models support mesh simplification via the `simplify` constructor argument:
 
 ```python
 # Reduce face count by half (2x simplification)
@@ -460,6 +465,34 @@ transforms = model.forward_skeleton(**args)
 result = mhr.to_native_outputs(vertices, transforms)
 ```
 
+### GarmentMeasurements
+
+GarmentCodeData PCA body shape model from `mbotsch/GarmentMeasurements`.
+
+```python
+from body_models.garment_measurements.torch import GarmentMeasurements  # or .numpy, .jax
+
+model = GarmentMeasurements()
+
+params = model.get_rest_pose(batch_size=1)
+params["shape"][:, 0] = 0.5
+vertices = model.forward_vertices(
+    params["shape"],              # [B, C] PCA weights in standard deviation units
+    params["pose"],               # [B, J, 3] joint rotations
+    params["global_rotation"],    # [B, 3] axis-angle
+    params["global_translation"], # [B, 3]
+)
+skeleton = model.forward_skeleton(**params)
+```
+
+The runtime loads a preprocessed `garment_measurements.npz` asset containing the upstream PCA body mesh plus the FBX-derived skeleton, skinning weights, and mean-value-coordinate joint weights. You can pass either that generated file, a folder containing it, or the original upstream `GarmentMeasurements/data` folder. When an upstream folder is provided, `body-models` runs the self-contained PEP 723 generator through `uv` and stores the `.npz` in the platform cache.
+
+```bash
+uv run --python 3.11 --no-project src/body_models/garment_measurements/generate_asset.py \
+  /path/to/GarmentMeasurements/data /path/to/generated/garment_measurements/model
+body-models set garment-measurements /path/to/GarmentMeasurements/data
+```
+
 ## Coordinate System
 
 The unified API returns outputs in:
@@ -485,3 +518,5 @@ See individual model licenses for usage terms:
 - FLAME: https://flame.is.tue.mpg.de/
 - ANNY: CC0 (MakeHuman data)
 - MHR: Apache 2.0 (Meta Platforms, Inc.)
+- SOMA: See NVIDIA SOMA-X license terms
+- GarmentMeasurements: GPL-3.0
