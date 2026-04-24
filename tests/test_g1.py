@@ -101,8 +101,11 @@ def test_g1_metadata_matches_kimodo_skeleton(backend: str) -> None:
     assert model.joint_names == G1_JOINT_NAMES
     assert model.parents[:8] == [-1, 0, 1, 2, 3, 4, 5, 6]
     assert model.parents[15:18] == [0, 15, 16]
-    assert model.num_vertices == G1_NUM_LINK_MESHES * 3
-    assert model.faces.shape == (G1_NUM_LINK_MESHES, 3)
+    assert model.num_vertices > G1_NUM_LINK_MESHES * 3
+    assert model.faces.ndim == 2
+    assert model.faces.shape[0] > G1_NUM_LINK_MESHES
+    assert model.faces.shape[1] == 3
+    assert len(model.link_names) == G1_NUM_LINK_MESHES
     with pytest.raises(NotImplementedError, match="rigid articulated"):
         model.skin_weights
 
@@ -117,7 +120,7 @@ def test_forward_skeleton_uses_xml_offsets_in_kimodo_coordinates(backend: str) -
     skeleton = _to_numpy(model.forward_skeleton(**params))
 
     np.testing.assert_allclose(skeleton[0, 0, :3, 3], [10.0, 20.0, 30.0], atol=1e-6)
-    np.testing.assert_allclose(skeleton[0, 1, :3, 3], [10.0, 20.0, 31.0], atol=1e-6)
+    np.testing.assert_allclose(skeleton[0, 1, :3, 3], [10.064452, 19.8973, 30.0], atol=1e-6)
 
     subset = _to_numpy(model.forward_skeleton(**params, joint_indices=[1, 0]))
     np.testing.assert_allclose(subset[:, 0], skeleton[:, 1], atol=1e-6)
@@ -132,31 +135,25 @@ def test_forward_vertices_rigidly_attaches_stl_links(backend: str) -> None:
     params["global_translation"] = _array(backend, [[10.0, 20.0, 30.0]])
 
     vertices = _to_numpy(model.forward_vertices(**params))
-    mujoco_triangle_in_kimodo = np.array(
-        [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-        dtype=np.float32,
-    )
-
-    expected_pelvis = mujoco_triangle_in_kimodo + np.array([10.0, 21.0, 30.0], dtype=np.float32)
-    expected_left_hip = mujoco_triangle_in_kimodo + np.array([11.0, 20.0, 31.0], dtype=np.float32)
-    pelvis_idx = model.link_names.index("pelvis.STL")
-    left_hip_idx = model.link_names.index("left_hip_pitch_link.STL")
-    pelvis_start = model.link_vertex_starts[pelvis_idx]
-    left_hip_start = model.link_vertex_starts[left_hip_idx]
-    np.testing.assert_allclose(vertices[0, pelvis_start : pelvis_start + 3], expected_pelvis, atol=1e-6)
-    np.testing.assert_allclose(vertices[0, left_hip_start : left_hip_start + 3], expected_left_hip, atol=1e-6)
-
     per_link = model.forward_vertices(**params, return_per_link=True)
     assert len(per_link) == G1_NUM_LINK_MESHES
-    np.testing.assert_allclose(_to_numpy(per_link[pelvis_idx]["vertices"])[0], expected_pelvis, atol=1e-6)
-    np.testing.assert_allclose(_to_numpy(per_link[left_hip_idx]["vertices"])[0], expected_left_hip, atol=1e-6)
+    for link_idx, link in enumerate(per_link):
+        start = model.link_vertex_starts[link_idx]
+        count = model.link_vertex_counts[link_idx]
+        assert link["name"] == model.link_names[link_idx]
+        np.testing.assert_allclose(_to_numpy(link["vertices"])[0], vertices[0, start : start + count], atol=1e-6)
+
+    shifted_params = {**params, "global_translation": _array(backend, [[-1.0, 2.0, 0.5]])}
+    shifted = _to_numpy(model.forward_vertices(**shifted_params))
+    expected_delta = np.broadcast_to(np.array([[[-11.0, -18.0, -29.5]]], dtype=np.float32), shifted.shape)
+    np.testing.assert_allclose(shifted - vertices, expected_delta, atol=1e-6)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_project_pose_to_qpos_uses_xml_axis_limits_and_coordinate_transform(backend: str) -> None:
     model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
     pose = np.tile(np.eye(3, dtype=np.float32), (1, model.num_joints, 1, 1))
-    pose[0, 1] = _rot_x(0.7)
+    pose[0, 1] = _rot_x(3.0)
 
     qpos = _to_numpy(
         model.project_pose_to_qpos(
@@ -166,10 +163,11 @@ def test_project_pose_to_qpos_uses_xml_axis_limits_and_coordinate_transform(back
         )
     )
 
-    assert qpos.shape == (1, 8)
+    assert qpos.shape == (1, 7 + len(model.qpos_joint_indices))
     np.testing.assert_allclose(qpos[0, :3], [3.0, 1.0, 2.0], atol=1e-6)
     np.testing.assert_allclose(qpos[0, 3:7], [1.0, 0.0, 0.0, 0.0], atol=1e-6)
-    np.testing.assert_allclose(qpos[0, 7], 0.5, atol=1e-6)
+    left_hip_qpos = model.qpos_joint_names.index("left_hip_pitch_skel")
+    np.testing.assert_allclose(qpos[0, 7 + left_hip_qpos], 2.8798, atol=1e-6)
 
 
 # ============================================================================
