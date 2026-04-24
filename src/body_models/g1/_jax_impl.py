@@ -35,12 +35,12 @@ class G1(BodyModel, nnx.Module):
         self.parents = data["parents"]
         self.link_names = data["link_names"]
         self.qpos_joint_names = data["qpos_joint_names"]
-        self.link_joint_indices = data["link_joint_indices"].tolist()
-        self.link_vertex_starts = data["link_vertex_starts"].tolist()
-        self.link_vertex_counts = data["link_vertex_counts"].tolist()
-        self.link_face_starts = data["link_face_starts"].tolist()
-        self.link_face_counts = data["link_face_counts"].tolist()
-        self.qpos_joint_indices = data["qpos_joint_indices"].tolist()
+        self.link_joint_indices = data["link_joint_indices"]
+        self.link_vertex_starts = data["link_vertex_starts"]
+        self.link_vertex_counts = data["link_vertex_counts"]
+        self.link_face_starts = data["link_face_starts"]
+        self.link_face_counts = data["link_face_counts"]
+        self.qpos_joint_indices = data["qpos_joint_indices"]
         for key in [
             "local_offsets",
             "rest_local_rotations",

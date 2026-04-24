@@ -162,15 +162,15 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         "vertices": vertices.astype(dtype),
         "faces": faces.astype(np.int64),
         "skin_weights": skin_weights.astype(dtype),
-        "link_joint_indices": link_data["joint_indices"].astype(np.int64),
-        "link_vertex_starts": link_data["vertex_starts"].astype(np.int64),
-        "link_vertex_counts": link_data["vertex_counts"].astype(np.int64),
-        "link_face_starts": link_data["face_starts"].astype(np.int64),
-        "link_face_counts": link_data["face_counts"].astype(np.int64),
+        "link_joint_indices": link_data["joint_indices"],
+        "link_vertex_starts": link_data["vertex_starts"],
+        "link_vertex_counts": link_data["vertex_counts"],
+        "link_face_starts": link_data["face_starts"],
+        "link_face_counts": link_data["face_counts"],
         "link_geom_positions": link_data["geom_positions"].astype(dtype),
         "link_geom_rotations": link_data["geom_rotations"].astype(dtype),
         "link_names": link_data["names"],
-        "qpos_joint_indices": qpos_joint_indices.astype(np.int64),
+        "qpos_joint_indices": qpos_joint_indices,
         "qpos_joint_axes": qpos_joint_axes.astype(dtype),
         "qpos_joint_limits": qpos_joint_limits.astype(dtype),
         "qpos_joint_names": qpos_joint_names,
@@ -253,7 +253,7 @@ def _parse_qpos_joints(
     root: ET.Element,
     class_axes: dict[str, np.ndarray],
     class_limits: dict[str, tuple[float, float]],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
+) -> tuple[list[int], np.ndarray, np.ndarray, list[str]]:
     indices: list[int] = []
     axes: list[np.ndarray] = []
     limits: list[tuple[float, float]] = []
@@ -279,7 +279,7 @@ def _parse_qpos_joints(
         indices.append(by_name[skel_name])
         limits.append(_joint_limit(joint, class_limits))
         names.append(skel_name)
-    return np.asarray(indices), np.asarray(axes), np.asarray(limits), names
+    return indices, np.asarray(axes), np.asarray(limits), names
 
 
 def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]], *, dtype) -> tuple:
@@ -325,11 +325,11 @@ def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarra
     if not vertices_by_link:
         raise FileNotFoundError(f"No G1 STL link meshes found in {mesh_dir}")
     link_data = {
-        "joint_indices": np.asarray(joint_indices),
-        "vertex_starts": np.asarray(vertex_starts),
-        "vertex_counts": np.asarray(vertex_counts),
-        "face_starts": np.asarray(face_starts),
-        "face_counts": np.asarray(face_counts),
+        "joint_indices": joint_indices,
+        "vertex_starts": vertex_starts,
+        "vertex_counts": vertex_counts,
+        "face_starts": face_starts,
+        "face_counts": face_counts,
         "geom_positions": np.asarray(geom_positions),
         "geom_rotations": np.asarray(geom_rotations),
         "names": names,
