@@ -32,7 +32,6 @@ class G1(BodyModel):
         self.parents = data["parents"]
         self.local_offsets = data["local_offsets"]
         self.rest_local_rotations = data["rest_local_rotations"]
-        self.joint_rotation_axes = data["joint_rotation_axes"]
         self._vertices = data["vertices"]
         self._faces = data["faces"]
         self.link_joint_indices = data["link_joint_indices"]
@@ -72,14 +71,14 @@ class G1(BodyModel):
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
         params = self.get_rest_pose(batch_size=1)
         return self.forward_vertices(
-            pose=params["pose"],
+            body_pose=params["body_pose"],
             global_translation=params["global_translation"],
             global_rotation=params["global_rotation"],
         )[0]
 
     def forward_skeleton(
         self,
-        pose: Float[np.ndarray, "B 34 N"] | Float[np.ndarray, "B 34 3 3"],
+        body_pose: Float[np.ndarray, "B 29 N"] | Float[np.ndarray, "B 29 3 3"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -88,9 +87,10 @@ class G1(BodyModel):
         return core.forward_skeleton(
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
-            joint_rotation_axes=self.joint_rotation_axes,
+            body_joint_indices=self.qpos_joint_indices,
+            body_joint_axes=self.qpos_joint_axes,
             parents=self.parents,
-            pose=pose,
+            body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
@@ -100,7 +100,7 @@ class G1(BodyModel):
 
     def forward_vertices(
         self,
-        pose: Float[np.ndarray, "B 34 N"] | Float[np.ndarray, "B 34 3 3"],
+        body_pose: Float[np.ndarray, "B 29 N"] | Float[np.ndarray, "B 29 3 3"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -112,7 +112,8 @@ class G1(BodyModel):
             faces=self._faces,
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
-            joint_rotation_axes=self.joint_rotation_axes,
+            body_joint_indices=self.qpos_joint_indices,
+            body_joint_axes=self.qpos_joint_axes,
             parents=self.parents,
             link_joint_indices=self.link_joint_indices,
             link_vertex_starts=self.link_vertex_starts,
@@ -122,7 +123,7 @@ class G1(BodyModel):
             link_geom_positions=self.link_geom_positions,
             link_geom_rotations=self.link_geom_rotations,
             link_names=self.link_names,
-            pose=pose,
+            body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
@@ -133,14 +134,14 @@ class G1(BodyModel):
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
         if self.rotation_type == "hinge":
-            pose = np.zeros((batch_size, self.num_joints, 1), dtype=dtype)
+            body_pose = np.zeros((batch_size, len(self.qpos_joint_indices), 1), dtype=dtype)
             global_rotation = np.tile(np.eye(3, dtype=dtype), (batch_size, 1, 1))
         else:
-            pose_ref = np.zeros((batch_size, self.num_joints, 3), dtype=dtype)
+            pose_ref = np.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
             rot_ref = np.zeros((batch_size, 3), dtype=dtype)
-            pose = SO3.identity_as(
+            body_pose = SO3.identity_as(
                 pose_ref,
-                batch_dims=(batch_size, self.num_joints),
+                batch_dims=(batch_size, len(self.qpos_joint_indices)),
                 rotation_type=self.rotation_type,
                 xp=np,
             )
@@ -151,7 +152,7 @@ class G1(BodyModel):
                 xp=np,
             )
         return {
-            "pose": pose,
+            "body_pose": body_pose,
             "global_rotation": global_rotation,
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }

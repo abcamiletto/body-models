@@ -181,17 +181,12 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         class_axes,
         class_limits,
     )
-    joint_rotation_axes = np.zeros((len(JOINT_NAMES), 3), dtype=np.float32)
-    for joint_idx, axis in zip(qpos_joint_indices, qpos_joint_axes, strict=True):
-        joint_rotation_axes[joint_idx] = axis
-
     vertices, faces, link_data = _load_link_meshes(mesh_dir, mesh_transforms, dtype=dtype)
     return {
         "joint_names": JOINT_NAMES.copy(),
         "parents": PARENTS.copy(),
         "local_offsets": local_offsets.astype(dtype),
         "rest_local_rotations": rest_local_rotations.astype(dtype),
-        "joint_rotation_axes": joint_rotation_axes.astype(dtype),
         "vertices": vertices.astype(dtype),
         "faces": faces.astype(np.int64),
         "link_joint_indices": link_data["joint_indices"],

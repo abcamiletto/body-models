@@ -22,9 +22,10 @@ VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat", "hinge
 def forward_skeleton(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    joint_rotation_axes: Float[Array, "J 3"],
+    body_joint_indices: list[int],
+    body_joint_axes: Float[Array, "Q 3"],
     parents: list[int],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -34,14 +35,17 @@ def forward_skeleton(
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space G1 joint transforms from local rotations."""
     if xp is None:
-        xp = get_namespace(pose)
-    local_rot = _pose_to_rotmat(pose, joint_rotation_axes, rotation_type=rotation_type, xp=xp)
-    batch_size, num_joints = local_rot.shape[:2]
-    dtype = local_rot.dtype
+        xp = get_namespace(body_pose)
+    body_rot = _body_pose_to_rotmat(body_pose, body_joint_axes, rotation_type=rotation_type, xp=xp)
+    batch_size = body_rot.shape[0]
+    dtype = body_rot.dtype
+    num_joints = len(parents)
     if global_translation is None:
-        global_translation = common.zeros_as(local_rot, shape=(batch_size, 3), xp=xp)
+        global_translation = common.zeros_as(body_rot, shape=(batch_size, 3), xp=xp)
 
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
+    local_rot = common.eye_as(body_rot, batch_dims=(batch_size, num_joints), xp=xp)
+    local_rot = common.set(local_rot, (slice(None), body_joint_indices), body_rot, xp=xp)
     local_rot = rest_rot[None] @ local_rot
     local_t = xp.asarray(local_offsets, dtype=dtype)
 
@@ -83,7 +87,8 @@ def forward_vertices(
     faces: Int[Array, "F 3"],
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    joint_rotation_axes: Float[Array, "J 3"],
+    body_joint_indices: list[int],
+    body_joint_axes: Float[Array, "Q 3"],
     parents: list[int],
     link_joint_indices: list[int],
     link_vertex_starts: list[int],
@@ -93,7 +98,7 @@ def forward_vertices(
     link_geom_positions: Float[Array, "L 3"],
     link_geom_rotations: Float[Array, "L 3 3"],
     link_names: list[str],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -104,13 +109,14 @@ def forward_vertices(
 ) -> Float[Array, "B V 3"] | list[dict[str, Array | str]]:
     """Rigidly transform G1 STL link meshes."""
     if xp is None:
-        xp = get_namespace(pose)
+        xp = get_namespace(body_pose)
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
-        joint_rotation_axes=joint_rotation_axes,
+        body_joint_indices=body_joint_indices,
+        body_joint_axes=body_joint_axes,
         parents=parents,
-        pose=pose,
+        body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
         rotation_type=rotation_type,
@@ -118,9 +124,9 @@ def forward_vertices(
     )
     joint_rot = skeleton[..., :3, :3]
     joint_pos = skeleton[..., :3, 3]
-    source_vertices = xp.asarray(vertices, dtype=pose.dtype)
-    geom_pos = xp.asarray(link_geom_positions, dtype=pose.dtype)
-    geom_rot = xp.asarray(link_geom_rotations, dtype=pose.dtype)
+    source_vertices = xp.asarray(vertices, dtype=body_pose.dtype)
+    geom_pos = xp.asarray(link_geom_positions, dtype=body_pose.dtype)
+    geom_rot = xp.asarray(link_geom_rotations, dtype=body_pose.dtype)
 
     if return_per_link:
         per_link = []
@@ -156,11 +162,9 @@ def forward_vertices(
 
 
 def to_mujoco_qpos(
-    qpos_joint_indices: list[int],
     qpos_joint_axes: Float[Array, "Q 3"],
     qpos_joint_limits: Float[Array, "Q 2"],
-    joint_rotation_axes: Float[Array, "J 3"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -170,20 +174,20 @@ def to_mujoco_qpos(
 ) -> Float[Array, "B 7+Q"]:
     """Build MuJoCo qpos from root translation and local joint rotations."""
     if xp is None:
-        xp = get_namespace(pose)
-    rot = _pose_to_rotmat(pose, joint_rotation_axes, rotation_type=rotation_type, xp=xp)
-    batch_size = rot.shape[0]
-    dtype = rot.dtype
+        xp = get_namespace(body_pose)
+    body_rot = _body_pose_to_rotmat(body_pose, qpos_joint_axes, rotation_type=rotation_type, xp=xp)
+    batch_size = body_rot.shape[0]
+    dtype = body_rot.dtype
     if global_translation is None:
-        global_translation = common.zeros_as(rot, shape=(batch_size, 3), xp=xp)
+        global_translation = common.zeros_as(body_rot, shape=(batch_size, 3), xp=xp)
     if global_rotation is None:
-        root_rot = rot[:, 0]
+        root_rot = common.eye_as(body_rot, batch_dims=(batch_size,), xp=xp)
     else:
         if rotation_type == "hinge":
             global_rot = xp.asarray(global_rotation, dtype=dtype)
         else:
             global_rot = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
-        root_rot = global_rot @ rot[:, 0]
+        root_rot = global_rot
 
     coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
     kimodo_to_mujoco = coord.mT
@@ -192,7 +196,7 @@ def to_mujoco_qpos(
     root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
 
     axes = xp.asarray(qpos_joint_axes, dtype=dtype)
-    hinge_rots = SO3.convert(rot[:, qpos_joint_indices], src="rotmat", dst="quat", xp=xp)
+    hinge_rots = SO3.convert(body_rot, src="rotmat", dst="quat", xp=xp)
     angles = SO3.to_hinge(hinge_rots, axes, xp=xp)[..., 0]
     if clamp_to_limits:
         limits = xp.asarray(qpos_joint_limits, dtype=dtype)
@@ -200,19 +204,19 @@ def to_mujoco_qpos(
     return xp.concat([root_t, root_quat, angles], axis=1)
 
 
-def _pose_to_rotmat(
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    joint_rotation_axes: Float[Array, "J 3"],
+def _body_pose_to_rotmat(
+    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
+    body_joint_axes: Float[Array, "Q 3"],
     *,
     rotation_type: RotationType,
     xp: Any,
-) -> Float[Array, "B J 3 3"]:
+) -> Float[Array, "B Q 3 3"]:
     if rotation_type == "hinge":
-        if pose.ndim != 3 or pose.shape[-1] != 1:
-            raise ValueError("G1 hinge poses must have shape [B, J, 1]")
-        axes = xp.asarray(joint_rotation_axes, dtype=pose.dtype)
-        quat = SO3.from_hinge(pose, axes[None], xp=xp)
+        if body_pose.ndim != 3 or body_pose.shape[-1] != 1:
+            raise ValueError("G1 hinge body_pose must have shape [B, 29, 1]")
+        axes = xp.asarray(body_joint_axes, dtype=body_pose.dtype)
+        quat = SO3.from_hinge(body_pose, axes[None], xp=xp)
         return SO3.convert(quat, src="quat", dst="rotmat", xp=xp)
-    if pose.ndim == 3 and pose.shape[-1] == 1:
+    if body_pose.ndim == 3 and body_pose.shape[-1] == 1:
         raise ValueError('G1 scalar hinge poses require rotation_type="hinge"')
-    return SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+    return SO3.convert(body_pose, src=rotation_type, dst="rotmat", xp=xp)

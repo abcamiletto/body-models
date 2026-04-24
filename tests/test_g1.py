@@ -102,6 +102,14 @@ def test_g1_metadata_matches_kimodo_skeleton(backend: str) -> None:
 
     assert model.num_joints == 34
     assert model.joint_names == G1_JOINT_NAMES
+    assert len(model.qpos_joint_indices) == 29
+    assert not {
+        "pelvis_skel",
+        "left_toe_base",
+        "right_toe_base",
+        "left_hand_roll_skel",
+        "right_hand_roll_skel",
+    } & set(model.qpos_joint_names)
     assert model.parents[:8] == [-1, 0, 1, 2, 3, 4, 5, 6]
     assert model.parents[15:18] == [0, 15, 16]
     assert model.num_vertices > G1_NUM_LINK_MESHES * 3
@@ -156,27 +164,28 @@ def test_forward_vertices_rigidly_attaches_stl_links(backend: str) -> None:
 def test_scalar_pose_uses_xml_hinge_axes(backend: str) -> None:
     hinge_model = _backend(backend)(model_path=ASSET_DIR, rotation_type="hinge")
     rotmat_model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
-    scalar_pose = np.zeros((1, hinge_model.num_joints, 1), dtype=np.float32)
-    rotmat_pose = np.tile(np.eye(3, dtype=np.float32), (1, hinge_model.num_joints, 1, 1))
-    scalar_pose[0, 1, 0] = 0.7
-    rotmat_pose[0, 1] = _rot_x(0.7)
+    left_hip_qpos = hinge_model.qpos_joint_names.index("left_hip_pitch_skel")
+    scalar_pose = np.zeros((1, len(hinge_model.qpos_joint_indices), 1), dtype=np.float32)
+    rotmat_pose = np.tile(np.eye(3, dtype=np.float32), (1, len(hinge_model.qpos_joint_indices), 1, 1))
+    scalar_pose[0, left_hip_qpos, 0] = 0.7
+    rotmat_pose[0, left_hip_qpos] = _rot_x(0.7)
     global_translation = np.array([[10.0, 20.0, 30.0]], dtype=np.float32)
     rest_pose = hinge_model.get_rest_pose(batch_size=1)
 
-    assert rest_pose["pose"].shape == (1, hinge_model.num_joints, 1)
+    assert rest_pose["body_pose"].shape == (1, len(hinge_model.qpos_joint_indices), 1)
     assert rest_pose["global_rotation"].shape == (1, 3, 3)
-    with pytest.raises(ValueError, match="hinge poses"):
-        rotmat_model.forward_skeleton(pose=_array(backend, scalar_pose))
+    with pytest.raises(ValueError, match="scalar hinge"):
+        rotmat_model.forward_skeleton(body_pose=_array(backend, scalar_pose))
 
     scalar_skeleton = _to_numpy(
         hinge_model.forward_skeleton(
-            pose=_array(backend, scalar_pose),
+            body_pose=_array(backend, scalar_pose),
             global_translation=_array(backend, global_translation),
         )
     )
     rotmat_skeleton = _to_numpy(
         rotmat_model.forward_skeleton(
-            pose=_array(backend, rotmat_pose),
+            body_pose=_array(backend, rotmat_pose),
             global_translation=_array(backend, global_translation),
         )
     )
@@ -185,25 +194,25 @@ def test_scalar_pose_uses_xml_hinge_axes(backend: str) -> None:
     qpos = _to_numpy(
         g1.to_mujoco_qpos(
             hinge_model,
-            pose=_array(backend, scalar_pose),
+            body_pose=_array(backend, scalar_pose),
             global_translation=_array(backend, global_translation),
             clamp_to_limits=False,
         )
     )
-    left_hip_qpos = hinge_model.qpos_joint_names.index("left_hip_pitch_skel")
     np.testing.assert_allclose(qpos[0, 7 + left_hip_qpos], 0.7, atol=1e-6)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_to_mujoco_qpos_uses_xml_axis_limits_and_coordinate_transform(backend: str) -> None:
     model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
-    pose = np.tile(np.eye(3, dtype=np.float32), (1, model.num_joints, 1, 1))
-    pose[0, 1] = _rot_x(3.0)
+    body_pose = np.tile(np.eye(3, dtype=np.float32), (1, len(model.qpos_joint_indices), 1, 1))
+    left_hip_qpos = model.qpos_joint_names.index("left_hip_pitch_skel")
+    body_pose[0, left_hip_qpos] = _rot_x(3.0)
 
     qpos = _to_numpy(
         g1.to_mujoco_qpos(
             model,
-            pose=_array(backend, pose),
+            body_pose=_array(backend, body_pose),
             global_translation=_array(backend, [[1.0, 2.0, 3.0]]),
             clamp_to_limits=True,
         )
@@ -212,7 +221,6 @@ def test_to_mujoco_qpos_uses_xml_axis_limits_and_coordinate_transform(backend: s
     assert qpos.shape == (1, 7 + len(model.qpos_joint_indices))
     np.testing.assert_allclose(qpos[0, :3], [3.0, 1.0, 2.0], atol=1e-6)
     np.testing.assert_allclose(qpos[0, 3:7], [1.0, 0.0, 0.0, 0.0], atol=1e-6)
-    left_hip_qpos = model.qpos_joint_names.index("left_hip_pitch_skel")
     np.testing.assert_allclose(qpos[0, 7 + left_hip_qpos], 2.8798, atol=1e-6)
 
 

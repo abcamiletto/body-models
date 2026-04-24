@@ -21,7 +21,6 @@ class G1(BodyModel, nnx.Module):
     NUM_JOINTS = 34
     local_offsets: nnx.Variable[jax.Array]
     rest_local_rotations: nnx.Variable[jax.Array]
-    joint_rotation_axes: nnx.Variable[jax.Array]
     link_geom_positions: nnx.Variable[jax.Array]
     link_geom_rotations: nnx.Variable[jax.Array]
     qpos_joint_axes: nnx.Variable[jax.Array]
@@ -49,7 +48,6 @@ class G1(BodyModel, nnx.Module):
         self.qpos_joint_indices = data["qpos_joint_indices"]
         self.local_offsets = nnx.Variable(jnp.asarray(data["local_offsets"]))
         self.rest_local_rotations = nnx.Variable(jnp.asarray(data["rest_local_rotations"]))
-        self.joint_rotation_axes = nnx.Variable(jnp.asarray(data["joint_rotation_axes"]))
         self.link_geom_positions = nnx.Variable(jnp.asarray(data["link_geom_positions"]))
         self.link_geom_rotations = nnx.Variable(jnp.asarray(data["link_geom_rotations"]))
         self.qpos_joint_axes = nnx.Variable(jnp.asarray(data["qpos_joint_axes"]))
@@ -81,14 +79,14 @@ class G1(BodyModel, nnx.Module):
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
         params = self.get_rest_pose(batch_size=1, dtype=self._vertices[...].dtype)
         return self.forward_vertices(
-            pose=params["pose"],
+            body_pose=params["body_pose"],
             global_translation=params["global_translation"],
             global_rotation=params["global_rotation"],
         )[0]
 
     def forward_skeleton(
         self,
-        pose: Float[jax.Array, "B 34 N"] | Float[jax.Array, "B 34 3 3"],
+        body_pose: Float[jax.Array, "B 29 N"] | Float[jax.Array, "B 29 3 3"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
@@ -97,9 +95,10 @@ class G1(BodyModel, nnx.Module):
         return core.forward_skeleton(
             local_offsets=self.local_offsets[...],
             rest_local_rotations=self.rest_local_rotations[...],
-            joint_rotation_axes=self.joint_rotation_axes[...],
+            body_joint_indices=self.qpos_joint_indices,
+            body_joint_axes=self.qpos_joint_axes[...],
             parents=self.parents,
-            pose=pose,
+            body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
@@ -109,7 +108,7 @@ class G1(BodyModel, nnx.Module):
 
     def forward_vertices(
         self,
-        pose: Float[jax.Array, "B 34 N"] | Float[jax.Array, "B 34 3 3"],
+        body_pose: Float[jax.Array, "B 29 N"] | Float[jax.Array, "B 29 3 3"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
@@ -121,7 +120,8 @@ class G1(BodyModel, nnx.Module):
             faces=self._faces[...],
             local_offsets=self.local_offsets[...],
             rest_local_rotations=self.rest_local_rotations[...],
-            joint_rotation_axes=self.joint_rotation_axes[...],
+            body_joint_indices=self.qpos_joint_indices,
+            body_joint_axes=self.qpos_joint_axes[...],
             parents=self.parents,
             link_joint_indices=self.link_joint_indices,
             link_vertex_starts=self.link_vertex_starts,
@@ -131,7 +131,7 @@ class G1(BodyModel, nnx.Module):
             link_geom_positions=self.link_geom_positions[...],
             link_geom_rotations=self.link_geom_rotations[...],
             link_names=self.link_names,
-            pose=pose,
+            body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
@@ -142,14 +142,14 @@ class G1(BodyModel, nnx.Module):
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         if self.rotation_type == "hinge":
-            pose = jnp.zeros((batch_size, self.num_joints, 1), dtype=dtype)
+            body_pose = jnp.zeros((batch_size, len(self.qpos_joint_indices), 1), dtype=dtype)
             global_rotation = jnp.broadcast_to(jnp.eye(3, dtype=dtype), (batch_size, 3, 3))
         else:
-            pose_ref = jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype)
+            pose_ref = jnp.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
             rot_ref = jnp.zeros((batch_size, 3), dtype=dtype)
-            pose = SO3.identity_as(
+            body_pose = SO3.identity_as(
                 pose_ref,
-                batch_dims=(batch_size, self.num_joints),
+                batch_dims=(batch_size, len(self.qpos_joint_indices)),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             )
@@ -160,7 +160,7 @@ class G1(BodyModel, nnx.Module):
                 xp=jnp,
             )
         return {
-            "pose": pose,
+            "body_pose": body_pose,
             "global_rotation": global_rotation,
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }

@@ -21,7 +21,6 @@ class G1(BodyModel, nn.Module):
     NUM_JOINTS = 34
     local_offsets: Tensor
     rest_local_rotations: Tensor
-    joint_rotation_axes: Tensor
     link_geom_positions: Tensor
     link_geom_rotations: Tensor
     qpos_joint_axes: Tensor
@@ -53,7 +52,6 @@ class G1(BodyModel, nn.Module):
         for key in [
             "local_offsets",
             "rest_local_rotations",
-            "joint_rotation_axes",
             "link_geom_positions",
             "link_geom_rotations",
             "qpos_joint_axes",
@@ -87,14 +85,14 @@ class G1(BodyModel, nn.Module):
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
         params = self.get_rest_pose(batch_size=1, dtype=self._vertices.dtype)
         return self.forward_vertices(
-            pose=params["pose"],
+            body_pose=params["body_pose"],
             global_translation=params["global_translation"],
             global_rotation=params["global_rotation"],
         )[0]
 
     def forward_skeleton(
         self,
-        pose: Float[Tensor, "B 34 N"] | Float[Tensor, "B 34 3 3"],
+        body_pose: Float[Tensor, "B 29 N"] | Float[Tensor, "B 29 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -103,9 +101,10 @@ class G1(BodyModel, nn.Module):
         return core.forward_skeleton(
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
-            joint_rotation_axes=self.joint_rotation_axes,
+            body_joint_indices=self.qpos_joint_indices,
+            body_joint_axes=self.qpos_joint_axes,
             parents=self.parents,
-            pose=pose,
+            body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
@@ -115,7 +114,7 @@ class G1(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        pose: Float[Tensor, "B 34 N"] | Float[Tensor, "B 34 3 3"],
+        body_pose: Float[Tensor, "B 29 N"] | Float[Tensor, "B 29 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -127,7 +126,8 @@ class G1(BodyModel, nn.Module):
             faces=self._faces,
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
-            joint_rotation_axes=self.joint_rotation_axes,
+            body_joint_indices=self.qpos_joint_indices,
+            body_joint_axes=self.qpos_joint_axes,
             parents=self.parents,
             link_joint_indices=self.link_joint_indices,
             link_vertex_starts=self.link_vertex_starts,
@@ -137,7 +137,7 @@ class G1(BodyModel, nn.Module):
             link_geom_positions=self.link_geom_positions,
             link_geom_rotations=self.link_geom_rotations,
             link_names=self.link_names,
-            pose=pose,
+            body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
@@ -149,14 +149,14 @@ class G1(BodyModel, nn.Module):
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self._vertices.device
         if self.rotation_type == "hinge":
-            pose = torch.zeros((batch_size, self.num_joints, 1), device=device, dtype=dtype)
+            body_pose = torch.zeros((batch_size, len(self.qpos_joint_indices), 1), device=device, dtype=dtype)
             global_rotation = torch.eye(3, device=device, dtype=dtype).expand(batch_size, 3, 3)
         else:
-            pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
+            pose_ref = torch.zeros((batch_size, len(self.qpos_joint_indices), 3), device=device, dtype=dtype)
             rot_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
-            pose = SO3.identity_as(
+            body_pose = SO3.identity_as(
                 pose_ref,
-                batch_dims=(batch_size, self.num_joints),
+                batch_dims=(batch_size, len(self.qpos_joint_indices)),
                 rotation_type=self.rotation_type,
                 xp=torch,
             )
@@ -167,7 +167,7 @@ class G1(BodyModel, nn.Module):
                 xp=torch,
             )
         return {
-            "pose": pose,
+            "body_pose": body_pose,
             "global_rotation": global_rotation,
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }

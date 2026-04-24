@@ -9,19 +9,17 @@ __all__ = ["to_mujoco_qpos"]
 
 def to_mujoco_qpos(
     model: Any,
-    pose: Any,
+    body_pose: Any,
     global_translation: Any | None = None,
     *,
     global_rotation: Any | None = None,
     clamp_to_limits: bool = True,
 ) -> Any:
-    """Convert a G1 pose to MuJoCo qpos."""
+    """Convert a G1 body pose to MuJoCo qpos."""
     return _core.to_mujoco_qpos(
-        qpos_joint_indices=model.qpos_joint_indices,
         qpos_joint_axes=model.qpos_joint_axes[...],
         qpos_joint_limits=model.qpos_joint_limits[...],
-        joint_rotation_axes=model.joint_rotation_axes[...],
-        pose=pose,
+        body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
         clamp_to_limits=clamp_to_limits,
