@@ -54,12 +54,8 @@ def test_run_asset_generator_uses_uv_pep723_script(tmp_path, monkeypatch) -> Non
 def test_run_asset_generator_fails_clearly_without_uv(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(io.shutil, "which", lambda name: None)
 
-    try:
+    with pytest.raises(RuntimeError, match="requires `uv` on PATH"):
         io._run_asset_generator(tmp_path / "data", tmp_path / "out")
-    except RuntimeError as exc:
-        assert "requires `uv` on PATH" in str(exc)
-    else:
-        raise AssertionError("Expected RuntimeError")
 
 
 def test_compute_kinematic_fronts_groups_joints_by_depth() -> None:

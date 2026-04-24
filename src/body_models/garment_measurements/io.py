@@ -199,10 +199,7 @@ def _run_asset_generator(upstream_data: Path, output_dir: Path) -> None:
     print("GarmentMeasurements: preprocessing upstream FBX data with bpy via uv.")
     print(f"GarmentMeasurements: generated asset will be saved to {output_file}")
     print(f"GarmentMeasurements: running {' '.join(command)}")
-    subprocess.run(
-        command,
-        check=True,
-    )
+    subprocess.run(command, check=True)
     print(f"GarmentMeasurements: generated {output_file}")
     print(f"GarmentMeasurements: to reuse it directly, run `body-models set garment-measurements {output_dir}`")
 
@@ -215,6 +212,7 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
     expected = {
         "mean_vertices": (num_vertices, 3),
         "components": (num_vertices, 3, num_components),
+        "faces": (data["faces"].shape[0], 3),
         "parents": (num_joints,),
         "bind_quats": (num_joints, 4),
         "skin_weights": (num_vertices, num_joints),
