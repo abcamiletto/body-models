@@ -80,6 +80,7 @@ class SOMA(_BodyModel, _nn.Module):
         model_type: str = "soma",
         simplify: float = 1.0,
         rotation_type: _core.RotationType = "axis_angle",
+        match_warp: bool = True,
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -93,6 +94,7 @@ class SOMA(_BodyModel, _nn.Module):
 
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
+        self.match_warp = match_warp
         resolved_path = _get_model_path(model_path)
         data = _load_model_data(resolved_path)
         corrective_weights = _load_pose_correctives_weights(resolved_path)
@@ -247,6 +249,7 @@ class SOMA(_BodyModel, _nn.Module):
             corrective_use_tanh=self._corrective_use_tanh,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
+            match_warp=self.match_warp,
             xp=_torch,
         )
 
@@ -288,6 +291,7 @@ class SOMA(_BodyModel, _nn.Module):
             joint_indices=joint_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
+            match_warp=self.match_warp,
             xp=_torch,
         )
 

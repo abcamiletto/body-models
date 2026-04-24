@@ -54,9 +54,6 @@ def _make_upstream_layer(model_type: str, upstream_data_root: Path):
             identity_model_type=model_type,
             identity_model_kwargs=identity_model_kwargs,
         )
-    # Our native SOMA implementation matches the upstream PyTorch rotation fitter.
-    # Keep the oracle on that path so these tests isolate identity-backend parity.
-    layer.skeleton_transfer.use_warp_for_rotations = False
     return layer
 
 
@@ -148,3 +145,48 @@ def test_torch_identity_backends_match_upstream(
     atol = MODEL_ATOL.get(model_type, ATOL)
     torch.testing.assert_close(verts, reference["vertices"], rtol=rtol, atol=atol)
     torch.testing.assert_close(_joint_positions(transforms), reference["joints"], rtol=rtol, atol=atol)
+
+
+def test_torch_identity_backend_can_match_upstream_torch_rotation_fitter(
+    soma_model_path: Path,
+    upstream_data_root: Path,
+) -> None:
+    from body_models.soma.torch import SOMA
+
+    upstream = _make_upstream_layer("mhr", upstream_data_root)
+    upstream.skeleton_transfer.use_warp_for_rotations = False
+    inputs = _sample_inputs(
+        "mhr",
+        upstream.identity_model.num_identity_coeffs,
+        upstream.identity_model.num_scale_params,
+        seed=SEEDS["mhr"],
+    )
+    reference = _upstream_forward(upstream, inputs)
+
+    model = SOMA(
+        model_path=soma_model_path,
+        model_type="mhr",
+        match_warp=False,
+    )
+
+    with torch.no_grad():
+        verts = model.forward_vertices(
+            pose=inputs["pose"],
+            global_translation=inputs["global_translation"],
+            identity=inputs["identity"],
+            scale_params=inputs.get("scale_params"),
+        )
+        transforms = model.forward_skeleton(
+            pose=inputs["pose"],
+            global_translation=inputs["global_translation"],
+            identity=inputs["identity"],
+            scale_params=inputs.get("scale_params"),
+        )
+
+    torch.testing.assert_close(verts, reference["vertices"], rtol=MODEL_RTOL["mhr"], atol=MODEL_ATOL["mhr"])
+    torch.testing.assert_close(
+        _joint_positions(transforms),
+        reference["joints"],
+        rtol=MODEL_RTOL["mhr"],
+        atol=MODEL_ATOL["mhr"],
+    )
