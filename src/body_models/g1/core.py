@@ -192,10 +192,9 @@ def project_pose_to_qpos(
     root_rot_mujoco = kimodo_to_mujoco[None] @ root_rot @ coord[None]
     root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
 
-    hinge_rots = rot[:, qpos_joint_indices]
-    axis_angle = SO3.conversions.from_rotmat_to_axis_angle(hinge_rots, xp=xp)
     axes = xp.asarray(qpos_joint_axes, dtype=dtype)
-    angles = xp.sum(axis_angle * axes[None], axis=-1)
+    hinge_rots = SO3.convert(rot[:, qpos_joint_indices], src="rotmat", dst="quat", xp=xp)
+    angles = SO3.to_hinge(hinge_rots, axes, xp=xp)[..., 0]
     if clamp_to_limits and axes.shape[0] > 0:
         limits = xp.asarray(qpos_joint_limits, dtype=dtype)
         angles = xp.clip(angles, limits[None, :, 0], limits[None, :, 1])
@@ -213,8 +212,8 @@ def _pose_to_rotmat(
         if pose.ndim != 3 or pose.shape[-1] != 1:
             raise ValueError("G1 hinge poses must have shape [B, J, 1]")
         axes = xp.asarray(joint_rotation_axes, dtype=pose.dtype)
-        axis_angle = pose * axes[None]
-        return SO3.conversions.from_axis_angle_to_rotmat(axis_angle, xp=xp)
+        quat = SO3.from_hinge(pose, axes[None], xp=xp)
+        return SO3.convert(quat, src="quat", dst="rotmat", xp=xp)
     if pose.ndim == 3 and pose.shape[-1] == 1:
         raise ValueError('G1 scalar hinge poses require rotation_type="hinge"')
     return SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
