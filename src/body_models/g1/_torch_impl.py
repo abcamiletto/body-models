@@ -170,25 +170,25 @@ class G1(BodyModel, nn.Module):
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self._vertices.device
         if self.rotation_type == "hinge":
-            return {
-                "pose": torch.zeros((batch_size, self.num_joints, 1), device=device, dtype=dtype),
-                "global_rotation": torch.eye(3, device=device, dtype=dtype).expand(batch_size, 3, 3),
-                "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
-            }
-        pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
-        rot_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
-        return {
-            "pose": SO3.identity_as(
+            pose = torch.zeros((batch_size, self.num_joints, 1), device=device, dtype=dtype)
+            global_rotation = torch.eye(3, device=device, dtype=dtype).expand(batch_size, 3, 3)
+        else:
+            pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
+            rot_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
+            pose = SO3.identity_as(
                 pose_ref,
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
                 xp=torch,
-            ),
-            "global_rotation": SO3.identity_as(
+            )
+            global_rotation = SO3.identity_as(
                 rot_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=torch,
-            ),
+            )
+        return {
+            "pose": pose,
+            "global_rotation": global_rotation,
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
