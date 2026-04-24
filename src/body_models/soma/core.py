@@ -652,7 +652,7 @@ def _align_vectors(
     source: Float[Array, "B N 3"],
 ) -> Float[Array, "B 3 3"]:
     if target.shape[-2] == 1:
-        return _rodrigues_rotation(xp, target[:, 0], source[:, 0])
+        return _rotation_between_vectors(xp, target[:, 0], source[:, 0])
 
     H = xp.einsum("bni,bnj->bij", target, source)
     p0, p1 = target[:, 0], target[:, 1]
@@ -680,7 +680,7 @@ def _kabsch(xp, H: Float[Array, "B 3 3"]) -> Float[Array, "B 3 3"]:
     return U @ D @ Vh
 
 
-def _rodrigues_rotation(
+def _rotation_between_vectors(
     xp,
     target: Float[Array, "B 3"],
     source: Float[Array, "B 3"],
@@ -692,37 +692,28 @@ def _rodrigues_rotation(
 
     dot = xp.sum(target_unit * source_unit, axis=-1, keepdims=True)
     dot = xp.clip(dot, -1.0, 1.0)
-    v = xp.linalg.cross(source_unit, target_unit)
-    K = _skew(xp, v)
-    I = common.eye_as(target, batch_dims=(target.shape[0],), xp=xp)
-    denom = 1.0 + dot[..., None]
-    R = I + K + (K @ K) / xp.where(denom > 1e-8, denom, xp.ones_like(denom))
+    cross = xp.linalg.cross(source_unit, target_unit)
+    cross_norm = xp.linalg.vector_norm(cross, axis=-1, keepdims=True)
+    axis = cross / xp.where(cross_norm > 1e-8, cross_norm, xp.ones_like(cross_norm))
 
     antiparallel = dot[:, 0] < -1.0 + 1e-6
-    if bool(xp.any(antiparallel)):
-        x_vec = common.zeros_as(target, shape=target.shape, xp=xp)
-        x_vec = common.set(x_vec, (slice(None), 0), xp.asarray(1.0, dtype=target.dtype), xp=xp)
-        y_vec = common.zeros_as(target, shape=target.shape, xp=xp)
-        y_vec = common.set(y_vec, (slice(None), 1), xp.asarray(1.0, dtype=target.dtype), xp=xp)
-        w = xp.where(xp.abs(source_unit[:, 0:1]) > 0.6, y_vec, x_vec)
-        axis = xp.linalg.cross(source_unit, w)
-        axis = axis / xp.where(
-            xp.linalg.vector_norm(axis, axis=-1, keepdims=True) > 1e-8,
-            xp.linalg.vector_norm(axis, axis=-1, keepdims=True),
-            xp.ones_like(axis[:, :1]),
-        )
-        uuT = axis[..., :, None] * axis[..., None, :]
-        R_180 = 2.0 * uuT - I
-        R = xp.where(antiparallel[:, None, None], R_180, R)
-    return R
+    basis = common.eye_as(target, batch_dims=(target.shape[0],), xp=xp)
+    x_vec = basis[:, 0]
+    y_vec = basis[:, 1]
+    w = xp.where(xp.abs(source_unit[:, 0:1]) > 0.6, y_vec, x_vec)
+    antiparallel_axis = xp.linalg.cross(source_unit, w)
+    antiparallel_axis_norm = xp.linalg.vector_norm(antiparallel_axis, axis=-1, keepdims=True)
+    antiparallel_axis = antiparallel_axis / xp.where(
+        antiparallel_axis_norm > 1e-8,
+        antiparallel_axis_norm,
+        xp.ones_like(antiparallel_axis_norm),
+    )
+    axis = xp.where(antiparallel[:, None], antiparallel_axis, axis)
 
-
-def _skew(xp, v: Float[Array, "B 3"]) -> Float[Array, "B 3 3"]:
-    z = xp.zeros_like(v[:, :1])
-    row0 = xp.concat([z, -v[:, 2:3], v[:, 1:2]], axis=-1)
-    row1 = xp.concat([v[:, 2:3], z, -v[:, 0:1]], axis=-1)
-    row2 = xp.concat([-v[:, 1:2], v[:, 0:1], z], axis=-1)
-    return xp.stack([row0, row1, row2], axis=-2)
+    angle = xp.atan2(cross_norm[:, 0], dot[:, 0])
+    pi = xp.asarray(3.141592653589793, dtype=target.dtype)
+    angle = xp.where(antiparallel, pi, angle)
+    return SO3.conversions.from_axis_angle_to_rotmat(angle[..., None] * axis, xp=xp)
 
 
 def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
