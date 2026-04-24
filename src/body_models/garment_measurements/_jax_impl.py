@@ -9,7 +9,6 @@ from flax import nnx
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import load_model_data
@@ -17,7 +16,7 @@ from .io import load_model_data
 __all__ = ["GarmentMeasurements"]
 
 
-class GarmentMeasurements(BodyModel, nnx.Module):
+class GarmentMeasurements(nnx.Module):
     """GarmentMeasurements PCA body model with JAX/Flax NNX backend."""
 
     def __init__(
@@ -34,18 +33,11 @@ class GarmentMeasurements(BodyModel, nnx.Module):
         self.components = nnx.Variable(jnp.asarray(data["components"]))
         self.eigenvalues = nnx.Variable(jnp.asarray(data["eigenvalues"]))
         self._faces = nnx.Variable(jnp.asarray(data["faces"]))
-        self._skin_weights = nnx.Variable(jnp.ones((data["mean_vertices"].shape[0], 1), dtype=jnp.float32))
-        self._joint_names = data["joint_names"]
-        self.parents = data["parents"]
         self.rotation_type = rotation_type
 
     @property
     def faces(self) -> Int[jax.Array, "F _"]:
         return self._faces[...]
-
-    @property
-    def num_joints(self) -> int:
-        return 1
 
     @property
     def num_vertices(self) -> int:
@@ -54,14 +46,6 @@ class GarmentMeasurements(BodyModel, nnx.Module):
     @property
     def num_shape_components(self) -> int:
         return self.eigenvalues[...].shape[0]
-
-    @property
-    def joint_names(self) -> list[str]:
-        return list(self._joint_names)
-
-    @property
-    def skin_weights(self) -> Float[jax.Array, "V J"]:
-        return self._skin_weights[...]
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
@@ -82,21 +66,6 @@ class GarmentMeasurements(BodyModel, nnx.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            rotation_type=self.rotation_type,
-        )
-
-    def forward_skeleton(
-        self,
-        shape: Float[jax.Array, "B C"],
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        joint_indices: list[int] | None = None,
-    ) -> Float[jax.Array, "B J 4 4"]:
-        return core.forward_skeleton(
-            shape=shape,
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            joint_indices=joint_indices,
             rotation_type=self.rotation_type,
         )
 

@@ -9,7 +9,7 @@ Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, a
 ## Features
 
 - **Multi-backend**: PyTorch, NumPy, and JAX
-- **Disentangled outputs**: separate `forward_vertices` (mesh) and `forward_skeleton` (joint transforms)
+- **Disentangled outputs**: separate `forward_vertices` (mesh) and `forward_skeleton` (joint transforms) for rigged models
 - **Mesh simplification**: lower-resolution forward pass via `simplify` constructor argument
 - **Vertex subsets**: compute only specific vertices via `vertex_indices` argument
 - **Rotation representations**: axis-angle, quaternion, 6D, rotation matrix, and projected matrix (`rotation_type` constructor argument)
@@ -184,7 +184,7 @@ Available backends:
 
 ## Common Interface
 
-All models inherit from `BodyModel` and share these properties:
+Rigged models inherit from `BodyModel` and share these properties:
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -207,6 +207,8 @@ vertices = model.forward_vertices(**params)
 # Compute joint transforms [B, J, 4, 4] in meters
 transforms = model.forward_skeleton(**params)
 ```
+
+Mesh-only models, such as GarmentMeasurements, expose `forward_vertices()` but not `forward_skeleton()`.
 
 ### Mesh Simplification
 
@@ -481,7 +483,7 @@ vertices = model.forward_vertices(
 )
 ```
 
-This integration covers the upstream PCA body mesh (`point.pca` and `mean.obj`). The upstream FBX skeleton and measurement executable are not bundled into the Python backend.
+This integration covers the upstream PCA body mesh (`point.pca` and `mean.obj`). It is mesh-only and does not expose `forward_skeleton()`. The upstream FBX skeleton and measurement executable are not bundled into the Python backend.
 
 ## Coordinate System
 

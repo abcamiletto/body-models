@@ -13,8 +13,6 @@ from .. import config
 from ..utils import download_and_extract, get_cache_dir
 
 GARMENT_MEASUREMENTS_URL = "https://github.com/mbotsch/GarmentMeasurements/archive/refs/heads/main.zip"
-JOINT_NAMES = ["root"]
-PARENTS = [-1]
 
 
 def get_model_path(model_path: Path | str | None = None) -> Path:
@@ -70,8 +68,6 @@ def load_model_data(model_path: Path | str | None = None, dtype: Any = np.float3
         "components": components,
         "eigenvalues": eigenvalues,
         "faces": faces,
-        "joint_names": JOINT_NAMES,
-        "parents": PARENTS,
     }
 
 
@@ -162,8 +158,6 @@ def _find_pca_files(model_path: Path) -> tuple[Path, Path] | None:
 
 __all__ = [
     "GARMENT_MEASUREMENTS_URL",
-    "JOINT_NAMES",
-    "PARENTS",
     "download_model",
     "get_model_path",
     "load_model_data",

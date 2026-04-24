@@ -7,8 +7,6 @@ from typing import Any
 import numpy as np
 import pytest
 
-from garment_measurements_asset import get_garment_measurements_model_path
-
 ASSET_DIR = Path(__file__).parent / "assets"
 MODEL_FILES = {
     "smpl": "SMPL_NEUTRAL.npz",
@@ -38,7 +36,7 @@ BACKENDS = ("numpy", "torch", "jax")
 def get_model_file(model_name: str) -> Path:
     """Get the test asset path for a given model."""
     if model_name == "garment_measurements":
-        return get_garment_measurements_model_path()
+        return ASSET_DIR / "garment_measurements" / "model"
 
     if model_name == "soma":
         from body_models.soma.io import get_model_path
@@ -98,16 +96,16 @@ def test_forward_smoke(backend: str, model_name: str, model_kwargs: dict[str, st
 
         with torch.no_grad():
             vertices = model.forward_vertices(**params)
-            skeleton = model.forward_skeleton(**params)
     else:
         vertices = model.forward_vertices(**params)
-        skeleton = model.forward_skeleton(**params)
 
     vertices_np = np.asarray(vertices)
-    skeleton_np = np.asarray(skeleton)
 
     assert vertices_np.shape[0] == 1
     assert vertices_np.shape[-1] == 3
-    assert skeleton_np.shape[0] == 1
     assert np.isfinite(vertices_np).all()
-    assert np.isfinite(skeleton_np).all()
+    if hasattr(model, "forward_skeleton"):
+        skeleton = model.forward_skeleton(**params)
+        skeleton_np = np.asarray(skeleton)
+        assert skeleton_np.shape[0] == 1
+        assert np.isfinite(skeleton_np).all()

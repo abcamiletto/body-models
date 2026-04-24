@@ -59,38 +59,6 @@ def forward_vertices(
     return SE3.transform_points(SE3.from_rt(quat, translation, xp=xp), vertices, xp=xp)
 
 
-def forward_skeleton(
-    shape: Float[Array, "B C"],
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
-    joint_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
-    *,
-    xp: Any = None,
-) -> Float[Array, "B J 4 4"]:
-    """Return a single root transform for the static PCA body mesh."""
-    assert shape.ndim == 2
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
-    if joint_indices is not None and any(int(joint) != 0 for joint in joint_indices):
-        raise IndexError("joint_indices must contain only the single root joint index 0")
-
-    if xp is None:
-        xp = get_namespace(shape)
-
-    quat, translation = _global_quat_translation(
-        xp=xp,
-        ref=shape,
-        batch_size=shape.shape[0],
-        global_rotation=global_rotation,
-        global_translation=global_translation,
-        rotation_type=rotation_type,
-    )
-    transforms = SE3.to_matrix(SE3.from_rt(quat, translation, xp=xp), xp=xp)[:, None]
-    if joint_indices is not None:
-        transforms = transforms[:, xp.asarray(joint_indices)]
-    return transforms
-
-
 def _global_quat_translation(
     *,
     xp: Any,
