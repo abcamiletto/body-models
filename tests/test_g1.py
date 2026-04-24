@@ -146,18 +146,40 @@ def test_forward_vertices_rigidly_attaches_stl_links(backend: str) -> None:
     params["global_translation"] = _array(backend, [[10.0, 20.0, 30.0]])
 
     vertices = _to_numpy(model.forward_vertices(**params))
-    per_link = model.forward_vertices(**params, return_per_link=True)
-    assert len(per_link) == G1_NUM_LINK_MESHES
-    for link_idx, link in enumerate(per_link):
-        start = model.link_vertex_starts[link_idx]
-        count = model.link_vertex_counts[link_idx]
-        assert link["name"] == model.link_names[link_idx]
-        np.testing.assert_allclose(_to_numpy(link["vertices"])[0], vertices[0, start : start + count], atol=1e-6)
 
     shifted_params = {**params, "global_translation": _array(backend, [[-1.0, 2.0, 0.5]])}
     shifted = _to_numpy(model.forward_vertices(**shifted_params))
     expected_delta = np.broadcast_to(np.array([[[-11.0, -18.0, -29.5]]], dtype=np.float32), shifted.shape)
     np.testing.assert_allclose(shifted - vertices, expected_delta, atol=1e-6)
+
+    with pytest.raises(TypeError):
+        model.forward_vertices(**params, return_per_link=True)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_link_mesh_access_returns_static_stl_chunks(backend: str) -> None:
+    model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
+    meshes = model.joint_meshes("waist_pitch_skel")
+
+    assert [mesh["name"] for mesh in meshes] == ["torso_link.STL", "logo_link.STL", "head_link.STL"]
+    for mesh in meshes:
+        link_idx = model.link_names.index(mesh["name"])
+        vertex_start = model.link_vertex_starts[link_idx]
+        vertex_count = model.link_vertex_counts[link_idx]
+        face_start = model.link_face_starts[link_idx]
+        face_count = model.link_face_counts[link_idx]
+
+        assert mesh["joint_name"] == "waist_pitch_skel"
+        assert mesh["joint_index"] == model.joint_names.index("waist_pitch_skel")
+        assert _to_numpy(mesh["vertices"]).shape == (vertex_count, 3)
+        np.testing.assert_array_equal(
+            _to_numpy(mesh["faces"]),
+            _to_numpy(model.faces)[face_start : face_start + face_count] - vertex_start,
+        )
+
+    link_mesh = model.link_mesh("torso_link.STL")
+    np.testing.assert_allclose(_to_numpy(link_mesh["vertices"]), _to_numpy(meshes[0]["vertices"]), atol=1e-6)
+    np.testing.assert_array_equal(_to_numpy(link_mesh["faces"]), _to_numpy(meshes[0]["faces"]))
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])

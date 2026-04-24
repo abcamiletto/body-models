@@ -101,7 +101,6 @@ def forward_skeleton(
 
 def forward_vertices(
     vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     body_joint_indices: list[int],
@@ -110,20 +109,16 @@ def forward_vertices(
     link_joint_indices: list[int],
     link_vertex_starts: list[int],
     link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
     link_geom_positions: Float[Array, "L 3"],
     link_geom_rotations: Float[Array, "L 3 3"],
-    link_names: list[str],
     body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    return_per_link: bool = False,
     rotation_type: RotationType = "rotmat",
     xp: Any = None,
-) -> Float[Array, "B V 3"] | list[dict[str, Array | str]]:
+) -> Float[Array, "B V 3"]:
     """Rigidly transform G1 STL link meshes."""
     if xp is None:
         xp = get_namespace(body_pose)
@@ -145,10 +140,7 @@ def forward_vertices(
     geom_pos = xp.asarray(link_geom_positions, dtype=body_pose.dtype)
     geom_rot = xp.asarray(link_geom_rotations, dtype=body_pose.dtype)
 
-    if return_per_link:
-        per_link = []
-    else:
-        chunks = []
+    chunks = []
     for link_idx, joint_idx in enumerate(link_joint_indices):
         start = link_vertex_starts[link_idx]
         count = link_vertex_counts[link_idx]
@@ -156,26 +148,72 @@ def forward_vertices(
         R = joint_rot[:, joint_idx] @ geom_rot[link_idx]
         t = joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
         transformed = xp.squeeze(R[:, None] @ local_vertices[None, :, :, None], axis=-1) + t[:, None]
-        if return_per_link:
-            f_start = link_face_starts[link_idx]
-            f_count = link_face_counts[link_idx]
-            per_link.append(
-                {
-                    "name": link_names[link_idx],
-                    "vertices": transformed,
-                    "faces": faces[f_start : f_start + f_count] - start,
-                    "joint_index": joint_idx,
-                }
-            )
-        else:
-            chunks.append(transformed)
+        chunks.append(transformed)
 
-    if return_per_link:
-        return per_link
     out = xp.concat(chunks, axis=1)
     if vertex_indices is not None:
         out = out[:, xp.asarray(vertex_indices)]
     return out
+
+
+def link_mesh(
+    vertices: Float[Array, "V 3"],
+    faces: Int[Array, "F 3"],
+    link_joint_indices: list[int],
+    link_vertex_starts: list[int],
+    link_vertex_counts: list[int],
+    link_face_starts: list[int],
+    link_face_counts: list[int],
+    joint_names: list[str],
+    link_names: list[str],
+    link_name: str,
+) -> dict[str, Array | str | int]:
+    """Return the static STL mesh chunk for one G1 link mesh."""
+    link_idx = link_names.index(link_name)
+    vertex_start = link_vertex_starts[link_idx]
+    vertex_count = link_vertex_counts[link_idx]
+    face_start = link_face_starts[link_idx]
+    face_count = link_face_counts[link_idx]
+    joint_idx = link_joint_indices[link_idx]
+    return {
+        "name": link_name,
+        "vertices": vertices[vertex_start : vertex_start + vertex_count],
+        "faces": faces[face_start : face_start + face_count] - vertex_start,
+        "joint_index": joint_idx,
+        "joint_name": joint_names[joint_idx],
+    }
+
+
+def joint_meshes(
+    vertices: Float[Array, "V 3"],
+    faces: Int[Array, "F 3"],
+    link_joint_indices: list[int],
+    link_vertex_starts: list[int],
+    link_vertex_counts: list[int],
+    link_face_starts: list[int],
+    link_face_counts: list[int],
+    joint_names: list[str],
+    link_names: list[str],
+    joint_name: str,
+) -> list[dict[str, Array | str | int]]:
+    """Return static STL mesh chunks attached to one G1 skeleton joint."""
+    joint_idx = joint_names.index(joint_name)
+    return [
+        link_mesh(
+            vertices=vertices,
+            faces=faces,
+            link_joint_indices=link_joint_indices,
+            link_vertex_starts=link_vertex_starts,
+            link_vertex_counts=link_vertex_counts,
+            link_face_starts=link_face_starts,
+            link_face_counts=link_face_counts,
+            joint_names=joint_names,
+            link_names=link_names,
+            link_name=link_name,
+        )
+        for idx, link_name in enumerate(link_names)
+        if link_joint_indices[idx] == joint_idx
+    ]
 
 
 def to_mujoco_qpos(

@@ -105,11 +105,9 @@ class G1(BodyModel):
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         vertex_indices=None,
-        return_per_link: bool = False,
-    ):
+    ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
             vertices=self._vertices,
-            faces=self._faces,
             local_offsets=self.local_offsets,
             rest_local_rotations=self.rest_local_rotations,
             body_joint_indices=self.qpos_joint_indices,
@@ -118,18 +116,42 @@ class G1(BodyModel):
             link_joint_indices=self.link_joint_indices,
             link_vertex_starts=self.link_vertex_starts,
             link_vertex_counts=self.link_vertex_counts,
-            link_face_starts=self.link_face_starts,
-            link_face_counts=self.link_face_counts,
             link_geom_positions=self.link_geom_positions,
             link_geom_rotations=self.link_geom_rotations,
-            link_names=self.link_names,
             body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
-            return_per_link=return_per_link,
             rotation_type=self.rotation_type,
             xp=np,
+        )
+
+    def link_mesh(self, link_name: str) -> dict[str, np.ndarray | str | int]:
+        return core.link_mesh(
+            vertices=self._vertices,
+            faces=self._faces,
+            link_joint_indices=self.link_joint_indices,
+            link_vertex_starts=self.link_vertex_starts,
+            link_vertex_counts=self.link_vertex_counts,
+            link_face_starts=self.link_face_starts,
+            link_face_counts=self.link_face_counts,
+            joint_names=self._joint_names,
+            link_names=self.link_names,
+            link_name=link_name,
+        )
+
+    def joint_meshes(self, joint_name: str) -> list[dict[str, np.ndarray | str | int]]:
+        return core.joint_meshes(
+            vertices=self._vertices,
+            faces=self._faces,
+            link_joint_indices=self.link_joint_indices,
+            link_vertex_starts=self.link_vertex_starts,
+            link_vertex_counts=self.link_vertex_counts,
+            link_face_starts=self.link_face_starts,
+            link_face_counts=self.link_face_counts,
+            joint_names=self._joint_names,
+            link_names=self.link_names,
+            joint_name=joint_name,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
