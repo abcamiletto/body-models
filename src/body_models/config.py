@@ -18,6 +18,7 @@ MODELS = [
     "mhr",
     "flame",
     "soma",
+    "garment-measurements",
 ]
 
 
