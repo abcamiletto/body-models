@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from gradient_utils import prepare_params, sampled_gradcheck
+from body_models.g1.io import G1_MESH_JOINT_MAP
 
 ASSET_DIR = Path(__file__).parent / "assets" / "g1" / "model"
 XML_PATH = ASSET_DIR / "xml" / "g1.xml"
@@ -50,6 +51,7 @@ G1_JOINT_NAMES = [
     "right_wrist_yaw_skel",
     "right_hand_roll_skel",
 ]
+G1_NUM_LINK_MESHES = sum(len(meshes) for meshes in G1_MESH_JOINT_MAP.values())
 
 
 def _backend(backend: str):
@@ -99,8 +101,8 @@ def test_g1_metadata_matches_kimodo_skeleton(backend: str) -> None:
     assert model.joint_names == G1_JOINT_NAMES
     assert model.parents[:8] == [-1, 0, 1, 2, 3, 4, 5, 6]
     assert model.parents[15:18] == [0, 15, 16]
-    assert model.num_vertices == 6
-    assert model.faces.shape == (2, 3)
+    assert model.num_vertices == G1_NUM_LINK_MESHES * 3
+    assert model.faces.shape == (G1_NUM_LINK_MESHES, 3)
     with pytest.raises(NotImplementedError, match="rigid articulated"):
         model.skin_weights
 
@@ -137,13 +139,17 @@ def test_forward_vertices_rigidly_attaches_stl_links(backend: str) -> None:
 
     expected_pelvis = mujoco_triangle_in_kimodo + np.array([10.0, 21.0, 30.0], dtype=np.float32)
     expected_left_hip = mujoco_triangle_in_kimodo + np.array([11.0, 20.0, 31.0], dtype=np.float32)
-    np.testing.assert_allclose(vertices[0, :3], expected_pelvis, atol=1e-6)
-    np.testing.assert_allclose(vertices[0, 3:], expected_left_hip, atol=1e-6)
+    pelvis_idx = model.link_names.index("pelvis.STL")
+    left_hip_idx = model.link_names.index("left_hip_pitch_link.STL")
+    pelvis_start = model.link_vertex_starts[pelvis_idx]
+    left_hip_start = model.link_vertex_starts[left_hip_idx]
+    np.testing.assert_allclose(vertices[0, pelvis_start : pelvis_start + 3], expected_pelvis, atol=1e-6)
+    np.testing.assert_allclose(vertices[0, left_hip_start : left_hip_start + 3], expected_left_hip, atol=1e-6)
 
     per_link = model.forward_vertices(**params, return_per_link=True)
-    assert len(per_link) == 2
-    np.testing.assert_allclose(_to_numpy(per_link[0]["vertices"])[0], expected_pelvis, atol=1e-6)
-    np.testing.assert_allclose(_to_numpy(per_link[1]["vertices"])[0], expected_left_hip, atol=1e-6)
+    assert len(per_link) == G1_NUM_LINK_MESHES
+    np.testing.assert_allclose(_to_numpy(per_link[pelvis_idx]["vertices"])[0], expected_pelvis, atol=1e-6)
+    np.testing.assert_allclose(_to_numpy(per_link[left_hip_idx]["vertices"])[0], expected_left_hip, atol=1e-6)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])

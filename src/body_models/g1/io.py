@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import struct
+import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import numpy as np
 
 from .. import config
+from ..utils import get_cache_dir
 
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
+G1_HF_BASE_URL = "https://huggingface.co/lerobot/unitree-g1-mujoco/resolve/main/assets"
+G1_HF_XML = "g1_29dof_no_hand.xml"
 
 JOINT_NAMES = [
     "pelvis_skel",
@@ -100,9 +104,9 @@ G1_MESH_JOINT_MAP = {
     "right_knee_skel": ["right_knee_link.STL"],
     "right_ankle_pitch_skel": ["right_ankle_pitch_link.STL"],
     "right_ankle_roll_skel": ["right_ankle_roll_link.STL"],
-    "waist_yaw_skel": ["waist_yaw_link_rev_1_0.STL", "waist_yaw_link.STL"],
-    "waist_roll_skel": ["waist_roll_link_rev_1_0.STL", "waist_roll_link.STL"],
-    "waist_pitch_skel": ["torso_link_rev_1_0.STL", "torso_link.STL", "logo_link.STL", "head_link.STL"],
+    "waist_yaw_skel": ["waist_yaw_link.STL"],
+    "waist_roll_skel": ["waist_roll_link.STL"],
+    "waist_pitch_skel": ["torso_link.STL", "logo_link.STL", "head_link.STL"],
     "left_shoulder_pitch_skel": ["left_shoulder_pitch_link.STL"],
     "left_shoulder_roll_skel": ["left_shoulder_roll_link.STL"],
     "left_shoulder_yaw_skel": ["left_shoulder_yaw_link.STL"],
@@ -124,10 +128,35 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
     """Resolve a G1 asset directory containing ``xml/g1.xml`` and ``meshes/g1``."""
     if model_path is None:
         model_path = config.get_model_path("g1")
-    if model_path is None:
-        raise FileNotFoundError("G1 model_path is required, or set the 'g1' path in body-models config.")
 
-    path = Path(model_path)
+    if model_path is not None:
+        path = Path(model_path)
+        return _validate_model_path(path)
+
+    cache_path = get_cache_dir() / "g1"
+    if (cache_path / "xml" / "g1.xml").exists() and (cache_path / "meshes" / "g1").is_dir():
+        return cache_path
+
+    return download_model()
+
+
+def download_model() -> Path:
+    """Download G1 XML and STL assets from Hugging Face."""
+    cache_dir = get_cache_dir() / "g1"
+    xml_dir = cache_dir / "xml"
+    mesh_dir = cache_dir / "meshes" / "g1"
+    xml_dir.mkdir(parents=True, exist_ok=True)
+    mesh_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Downloading G1 model to {cache_dir}...")
+    urllib.request.urlretrieve(f"{G1_HF_BASE_URL}/{G1_HF_XML}", xml_dir / "g1.xml")
+    for mesh_name in sorted({mesh for meshes in G1_MESH_JOINT_MAP.values() for mesh in meshes}):
+        urllib.request.urlretrieve(f"{G1_HF_BASE_URL}/meshes/{mesh_name}", mesh_dir / mesh_name)
+    print("Done")
+    return cache_dir
+
+
+def _validate_model_path(path: Path) -> Path:
     xml_path = path / "xml" / "g1.xml"
     mesh_dir = path / "meshes" / "g1"
     if not xml_path.exists():
@@ -299,9 +328,11 @@ def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarra
     for joint_name, mesh_files in G1_MESH_JOINT_MAP.items():
         joint_idx = by_name[joint_name]
         for mesh_file in mesh_files:
+            if mesh_file not in mesh_transforms:
+                raise FileNotFoundError(f"G1 XML does not reference expected mesh: {mesh_file}")
             path = mesh_dir / mesh_file
             if not path.exists():
-                continue
+                raise FileNotFoundError(f"G1 mesh not found: {path}")
             vertices, faces = load_stl_mesh(path, dtype=dtype)
             vertices_by_link.append(vertices)
             faces_by_link.append(faces + vertex_offset)
