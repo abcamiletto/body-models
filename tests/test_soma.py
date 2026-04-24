@@ -104,3 +104,43 @@ def test_simplify_reduces_mesh(model_path: Path) -> None:
 
     assert verts.shape == (2, model_half.num_vertices, 3)
     assert skel.shape == (2, model_half.num_joints, 4, 4)
+
+
+def test_mhr_rotmat_backward_without_correctives(model_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    from body_models.soma.torch import SOMA
+
+    model = SOMA(model_path=model_path, model_type="mhr", rotation_type="rotmat")
+
+    batch_size = 4
+    pose = torch.eye(3).view(1, 1, 3, 3).repeat(batch_size, model.num_joints, 1, 1)
+    global_translation = torch.zeros(batch_size, 3)
+
+    torch.manual_seed(0)
+    identity0 = torch.randn(1, model.identity_dim) * 0.01
+    scale0 = torch.randn(1, model.num_scale_params) * 0.01
+
+    with torch.no_grad():
+        target = model.forward_vertices(
+            pose=pose,
+            identity=identity0,
+            scale_params=scale0,
+            global_translation=global_translation,
+            apply_correctives=False,
+        ).detach()
+
+    identity = torch.nn.Parameter(identity0.clone())
+    scale_params = torch.nn.Parameter(scale0.clone())
+    pred = model.forward_vertices(
+        pose=pose.clone(),
+        identity=identity,
+        scale_params=scale_params,
+        global_translation=global_translation,
+        apply_correctives=False,
+    )
+
+    loss = (pred - target).square().mean()
+    loss.backward()
+
+    assert identity.grad is not None
+    assert scale_params.grad is not None
