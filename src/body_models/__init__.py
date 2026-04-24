@@ -1,10 +1,11 @@
-from . import anny, flame, mhr, skel, smpl, smplx, soma
+from . import anny, flame, garment_measurements, mhr, skel, smpl, smplx, soma
 from .base import BodyModel
 
 __all__ = [
     # Submodules
     "anny",
     "flame",
+    "garment_measurements",
     "mhr",
     "skel",
     "smpl",
@@ -24,6 +25,7 @@ def main() -> None:
     from .anny.io import download_model as download_anny_model
     from . import fetch
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
+    from .garment_measurements.io import download_model as download_garment_measurements_model
     from .mhr.io import download_model as download_mhr_model
     from .soma.io import download_model as download_soma_model
 
@@ -39,6 +41,7 @@ def main() -> None:
         "mhr",
         "flame",
         "soma",
+        "garment-measurements",
     ]
     app = typer.Typer(add_completion=False)
 
@@ -67,7 +70,8 @@ def main() -> None:
     @app.command()
     def download(
         model: Annotated[
-            Literal["smpl", "smplx", "skel", "flame", "anny", "mhr", "soma", "all"], typer.Argument()
+            Literal["smpl", "smplx", "skel", "flame", "anny", "mhr", "soma", "garment-measurements", "all"],
+            typer.Argument(),
         ] = "all",
     ):
         """Download model weights and save their paths."""
@@ -131,5 +135,10 @@ def main() -> None:
             path = download_soma_model()
             set_model_path("soma", str(path))
             print(f"Set soma = {path}")
+
+        if model in ("garment-measurements", "all"):
+            path = download_garment_measurements_model()
+            set_model_path("garment-measurements", str(path))
+            print(f"Set garment-measurements = {path}")
 
     app()

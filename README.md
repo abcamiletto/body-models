@@ -4,7 +4,7 @@
 
 A unified library for parametric human body models.
 
-Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, and SOMA body models with PyTorch, NumPy, and JAX backends.
+Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, and GarmentMeasurements body models with PyTorch, NumPy, and JAX backends.
 
 ## Features
 
@@ -44,22 +44,25 @@ Note: NumPy/JAX backends can load MHR torch checkpoints without installing PyTor
 
 ### Auto-download models
 
-ANNY, MHR, and SOMA models are automatically downloaded on first use:
+ANNY, MHR, SOMA, and GarmentMeasurements models are automatically downloaded on first use:
 
 ```python
 from body_models.anny.torch import ANNY
+from body_models.garment_measurements.torch import GarmentMeasurements
 from body_models.mhr.torch import MHR
 from body_models.soma.torch import SOMA
 
 model = ANNY()  # Downloads automatically (CC0 license)
 model = MHR()   # Downloads automatically (Apache 2.0)
 model = SOMA()  # Downloads SOMA_neutral.npz from SOMA-X
+model = GarmentMeasurements()  # Downloads upstream PCA mesh data (GPL-3.0)
 ```
 
 You can also prefetch them and save the cache paths into config:
 
 ```bash
 body-models download anny
+body-models download garment-measurements
 body-models download mhr
 body-models download soma
 ```
@@ -78,6 +81,7 @@ You can let the CLI download all supported models into the platform cache and sa
 
 ```bash
 body-models download anny
+body-models download garment-measurements
 body-models download mhr
 body-models download soma
 body-models download smpl
@@ -106,6 +110,7 @@ body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel_models_v1.1
 body-models set flame /path/to/FLAME_NEUTRAL.pkl
 body-models set soma /path/to/soma-assets
+body-models set garment-measurements /path/to/GarmentMeasurements/data
 ```
 
 Or pass file paths directly:
@@ -205,7 +210,7 @@ transforms = model.forward_skeleton(**params)
 
 ### Mesh Simplification
 
-All models support mesh simplification via the `simplify` constructor argument:
+Most skinned mesh models support mesh simplification via the `simplify` constructor argument:
 
 ```python
 # Reduce face count by half (2x simplification)
@@ -460,6 +465,24 @@ transforms = model.forward_skeleton(**args)
 result = mhr.to_native_outputs(vertices, transforms)
 ```
 
+### GarmentMeasurements
+
+GarmentCodeData PCA body shape model from `mbotsch/GarmentMeasurements`.
+
+```python
+from body_models.garment_measurements.torch import GarmentMeasurements  # or .numpy, .jax
+
+model = GarmentMeasurements()
+
+vertices = model.forward_vertices(
+    shape,               # [B, 15] PCA weights in standard deviation units
+    global_rotation,     # [B, 3] axis-angle (optional)
+    global_translation,  # [B, 3] (optional)
+)
+```
+
+This integration covers the upstream PCA body mesh (`point.pca` and `mean.obj`). The upstream FBX skeleton and measurement executable are not bundled into the Python backend.
+
 ## Coordinate System
 
 The unified API returns outputs in:
@@ -485,3 +508,5 @@ See individual model licenses for usage terms:
 - FLAME: https://flame.is.tue.mpg.de/
 - ANNY: CC0 (MakeHuman data)
 - MHR: Apache 2.0 (Meta Platforms, Inc.)
+- SOMA: See NVIDIA SOMA-X license terms
+- GarmentMeasurements: GPL-3.0

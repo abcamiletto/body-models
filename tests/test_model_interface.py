@@ -8,14 +8,19 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
+from garment_measurements_asset import get_garment_measurements_model_path
+
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr", "soma"]
+MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements"]
 BACKENDS = ["torch", "numpy", "jax"]
 
 
 def _get_model_file(model_name: str) -> Path:
+    if model_name == "garment_measurements":
+        return get_garment_measurements_model_path()
+
     model_dir = ASSET_DIR / model_name / "model"
     if not model_dir.exists():
         return model_dir
@@ -33,6 +38,8 @@ def _get_model_file(model_name: str) -> Path:
 
 
 def _class_name(model_name: str) -> str:
+    if model_name == "garment_measurements":
+        return "GarmentMeasurements"
     return model_name.upper() if model_name != "flame" else "FLAME"
 
 
