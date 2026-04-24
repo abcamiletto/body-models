@@ -22,13 +22,14 @@ import pytest
 import torch
 
 from accelerator_utils import get_accelerator_device
+from env_utils import case_count, gradcheck_samples
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "mhr"
 MODEL_PATH = ASSET_DIR / "model"
 INPUTS_DIR = ASSET_DIR / "inputs"
 OUTPUTS_DIR = ASSET_DIR / "outputs"
-NUM_CASES = 5
+NUM_CASES = case_count(5)
 RTOL, ATOL = 1e-4, 1e-4
 
 if not MODEL_PATH.exists():
@@ -256,7 +257,7 @@ def test_gradients_forward_vertices(model_float64) -> None:
         kwargs = dict(zip(params.keys(), tensors))
         return model_float64.forward_vertices(**kwargs)
 
-    assert sampled_gradcheck(fn, inputs, n_samples=64)
+    assert sampled_gradcheck(fn, inputs, n_samples=gradcheck_samples(64))
 
 
 def test_gradients_forward_skeleton(model_float64) -> None:
@@ -268,7 +269,7 @@ def test_gradients_forward_skeleton(model_float64) -> None:
         kwargs = dict(zip(params.keys(), tensors))
         return model_float64.forward_skeleton(**kwargs)
 
-    assert sampled_gradcheck(fn, inputs, n_samples=64)
+    assert sampled_gradcheck(fn, inputs, n_samples=gradcheck_samples(64))
 
 
 # ============================================================================
