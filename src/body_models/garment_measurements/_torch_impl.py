@@ -130,7 +130,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), dtype=dtype, device=device)
         global_ref = torch.zeros((batch_size,), dtype=dtype, device=device)
         return {
-            "shape": torch.zeros((batch_size, self.num_shape_components), dtype=dtype, device=device),
+            "shape": torch.zeros((1, self.num_shape_components), dtype=dtype, device=device),
             "pose": SO3.identity_as(
                 pose_ref,
                 batch_dims=(batch_size, self.num_joints),

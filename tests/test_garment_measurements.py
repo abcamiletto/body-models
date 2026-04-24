@@ -35,6 +35,24 @@ def test_load_model_data_has_fbx_skeleton_assets() -> None:
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_get_rest_pose_uses_singleton_shape_batch(backend: str) -> None:
+    if backend == "torch":
+        pytest.importorskip("torch")
+    if backend == "jax":
+        pytest.importorskip("jax")
+        pytest.importorskip("flax")
+
+    module = import_module(f"body_models.garment_measurements.{backend}")
+    model = module.GarmentMeasurements(model_path=MODEL_PATH)
+    params = model.get_rest_pose(batch_size=3)
+
+    assert params["shape"].shape == (1, model.num_shape_components)
+    assert params["pose"].shape[0] == 3
+    assert params["global_rotation"].shape[0] == 3
+    assert params["global_translation"].shape == (3, 3)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_backends_evaluate_posed_model_consistently(backend: str) -> None:
     if backend == "torch":
         pytest.importorskip("torch")

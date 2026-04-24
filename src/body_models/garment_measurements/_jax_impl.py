@@ -122,7 +122,7 @@ class GarmentMeasurements(BodyModel, nnx.Module):
         pose_ref = jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype)
         global_ref = jnp.zeros((batch_size,), dtype=dtype)
         return {
-            "shape": jnp.zeros((batch_size, self.num_shape_components), dtype=dtype),
+            "shape": jnp.zeros((1, self.num_shape_components), dtype=dtype),
             "pose": SO3.identity_as(
                 pose_ref,
                 batch_dims=(batch_size, self.num_joints),
