@@ -1,9 +1,0 @@
-solid left_hip_pitch_link
-  facet normal 0 0 1
-    outer loop
-      vertex 1 0 0
-      vertex 0 1 0
-      vertex 0 0 1
-    endloop
-  endfacet
-endsolid left_hip_pitch_link

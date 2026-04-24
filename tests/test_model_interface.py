@@ -59,6 +59,10 @@ def _build_model(model_name: str, backend: str) -> Any:
         if not model_path.exists():
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["model_path"] = model_path
+    elif model_name == "g1":
+        if not model_path.exists():
+            pytest.skip(f"Model assets not found: {model_path}")
+        kwargs["model_path"] = model_path
     elif model_path.exists():
         kwargs["model_path"] = model_path
 

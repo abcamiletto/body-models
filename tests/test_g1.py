@@ -8,6 +8,11 @@ import torch
 from gradient_utils import prepare_params, sampled_gradcheck
 
 ASSET_DIR = Path(__file__).parent / "assets" / "g1" / "model"
+XML_PATH = ASSET_DIR / "xml" / "g1.xml"
+MESH_DIR = ASSET_DIR / "meshes" / "g1"
+
+if not XML_PATH.exists() or not MESH_DIR.exists():
+    pytest.skip(f"G1 test assets not found at {ASSET_DIR}", allow_module_level=True)
 
 G1_JOINT_NAMES = [
     "pelvis_skel",
