@@ -49,7 +49,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
         self.rotation_type = rotation_type
 
     @property
-    def faces(self) -> Int[Tensor, "F _"]:
+    def faces(self) -> Int[Tensor, "F 3"]:
         return self._faces
 
     @property

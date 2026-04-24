@@ -43,7 +43,7 @@ class GarmentMeasurements(BodyModel, nnx.Module):
         self.rotation_type = rotation_type
 
     @property
-    def faces(self) -> Int[jax.Array, "F _"]:
+    def faces(self) -> Int[jax.Array, "F 3"]:
         return self._faces[...]
 
     @property

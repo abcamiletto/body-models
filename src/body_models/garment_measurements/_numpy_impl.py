@@ -40,7 +40,7 @@ class GarmentMeasurements(BodyModel):
         self.rotation_type = rotation_type
 
     @property
-    def faces(self) -> Int[np.ndarray, "F _"]:
+    def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
 
     @property

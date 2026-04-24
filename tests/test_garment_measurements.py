@@ -27,6 +27,7 @@ def test_load_model_data_has_fbx_skeleton_assets() -> None:
     assert data["components"].shape[:2] == data["mean_vertices"].shape
     assert data["eigenvalues"].shape == (data["components"].shape[-1],)
     assert data["faces"].ndim == 2
+    assert data["faces"].shape[1] == 3
     assert len(data["joint_names"]) == data["parents"].shape[0]
     assert data["parents"][0] == -1
     assert data["bind_quats"].shape == (len(data["joint_names"]), 4)
