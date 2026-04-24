@@ -1,0 +1,170 @@
+"""NumPy implementation for the Unitree G1 rigid model."""
+
+from pathlib import Path
+
+import numpy as np
+from jaxtyping import Float, Int
+from nanomanifold import SO3
+
+from ..base import BodyModel
+from ..rotations import VALID_ROTATION_TYPES
+from . import core
+from .io import load_model_data
+
+__all__ = ["G1"]
+
+
+class G1(BodyModel):
+    """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
+
+    NUM_JOINTS = 34
+
+    def __init__(
+        self,
+        model_path: Path | str | None = None,
+        *,
+        rotation_type: core.RotationType = "rotmat",
+    ) -> None:
+        if rotation_type not in VALID_ROTATION_TYPES:
+            raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        self.rotation_type = rotation_type
+        data = load_model_data(model_path)
+        self._init_arrays(data)
+
+    def _init_arrays(self, data) -> None:
+        self._joint_names = data["joint_names"]
+        self.parents = data["parents"]
+        self.local_offsets = data["local_offsets"]
+        self.rest_local_rotations = data["rest_local_rotations"]
+        self.rest_joints = data["rest_joints"]
+        self._vertices = data["vertices"]
+        self._faces = data["faces"]
+        self._skin_weights = data["skin_weights"]
+        self.link_joint_indices = data["link_joint_indices"]
+        self.link_vertex_starts = data["link_vertex_starts"]
+        self.link_vertex_counts = data["link_vertex_counts"]
+        self.link_face_starts = data["link_face_starts"]
+        self.link_face_counts = data["link_face_counts"]
+        self.link_geom_positions = data["link_geom_positions"]
+        self.link_geom_rotations = data["link_geom_rotations"]
+        self.link_names = data["link_names"]
+        self.qpos_joint_indices = data["qpos_joint_indices"]
+        self.qpos_joint_axes = data["qpos_joint_axes"]
+        self.qpos_joint_limits = data["qpos_joint_limits"]
+        self.qpos_joint_names = data["qpos_joint_names"]
+
+    @property
+    def faces(self) -> Int[np.ndarray, "F 3"]:
+        return self._faces
+
+    @property
+    def num_joints(self) -> int:
+        return self.NUM_JOINTS
+
+    @property
+    def joint_names(self) -> list[str]:
+        return self._joint_names
+
+    @property
+    def num_vertices(self) -> int:
+        return self._vertices.shape[0]
+
+    @property
+    def skin_weights(self) -> Float[np.ndarray, "V J"]:
+        return self._skin_weights
+
+    @property
+    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
+        params = self.get_rest_pose(batch_size=1)
+        return self.forward_vertices(**params)[0]
+
+    def forward_skeleton(
+        self,
+        pose: Float[np.ndarray, "B 34 N"] | Float[np.ndarray, "B 34 3 3"],
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        *,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        joint_indices=None,
+    ) -> Float[np.ndarray, "B 34 4 4"]:
+        return core.forward_skeleton(
+            local_offsets=self.local_offsets,
+            rest_local_rotations=self.rest_local_rotations,
+            parents=self.parents,
+            pose=pose,
+            global_translation=global_translation,
+            global_rotation=global_rotation,
+            joint_indices=joint_indices,
+            rotation_type=self.rotation_type,
+            xp=np,
+        )
+
+    def forward_vertices(
+        self,
+        pose: Float[np.ndarray, "B 34 N"] | Float[np.ndarray, "B 34 3 3"],
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        *,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        vertex_indices=None,
+        return_per_link: bool = False,
+    ):
+        return core.forward_vertices(
+            vertices=self._vertices,
+            faces=self._faces,
+            local_offsets=self.local_offsets,
+            rest_local_rotations=self.rest_local_rotations,
+            parents=self.parents,
+            link_joint_indices=self.link_joint_indices,
+            link_vertex_starts=self.link_vertex_starts,
+            link_vertex_counts=self.link_vertex_counts,
+            link_face_starts=self.link_face_starts,
+            link_face_counts=self.link_face_counts,
+            link_geom_positions=self.link_geom_positions,
+            link_geom_rotations=self.link_geom_rotations,
+            link_names=self.link_names,
+            pose=pose,
+            global_translation=global_translation,
+            global_rotation=global_rotation,
+            vertex_indices=vertex_indices,
+            return_per_link=return_per_link,
+            rotation_type=self.rotation_type,
+            xp=np,
+        )
+
+    def project_pose_to_qpos(
+        self,
+        pose: Float[np.ndarray, "B 34 N"] | Float[np.ndarray, "B 34 3 3"],
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        *,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        clamp_to_limits: bool = True,
+    ) -> Float[np.ndarray, "B Q"]:
+        return core.project_pose_to_qpos(
+            qpos_joint_indices=self.qpos_joint_indices,
+            qpos_joint_axes=self.qpos_joint_axes,
+            qpos_joint_limits=self.qpos_joint_limits,
+            pose=pose,
+            global_translation=global_translation,
+            global_rotation=global_rotation,
+            clamp_to_limits=clamp_to_limits,
+            rotation_type=self.rotation_type,
+            xp=np,
+        )
+
+    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+        pose_ref = np.zeros((batch_size, self.num_joints, 3), dtype=dtype)
+        rot_ref = np.zeros((batch_size, 3), dtype=dtype)
+        return {
+            "pose": SO3.identity_as(
+                pose_ref,
+                batch_dims=(batch_size, self.num_joints),
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
+            "global_rotation": SO3.identity_as(
+                rot_ref,
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
+            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+        }

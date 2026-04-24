@@ -11,7 +11,7 @@ from nanomanifold import SO3
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements"]
+MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements", "g1"]
 BACKENDS = ["torch", "numpy", "jax"]
 
 
