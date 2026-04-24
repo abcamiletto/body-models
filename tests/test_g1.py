@@ -101,6 +101,8 @@ def test_g1_metadata_matches_kimodo_skeleton(backend: str) -> None:
     assert model.parents[15:18] == [0, 15, 16]
     assert model.num_vertices == 6
     assert model.faces.shape == (2, 3)
+    with pytest.raises(NotImplementedError, match="rigid articulated"):
+        model.skin_weights
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])

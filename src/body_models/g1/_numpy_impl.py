@@ -35,7 +35,6 @@ class G1(BodyModel):
         self.rest_local_rotations = data["rest_local_rotations"]
         self._vertices = data["vertices"]
         self._faces = data["faces"]
-        self._skin_weights = data["skin_weights"]
         self.link_joint_indices = data["link_joint_indices"]
         self.link_vertex_starts = data["link_vertex_starts"]
         self.link_vertex_counts = data["link_vertex_counts"]
@@ -67,7 +66,7 @@ class G1(BodyModel):
 
     @property
     def skin_weights(self) -> Float[np.ndarray, "V J"]:
-        return self._skin_weights
+        raise NotImplementedError(core.SKIN_WEIGHTS_ERROR)
 
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:

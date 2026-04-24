@@ -153,7 +153,7 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         class_limits,
     )
 
-    vertices, faces, skin_weights, link_data = _load_link_meshes(mesh_dir, mesh_transforms, dtype=dtype)
+    vertices, faces, link_data = _load_link_meshes(mesh_dir, mesh_transforms, dtype=dtype)
     return {
         "joint_names": JOINT_NAMES.copy(),
         "parents": PARENTS.copy(),
@@ -161,7 +161,6 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         "rest_local_rotations": rest_local_rotations.astype(dtype),
         "vertices": vertices.astype(dtype),
         "faces": faces.astype(np.int64),
-        "skin_weights": skin_weights.astype(dtype),
         "link_joint_indices": link_data["joint_indices"],
         "link_vertex_starts": link_data["vertex_starts"],
         "link_vertex_counts": link_data["vertex_counts"],
@@ -285,7 +284,6 @@ def _parse_qpos_joints(
 def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]], *, dtype) -> tuple:
     vertices_by_link: list[np.ndarray] = []
     faces_by_link: list[np.ndarray] = []
-    skin_by_link: list[np.ndarray] = []
     joint_indices: list[int] = []
     vertex_starts: list[int] = []
     vertex_counts: list[int] = []
@@ -307,9 +305,6 @@ def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarra
             vertices, faces = load_stl_mesh(path, dtype=dtype)
             vertices_by_link.append(vertices)
             faces_by_link.append(faces + vertex_offset)
-            skin = np.zeros((vertices.shape[0], len(JOINT_NAMES)), dtype=dtype)
-            skin[:, joint_idx] = 1
-            skin_by_link.append(skin)
             geom_pos, geom_rot = mesh_transforms.get(mesh_file, (np.zeros(3, dtype=dtype), np.eye(3, dtype=dtype)))
             joint_indices.append(joint_idx)
             vertex_starts.append(vertex_offset)
@@ -334,7 +329,7 @@ def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarra
         "geom_rotations": np.asarray(geom_rotations),
         "names": names,
     }
-    return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), np.concatenate(skin_by_link), link_data
+    return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
 
 
 def load_stl_mesh(path: Path, *, dtype=np.float32) -> tuple[np.ndarray, np.ndarray]:

@@ -51,7 +51,6 @@ class G1(BodyModel, nnx.Module):
         ]:
             setattr(self, key, nnx.Variable(jnp.asarray(data[key])))
         self._vertices = nnx.Variable(jnp.asarray(data["vertices"]))
-        self._skin_weights = nnx.Variable(jnp.asarray(data["skin_weights"]))
         self._faces = nnx.Variable(jnp.asarray(data["faces"]))
 
     @property
@@ -72,7 +71,7 @@ class G1(BodyModel, nnx.Module):
 
     @property
     def skin_weights(self) -> Float[jax.Array, "V J"]:
-        return self._skin_weights[...]
+        raise NotImplementedError(core.SKIN_WEIGHTS_ERROR)
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:

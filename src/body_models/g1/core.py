@@ -14,6 +14,7 @@ from ..rotations import RotationType
 Array = Any
 
 MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
+SKIN_WEIGHTS_ERROR = "G1 is a rigid articulated model and does not define skin_weights."
 
 
 def forward_skeleton(

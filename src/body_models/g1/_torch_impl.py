@@ -53,7 +53,6 @@ class G1(BodyModel, nn.Module):
             self.register_buffer(key, torch.as_tensor(data[key], dtype=torch.float32))
         self.register_buffer("_vertices", torch.as_tensor(data["vertices"], dtype=torch.float32))
         self.register_buffer("_faces", torch.as_tensor(data["faces"], dtype=torch.int64))
-        self.register_buffer("_skin_weights", torch.as_tensor(data["skin_weights"], dtype=torch.float32))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -73,7 +72,7 @@ class G1(BodyModel, nn.Module):
 
     @property
     def skin_weights(self) -> Float[Tensor, "V J"]:
-        return self._skin_weights
+        raise NotImplementedError(core.SKIN_WEIGHTS_ERROR)
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
