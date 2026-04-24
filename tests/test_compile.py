@@ -4,6 +4,7 @@ Verifies that all models can be compiled with torch.compile and jax.jit,
 producing the same results as uncompiled execution and without graph breaks.
 """
 
+import gc
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,17 @@ def get_model_file(model_name: str) -> Path:
     return model_dir if filename is None else model_dir / filename
 
 
+def get_required_model_files(model_name: str, model_kwargs: dict[str, str]) -> list[Path]:
+    paths = [get_model_file(model_name)]
+    if model_name != "soma":
+        return paths
+
+    nested_model_type = model_kwargs.get("model_type")
+    if nested_model_type in MODEL_FILES:
+        paths.append(ASSET_DIR / nested_model_type / "model" / MODEL_FILES[nested_model_type])
+    return paths
+
+
 def get_model(backend: str, model_name: str, model_path: Path, **kwargs: Any) -> Any:
     module = import_module(f"body_models.{model_name}.{backend}")
     model_class = getattr(module, CLASS_NAMES[model_name])
@@ -62,6 +74,18 @@ def get_model(backend: str, model_name: str, model_path: Path, **kwargs: Any) ->
     if model_name == "skel":
         ctor_kwargs["gender"] = "male"
     return model_class(**ctor_kwargs)
+
+
+@pytest.fixture(autouse=True)
+def clear_compile_caches() -> None:
+    yield
+    gc.collect()
+    torch._dynamo.reset()
+    try:
+        import jax
+    except ImportError:
+        return
+    jax.clear_caches()
 
 
 # ============================================================================
@@ -72,10 +96,12 @@ def get_model(backend: str, model_name: str, model_path: Path, **kwargs: Any) ->
 @pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile produces correct results for forward_vertices."""
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
+    model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
     model.eval()
 
@@ -100,10 +126,12 @@ def test_torch_compile_forward_vertices(model_name: str, model_kwargs: dict[str,
 @pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile produces correct results for forward_skeleton."""
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
+    model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
     model.eval()
 
@@ -133,10 +161,12 @@ def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str,
 @pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_fullgraph_forward_vertices(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_vertices."""
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
+    model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
     model.eval()
 
@@ -158,10 +188,12 @@ def test_torch_compile_fullgraph_forward_vertices(model_name: str, model_kwargs:
 @pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
 def test_torch_compile_fullgraph_forward_skeleton(model_name: str, model_kwargs: dict[str, str]) -> None:
     """Test torch.compile with fullgraph=True (no graph breaks) for forward_skeleton."""
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
+    model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
     model.eval()
 
@@ -191,10 +223,12 @@ def test_jax_jit_forward_vertices(model_name: str, model_kwargs: dict[str, str])
     jax = pytest.importorskip("jax")
     pytest.importorskip("flax")
 
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
+    model_path = required_paths[0]
     model = get_model("jax", model_name, model_path, **model_kwargs)
 
     # JIT compile
@@ -222,10 +256,12 @@ def test_jax_jit_forward_skeleton(model_name: str, model_kwargs: dict[str, str])
     jax = pytest.importorskip("jax")
     pytest.importorskip("flax")
 
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
+    model_path = required_paths[0]
     model = get_model("jax", model_name, model_path, **model_kwargs)
 
     # JIT compile

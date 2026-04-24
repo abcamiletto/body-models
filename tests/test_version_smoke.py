@@ -46,6 +46,17 @@ def get_model_file(model_name: str) -> Path:
     return model_dir if filename is None else model_dir / filename
 
 
+def get_required_model_files(model_name: str, model_kwargs: dict[str, str]) -> list[Path]:
+    paths = [get_model_file(model_name)]
+    if model_name != "soma":
+        return paths
+
+    nested_model_type = model_kwargs.get("model_type")
+    if nested_model_type in MODEL_FILES:
+        paths.append(ASSET_DIR / nested_model_type / "model" / MODEL_FILES[nested_model_type])
+    return paths
+
+
 def get_model(backend: str, model_name: str, model_path: Path, **kwargs) -> Any:
     """Instantiate a model for a specific backend."""
     module = import_module(f"body_models.{model_name}.{backend}")
@@ -66,10 +77,12 @@ def test_forward_smoke(backend: str, model_name: str, model_kwargs: dict[str, st
         pytest.importorskip("jax")
         pytest.importorskip("flax")
 
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
+    model_path = required_paths[0]
     model = get_model(backend, model_name, model_path, **model_kwargs)
     params = model.get_rest_pose(batch_size=1)
 
