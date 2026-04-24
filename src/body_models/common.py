@@ -5,10 +5,22 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 
 Array = Any
+
+
+def get_namespace(array: Array) -> Any:
+    namespace = getattr(array, "__array_namespace__", None)
+    if namespace is not None:
+        return namespace()
+
+    if type(array).__module__.startswith("torch"):
+        import torch
+
+        return torch
+
+    raise TypeError(f"Unsupported array type '{type(array).__name__}'.")
 
 
 def simplify_mesh(

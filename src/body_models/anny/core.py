@@ -1,13 +1,13 @@
-"""Backend-agnostic ANNY computation using array_api_compat."""
+"""Backend-agnostic ANNY computation."""
 
 from typing import Any
 
 import numpy as np
-from array_api_compat import get_namespace
 from jaxtyping import Float
 from nanomanifold import SO3
 
 from .. import common
+from ..common import get_namespace
 from ..rotations import RotationType
 from .io import PHENOTYPE_VARIATIONS
 

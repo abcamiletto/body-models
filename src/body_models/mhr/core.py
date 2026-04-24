@@ -1,13 +1,13 @@
-"""Backend-agnostic MHR computation using array_api_compat."""
+"""Backend-agnostic MHR computation."""
 
 import math
 from typing import Any
 
-from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from .. import common
+from ..common import get_namespace
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).

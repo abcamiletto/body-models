@@ -1,10 +1,10 @@
 """Validate body-models works with minimum dependency versions.
 
 Usage (single package override):
-    uv run --with "numpy==2.0.0" python bench/test_min_versions.py
+    uv run --with "numpy==2.0.0" bench/test_min_versions.py
 
 Usage (standalone - tests current env):
-    python bench/test_min_versions.py
+    uv run bench/test_min_versions.py
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ def tier1_imports() -> bool:
         "body_models.common",
         "body_models.config",
         "body_models.base",
-        "array_api_compat",
         "jaxtyping",
         "nanomanifold",
         "numpy",
@@ -173,7 +172,7 @@ def main():
     print()
 
     # Print key package versions
-    for pkg in ["numpy", "scipy", "array_api_compat", "nanomanifold", "jaxtyping", "platformdirs"]:
+    for pkg in ["numpy", "scipy", "nanomanifold", "jaxtyping", "platformdirs"]:
         try:
             mod = importlib.import_module(pkg)
             ver = getattr(mod, "__version__", "?")

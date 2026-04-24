@@ -1,4 +1,4 @@
-"""Backend-agnostic SKEL computation using array_api_compat.
+"""Backend-agnostic SKEL computation.
 
 Note: Skeleton mesh computation is NOT included here - it is PyTorch-only.
 The torch.py backend adds forward_skeleton_mesh on top of this core computation.
@@ -7,11 +7,11 @@ The torch.py backend adds forward_skeleton_mesh on top of this core computation.
 import math
 from typing import Any
 
-from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from .. import common
+from ..common import get_namespace
 
 Array = Any  # Generic array type (numpy, torch, jax)
 
