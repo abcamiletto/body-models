@@ -40,7 +40,8 @@ class GarmentMeasurements(BodyModel, nn.Module):
         for key in ["mean_vertices", "components", "eigenvalues", "bind_quats", "mvc_weights"]:
             self.register_buffer(key, torch.as_tensor(data[key], dtype=torch.float32), persistent=False)
 
-        self.register_buffer("_skin_weights", torch.as_tensor(data["skin_weights"], dtype=torch.float32), persistent=False)
+        skin_weights = torch.as_tensor(data["skin_weights"], dtype=torch.float32)
+        self.register_buffer("_skin_weights", skin_weights, persistent=False)
         self._faces = torch.as_tensor(data["faces"], dtype=torch.int64)
         self.parents = data["parents"].astype(int).tolist()
         self._joint_names = list(data["joint_names"])

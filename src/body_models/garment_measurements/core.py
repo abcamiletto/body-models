@@ -151,7 +151,8 @@ def _forward_skeleton_se3(
     bind_local = SE3.from_rt(bind_quats, bind_trans, xp=xp)
     bind_global = _propagate_se3(bind_local, parents, xp=xp)
 
-    posed_quats = SO3.multiply(bind_quats, _pose_quats(pose, batch_size, bind_quats.shape[1], rotation_type, bind_quats, xp=xp), xp=xp)
+    pose_quats = _pose_quats(pose, batch_size, bind_quats.shape[1], rotation_type, bind_quats, xp=xp)
+    posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
     posed_local = SE3.from_rt(posed_quats, bind_trans, xp=xp)
     posed_global = _propagate_se3(posed_local, parents, xp=xp)
     return bind_global, posed_global
