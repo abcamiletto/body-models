@@ -138,7 +138,10 @@ def main() -> None:
 
         if model in ("garment-measurements", "all"):
             path = download_garment_measurements_model()
-            set_model_path("garment-measurements", str(path))
-            print(f"Set garment-measurements = {path}")
+            print(f"Downloaded GarmentMeasurements upstream data to {path}")
+            print(
+                "Generate garment_measurements.npz from template/male.fbx and then set "
+                "garment-measurements to that asset directory."
+            )
 
     app()

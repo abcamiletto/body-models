@@ -36,7 +36,7 @@ BACKENDS = ("numpy", "torch", "jax")
 def get_model_file(model_name: str) -> Path:
     """Get the test asset path for a given model."""
     if model_name == "garment_measurements":
-        return ASSET_DIR / "garment_measurements" / "model"
+        return ASSET_DIR / "garment_measurements" / "model" / "garment_measurements.npz"
 
     if model_name == "soma":
         from body_models.soma.io import get_model_path

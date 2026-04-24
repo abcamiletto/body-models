@@ -46,7 +46,7 @@ def get_compile_tolerances(model_name: str) -> tuple[float, float]:
 def get_model_file(model_name: str) -> Path:
     """Get the actual model file path for a given model."""
     if model_name == "garment_measurements":
-        return ASSET_DIR / "garment_measurements" / "model"
+        return ASSET_DIR / "garment_measurements" / "model" / "garment_measurements.npz"
 
     if model_name == "soma":
         from body_models.soma.io import get_model_path
@@ -108,8 +108,6 @@ def test_torch_compile_forward_vertices(model_name: str, model_kwargs: dict[str,
 
     model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
-    if not hasattr(model, "forward_skeleton"):
-        pytest.skip(f"{model_name} does not expose forward_skeleton")
     model.eval()
 
     # Compile model
@@ -140,8 +138,6 @@ def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str,
 
     model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
-    if not hasattr(model, "forward_skeleton"):
-        pytest.skip(f"{model_name} does not expose forward_skeleton")
     model.eval()
 
     # Compile model
@@ -177,8 +173,6 @@ def test_torch_compile_fullgraph_forward_vertices(model_name: str, model_kwargs:
 
     model_path = required_paths[0]
     model = get_model("torch", model_name, model_path, **model_kwargs)
-    if not hasattr(model, "forward_skeleton"):
-        pytest.skip(f"{model_name} does not expose forward_skeleton")
     model.eval()
 
     # Compile with fullgraph=True - will fail if there are any graph breaks
