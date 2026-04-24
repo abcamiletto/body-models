@@ -32,6 +32,8 @@ def forward_vertices(
     xp: Any,
 ) -> Float[Array, "B V 3"]:
     """Evaluate shaped and posed body vertices [B, V, 3]."""
+    batch_size = _input_batch_size(shape, pose, global_rotation, global_translation)
+    shape = _broadcast_batch(shape, batch_size, xp=xp)
     shaped_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
     bind_skeleton, posed_skeleton = _forward_skeleton_se3(
         shaped_vertices=shaped_vertices,
@@ -85,6 +87,8 @@ def forward_skeleton(
     xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space joint transforms [B, J, 4, 4]."""
+    batch_size = _input_batch_size(shape, pose, global_rotation, global_translation)
+    shape = _broadcast_batch(shape, batch_size, xp=xp)
     shaped_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
     _, skeleton = _forward_skeleton_se3(
         shaped_vertices=shaped_vertices,
@@ -277,12 +281,30 @@ def _global_quat_translation(
         quat = SO3.identity_as(ref, batch_dims=(batch_size,), rotation_type="quat", xp=xp)
     else:
         quat = SO3.convert(_match_dtype(global_rotation, ref, xp=xp), src=rotation_type, dst="quat", xp=xp)
+        quat = _broadcast_batch(quat, batch_size, xp=xp)
 
     if global_translation is None:
         translation = common.zeros_as(ref, shape=(batch_size, 3), xp=xp)
     else:
         translation = _match_dtype(global_translation, ref, xp=xp)
+        translation = _broadcast_batch(translation, batch_size, xp=xp)
     return quat, translation
+
+
+def _input_batch_size(*values: Array | None) -> int:
+    sizes = [value.shape[0] for value in values if value is not None]
+    active_sizes = {size for size in sizes if size != 1}
+    if len(active_sizes) > 1:
+        raise ValueError(f"Inputs must have compatible batch sizes, got {sizes}")
+    return next(iter(active_sizes), 1)
+
+
+def _broadcast_batch(value: Array, batch_size: int, *, xp: Any) -> Array:
+    if value.shape[0] == batch_size:
+        return value
+    if value.shape[0] != 1:
+        raise ValueError(f"Input batch size {value.shape[0]} cannot broadcast to {batch_size}")
+    return xp.broadcast_to(value, (batch_size, *value.shape[1:]))
 
 
 def _match_dtype(value: Array, ref: Array, *, xp: Any) -> Array:
