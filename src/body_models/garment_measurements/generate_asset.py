@@ -103,7 +103,12 @@ def _load_fbx_rig(path: Path, num_vertices: int) -> RigData:
 
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
-    bpy.ops.import_scene.fbx(filepath=str(path))
+    bpy.ops.import_scene.fbx(
+        filepath=str(path),
+        use_manual_orientation=True,
+        axis_forward="Y",
+        axis_up="Z",
+    )
 
     armatures = [obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE"]
     meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH" and obj.vertex_groups]

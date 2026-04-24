@@ -35,6 +35,17 @@ def test_load_model_data_has_fbx_skeleton_assets() -> None:
     assert data["mvc_weights"].shape == data["skin_weights"].shape
 
 
+def test_fbx_rig_is_in_pca_coordinate_frame() -> None:
+    data = io.load_model_data(MODEL_PATH)
+
+    mesh_span = np.ptp(data["mean_vertices"], axis=0)
+    joint_positions = data["mvc_weights"].T @ data["mean_vertices"]
+    skeleton_span = np.ptp(joint_positions, axis=0)
+
+    assert mesh_span[1] > mesh_span[2]
+    assert skeleton_span[1] > skeleton_span[2]
+
+
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_get_rest_pose_uses_singleton_shape_batch(backend: str) -> None:
     if backend == "torch":
