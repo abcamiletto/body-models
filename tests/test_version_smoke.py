@@ -1,5 +1,6 @@
 """Lightweight smoke tests used for Python/dependency version compatibility in CI."""
 
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -7,124 +8,82 @@ import numpy as np
 import pytest
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ("smpl", "smplx", "skel", "flame", "anny", "mhr")
+MODEL_FILES = {
+    "smpl": "SMPL_NEUTRAL.npz",
+    "smplx": "SMPLX_NEUTRAL.npz",
+    "flame": "FLAME_NEUTRAL.pkl",
+    "skel": "skel_male.pkl",
+}
+CLASS_NAMES = {name: ("FLAME" if name == "flame" else name.upper()) for name in (*MODEL_FILES, "anny", "mhr", "soma")}
+MODEL_CASES = (
+    pytest.param("smpl", {}, id="smpl"),
+    pytest.param("smplx", {}, id="smplx"),
+    pytest.param("skel", {}, id="skel"),
+    pytest.param("flame", {}, id="flame"),
+    pytest.param("anny", {}, id="anny"),
+    pytest.param("mhr", {}, id="mhr"),
+    pytest.param("soma", {"model_type": "soma"}, id="soma"),
+    pytest.param("soma", {"model_type": "anny"}, id="soma-anny"),
+    pytest.param("soma", {"model_type": "mhr"}, id="soma-mhr"),
+    pytest.param("soma", {"model_type": "smpl"}, id="soma-smpl"),
+    pytest.param("soma", {"model_type": "smplx"}, id="soma-smplx"),
+)
 BACKENDS = ("numpy", "torch", "jax")
 
 
 def get_model_file(model_name: str) -> Path:
     """Get the test asset path for a given model."""
+    if model_name == "soma":
+        from body_models.soma.io import get_model_path
+
+        return get_model_path()
+
     model_dir = ASSET_DIR / model_name / "model"
     if not model_dir.exists():
         return model_dir
 
-    if model_name == "smpl":
-        return model_dir / "SMPL_NEUTRAL.npz"
-    if model_name == "smplx":
-        return model_dir / "SMPLX_NEUTRAL.npz"
-    if model_name == "flame":
-        return model_dir / "FLAME_NEUTRAL.pkl"
-    if model_name == "skel":
-        return model_dir / "skel_male.pkl"
-    return model_dir
+    filename = MODEL_FILES.get(model_name)
+    return model_dir if filename is None else model_dir / filename
 
 
-def get_model(backend: str, model_name: str, model_path: Path) -> Any:
+def get_required_model_files(model_name: str, model_kwargs: dict[str, str]) -> list[Path]:
+    paths = [get_model_file(model_name)]
+    if model_name != "soma":
+        return paths
+
+    nested_model_type = model_kwargs.get("model_type")
+    if nested_model_type in MODEL_FILES:
+        paths.append(ASSET_DIR / nested_model_type / "model" / MODEL_FILES[nested_model_type])
+    return paths
+
+
+def get_model(backend: str, model_name: str, model_path: Path, **kwargs) -> Any:
     """Instantiate a model for a specific backend."""
-    if backend == "numpy":
-        if model_name == "smpl":
-            from body_models.smpl.numpy import SMPL
-
-            return SMPL(model_path=model_path)
-        if model_name == "smplx":
-            from body_models.smplx.numpy import SMPLX
-
-            return SMPLX(model_path=model_path)
-        if model_name == "skel":
-            from body_models.skel.numpy import SKEL
-
-            return SKEL(gender="male", model_path=model_path)
-        if model_name == "flame":
-            from body_models.flame.numpy import FLAME
-
-            return FLAME(model_path=model_path)
-        if model_name == "anny":
-            from body_models.anny.numpy import ANNY
-
-            return ANNY(model_path=model_path)
-        if model_name == "mhr":
-            from body_models.mhr.numpy import MHR
-
-            return MHR(model_path=model_path)
-
-    if backend == "torch":
-        if model_name == "smpl":
-            from body_models.smpl.torch import SMPL
-
-            return SMPL(model_path=model_path)
-        if model_name == "smplx":
-            from body_models.smplx.torch import SMPLX
-
-            return SMPLX(model_path=model_path)
-        if model_name == "skel":
-            from body_models.skel.torch import SKEL
-
-            return SKEL(gender="male", model_path=model_path)
-        if model_name == "flame":
-            from body_models.flame.torch import FLAME
-
-            return FLAME(model_path=model_path)
-        if model_name == "anny":
-            from body_models.anny.torch import ANNY
-
-            return ANNY(model_path=model_path)
-        if model_name == "mhr":
-            from body_models.mhr.torch import MHR
-
-            return MHR(model_path=model_path)
-
-    if backend == "jax":
-        if model_name == "smpl":
-            from body_models.smpl.jax import SMPL
-
-            return SMPL(model_path=model_path)
-        if model_name == "smplx":
-            from body_models.smplx.jax import SMPLX
-
-            return SMPLX(model_path=model_path)
-        if model_name == "skel":
-            from body_models.skel.jax import SKEL
-
-            return SKEL(gender="male", model_path=model_path)
-        if model_name == "flame":
-            from body_models.flame.jax import FLAME
-
-            return FLAME(model_path=model_path)
-        if model_name == "anny":
-            from body_models.anny.jax import ANNY
-
-            return ANNY(model_path=model_path)
-        if model_name == "mhr":
-            from body_models.mhr.jax import MHR
-
-            return MHR(model_path=model_path)
-
-    raise ValueError(f"Unsupported backend/model combination: {backend}/{model_name}")
+    module = import_module(f"body_models.{model_name}.{backend}")
+    model_class = getattr(module, CLASS_NAMES[model_name])
+    ctor_kwargs = {"model_path": model_path, **kwargs}
+    if model_name == "skel":
+        ctor_kwargs["gender"] = "male"
+    return model_class(**ctor_kwargs)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-@pytest.mark.parametrize("model_name", MODELS)
-def test_forward_smoke(backend: str, model_name: str) -> None:
+@pytest.mark.parametrize(("model_name", "model_kwargs"), MODEL_CASES)
+def test_forward_smoke(backend: str, model_name: str, model_kwargs: dict[str, str]) -> None:
     """Ensure basic forward passes work across all backends and models."""
     if backend == "torch":
         pytest.importorskip("torch")
     if backend == "jax":
         pytest.importorskip("jax")
+        pytest.importorskip("flax")
 
-    model_path = get_model_file(model_name)
-    if not model_path.exists():
-        pytest.skip(f"Model assets not found: {model_path}")
+    required_paths = get_required_model_files(model_name, model_kwargs)
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
 
-    model = get_model(backend, model_name, model_path)
+    model_path = required_paths[0]
+    model = get_model(backend, model_name, model_path, **model_kwargs)
     params = model.get_rest_pose(batch_size=1)
 
     if backend == "torch":
