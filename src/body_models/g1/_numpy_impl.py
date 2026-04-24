@@ -131,7 +131,7 @@ class G1(BodyModel):
             xp=np,
         )
 
-    def project_pose_to_qpos(
+    def forward_mujoco_qpos(
         self,
         pose: Float[np.ndarray, "B 34 N"] | Float[np.ndarray, "B 34 3 3"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
@@ -139,7 +139,7 @@ class G1(BodyModel):
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         clamp_to_limits: bool = True,
     ) -> Float[np.ndarray, "B Q"]:
-        return core.project_pose_to_qpos(
+        return core.forward_mujoco_qpos(
             qpos_joint_indices=self.qpos_joint_indices,
             qpos_joint_axes=self.qpos_joint_axes,
             qpos_joint_limits=self.qpos_joint_limits,

@@ -156,7 +156,7 @@ def forward_vertices(
     return out
 
 
-def project_pose_to_qpos(
+def forward_mujoco_qpos(
     qpos_joint_indices: list[int],
     qpos_joint_axes: Float[Array, "Q 3"],
     qpos_joint_limits: Float[Array, "Q 2"],
@@ -169,7 +169,7 @@ def project_pose_to_qpos(
     rotation_type: RotationType = "rotmat",
     xp: Any = None,
 ) -> Float[Array, "B 7+Q"]:
-    """Project local 3D rotations to MuJoCo root qpos plus one hinge angle per XML joint."""
+    """Build MuJoCo qpos from root translation and local joint rotations."""
     if xp is None:
         xp = get_namespace(pose)
     rot = _pose_to_rotmat(pose, joint_rotation_axes, rotation_type=rotation_type, xp=xp)

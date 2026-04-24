@@ -182,7 +182,7 @@ def test_scalar_pose_uses_xml_hinge_axes(backend: str) -> None:
     np.testing.assert_allclose(scalar_skeleton, rotmat_skeleton, atol=1e-6)
 
     qpos = _to_numpy(
-        hinge_model.project_pose_to_qpos(
+        hinge_model.forward_mujoco_qpos(
             pose=_array(backend, scalar_pose),
             global_translation=_array(backend, global_translation),
             clamp_to_limits=False,
@@ -193,13 +193,13 @@ def test_scalar_pose_uses_xml_hinge_axes(backend: str) -> None:
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
-def test_project_pose_to_qpos_uses_xml_axis_limits_and_coordinate_transform(backend: str) -> None:
+def test_forward_mujoco_qpos_uses_xml_axis_limits_and_coordinate_transform(backend: str) -> None:
     model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
     pose = np.tile(np.eye(3, dtype=np.float32), (1, model.num_joints, 1, 1))
     pose[0, 1] = _rot_x(3.0)
 
     qpos = _to_numpy(
-        model.project_pose_to_qpos(
+        model.forward_mujoco_qpos(
             pose=_array(backend, pose),
             global_translation=_array(backend, [[1.0, 2.0, 3.0]]),
             clamp_to_limits=True,
