@@ -5,8 +5,10 @@ import numpy as np
 import pytest
 import torch
 
-from gradient_utils import prepare_params, sampled_gradcheck
 from body_models.g1.io import G1_MESH_JOINT_MAP
+from gradient_utils import prepare_params, sampled_gradcheck
+
+pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets" / "g1" / "model"
 XML_PATH = ASSET_DIR / "xml" / "g1.xml"

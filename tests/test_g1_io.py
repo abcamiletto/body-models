@@ -1,6 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from body_models.g1 import io
+
+pytestmark = pytest.mark.fast
 
 
 def test_g1_download_model_uses_huggingface_layout(monkeypatch, tmp_path: Path) -> None:
