@@ -133,24 +133,14 @@ class G1(BodyModel):
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
-        if self.rotation_type == "hinge":
-            body_pose = np.zeros((batch_size, len(self.qpos_joint_indices), 1), dtype=dtype)
-            global_rotation = np.tile(np.eye(3, dtype=dtype), (batch_size, 1, 1))
-        else:
-            pose_ref = np.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
-            rot_ref = np.zeros((batch_size, 3), dtype=dtype)
-            body_pose = SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size, len(self.qpos_joint_indices)),
-                rotation_type=self.rotation_type,
-                xp=np,
-            )
-            global_rotation = SO3.identity_as(
-                rot_ref,
-                batch_dims=(batch_size,),
-                rotation_type=self.rotation_type,
-                xp=np,
-            )
+        pose_ref = np.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
+        body_pose = SO3.identity_as(
+            pose_ref,
+            batch_dims=(batch_size, len(self.qpos_joint_indices)),
+            rotation_type=self.rotation_type,
+            xp=np,
+        )
+        global_rotation = np.tile(np.eye(3, dtype=dtype), (batch_size, 1, 1))
         return {
             "body_pose": body_pose,
             "global_rotation": global_rotation,

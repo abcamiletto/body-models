@@ -17,6 +17,14 @@ RotationType = SO3RotationType | Literal["hinge"]
 MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
 SKIN_WEIGHTS_ERROR = "G1 is a rigid articulated model and does not define skin_weights."
 VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat", "hinge")
+GLOBAL_ROTATION_TYPES: dict[RotationType, SO3RotationType] = {
+    "axis_angle": "axis_angle",
+    "quat": "quat",
+    "sixd": "sixd",
+    "matrix": "matrix",
+    "rotmat": "rotmat",
+    "hinge": "rotmat",
+}
 
 
 def forward_skeleton(
@@ -36,7 +44,18 @@ def forward_skeleton(
     """Compute world-space G1 joint transforms from local rotations."""
     if xp is None:
         xp = get_namespace(body_pose)
-    body_rot = _body_pose_to_rotmat(body_pose, body_joint_axes, rotation_type=rotation_type, xp=xp)
+    axes = xp.asarray(body_joint_axes, dtype=body_pose.dtype)
+    src_kwargs = {
+        "axis_angle": {},
+        "quat": {},
+        "sixd": {},
+        "matrix": {},
+        "rotmat": {},
+        "hinge": {"axes": axes},
+    }[rotation_type]
+    body_rot = SO3.convert(body_pose, src=rotation_type, dst="rotmat", src_kwargs=src_kwargs, xp=xp)
+    if body_rot.ndim != 4 or body_rot.shape[-2:] != (3, 3):
+        raise ValueError("G1 body_pose must convert to shape [B, 29, 3, 3]")
     batch_size = body_rot.shape[0]
     dtype = body_rot.dtype
     num_joints = len(parents)
@@ -63,10 +82,8 @@ def forward_skeleton(
     rot = xp.stack(rot_world, axis=1)
     trans = xp.stack(pos_world, axis=1)
     if global_rotation is not None:
-        if rotation_type == "hinge":
-            global_rot = xp.asarray(global_rotation, dtype=dtype)
-        else:
-            global_rot = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
+        global_rotation_type = GLOBAL_ROTATION_TYPES[rotation_type]
+        global_rot = SO3.convert(global_rotation, src=global_rotation_type, dst="rotmat", xp=xp)
         rot = global_rot[:, None] @ rot
         trans = xp.squeeze(global_rot[:, None] @ trans[..., None], axis=-1)
     trans = trans + global_translation[:, None]
@@ -175,7 +192,18 @@ def to_mujoco_qpos(
     """Build MuJoCo qpos from root translation and local joint rotations."""
     if xp is None:
         xp = get_namespace(body_pose)
-    body_rot = _body_pose_to_rotmat(body_pose, qpos_joint_axes, rotation_type=rotation_type, xp=xp)
+    axes = xp.asarray(qpos_joint_axes, dtype=body_pose.dtype)
+    src_kwargs = {
+        "axis_angle": {},
+        "quat": {},
+        "sixd": {},
+        "matrix": {},
+        "rotmat": {},
+        "hinge": {"axes": axes},
+    }[rotation_type]
+    body_rot = SO3.convert(body_pose, src=rotation_type, dst="rotmat", src_kwargs=src_kwargs, xp=xp)
+    if body_rot.ndim != 4 or body_rot.shape[-2:] != (3, 3):
+        raise ValueError("G1 body_pose must convert to shape [B, 29, 3, 3]")
     batch_size = body_rot.shape[0]
     dtype = body_rot.dtype
     if global_translation is None:
@@ -183,11 +211,8 @@ def to_mujoco_qpos(
     if global_rotation is None:
         root_rot = common.eye_as(body_rot, batch_dims=(batch_size,), xp=xp)
     else:
-        if rotation_type == "hinge":
-            global_rot = xp.asarray(global_rotation, dtype=dtype)
-        else:
-            global_rot = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
-        root_rot = global_rot
+        global_rotation_type = GLOBAL_ROTATION_TYPES[rotation_type]
+        root_rot = SO3.convert(global_rotation, src=global_rotation_type, dst="rotmat", xp=xp)
 
     coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
     kimodo_to_mujoco = coord.mT
@@ -196,27 +221,8 @@ def to_mujoco_qpos(
     root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
 
     axes = xp.asarray(qpos_joint_axes, dtype=dtype)
-    hinge_rots = SO3.convert(body_rot, src="rotmat", dst="quat", xp=xp)
-    angles = SO3.to_hinge(hinge_rots, axes, xp=xp)[..., 0]
+    angles = SO3.convert(body_rot, src="rotmat", dst="hinge", dst_kwargs={"axes": axes}, xp=xp)[..., 0]
     if clamp_to_limits:
         limits = xp.asarray(qpos_joint_limits, dtype=dtype)
         angles = xp.clip(angles, limits[None, :, 0], limits[None, :, 1])
     return xp.concat([root_t, root_quat, angles], axis=1)
-
-
-def _body_pose_to_rotmat(
-    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
-    body_joint_axes: Float[Array, "Q 3"],
-    *,
-    rotation_type: RotationType,
-    xp: Any,
-) -> Float[Array, "B Q 3 3"]:
-    if rotation_type == "hinge":
-        if body_pose.ndim != 3 or body_pose.shape[-1] != 1:
-            raise ValueError("G1 hinge body_pose must have shape [B, 29, 1]")
-        axes = xp.asarray(body_joint_axes, dtype=body_pose.dtype)
-        quat = SO3.from_hinge(body_pose, axes[None], xp=xp)
-        return SO3.convert(quat, src="quat", dst="rotmat", xp=xp)
-    if body_pose.ndim == 3 and body_pose.shape[-1] == 1:
-        raise ValueError('G1 scalar hinge poses require rotation_type="hinge"')
-    return SO3.convert(body_pose, src=rotation_type, dst="rotmat", xp=xp)

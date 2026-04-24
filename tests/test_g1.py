@@ -174,7 +174,7 @@ def test_scalar_pose_uses_xml_hinge_axes(backend: str) -> None:
 
     assert rest_pose["body_pose"].shape == (1, len(hinge_model.qpos_joint_indices), 1)
     assert rest_pose["global_rotation"].shape == (1, 3, 3)
-    with pytest.raises(ValueError, match="scalar hinge"):
+    with pytest.raises(ValueError, match="body_pose"):
         rotmat_model.forward_skeleton(body_pose=_array(backend, scalar_pose))
 
     scalar_skeleton = _to_numpy(

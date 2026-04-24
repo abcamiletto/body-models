@@ -141,24 +141,14 @@ class G1(BodyModel, nnx.Module):
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
-        if self.rotation_type == "hinge":
-            body_pose = jnp.zeros((batch_size, len(self.qpos_joint_indices), 1), dtype=dtype)
-            global_rotation = jnp.broadcast_to(jnp.eye(3, dtype=dtype), (batch_size, 3, 3))
-        else:
-            pose_ref = jnp.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
-            rot_ref = jnp.zeros((batch_size, 3), dtype=dtype)
-            body_pose = SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size, len(self.qpos_joint_indices)),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            )
-            global_rotation = SO3.identity_as(
-                rot_ref,
-                batch_dims=(batch_size,),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            )
+        pose_ref = jnp.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
+        body_pose = SO3.identity_as(
+            pose_ref,
+            batch_dims=(batch_size, len(self.qpos_joint_indices)),
+            rotation_type=self.rotation_type,
+            xp=jnp,
+        )
+        global_rotation = jnp.broadcast_to(jnp.eye(3, dtype=dtype), (batch_size, 3, 3))
         return {
             "body_pose": body_pose,
             "global_rotation": global_rotation,
