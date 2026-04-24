@@ -481,10 +481,10 @@ vertices = model.forward_vertices(
 skeleton = model.forward_skeleton(**params)
 ```
 
-The runtime loads a preprocessed `garment_measurements.npz` asset containing the upstream PCA body mesh plus the FBX-derived skeleton, skinning weights, and mean-value-coordinate joint weights. FBX parsing is intentionally kept out of the library runtime; generate the `.npz` asset offline from upstream `template/male.fbx`.
+The runtime loads a preprocessed `garment_measurements.npz` asset containing the upstream PCA body mesh plus the FBX-derived skeleton, skinning weights, and mean-value-coordinate joint weights. FBX parsing is intentionally kept out of the library runtime; generate the `.npz` asset offline from upstream `template/male.fbx` with the self-contained PEP 723 generator.
 
 ```bash
-blender --background --python tests/generate_assets/generate_garment_measurements_reference.py -- \
+uv run --python 3.11 --no-project tests/generate_assets/generate_garment_measurements_reference.py \
   /path/to/GarmentMeasurements/data /path/to/garment_measurements/model
 body-models set garment-measurements /path/to/garment_measurements/model
 ```

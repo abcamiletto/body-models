@@ -1,12 +1,19 @@
+# /// script
+# requires-python = ">=3.11,<3.12"
+# dependencies = [
+#   "bpy>=4.2.0",
+#   "numpy>=1.26",
+# ]
+# ///
 """Generate the private GarmentMeasurements rig asset from upstream data.
 
-Run this with Blender, not with ``uv run``:
+Run this as a self-contained PEP 723 script:
 
-    blender --background --python tests/generate_assets/generate_garment_measurements_reference.py -- \
+    uv run --python 3.11 --no-project tests/generate_assets/generate_garment_measurements_reference.py \
         /path/to/GarmentMeasurements/data tests/assets/garment_measurements/model
 
 The generated ``garment_measurements.npz`` is the only asset loaded by the runtime
-model. Blender is used only here to read upstream ``template/male.fbx``.
+model. The ``bpy`` dependency is isolated to this asset-generation script.
 """
 
 from __future__ import annotations
