@@ -16,6 +16,8 @@ import torch
 
 from body_models.soma.io import get_model_path
 
+pytestmark = pytest.mark.fast
+
 ASSET_DIR = Path(__file__).parent / "assets"
 RTOL = 1e-4
 ATOL = 1e-4
