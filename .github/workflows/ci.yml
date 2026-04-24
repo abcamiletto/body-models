@@ -48,6 +48,8 @@ jobs:
             paths: tests/test_smpl.py
           - group: smplx
             paths: tests/test_smplx.py
+          - group: soma
+            paths: tests/test_soma.py tests/test_soma_identity_backends.py
           - group: compile
             paths: tests/test_compile.py
           - group: interface

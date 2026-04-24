@@ -45,6 +45,9 @@ dev = [
     "torch>=2.3.0",
     "jax>=0.4.33",
     "flax>=0.10.0",
+    "py-soma-x>=0.1.0",
+    "anny>=0.3.1",
+    "smplx>=0.1.28",
 ]
 
 [tool.uv.sources]

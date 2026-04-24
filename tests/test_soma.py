@@ -8,6 +8,8 @@ import pytest
 
 from body_models.soma.io import get_model_path
 
+pytestmark = pytest.mark.fast
+
 MODEL_TYPE_SEEDS = {
     "soma": 11,
     "anny": 17,
