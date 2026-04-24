@@ -290,7 +290,7 @@ def _forward_skeleton_core(
 
     # Convert euler to quaternion and apply pre-rotation
     q_local = SO3.canonicalize(
-        SO3.conversions.from_euler_to_quat(euler, src_convention="xyz", dst_convention="xyzw", xp=xp),
+        SO3.conversions.from_euler_to_quat(euler, euler_convention="xyz", quat_convention="xyzw", xp=xp),
         convention="xyzw",
         xp=xp,
     )

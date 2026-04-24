@@ -111,7 +111,7 @@ requires-dist = [
     { name = "flax", marker = "extra == 'jax'", specifier = ">=0.10.0" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.33" },
     { name = "jaxtyping", specifier = ">=0.2.28" },
-    { name = "nanomanifold", specifier = ">=0.6.1" },
+    { name = "nanomanifold", specifier = ">=0.8.0" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "platformdirs", specifier = ">=2.0" },
     { name = "ptloader", specifier = "==0.3.0" },
@@ -1077,15 +1077,15 @@ wheels = [
 
 [[package]]
 name = "nanomanifold"
-version = "0.6.1"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jaxtyping" },
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/70/d4f910500262bb720085a4215d6675c9945bf2118983256edfd9b920de5c/nanomanifold-0.6.1.tar.gz", hash = "sha256:24958f0f83aab3daf8be7bdfdedd489ceb25086214e84e71abc9964f5febc471", size = 120954, upload-time = "2026-03-26T11:43:53.647Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/f9/38e91bf7df790149e78b3317948bb4a3908988866ca83a75f479610f3289/nanomanifold-0.8.0.tar.gz", hash = "sha256:16d42edf80f673d07d0c3ca3b8fd6ccb060ba295c0676127d71bdf6c4a2d67f9", size = 124242, upload-time = "2026-04-24T15:14:53.617Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/27/46/93ae95d6cea3cc8c82f57265a106724f29f74e2850f85c77617fe6b28994/nanomanifold-0.6.1-py3-none-any.whl", hash = "sha256:408fe611243e53744148f1beb27277ab6fa2436bf4004ca715b83b1b6bed877f", size = 43319, upload-time = "2026-03-26T11:43:52.45Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/9a/8a2f669f5de785c9f1a38c1b39897bf60d37efc7a9e985a135a2bf38b356/nanomanifold-0.8.0-py3-none-any.whl", hash = "sha256:853537e0806e47b2fde100a507f64fd673a62b2ea1fefae602f02b3a7674fd89", size = 45752, upload-time = "2026-04-24T15:14:54.601Z" },
 ]
 
 [[package]]
