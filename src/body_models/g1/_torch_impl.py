@@ -20,6 +20,14 @@ class G1(BodyModel, nn.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
+    local_offsets: Tensor
+    rest_local_rotations: Tensor
+    link_geom_positions: Tensor
+    link_geom_rotations: Tensor
+    qpos_joint_axes: Tensor
+    qpos_joint_limits: Tensor
+    _vertices: Tensor
+    _faces: Tensor
 
     def __init__(
         self,
@@ -77,7 +85,11 @@ class G1(BodyModel, nn.Module):
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
         params = self.get_rest_pose(batch_size=1, dtype=self._vertices.dtype)
-        return self.forward_vertices(**params)[0]
+        return self.forward_vertices(
+            pose=params["pose"],
+            global_translation=params["global_translation"],
+            global_rotation=params["global_rotation"],
+        )[0]
 
     def forward_skeleton(
         self,

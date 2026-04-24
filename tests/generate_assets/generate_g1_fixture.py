@@ -84,6 +84,7 @@ def _xml() -> str:
         ]
     )
 
+
 STL = """solid {name}
   facet normal 0 0 1
     outer loop

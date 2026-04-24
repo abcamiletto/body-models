@@ -71,7 +71,11 @@ class G1(BodyModel):
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
         params = self.get_rest_pose(batch_size=1)
-        return self.forward_vertices(**params)[0]
+        return self.forward_vertices(
+            pose=params["pose"],
+            global_translation=params["global_translation"],
+            global_rotation=params["global_rotation"],
+        )[0]
 
     def forward_skeleton(
         self,

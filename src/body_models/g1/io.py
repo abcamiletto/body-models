@@ -173,7 +173,7 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     tree = ET.parse(xml_path)
     root = tree.getroot()
 
-    class_axes, class_limits = _parse_joint_defaults(tree)
+    class_axes, class_limits = _parse_joint_defaults(root)
     local_offsets, rest_local_rotations = _parse_joint_rest(root)
     mesh_transforms = _parse_mesh_local_transforms(root)
     qpos_joint_indices, qpos_joint_axes, qpos_joint_limits, qpos_joint_names = _parse_qpos_joints(
@@ -205,10 +205,10 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     }
 
 
-def _parse_joint_defaults(tree: ET.ElementTree) -> tuple[dict[str, np.ndarray], dict[str, tuple[float, float]]]:
+def _parse_joint_defaults(root: ET.Element) -> tuple[dict[str, np.ndarray], dict[str, tuple[float, float]]]:
     class_axes: dict[str, np.ndarray] = {}
     class_limits: dict[str, tuple[float, float]] = {}
-    for xml_class in tree.findall(".//default"):
+    for xml_class in root.findall(".//default"):
         class_name = xml_class.get("class")
         if not class_name:
             continue
@@ -408,8 +408,9 @@ def _looks_like_binary_stl(data: bytes) -> bool:
 
 def _body_to_joint_name(body: ET.Element) -> str:
     joint = body.find("joint")
-    if joint is not None and joint.get("name") and joint.get("name") != "floating_base_joint":
-        return joint.get("name").replace("_joint", "_skel")
+    joint_name = joint.get("name") if joint is not None else None
+    if joint_name and joint_name != "floating_base_joint":
+        return joint_name.replace("_joint", "_skel")
     name = body.get("name", "")
     if name == "pelvis":
         return "pelvis_skel"
@@ -417,8 +418,9 @@ def _body_to_joint_name(body: ET.Element) -> str:
 
 
 def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndarray:
-    if joint.get("axis"):
-        return np.asarray([float(x) for x in joint.get("axis").split()], dtype=np.float32)
+    axis = joint.get("axis")
+    if axis:
+        return np.asarray([float(x) for x in axis.split()], dtype=np.float32)
     class_name = joint.get("class")
     if class_name in class_axes:
         return class_axes[class_name]
@@ -426,8 +428,9 @@ def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndar
 
 
 def _joint_limit(joint: ET.Element, class_limits: dict[str, tuple[float, float]]) -> tuple[float, float]:
-    if joint.get("range"):
-        lo, hi = [float(x) for x in joint.get("range").split()]
+    limit = joint.get("range")
+    if limit:
+        lo, hi = [float(x) for x in limit.split()]
         return lo, hi
     class_name = joint.get("class")
     if class_name in class_limits:

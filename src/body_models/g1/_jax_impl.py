@@ -20,6 +20,12 @@ class G1(BodyModel, nnx.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
+    local_offsets: nnx.Variable[jax.Array]
+    rest_local_rotations: nnx.Variable[jax.Array]
+    link_geom_positions: nnx.Variable[jax.Array]
+    link_geom_rotations: nnx.Variable[jax.Array]
+    qpos_joint_axes: nnx.Variable[jax.Array]
+    qpos_joint_limits: nnx.Variable[jax.Array]
 
     def __init__(
         self,
@@ -41,15 +47,12 @@ class G1(BodyModel, nnx.Module):
         self.link_face_starts = data["link_face_starts"]
         self.link_face_counts = data["link_face_counts"]
         self.qpos_joint_indices = data["qpos_joint_indices"]
-        for key in [
-            "local_offsets",
-            "rest_local_rotations",
-            "link_geom_positions",
-            "link_geom_rotations",
-            "qpos_joint_axes",
-            "qpos_joint_limits",
-        ]:
-            setattr(self, key, nnx.Variable(jnp.asarray(data[key])))
+        self.local_offsets = nnx.Variable(jnp.asarray(data["local_offsets"]))
+        self.rest_local_rotations = nnx.Variable(jnp.asarray(data["rest_local_rotations"]))
+        self.link_geom_positions = nnx.Variable(jnp.asarray(data["link_geom_positions"]))
+        self.link_geom_rotations = nnx.Variable(jnp.asarray(data["link_geom_rotations"]))
+        self.qpos_joint_axes = nnx.Variable(jnp.asarray(data["qpos_joint_axes"]))
+        self.qpos_joint_limits = nnx.Variable(jnp.asarray(data["qpos_joint_limits"]))
         self._vertices = nnx.Variable(jnp.asarray(data["vertices"]))
         self._faces = nnx.Variable(jnp.asarray(data["faces"]))
 
@@ -76,7 +79,11 @@ class G1(BodyModel, nnx.Module):
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
         params = self.get_rest_pose(batch_size=1, dtype=self._vertices[...].dtype)
-        return self.forward_vertices(**params)[0]
+        return self.forward_vertices(
+            pose=params["pose"],
+            global_translation=params["global_translation"],
+            global_rotation=params["global_rotation"],
+        )[0]
 
     def forward_skeleton(
         self,
