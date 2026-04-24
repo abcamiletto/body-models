@@ -62,6 +62,19 @@ def test_run_asset_generator_fails_clearly_without_uv(tmp_path, monkeypatch) -> 
         raise AssertionError("Expected RuntimeError")
 
 
+def test_compute_kinematic_fronts_groups_joints_by_depth() -> None:
+    assert io.compute_kinematic_fronts([-1, 0, 0, 1, 1, 2]) == [
+        ([0], [-1]),
+        ([1, 2], [0, 0]),
+        ([3, 4, 5], [1, 1, 2]),
+    ]
+
+
+def test_compute_kinematic_fronts_rejects_cycles() -> None:
+    with pytest.raises(ValueError, match="Invalid GarmentMeasurements parent chain"):
+        io.compute_kinematic_fronts([1, 0])
+
+
 def _write_minimal_preprocessed_model(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(

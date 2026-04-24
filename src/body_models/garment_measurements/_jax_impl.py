@@ -12,7 +12,7 @@ from nanomanifold import SO3
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
-from .io import load_model_data
+from .io import compute_kinematic_fronts, load_model_data
 
 __all__ = ["GarmentMeasurements"]
 
@@ -38,6 +38,7 @@ class GarmentMeasurements(BodyModel, nnx.Module):
         self.mvc_weights = nnx.Variable(jnp.asarray(data["mvc_weights"]))
         self._faces = nnx.Variable(jnp.asarray(data["faces"]))
         self.parents = data["parents"].astype(int).tolist()
+        self._kinematic_fronts = compute_kinematic_fronts(self.parents)
         self._joint_names = list(data["joint_names"])
         self.rotation_type = rotation_type
 
@@ -84,7 +85,7 @@ class GarmentMeasurements(BodyModel, nnx.Module):
             bind_quats=self.bind_quats[...],
             skin_weights=self._skin_weights[...],
             mvc_weights=self.mvc_weights[...],
-            parents=self.parents,
+            kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             pose=pose,
             global_rotation=global_rotation,
@@ -108,7 +109,7 @@ class GarmentMeasurements(BodyModel, nnx.Module):
             eigenvalues=self.eigenvalues[...],
             bind_quats=self.bind_quats[...],
             mvc_weights=self.mvc_weights[...],
-            parents=self.parents,
+            kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             pose=pose,
             global_rotation=global_rotation,

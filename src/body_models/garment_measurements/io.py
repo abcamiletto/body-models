@@ -13,6 +13,8 @@ import numpy as np
 from .. import config
 from ..utils import download_and_extract, get_cache_dir
 
+Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
 GARMENT_MEASUREMENTS_URL = "https://github.com/mbotsch/GarmentMeasurements/archive/refs/heads/main.zip"
 PREPROCESSED_FILENAME = "garment_measurements.npz"
 GENERATOR_PYTHON = "3.11"
@@ -124,6 +126,29 @@ def load_preprocessed_model(model_path: Path | str, dtype: Any = np.float32) -> 
     return result
 
 
+def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
+    """Compute kinematic fronts for batched FK."""
+    parents_list = parents.tolist() if isinstance(parents, np.ndarray) else list(parents)
+    processed: set[int] = set()
+    fronts: list[Front] = []
+
+    while len(processed) < len(parents_list):
+        joints: list[int] = []
+        joint_parents: list[int] = []
+        for joint_index, parent_index in enumerate(parents_list):
+            if joint_index in processed:
+                continue
+            if parent_index < 0 or parent_index in processed:
+                joints.append(joint_index)
+                joint_parents.append(int(parent_index))
+        if not joints:
+            raise ValueError(f"Invalid GarmentMeasurements parent chain: {parents_list}")
+        fronts.append((joints, joint_parents))
+        processed.update(joints)
+
+    return fronts
+
+
 def _find_upstream_data_dir(model_path: Path) -> Path | None:
     for base in (model_path, model_path / "data"):
         pca_path = base / "pca" / "point.pca"
@@ -204,9 +229,11 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
 
 
 __all__ = [
+    "Front",
     "GARMENT_MEASUREMENTS_URL",
     "GENERATOR_PYTHON",
     "PREPROCESSED_FILENAME",
+    "compute_kinematic_fronts",
     "download_model",
     "get_model_path",
     "load_model_data",

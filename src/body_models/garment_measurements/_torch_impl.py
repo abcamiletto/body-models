@@ -11,7 +11,7 @@ from torch import Tensor
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
-from .io import load_model_data
+from .io import compute_kinematic_fronts, load_model_data
 
 __all__ = ["GarmentMeasurements"]
 
@@ -44,6 +44,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
         self.register_buffer("_skin_weights", skin_weights, persistent=False)
         self._faces = torch.as_tensor(data["faces"], dtype=torch.int64)
         self.parents = data["parents"].astype(int).tolist()
+        self._kinematic_fronts = compute_kinematic_fronts(self.parents)
         self._joint_names = list(data["joint_names"])
         self.rotation_type = rotation_type
 
@@ -90,7 +91,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
             bind_quats=self.bind_quats,
             skin_weights=self._skin_weights,
             mvc_weights=self.mvc_weights,
-            parents=self.parents,
+            kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             pose=pose,
             global_rotation=global_rotation,
@@ -114,7 +115,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
             eigenvalues=self.eigenvalues,
             bind_quats=self.bind_quats,
             mvc_weights=self.mvc_weights,
-            parents=self.parents,
+            kinematic_fronts=self._kinematic_fronts,
             shape=shape,
             pose=pose,
             global_rotation=global_rotation,

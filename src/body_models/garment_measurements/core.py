@@ -11,6 +11,7 @@ from .. import common
 from ..rotations import RotationType
 
 Array = Any
+Front = tuple[list[int], list[int]]
 
 
 def forward_vertices(
@@ -20,7 +21,7 @@ def forward_vertices(
     bind_quats: Float[Array, "J 4"],
     skin_weights: Float[Array, "V J"],
     mvc_weights: Float[Array, "V J"],
-    parents: list[int],
+    kinematic_fronts: list[Front],
     shape: Float[Array, "B C"],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -36,7 +37,7 @@ def forward_vertices(
         shaped_vertices=shaped_vertices,
         bind_quats=bind_quats,
         mvc_weights=mvc_weights,
-        parents=parents,
+        kinematic_fronts=kinematic_fronts,
         pose=pose,
         rotation_type=rotation_type,
         xp=xp,
@@ -73,7 +74,7 @@ def forward_skeleton(
     eigenvalues: Float[Array, "C"],
     bind_quats: Float[Array, "J 4"],
     mvc_weights: Float[Array, "V J"],
-    parents: list[int],
+    kinematic_fronts: list[Front],
     shape: Float[Array, "B C"],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -89,7 +90,7 @@ def forward_skeleton(
         shaped_vertices=shaped_vertices,
         bind_quats=bind_quats,
         mvc_weights=mvc_weights,
-        parents=parents,
+        kinematic_fronts=kinematic_fronts,
         pose=pose,
         rotation_type=rotation_type,
         xp=xp,
@@ -131,7 +132,7 @@ def _forward_skeleton_se3(
     shaped_vertices: Float[Array, "B V 3"],
     bind_quats: Float[Array, "J 4"],
     mvc_weights: Float[Array, "V J"],
-    parents: list[int],
+    kinematic_fronts: list[Front],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None,
     rotation_type: RotationType,
     xp: Any,
@@ -139,35 +140,37 @@ def _forward_skeleton_se3(
     batch_size = shaped_vertices.shape[0]
     joint_positions = xp.einsum("vj,bvd->bjd", _match_dtype(mvc_weights, shaped_vertices, xp=xp), shaped_vertices)
     bind_quats = xp.broadcast_to(_match_dtype(bind_quats, shaped_vertices, xp=xp), (batch_size, *bind_quats.shape))
-    bind_global_quats = _propagate_quats(bind_quats, parents, xp=xp)
-    bind_trans = _local_translations_from_positions(joint_positions, bind_global_quats, parents, xp=xp)
+    bind_global_quats = _propagate_quats(bind_quats, kinematic_fronts, xp=xp)
+    bind_trans = _local_translations_from_positions(joint_positions, bind_global_quats, kinematic_fronts, xp=xp)
 
     bind_local = SE3.from_rt(bind_quats, bind_trans, xp=xp)
-    bind_global = _propagate_se3(bind_local, parents, xp=xp)
+    bind_global = _propagate_se3(bind_local, kinematic_fronts, xp=xp)
 
     pose_quats = _pose_quats(pose, batch_size, bind_quats.shape[1], rotation_type, bind_quats, xp=xp)
     posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
     posed_local = SE3.from_rt(posed_quats, bind_trans, xp=xp)
-    posed_global = _propagate_se3(posed_local, parents, xp=xp)
+    posed_global = _propagate_se3(posed_local, kinematic_fronts, xp=xp)
     return bind_global, posed_global
 
 
 def _local_translations_from_positions(
     positions: Float[Array, "B J 3"],
     bind_global_quats: Float[Array, "B J 4"],
-    parents: list[int],
+    kinematic_fronts: list[Front],
     *,
     xp: Any,
 ) -> Float[Array, "B J 3"]:
-    translations = []
-    for joint_index, parent_index in enumerate(parents):
-        if parent_index < 0:
-            translations.append(positions[:, joint_index])
+    translations = xp.zeros_like(positions)
+    for joints, parents in kinematic_fronts:
+        if parents[0] < 0:
+            translations = common.set(translations, (slice(None), joints), positions[:, joints], copy=False, xp=xp)
             continue
-        offset = positions[:, joint_index] - positions[:, parent_index]
-        parent_inv = SO3.inverse(bind_global_quats[:, parent_index], xp=xp)
-        translations.append(SO3.rotate_points(parent_inv, offset[:, None], xp=xp).squeeze(-2))
-    return xp.stack(translations, axis=1)
+
+        offset = positions[:, joints] - positions[:, parents]
+        parent_inv = SO3.inverse(bind_global_quats[:, parents], xp=xp)
+        local_translations = SO3.rotate_points(parent_inv, offset[..., None, :], xp=xp).squeeze(-2)
+        translations = common.set(translations, (slice(None), joints), local_translations, copy=False, xp=xp)
+    return translations
 
 
 def _pose_quats(
@@ -187,24 +190,36 @@ def _pose_quats(
     return SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
 
 
-def _propagate_quats(quats: Float[Array, "B J 4"], parents: list[int], *, xp: Any) -> Float[Array, "B J 4"]:
-    globals_ = []
-    for joint_index, parent_index in enumerate(parents):
-        quat = quats[:, joint_index]
-        if parent_index >= 0:
-            quat = SO3.multiply(globals_[parent_index], quat, xp=xp)
-        globals_.append(quat)
-    return xp.stack(globals_, axis=1)
+def _propagate_quats(
+    quats: Float[Array, "B J 4"],
+    kinematic_fronts: list[Front],
+    *,
+    xp: Any,
+) -> Float[Array, "B J 4"]:
+    globals_ = xp.zeros_like(quats)
+    for joints, parents in kinematic_fronts:
+        if parents[0] < 0:
+            front = quats[:, joints]
+        else:
+            front = SO3.multiply(globals_[:, parents], quats[:, joints], xp=xp)
+        globals_ = common.set(globals_, (slice(None), joints), front, copy=False, xp=xp)
+    return globals_
 
 
-def _propagate_se3(se3: Float[Array, "B J 7"], parents: list[int], *, xp: Any) -> Float[Array, "B J 7"]:
-    globals_ = []
-    for joint_index, parent_index in enumerate(parents):
-        transform = se3[:, joint_index]
-        if parent_index >= 0:
-            transform = SE3.multiply(globals_[parent_index], transform, xp=xp)
-        globals_.append(transform)
-    return xp.stack(globals_, axis=1)
+def _propagate_se3(
+    se3: Float[Array, "B J 7"],
+    kinematic_fronts: list[Front],
+    *,
+    xp: Any,
+) -> Float[Array, "B J 7"]:
+    globals_ = xp.zeros_like(se3)
+    for joints, parents in kinematic_fronts:
+        if parents[0] < 0:
+            front = se3[:, joints]
+        else:
+            front = SE3.multiply(globals_[:, parents], se3[:, joints], xp=xp)
+        globals_ = common.set(globals_, (slice(None), joints), front, copy=False, xp=xp)
+    return globals_
 
 
 def _apply_global_transform(
