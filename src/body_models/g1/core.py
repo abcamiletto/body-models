@@ -122,6 +122,59 @@ def forward_vertices(
     """Rigidly transform G1 STL link meshes."""
     if xp is None:
         xp = get_namespace(body_pose)
+    links = forward_links(
+        local_offsets=local_offsets,
+        rest_local_rotations=rest_local_rotations,
+        body_joint_indices=body_joint_indices,
+        body_joint_axes=body_joint_axes,
+        parents=parents,
+        link_joint_indices=link_joint_indices,
+        link_geom_positions=link_geom_positions,
+        link_geom_rotations=link_geom_rotations,
+        body_pose=body_pose,
+        global_translation=global_translation,
+        global_rotation=global_rotation,
+        rotation_type=rotation_type,
+        xp=xp,
+    )
+    link_rot = links[..., :3, :3]
+    link_pos = links[..., :3, 3]
+    source_vertices = xp.asarray(vertices, dtype=body_pose.dtype)
+
+    chunks = []
+    for link_idx in range(len(link_joint_indices)):
+        start = link_vertex_starts[link_idx]
+        count = link_vertex_counts[link_idx]
+        local_vertices = source_vertices[start : start + count]
+        transformed = xp.squeeze(link_rot[:, link_idx, None] @ local_vertices[None, :, :, None], axis=-1)
+        transformed = transformed + link_pos[:, link_idx, None]
+        chunks.append(transformed)
+
+    out = xp.concat(chunks, axis=1)
+    if vertex_indices is not None:
+        out = out[:, xp.asarray(vertex_indices)]
+    return out
+
+
+def forward_links(
+    local_offsets: Float[Array, "J 3"],
+    rest_local_rotations: Float[Array, "J 3 3"],
+    body_joint_indices: list[int],
+    body_joint_axes: Float[Array, "Q 3"],
+    parents: list[int],
+    link_joint_indices: list[int],
+    link_geom_positions: Float[Array, "L 3"],
+    link_geom_rotations: Float[Array, "L 3 3"],
+    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
+    global_translation: Float[Array, "B 3"] | None = None,
+    *,
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    rotation_type: RotationType = "rotmat",
+    xp: Any = None,
+) -> Float[Array, "B L 4 4"]:
+    """Compute world-space transforms for each STL link mesh."""
+    if xp is None:
+        xp = get_namespace(body_pose)
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
@@ -136,24 +189,17 @@ def forward_vertices(
     )
     joint_rot = skeleton[..., :3, :3]
     joint_pos = skeleton[..., :3, 3]
-    source_vertices = xp.asarray(vertices, dtype=body_pose.dtype)
     geom_pos = xp.asarray(link_geom_positions, dtype=body_pose.dtype)
     geom_rot = xp.asarray(link_geom_rotations, dtype=body_pose.dtype)
 
-    chunks = []
+    links = []
     for link_idx, joint_idx in enumerate(link_joint_indices):
-        start = link_vertex_starts[link_idx]
-        count = link_vertex_counts[link_idx]
-        local_vertices = source_vertices[start : start + count]
-        R = joint_rot[:, joint_idx] @ geom_rot[link_idx]
-        t = joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
-        transformed = xp.squeeze(R[:, None] @ local_vertices[None, :, :, None], axis=-1) + t[:, None]
-        chunks.append(transformed)
-
-    out = xp.concat(chunks, axis=1)
-    if vertex_indices is not None:
-        out = out[:, xp.asarray(vertex_indices)]
-    return out
+        rot = joint_rot[:, joint_idx] @ geom_rot[link_idx]
+        pos = joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
+        last_row = common.zeros_as(rot, shape=(rot.shape[0], 1, 4), xp=xp)
+        last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
+        links.append(xp.concat([xp.concat([rot, pos[..., None]], axis=-1), last_row], axis=-2))
+    return xp.stack(links, axis=1)
 
 
 def link_mesh(

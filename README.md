@@ -514,6 +514,7 @@ model = G1(rotation_type="rotmat")  # Auto-downloads assets from Hugging Face if
 params = model.get_rest_pose(batch_size=1)
 
 transforms = model.forward_skeleton(**params)  # [B, 34, 4, 4]
+link_transforms = model.forward_links(**params)  # [B, num_links, 4, 4], ordered by model.link_names
 vertices = model.forward_vertices(**params)    # rigid concatenated STL link vertices
 torso_meshes = model.joint_meshes("waist_pitch_skel")
 head_mesh = model.link_mesh("head_link.STL")

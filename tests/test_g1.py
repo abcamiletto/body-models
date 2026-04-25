@@ -157,6 +157,35 @@ def test_forward_vertices_rigidly_attaches_stl_links(backend: str) -> None:
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_forward_links_returns_stl_link_transforms(backend: str) -> None:
+    model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
+    params = model.get_rest_pose(batch_size=1)
+    params = {key: _array(backend, _to_numpy(value)) for key, value in params.items()}
+    params["global_translation"] = _array(backend, [[10.0, 20.0, 30.0]])
+
+    links = _to_numpy(model.forward_links(**params))
+    skeleton = _to_numpy(model.forward_skeleton(**params))
+
+    assert links.shape == (1, len(model.link_names), 4, 4)
+
+    link_idx = model.link_names.index("torso_link.STL")
+    joint_idx = model.link_joint_indices[link_idx]
+    geom = np.eye(4, dtype=np.float32)
+    geom[:3, :3] = _to_numpy(model.link_geom_rotations)[link_idx]
+    geom[:3, 3] = _to_numpy(model.link_geom_positions)[link_idx]
+    np.testing.assert_allclose(links[0, link_idx], skeleton[0, joint_idx] @ geom, atol=1e-6)
+
+    vertices = _to_numpy(model.forward_vertices(**params))
+    local_vertex = _to_numpy(model.link_mesh("torso_link.STL")["vertices"])[0]
+    transformed_vertex = links[0, link_idx, :3, :3] @ local_vertex + links[0, link_idx, :3, 3]
+    np.testing.assert_allclose(
+        transformed_vertex,
+        vertices[0, model.link_vertex_starts[link_idx]],
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_link_mesh_access_returns_static_stl_chunks(backend: str) -> None:
     model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
     meshes = model.joint_meshes("waist_pitch_skel")
@@ -279,5 +308,17 @@ def test_gradients_forward_skeleton(model_float64) -> None:
     def fn(*tensors):
         kwargs = dict(zip(params.keys(), tensors))
         return model_float64.forward_skeleton(**kwargs)
+
+    assert sampled_gradcheck(fn, inputs, n_samples=64)
+
+
+def test_gradients_forward_links(model_float64) -> None:
+    """Test gradients flow correctly through forward_links."""
+    params = prepare_params(model_float64.get_rest_pose(batch_size=1, dtype=torch.float64))
+    inputs = tuple(params.values())
+
+    def fn(*tensors):
+        kwargs = dict(zip(params.keys(), tensors))
+        return model_float64.forward_links(**kwargs)
 
     assert sampled_gradcheck(fn, inputs, n_samples=64)

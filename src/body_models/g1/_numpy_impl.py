@@ -126,6 +126,29 @@ class G1(BodyModel):
             xp=np,
         )
 
+    def forward_links(
+        self,
+        body_pose: Float[np.ndarray, "B 29 N"] | Float[np.ndarray, "B 29 3 3"],
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        *,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+    ) -> Float[np.ndarray, "B L 4 4"]:
+        return core.forward_links(
+            local_offsets=self.local_offsets,
+            rest_local_rotations=self.rest_local_rotations,
+            body_joint_indices=self.qpos_joint_indices,
+            body_joint_axes=self.qpos_joint_axes,
+            parents=self.parents,
+            link_joint_indices=self.link_joint_indices,
+            link_geom_positions=self.link_geom_positions,
+            link_geom_rotations=self.link_geom_rotations,
+            body_pose=body_pose,
+            global_translation=global_translation,
+            global_rotation=global_rotation,
+            rotation_type=self.rotation_type,
+            xp=np,
+        )
+
     def link_mesh(self, link_name: str) -> dict[str, np.ndarray | str | int]:
         return core.link_mesh(
             vertices=self._vertices,

@@ -161,6 +161,26 @@ def test_torch_compile_forward_skeleton(model_name: str, model_kwargs: dict[str,
     np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=rtol, atol=atol)
 
 
+@pytest.mark.slow
+def test_torch_compile_g1_forward_links() -> None:
+    """Test torch.compile produces correct G1 STL link transforms."""
+    required_paths = get_required_model_files("g1", {})
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
+
+    model = get_model("torch", "g1", required_paths[0])
+    model.eval()
+    compiled_fn = torch.compile(model.forward_links, mode=TORCH_COMPILE_MODE)
+    params = model.get_rest_pose(batch_size=2)
+
+    with torch.no_grad():
+        result_eager = model.forward_links(**params)
+        result_compiled = compiled_fn(**params)
+
+    np.testing.assert_allclose(result_compiled.numpy(), result_eager.numpy(), rtol=1e-5, atol=1e-5)
+
+
 # ============================================================================
 # PyTorch fullgraph compilation tests (no graph breaks)
 # ============================================================================
@@ -293,3 +313,26 @@ def test_jax_jit_forward_skeleton(model_name: str, model_kwargs: dict[str, str])
     rtol, atol = get_compile_tolerances(model_name)
     np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=rtol, atol=atol)
     np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=rtol, atol=atol)
+
+
+@pytest.mark.slow
+def test_jax_jit_g1_forward_links() -> None:
+    """Test jax.jit produces correct G1 STL link transforms."""
+    jax = pytest.importorskip("jax")
+    pytest.importorskip("flax")
+
+    required_paths = get_required_model_files("g1", {})
+    missing_path = next((path for path in required_paths if not path.exists()), None)
+    if missing_path is not None:
+        pytest.skip(f"Model assets not found: {missing_path}")
+
+    model = get_model("jax", "g1", required_paths[0])
+    jitted_fn = jax.jit(model.forward_links)
+    params = model.get_rest_pose(batch_size=2)
+
+    result_eager = model.forward_links(**params)
+    result_jitted = jitted_fn(**params)
+    result_jitted_2 = jitted_fn(**params)
+
+    np.testing.assert_allclose(np.asarray(result_jitted), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(np.asarray(result_jitted_2), np.asarray(result_eager), rtol=1e-5, atol=1e-5)
