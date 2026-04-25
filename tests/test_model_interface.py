@@ -11,7 +11,7 @@ from nanomanifold import SO3
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements"]
+MODELS = ["smpl", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements", "g1"]
 BACKENDS = ["torch", "numpy", "jax"]
 
 
@@ -59,10 +59,23 @@ def _build_model(model_name: str, backend: str) -> Any:
         if not model_path.exists():
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["model_path"] = model_path
+    elif model_name == "g1":
+        if not model_path.exists():
+            pytest.skip(f"Model assets not found: {model_path}")
+        kwargs["model_path"] = model_path
     elif model_path.exists():
         kwargs["model_path"] = model_path
 
     return cls(**kwargs)
+
+
+def _local_skeleton(model: Any, forward_kwargs: dict[str, Any]) -> np.ndarray:
+    full_skeleton = np.asarray(model.forward_skeleton(**forward_kwargs))[0]
+    local_skeleton = full_skeleton.copy()
+    for joint_index, parent_index in enumerate(model.parents):
+        if parent_index >= 0:
+            local_skeleton[joint_index] = np.linalg.solve(full_skeleton[parent_index], full_skeleton[joint_index])
+    return local_skeleton
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -82,7 +95,11 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert isinstance(model.parents, list)
     assert len(model.parents) == model.num_joints
     assert all(isinstance(parent, int) for parent in model.parents)
-    assert model.skin_weights.shape == (model.num_vertices, model.num_joints)
+    if model_name == "g1":
+        with pytest.raises(NotImplementedError, match="rigid articulated"):
+            model.skin_weights
+    else:
+        assert model.skin_weights.shape == (model.num_vertices, model.num_joints)
 
     params = model.get_rest_pose(batch_size=1)
     skeleton = model.forward_skeleton(**params)
@@ -126,6 +143,19 @@ def test_viser_exports_match_model_outputs(model_name: str, backend: str) -> Non
     model = _build_model(model_name, backend)
 
     forward_kwargs = model.get_rest_pose(batch_size=1)
+    if model_name == "g1":
+        with pytest.raises(NotImplementedError, match="skin_weights"):
+            model.to_viser_skinned_mesh(**forward_kwargs)
+        bones = model.to_viser_bones(**forward_kwargs)
+        local_skeleton = _local_skeleton(model, forward_kwargs)
+        assert set(bones) == {"bone_wxyzs", "bone_positions"}
+        assert bones["bone_positions"].shape == (model.num_joints, 3)
+        assert bones["bone_wxyzs"].shape == (model.num_joints, 4)
+        np.testing.assert_allclose(bones["bone_positions"], local_skeleton[:, :3, 3], atol=1e-6, rtol=1e-6)
+        bone_rotmats = SO3.conversions.from_quat_to_rotmat(bones["bone_wxyzs"], convention="wxyz", xp=np)
+        np.testing.assert_allclose(bone_rotmats, local_skeleton[:, :3, :3], atol=1e-6, rtol=1e-6)
+        return
+
     mesh = model.to_viser_skinned_mesh(**forward_kwargs)
     bones = model.to_viser_bones(**forward_kwargs)
 
@@ -133,11 +163,7 @@ def test_viser_exports_match_model_outputs(model_name: str, backend: str) -> Non
     assert set(bones) == {"bone_wxyzs", "bone_positions"}
 
     full_vertices = np.asarray(model.forward_vertices(**forward_kwargs))[0]
-    full_skeleton = np.asarray(model.forward_skeleton(**forward_kwargs))[0]
-    local_skeleton = full_skeleton.copy()
-    for joint_index, parent_index in enumerate(model.parents):
-        if parent_index >= 0:
-            local_skeleton[joint_index] = np.linalg.solve(full_skeleton[parent_index], full_skeleton[joint_index])
+    local_skeleton = _local_skeleton(model, forward_kwargs)
 
     np.testing.assert_allclose(mesh["vertices"], full_vertices, atol=1e-6, rtol=1e-6)
     assert mesh["vertices"].shape == (model.num_vertices, 3)

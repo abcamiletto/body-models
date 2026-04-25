@@ -2,9 +2,9 @@
 
 # body-models
 
-A unified library for parametric human body models.
+A unified library for body models.
 
-Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, and GarmentMeasurements body models with PyTorch, NumPy, and JAX backends.
+Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, and G1 models with PyTorch, NumPy, and JAX backends.
 
 ## Features
 
@@ -44,15 +44,17 @@ Note: NumPy/JAX backends can load MHR torch checkpoints without installing PyTor
 
 ### Auto-download models
 
-ANNY, MHR, SOMA, and GarmentMeasurements models are automatically downloaded on first use:
+ANNY, MHR, SOMA, GarmentMeasurements, and G1 models are automatically downloaded on first use:
 
 ```python
 from body_models.anny.torch import ANNY
+from body_models.g1.torch import G1
 from body_models.garment_measurements.torch import GarmentMeasurements
 from body_models.mhr.torch import MHR
 from body_models.soma.torch import SOMA
 
 model = ANNY()  # Downloads automatically (CC0 license)
+model = G1()  # Downloads Unitree G1 MuJoCo assets from Hugging Face
 model = GarmentMeasurements()  # Downloads upstream data, then preprocesses with bpy via uv
 model = MHR()   # Downloads automatically (Apache 2.0)
 model = SOMA()  # Downloads SOMA_neutral.npz from SOMA-X
@@ -62,6 +64,7 @@ You can also prefetch them and save the cache paths into config:
 
 ```bash
 body-models download anny
+body-models download g1
 body-models download garment-measurements
 body-models download mhr
 body-models download soma
@@ -81,6 +84,7 @@ You can let the CLI download all supported models into the platform cache and sa
 
 ```bash
 body-models download anny
+body-models download g1
 body-models download garment-measurements
 body-models download mhr
 body-models download soma
@@ -143,8 +147,10 @@ Current settings:
   skel: (not set)
   flame: (not set)
   anny: (not set)
+  g1: (not set)
   mhr: (not set)
   soma: (not set)
+  garment-measurements: (not set)
 ```
 
 Manage paths:
@@ -152,7 +158,7 @@ Manage paths:
 ```bash
 body-models set <model> <path>   # Set model path
 body-models unset <model>        # Remove from config
-body-models download <model>     # Download anny, mhr, soma, smpl, smplx, skel, flame, or all
+body-models download <model>     # Download anny, g1, mhr, soma, smpl, smplx, skel, flame, or all
 ```
 
 ## Quick Start
@@ -210,7 +216,7 @@ transforms = model.forward_skeleton(**params)
 
 ### Mesh Simplification
 
-Most skinned mesh models support mesh simplification via the `simplify` constructor argument:
+Skinned mesh models support mesh simplification via the `simplify` constructor argument:
 
 ```python
 # Reduce face count by half (2x simplification)
@@ -493,6 +499,40 @@ uv run --python 3.11 --no-project src/body_models/garment_measurements/generate_
 body-models set garment-measurements /path/to/GarmentMeasurements/data
 ```
 
+### G1
+
+Unitree G1 as a rigid articulated model with STL link meshes attached to the Kimodo 34-joint skeleton.
+`body_pose` controls the 29 XML hinge joints; pelvis/root motion is controlled by `global_rotation` and
+`global_translation`, while the skeleton-only toe and hand-roll leaves stay at rest.
+
+```python
+import torch
+from body_models import g1
+from body_models.g1.torch import G1
+
+model = G1(rotation_type="rotmat")  # Auto-downloads assets from Hugging Face if unset
+params = model.get_rest_pose(batch_size=1)
+
+transforms = model.forward_skeleton(**params)  # [B, 34, 4, 4]
+link_transforms = model.forward_links(**params)  # [B, num_links, 4, 4], ordered by model.link_names
+vertices = model.forward_vertices(**params)    # rigid concatenated STL link vertices
+torso_meshes = model.joint_meshes("waist_pitch_skel")
+head_mesh = model.link_mesh("head_link.STL")
+
+qpos = g1.to_mujoco_qpos(
+    model,
+    body_pose=params["body_pose"],
+    global_translation=params["global_translation"],
+)
+
+hinge_model = G1(rotation_type="hinge")
+body_pose = torch.zeros((1, len(hinge_model.qpos_joint_indices), 1))  # 29 XML hinge angles
+vertices = hinge_model.forward_vertices(body_pose=body_pose)
+```
+
+Use `body-models download g1` to download and configure the assets explicitly.
+When passed manually, `model_path` should contain `xml/g1.xml` and `meshes/g1/*.STL`.
+
 ## Coordinate System
 
 The unified API returns outputs in:
@@ -520,3 +560,4 @@ See individual model licenses for usage terms:
 - MHR: Apache 2.0 (Meta Platforms, Inc.)
 - SOMA: See NVIDIA SOMA-X license terms
 - GarmentMeasurements: GPL-3.0
+- G1: follows the license of the provided Unitree/Kimodo robot assets

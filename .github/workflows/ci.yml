@@ -52,6 +52,8 @@ jobs:
             paths: tests/test_soma.py tests/test_soma_identity_backends.py
           - group: garment-measurements
             paths: tests/test_garment_measurements.py tests/test_garment_measurements_io.py
+          - group: g1
+            paths: tests/test_g1.py tests/test_g1_io.py
           - group: compile
             paths: tests/test_compile.py
           - group: interface
