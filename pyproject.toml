@@ -1,13 +1,14 @@
 [project]
 name = "body-models"
-version = "0.9.5"
-description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements) for NumPy, PyTorch, and JAX"
+version = "0.10.0"
+description = "Multi-backend parametric body models (SMPL, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements, G1) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
     { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "array-api-compat>=1.14.0",
     "jaxtyping>=0.2.28",
     "nanomanifold>=0.8.0",
     "numpy>=2.0.0",

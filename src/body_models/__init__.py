@@ -1,4 +1,4 @@
-from . import anny, flame, garment_measurements, mhr, skel, smpl, smplx, soma
+from . import anny, flame, g1, garment_measurements, mhr, skel, smpl, smplx, soma
 from .base import BodyModel
 
 __all__ = [
@@ -6,6 +6,7 @@ __all__ = [
     "anny",
     "flame",
     "garment_measurements",
+    "g1",
     "mhr",
     "skel",
     "smpl",
@@ -25,6 +26,7 @@ def main() -> None:
     from .anny.io import download_model as download_anny_model
     from . import fetch
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
+    from .g1.io import download_model as download_g1_model
     from .garment_measurements.io import download_model as download_garment_measurements_model
     from .mhr.io import download_model as download_mhr_model
     from .soma.io import download_model as download_soma_model
@@ -40,6 +42,7 @@ def main() -> None:
         "anny",
         "mhr",
         "flame",
+        "g1",
         "soma",
         "garment-measurements",
     ]
@@ -70,7 +73,7 @@ def main() -> None:
     @app.command()
     def download(
         model: Annotated[
-            Literal["smpl", "smplx", "skel", "flame", "anny", "mhr", "soma", "garment-measurements", "all"],
+            Literal["smpl", "smplx", "skel", "flame", "anny", "mhr", "g1", "soma", "garment-measurements", "all"],
             typer.Argument(),
         ] = "all",
     ):
@@ -130,6 +133,11 @@ def main() -> None:
             path = download_mhr_model()
             set_model_path("mhr", str(path))
             print(f"Set mhr = {path}")
+
+        if model in ("g1", "all"):
+            path = download_g1_model()
+            set_model_path("g1", str(path))
+            print(f"Set g1 = {path}")
 
         if model in ("soma", "all"):
             path = download_soma_model()
