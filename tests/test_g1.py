@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from body_models import g1
+from body_models.g1 import core
 from body_models.g1.io import G1_MESH_JOINT_MAP
 from gradient_utils import prepare_params, sampled_gradcheck
 
@@ -55,6 +56,14 @@ G1_JOINT_NAMES = [
     "right_hand_roll_skel",
 ]
 G1_NUM_LINK_MESHES = sum(len(meshes) for meshes in G1_MESH_JOINT_MAP.values())
+GLOBAL_ROTATION_SHAPES = {
+    "axis_angle": (2, 3),
+    "quat": (2, 4),
+    "sixd": (2, 6),
+    "matrix": (2, 3, 3),
+    "rotmat": (2, 3, 3),
+    "hinge": (2, 3, 3),
+}
 
 
 def _backend(backend: str):
@@ -119,6 +128,18 @@ def test_g1_metadata_matches_kimodo_skeleton(backend: str) -> None:
     assert len(model.link_names) == G1_NUM_LINK_MESHES
     with pytest.raises(NotImplementedError, match="rigid articulated"):
         model.skin_weights
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+@pytest.mark.parametrize("rotation_type", core.VALID_ROTATION_TYPES)
+def test_get_rest_pose_global_rotation_matches_rotation_type(backend: str, rotation_type: str) -> None:
+    model = _backend(backend)(model_path=ASSET_DIR, rotation_type=rotation_type)
+
+    params = model.get_rest_pose(batch_size=2)
+    skeleton = _to_numpy(model.forward_skeleton(**params))
+
+    assert params["global_rotation"].shape == GLOBAL_ROTATION_SHAPES[rotation_type]
+    np.testing.assert_allclose(skeleton[:, 0, :3, :3], np.broadcast_to(np.eye(3), (2, 3, 3)), atol=1e-6)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])

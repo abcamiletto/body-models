@@ -194,13 +194,19 @@ class G1(BodyModel, nn.Module):
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self._vertices.device
         pose_ref = torch.zeros((batch_size, len(self.qpos_joint_indices), 3), device=device, dtype=dtype)
+        global_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         body_pose = SO3.identity_as(
             pose_ref,
             batch_dims=(batch_size, len(self.qpos_joint_indices)),
             rotation_type=self.rotation_type,
             xp=torch,
         )
-        global_rotation = torch.eye(3, device=device, dtype=dtype).expand(batch_size, 3, 3)
+        global_rotation = SO3.identity_as(
+            global_ref,
+            batch_dims=(batch_size,),
+            rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
+            xp=torch,
+        )
         return {
             "body_pose": body_pose,
             "global_rotation": global_rotation,
