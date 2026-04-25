@@ -192,14 +192,19 @@ def forward_links(
     geom_pos = xp.asarray(link_geom_positions, dtype=body_pose.dtype)
     geom_rot = xp.asarray(link_geom_rotations, dtype=body_pose.dtype)
 
-    links = []
+    rotations = []
+    translations = []
     for link_idx, joint_idx in enumerate(link_joint_indices):
-        rot = joint_rot[:, joint_idx] @ geom_rot[link_idx]
-        pos = joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
-        last_row = common.zeros_as(rot, shape=(rot.shape[0], 1, 4), xp=xp)
-        last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
-        links.append(xp.concat([xp.concat([rot, pos[..., None]], axis=-1), last_row], axis=-2))
-    return xp.stack(links, axis=1)
+        rotations.append(joint_rot[:, joint_idx] @ geom_rot[link_idx])
+        translations.append(
+            joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
+        )
+
+    rot = xp.stack(rotations, axis=1)
+    trans = xp.stack(translations, axis=1)
+    last_row = common.zeros_as(rot, shape=(rot.shape[0], rot.shape[1], 1, 4), xp=xp)
+    last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
+    return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
 
 
 def link_mesh(
@@ -244,22 +249,25 @@ def joint_meshes(
 ) -> list[dict[str, Array | str | int]]:
     """Return static STL mesh chunks attached to one G1 skeleton joint."""
     joint_idx = joint_names.index(joint_name)
-    return [
-        link_mesh(
-            vertices=vertices,
-            faces=faces,
-            link_joint_indices=link_joint_indices,
-            link_vertex_starts=link_vertex_starts,
-            link_vertex_counts=link_vertex_counts,
-            link_face_starts=link_face_starts,
-            link_face_counts=link_face_counts,
-            joint_names=joint_names,
-            link_names=link_names,
-            link_name=link_name,
+    meshes = []
+    for link_idx, link_name in enumerate(link_names):
+        if link_joint_indices[link_idx] != joint_idx:
+            continue
+
+        vertex_start = link_vertex_starts[link_idx]
+        vertex_count = link_vertex_counts[link_idx]
+        face_start = link_face_starts[link_idx]
+        face_count = link_face_counts[link_idx]
+        meshes.append(
+            {
+                "name": link_name,
+                "vertices": vertices[vertex_start : vertex_start + vertex_count],
+                "faces": faces[face_start : face_start + face_count] - vertex_start,
+                "joint_index": joint_idx,
+                "joint_name": joint_name,
+            }
         )
-        for idx, link_name in enumerate(link_names)
-        if link_joint_indices[idx] == joint_idx
-    ]
+    return meshes
 
 
 def to_mujoco_qpos(
