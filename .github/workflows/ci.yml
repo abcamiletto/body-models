@@ -21,6 +21,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uvx ruff format --check .
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --group docs mkdocs build --strict
+
   typecheck:
     runs-on: ubuntu-latest
     steps:
