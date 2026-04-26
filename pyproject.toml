@@ -49,6 +49,11 @@ dev = [
     "anny>=0.3.1",
     "smplx>=0.1.28",
 ]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.6",
+    "mkdocstrings[python]>=1.0.4",
+]
 
 [tool.uv.sources]
 torch = [

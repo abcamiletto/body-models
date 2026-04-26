@@ -1,0 +1,67 @@
+site_name: body-models
+site_author: Andrea Boscolo Camiletto
+site_description: Multi-backend parametric body models for NumPy, PyTorch, and JAX
+repo_name: body-models
+repo_url: https://github.com/abcamiletto/body-models
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue grey
+      accent: teal
+  features:
+    - content.code.copy
+    - search.suggest
+    - navigation.instant
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            docstring_style: google
+            show_root_heading: true
+            show_if_no_docstring: false
+            inherited_members: true
+            members_order: source
+            unwrap_annotated: true
+            line_length: 70
+            filters:
+              - "!^_"
+            merge_init_into_class: true
+            docstring_section_style: spacy
+            signature_crossrefs: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            separate_signature: true
+            summary: true
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      line_spans: __span
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Models:
+      - SMPL: models/smpl.md
+      - SMPL-X: models/smplx.md
+      - FLAME: models/flame.md
+      - SKEL: models/skel.md
+      - ANNY: models/anny.md
+      - MHR: models/mhr.md
+      - SOMA: models/soma.md
+      - GarmentMeasurements: models/garment-measurements.md
+      - G1: models/g1.md
+
+strict: true
