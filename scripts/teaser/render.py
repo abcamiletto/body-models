@@ -66,7 +66,7 @@ LOADERS = {
     "flame": lambda: FLAME(ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"),
     "garment_measurements": lambda: GarmentMeasurements(ASSETS_DIR / "garment_measurements/model"),
     "soma": lambda: SOMA(),  # SOMA loads from the body-models cache.
-    "g1": lambda: G1(ASSETS_DIR / "g1/model"),
+    "g1": lambda: G1(ASSETS_DIR / "g1/model", rotation_type="hinge"),
 }
 
 # ── Pose adapters: A-pose → T-pose for the lineup ────────────────────────────
@@ -92,6 +92,10 @@ GM_POSE_OFFSETS = {
     ("clavicle_l", 2): 0.15,
     ("clavicle_r", 2): -0.15,
 }
+
+# G1 hinge body_pose: one scalar per qpos joint. Index 16 = left shoulder roll,
+# 23 = right shoulder roll; lifting them abducts the arms to a T-pose.
+G1_HINGE_OFFSETS = {16: 1.5, 23: -1.5}
 
 # MHR rows use [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
 MHR_TARGETS = (
@@ -154,7 +158,10 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
             params["pose"][0] = solve_mhr_pose(model)
         elif family == "garment_measurements":
             apply_pose_offsets(model, params, GM_POSE_OFFSETS)
-        # soma and g1: forward through with the default rest pose.
+        elif family == "g1":
+            for qpos_idx, value in G1_HINGE_OFFSETS.items():
+                params["body_pose"][0, qpos_idx, 0] = value
+        # soma: forward through with the default rest pose.
         verts = np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
     return verts, np.asarray(model.faces, dtype=np.int32)
 
