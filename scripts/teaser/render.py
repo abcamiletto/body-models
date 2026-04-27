@@ -1,10 +1,9 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = "==3.11.*"
+# requires-python = "==3.13.*"  # bpy>=5.1 ships cp313 wheels built against numpy 2.x
 # dependencies = [
 #   "body-models",
-#   "numpy>=2.4.1",
-#   "bpy>=4.1",
+#   "bpy>=5.1.0",
 # ]
 # [tool.uv.sources]
 # body-models = { path = "../.." }
@@ -16,6 +15,9 @@ canonical mesh, and renders the lineup with Cycles via headless ``bpy``.
 
 Usage:
     uv run scripts/teaser/render.py [--output PATH] [--samples N] [--denoise]
+
+A neighbouring ``.python-version`` pins this script to Python 3.13 (required
+by ``bpy>=5.1``); the repo-root pin of 3.12 stays in effect everywhere else.
 """
 
 from __future__ import annotations
@@ -38,6 +40,9 @@ from body_models.smpl.numpy import SMPL
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
 
+# ── Asset locations ──────────────────────────────────────────────────────────
+ASSETS_DIR = Path(__file__).parent.parent.parent / "tests" / "assets"
+
 # ── Lineup configuration ─────────────────────────────────────────────────────
 # Insertion order is the canonical lineup ordering.
 PASTELS = {
@@ -53,15 +58,15 @@ PASTELS = {
 }
 FAMILY_LABELS = {f: f.upper() for f in PASTELS} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
 LOADERS = {
-    "smpl": lambda: SMPL(gender="neutral"),
-    "smplx": lambda: SMPLX(gender="neutral"),
-    "skel": lambda: SKEL(gender="male"),
-    "mhr": lambda: MHR(),
-    "anny": lambda: ANNY(),
-    "flame": lambda: FLAME(),
-    "garment_measurements": lambda: GarmentMeasurements(),
-    "soma": lambda: SOMA(),
-    "g1": lambda: G1(),
+    "smpl": lambda: SMPL(ASSETS_DIR / "smpl/model/SMPL_NEUTRAL.npz", gender="neutral"),
+    "smplx": lambda: SMPLX(ASSETS_DIR / "smplx/model/SMPLX_NEUTRAL.npz"),
+    "skel": lambda: SKEL(ASSETS_DIR / "skel/model", "male"),
+    "mhr": lambda: MHR(ASSETS_DIR / "mhr/model"),
+    "anny": lambda: ANNY(ASSETS_DIR / "anny/model"),
+    "flame": lambda: FLAME(ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"),
+    "garment_measurements": lambda: GarmentMeasurements(ASSETS_DIR / "garment_measurements/model"),
+    "soma": lambda: SOMA(),  # SOMA loads from the body-models cache.
+    "g1": lambda: G1(ASSETS_DIR / "g1/model"),
 }
 
 # ── Pose adapters: A-pose → T-pose for the lineup ────────────────────────────
