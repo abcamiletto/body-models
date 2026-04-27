@@ -10,8 +10,8 @@
 # ///
 """Render the README body-model lineup directly from the body-models API.
 
-A single self-contained script that loads each model in-process, generates the
-canonical mesh, and renders the lineup with Cycles via headless ``bpy``.
+Self-contained PEP 723 script: loads each body model in-process, builds a
+canonical T-pose mesh, and renders the lineup with Cycles via headless ``bpy``.
 
 Usage:
     uv run scripts/teaser/render.py [--output PATH] [--samples N] [--denoise]
@@ -40,11 +40,12 @@ from body_models.smpl.numpy import SMPL
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
 
-# ── Asset locations ──────────────────────────────────────────────────────────
-ASSETS_DIR = Path(__file__).parent.parent.parent / "tests" / "assets"
-
 # ── Lineup configuration ─────────────────────────────────────────────────────
-# Insertion order is the canonical lineup ordering.
+ASSETS_DIR = Path(__file__).parent.parent.parent / "tests" / "assets"
+MODEL_HEIGHT = 1.75
+MODEL_GAP = 0.30
+
+# Insertion order doubles as the canonical lineup ordering.
 PASTELS = {
     "smpl": (0.95, 0.63, 0.72, 1.0),  # rose
     "smplx": (0.62, 0.78, 0.98, 1.0),  # sky
@@ -56,21 +57,24 @@ PASTELS = {
     "soma": (0.97, 0.78, 0.78, 1.0),  # coral
     "g1": (0.78, 0.78, 0.86, 1.0),  # steel
 }
-FAMILY_LABELS = {f: f.upper() for f in PASTELS} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
+LABELS = {f: f.upper() for f in PASTELS} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
+# FLAME is head-only: half-size keeps it in scale with the row.
+SCALES = {"flame": 0.5}
+
 LOADERS = {
-    "smpl": lambda: SMPL(gender="neutral"),  # Path resolved via body-models config (smpl-neutral).
-    "smplx": lambda: SMPLX(gender="neutral"),  # Path resolved via body-models config (smplx-neutral).
+    "smpl": lambda: SMPL(gender="neutral"),  # path via body-models config
+    "smplx": lambda: SMPLX(gender="neutral"),  # path via body-models config
     "skel": lambda: SKEL(ASSETS_DIR / "skel/model", "male"),
     "mhr": lambda: MHR(ASSETS_DIR / "mhr/model"),
     "anny": lambda: ANNY(ASSETS_DIR / "anny/model"),
     "flame": lambda: FLAME(ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"),
     "garment_measurements": lambda: GarmentMeasurements(ASSETS_DIR / "garment_measurements/model"),
-    "soma": lambda: SOMA(),  # SOMA loads from the body-models cache.
+    "soma": lambda: SOMA(),
     "g1": lambda: G1(ASSETS_DIR / "g1/model", rotation_type="hinge"),
 }
 
-# ── Pose adapters: A-pose → T-pose for the lineup ────────────────────────────
-# Mapping key is (joint_name_lowercase, axis_index).
+# ── Pose adapters: bring rest poses to a uniform T-pose ──────────────────────
+# (joint_name_lowercase, axis) → axis-angle radians.
 ANNY_POSE_OFFSETS = {
     ("shoulder01.l", 2): 0.475,
     ("shoulder01.r", 2): -0.475,
@@ -80,7 +84,6 @@ ANNY_POSE_OFFSETS = {
     ("clavicle.r", 2): 0.225,
     ("upperleg01.l", 2): 0.09,
     ("upperleg01.r", 2): -0.09,
-    # Straighten forearms.
     ("lowerarm01.l", 0): -0.75,
     ("lowerarm01.r", 0): -0.75,
 }
@@ -91,17 +94,15 @@ GM_POSE_OFFSETS = {
     ("upper_arm_r", 2): -0.6,
     ("clavicle_l", 2): 0.15,
     ("clavicle_r", 2): -0.15,
-    # Slight inward rotation to bring the rest-pose stance closer to T-pose width.
     ("thigh_l", 2): 0.12,
     ("thigh_r", 2): -0.12,
 }
 
-# G1 hinge body_pose: one scalar per qpos joint. 16/23 = shoulder roll abducts
-# the arm sideways; 17/24 = shoulder yaw rotates the upper arm so the elbow
-# back faces backward instead of upward, completing the T-pose.
+# G1 hinge body_pose: scalar per qpos joint. 16/23 = shoulder roll abducts the
+# arms; 18/25 = elbow extension straightens the forearms laterally.
 G1_HINGE_OFFSETS = {16: np.pi / 2, 23: -np.pi / 2, 18: 1.0, 25: 1.0}
 
-# MHR rows use [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
+# MHR: rows of [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
 MHR_TARGETS = (
     ("l_uparm", 4, 0.8),
     ("r_uparm", 4, 0.8),
@@ -115,40 +116,46 @@ MHR_TARGETS = (
     ("r_upleg", 5, -0.06),
 )
 
-# ── Render constants ─────────────────────────────────────────────────────────
-AUTO_SMOOTH_ANGLE = np.radians(30.0)
-MODEL_HEIGHT = 1.75
-MODEL_GAP = 0.30
-BORDER_PAD = 0.03
-# Per-family scale relative to MODEL_HEIGHT. FLAME is a head-only model, so it
-# would otherwise be blown up to a full-body height — half-size keeps it in
-# scale with the rest of the lineup.
-FAMILY_SCALES = {"flame": 0.5}
+
+# ── Top-level pipeline ───────────────────────────────────────────────────────
+def main() -> None:
+    args = parse_args()
+    args.output = args.output.expanduser().resolve()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+
+    print("[1/5] Generating meshes...", flush=True)
+    meshes = [(family, *canonical_mesh(family)) for family in PASTELS]
+
+    print("[2/5] Building scene...", flush=True)
+    clear_scene()
+    objects = instantiate_lineup(meshes)
+    add_lights()
+    set_world_background()
+
+    print("[3/5] Camera & labels...", flush=True)
+    camera = set_camera(objects)
+    labels = add_family_labels([m[0] for m in meshes], objects, camera)
+    set_render_border(camera, objects + labels)
+
+    print("[4/5] Configuring renderer...", flush=True)
+    configure_render(args)
+
+    print("[5/5] Rendering...", flush=True)
+    bpy.ops.render.render(write_still=True)
+    print(f"Rendered: {args.output}", flush=True)
 
 
-# ── Model adapters ───────────────────────────────────────────────────────────
-def joint_index(model, name: str) -> int:
-    for i, jn in enumerate(model.joint_names):
-        if jn.lower() == name:
-            return i
-    raise ValueError(f"Joint not found in model: {name!r}")
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Render the README body-model lineup")
+    p.add_argument("--output", type=Path, default=Path("README_render.png"))
+    p.add_argument("--samples", type=int, default=512)
+    p.add_argument("--width", type=int, default=2200)
+    p.add_argument("--height", type=int, default=1200)
+    p.add_argument("--denoise", action="store_true")
+    return p.parse_args()
 
 
-def apply_pose_offsets(model, params: dict, offsets: dict[tuple[str, int], float]) -> None:
-    for (joint_name, axis), value in offsets.items():
-        params["pose"][0, joint_index(model, joint_name), axis] = value
-
-
-def solve_mhr_pose(model) -> np.ndarray:
-    """Least-squares solve for the MHR pose vector that hits the target Euler offsets."""
-    rows = [joint_index(model, j) * 7 + c for j, c, _ in MHR_TARGETS]
-    targets = np.asarray([t for _, _, t in MHR_TARGETS], dtype=np.float64)
-    transform = np.asarray(model.parameter_transform, dtype=np.float64)
-    system = transform[np.asarray(rows), : model.pose_dim]
-    x, *_ = np.linalg.lstsq(system, targets, rcond=1e-4)
-    return x.astype(np.float32)
-
-
+# ── Per-family canonical mesh ────────────────────────────────────────────────
 def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
     if family in ("smpl", "smplx", "skel", "flame"):
@@ -165,12 +172,33 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
         elif family == "g1":
             for qpos_idx, value in G1_HINGE_OFFSETS.items():
                 params["body_pose"][0, qpos_idx, 0] = value
-        # soma: forward through with the default rest pose.
         verts = np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
     return verts, np.asarray(model.faces, dtype=np.int32)
 
 
-# ── Scene building ───────────────────────────────────────────────────────────
+def joint_index(model, name: str) -> int:
+    for i, jn in enumerate(model.joint_names):
+        if jn.lower() == name:
+            return i
+    raise ValueError(f"Joint not found in model: {name!r}")
+
+
+def apply_pose_offsets(model, params, offsets):
+    for (joint_name, axis), value in offsets.items():
+        params["pose"][0, joint_index(model, joint_name), axis] = value
+
+
+def solve_mhr_pose(model) -> np.ndarray:
+    """Least-squares solve for the MHR pose vector that hits the target Euler offsets."""
+    rows = [joint_index(model, j) * 7 + c for j, c, _ in MHR_TARGETS]
+    targets = np.asarray([t for _, _, t in MHR_TARGETS], dtype=np.float64)
+    transform = np.asarray(model.parameter_transform, dtype=np.float64)
+    system = transform[np.asarray(rows), : model.pose_dim]
+    x, *_ = np.linalg.lstsq(system, targets, rcond=1e-4)
+    return x.astype(np.float32)
+
+
+# ── Scene construction ──────────────────────────────────────────────────────
 def clear_scene() -> None:
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
@@ -187,7 +215,24 @@ def clear_scene() -> None:
                 blocks.remove(block)
 
 
-def normalize_mesh(vertices: np.ndarray, target_height: float = MODEL_HEIGHT) -> np.ndarray:
+def instantiate_lineup(meshes):
+    normalized = [(name, normalize_mesh(v, MODEL_HEIGHT * SCALES.get(name, 1.0)), f) for name, v, f in meshes]
+    widths = [float(v[:, 0].max() - v[:, 0].min()) for _, v, _ in normalized]
+
+    objects: list[bpy.types.Object] = []
+    xpos = -0.5 * (sum(widths) + MODEL_GAP * (len(widths) - 1))
+    for (name, vertices, faces), width in zip(normalized, widths):
+        obj = create_mesh_object(name, vertices, faces)
+        obj.location.x = xpos + 0.5 * width
+        obj.rotation_euler[2] = np.pi  # face the camera at -Y
+        obj.data.materials.append(build_material(f"{name}_Material", PASTELS[name]))
+        xpos += width + MODEL_GAP
+        objects.append(obj)
+    bpy.context.view_layer.update()
+    return objects
+
+
+def normalize_mesh(vertices: np.ndarray, target_height: float) -> np.ndarray:
     norm = vertices.copy().astype(np.float32)
     norm[:, 0] -= 0.5 * (float(norm[:, 0].min()) + float(norm[:, 0].max()))
     norm[:, 1] -= float(norm[:, 1].min())
@@ -197,23 +242,7 @@ def normalize_mesh(vertices: np.ndarray, target_height: float = MODEL_HEIGHT) ->
     return norm
 
 
-def build_material(name: str, color: tuple[float, float, float, float]) -> bpy.types.Material:
-    mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
-    nodes, links = mat.node_tree.nodes, mat.node_tree.links
-    for node in list(nodes):
-        nodes.remove(node)
-    out = nodes.new(type="ShaderNodeOutputMaterial")
-    bsdf = nodes.new(type="ShaderNodeBsdfPrincipled")
-    bsdf.inputs["Base Color"].default_value = color
-    bsdf.inputs["Metallic"].default_value = 0.0
-    bsdf.inputs["Roughness"].default_value = 0.45
-    bsdf.inputs["Specular IOR Level"].default_value = 0.18
-    links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
-    return mat
-
-
-def create_mesh_object(name: str, vertices: np.ndarray, faces: np.ndarray) -> bpy.types.Object:
+def create_mesh_object(name, vertices, faces):
     vertices = vertices.copy()
     vertices[:, 1] -= float(vertices[:, 1].min())
     # Body models are Y-up, Blender is Z-up.
@@ -228,58 +257,34 @@ def create_mesh_object(name: str, vertices: np.ndarray, faces: np.ndarray) -> bp
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
     bpy.ops.object.shade_smooth()
-    bpy.ops.object.shade_auto_smooth(use_auto_smooth=True, angle=AUTO_SMOOTH_ANGLE)
+    bpy.ops.object.shade_auto_smooth(use_auto_smooth=True, angle=np.radians(30.0))
     return obj
 
 
-def object_bounds(obj: bpy.types.Object) -> tuple[np.ndarray, np.ndarray]:
-    corners = np.asarray([np.asarray(obj.matrix_world @ Vector(c), dtype=np.float32) for c in obj.bound_box])
-    return np.min(corners, axis=0), np.max(corners, axis=0)
-
-
-def scene_bounds(objects: list[bpy.types.Object]) -> tuple[np.ndarray, np.ndarray]:
-    mins = np.full(3, 1e9, dtype=np.float32)
-    maxs = np.full(3, -1e9, dtype=np.float32)
-    for obj in objects:
-        omin, omax = object_bounds(obj)
-        mins = np.minimum(mins, omin)
-        maxs = np.maximum(maxs, omax)
-    return mins, maxs
-
-
-def instantiate_lineup(meshes: list[tuple[str, np.ndarray, np.ndarray]]) -> list[bpy.types.Object]:
-    normalized = [
-        (name, normalize_mesh(v, target_height=MODEL_HEIGHT * FAMILY_SCALES.get(name, 1.0)), f) for name, v, f in meshes
-    ]
-    widths = [float(v[:, 0].max() - v[:, 0].min()) for _, v, _ in normalized]
-    objects: list[bpy.types.Object] = []
-    xpos = -0.5 * (sum(widths) + MODEL_GAP * (len(widths) - 1))
-    for (name, vertices, faces), width in zip(normalized, widths):
-        obj = create_mesh_object(name, vertices, faces)
-        obj.location.x = xpos + 0.5 * width
-        obj.rotation_euler[2] = np.radians(180.0)
-        obj.data.materials.append(build_material(f"{name}_Material", PASTELS[name]))
-        xpos += width + MODEL_GAP
-        objects.append(obj)
-    bpy.context.view_layer.update()
-    return objects
+def build_material(name, color):
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = color
+    bsdf.inputs["Metallic"].default_value = 0.0
+    bsdf.inputs["Roughness"].default_value = 0.45
+    bsdf.inputs["Specular IOR Level"].default_value = 0.18
+    return mat
 
 
 def add_lights() -> None:
-    key_data = bpy.data.lights.new(name="KeyLight", type="SUN")
-    key_data.energy = 2.4
-    key = bpy.data.objects.new(name="KeyLight", object_data=key_data)
-    key.location = (3.0, -4.0, 5.5)
-    key.rotation_euler = (np.radians(52), 0.0, np.radians(35))
-    bpy.context.scene.collection.objects.link(key)
+    add_sun("KeyLight", location=(3.0, -4.0, 5.5), rotation_deg=(52, 0, 35), energy=2.4)
+    add_sun("FillLight", location=(-3.0, 2.0, 3.0), rotation_deg=(45, 0, -120), energy=0.9, color=(0.70, 0.78, 1.0))
 
-    fill_data = bpy.data.lights.new(name="FillLight", type="SUN")
-    fill_data.energy = 0.9
-    fill_data.color = (0.70, 0.78, 1.0)
-    fill = bpy.data.objects.new(name="FillLight", object_data=fill_data)
-    fill.location = (-3.0, 2.0, 3.0)
-    fill.rotation_euler = (np.radians(45), 0.0, np.radians(-120))
-    bpy.context.scene.collection.objects.link(fill)
+
+def add_sun(name, *, location, rotation_deg, energy, color=(1.0, 1.0, 1.0)):
+    data = bpy.data.lights.new(name=name, type="SUN")
+    data.energy = energy
+    data.color = color
+    obj = bpy.data.objects.new(name=name, object_data=data)
+    obj.location = location
+    obj.rotation_euler = tuple(np.radians(d) for d in rotation_deg)
+    bpy.context.scene.collection.objects.link(obj)
 
 
 def set_world_background() -> None:
@@ -291,14 +296,17 @@ def set_world_background() -> None:
     bg.inputs["Strength"].default_value = 0.25
 
 
-def set_camera(model_objects: list[bpy.types.Object]) -> bpy.types.Object:
+def set_camera(model_objects):
     cam_data = bpy.data.cameras.new(name="Camera")
     cam_data.lens = 38.0
     cam = bpy.data.objects.new("Camera", cam_data)
     bpy.context.scene.collection.objects.link(cam)
     bpy.context.scene.camera = cam
 
-    mins, maxs = scene_bounds(model_objects)
+    bounds = np.asarray(
+        [np.asarray(obj.matrix_world @ Vector(c), dtype=np.float32) for obj in model_objects for c in obj.bound_box]
+    )
+    mins, maxs = bounds.min(axis=0), bounds.max(axis=0)
     center = 0.5 * (mins + maxs)
     height = float(maxs[2] - mins[2])
     distance = max(5.0, max(float(maxs[0] - mins[0]), height) * 1.05 + 0.9)
@@ -309,23 +317,18 @@ def set_camera(model_objects: list[bpy.types.Object]) -> bpy.types.Object:
     target.location = (float(center[0]), float(center[1]), float(mins[2] + 0.62 * height))
     bpy.context.scene.collection.objects.link(target)
 
-    constraint = cam.constraints.new(type="TRACK_TO")
-    constraint.target = target
-    constraint.track_axis = "TRACK_NEGATIVE_Z"
-    constraint.up_axis = "UP_Y"
+    track_to(cam, target, "TRACK_NEGATIVE_Z", "UP_Y")
     return cam
 
 
-def add_family_labels(
-    names: list[str], model_objects: list[bpy.types.Object], camera: bpy.types.Object
-) -> list[bpy.types.Object]:
-    labels: list[bpy.types.Object] = []
+def add_family_labels(names, model_objects, camera):
+    labels = []
     for name, obj in zip(names, model_objects):
         mins, maxs = object_bounds(obj)
         center = 0.5 * (mins + maxs)
 
         curve = bpy.data.curves.new(name=f"{name}_LabelCurve", type="FONT")
-        curve.body = FAMILY_LABELS[name]
+        curve.body = LABELS[name]
         curve.align_x = "CENTER"
         curve.align_y = "CENTER"
         curve.extrude = 0.01
@@ -336,17 +339,26 @@ def add_family_labels(
         bpy.context.scene.collection.objects.link(label)
         label.location = (float(center[0]), float(center[1]), float(maxs[2] + 0.22))
 
-        constraint = label.constraints.new(type="TRACK_TO")
-        constraint.target = camera
-        constraint.track_axis = "TRACK_Z"
-        constraint.up_axis = "UP_Y"
-
+        track_to(label, camera, "TRACK_Z", "UP_Y")
         label.data.materials.append(build_material(f"{name}_LabelMaterial", (0.93, 0.94, 0.95, 1.0)))
         labels.append(label)
     return labels
 
 
-def set_render_border(camera: bpy.types.Object, objects: list[bpy.types.Object], pad: float = BORDER_PAD) -> None:
+def track_to(source, target, track_axis, up_axis):
+    constraint = source.constraints.new(type="TRACK_TO")
+    constraint.target = target
+    constraint.track_axis = track_axis
+    constraint.up_axis = up_axis
+
+
+def object_bounds(obj):
+    corners = np.asarray([np.asarray(obj.matrix_world @ Vector(c), dtype=np.float32) for c in obj.bound_box])
+    return np.min(corners, axis=0), np.max(corners, axis=0)
+
+
+def set_render_border(camera, objects):
+    pad = 0.03
     scene = bpy.context.scene
     bpy.context.view_layer.update()
     min_x, min_y, max_x, max_y = 1.0, 1.0, 0.0, 0.0
@@ -359,7 +371,6 @@ def set_render_border(camera: bpy.types.Object, objects: list[bpy.types.Object],
             ndc = world_to_camera_view(scene, camera, co)
             min_x, min_y = min(min_x, float(ndc.x)), min(min_y, float(ndc.y))
             max_x, max_y = max(max_x, float(ndc.x)), max(max_y, float(ndc.y))
-
     scene.render.use_border = True
     scene.render.use_crop_to_border = True
     scene.render.border_min_x = max(0.0, min_x - pad)
@@ -368,13 +379,13 @@ def set_render_border(camera: bpy.types.Object, objects: list[bpy.types.Object],
     scene.render.border_max_y = min(1.0, max_y + pad)
 
 
-def configure_render(args: argparse.Namespace, output_path: Path) -> None:
+def configure_render(args):
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
     scene.render.film_transparent = True
-    scene.render.filepath = str(output_path)
+    scene.render.filepath = str(args.output)
     scene.render.resolution_x = args.width
     scene.render.resolution_y = args.height
     scene.render.resolution_percentage = 100
@@ -383,64 +394,19 @@ def configure_render(args: argparse.Namespace, output_path: Path) -> None:
     scene.view_settings.exposure = 0.2
     scene.view_settings.gamma = 1.0
 
-    scene.cycles.samples = args.samples
-    scene.cycles.use_adaptive_sampling = True
-    scene.cycles.adaptive_threshold = args.adaptive_threshold
-    scene.cycles.max_bounces = args.max_bounces
-    scene.cycles.diffuse_bounces = args.diffuse_bounces
-    scene.cycles.glossy_bounces = args.glossy_bounces
-    scene.cycles.transmission_bounces = args.transmission_bounces
-    scene.cycles.transparent_max_bounces = args.transparent_max_bounces
-    scene.cycles.volume_bounces = args.volume_bounces
-    scene.cycles.caustics_reflective = True
-    scene.cycles.caustics_refractive = True
-    scene.cycles.use_denoising = bool(args.denoise)
-
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Render the README body-model lineup")
-    p.add_argument("--output", type=Path, default=Path("README_render.png"))
-    p.add_argument("--samples", type=int, default=512)
-    p.add_argument("--max-bounces", type=int, default=14)
-    p.add_argument("--diffuse-bounces", type=int, default=6)
-    p.add_argument("--glossy-bounces", type=int, default=6)
-    p.add_argument("--transmission-bounces", type=int, default=8)
-    p.add_argument("--transparent-max-bounces", type=int, default=16)
-    p.add_argument("--volume-bounces", type=int, default=2)
-    p.add_argument("--adaptive-threshold", type=float, default=0.003)
-    p.add_argument("--denoise", action="store_true")
-    p.add_argument("--width", type=int, default=2200)
-    p.add_argument("--height", type=int, default=1200)
-    return p.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    output_path = args.output.expanduser().resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    print("[1/6] Generating canonical meshes from body-models...", flush=True)
-    meshes = [(family, *canonical_mesh(family)) for family in PASTELS]
-
-    print("[2/6] Building scene...", flush=True)
-    clear_scene()
-    model_objects = instantiate_lineup(meshes)
-
-    print("[3/6] Adding environment & camera...", flush=True)
-    add_lights()
-    set_world_background()
-    camera = set_camera(model_objects)
-
-    print("[4/6] Adding labels...", flush=True)
-    labels = add_family_labels([m[0] for m in meshes], model_objects, camera)
-    set_render_border(camera, model_objects + labels)
-
-    print("[5/6] Configuring renderer...", flush=True)
-    configure_render(args, output_path)
-
-    print("[6/6] Rendering...", flush=True)
-    bpy.ops.render.render(write_still=True)
-    print(f"Rendered image: {output_path}", flush=True)
+    cy = scene.cycles
+    cy.samples = args.samples
+    cy.use_adaptive_sampling = True
+    cy.adaptive_threshold = 0.003
+    cy.max_bounces = 14
+    cy.diffuse_bounces = 6
+    cy.glossy_bounces = 6
+    cy.transmission_bounces = 8
+    cy.transparent_max_bounces = 16
+    cy.volume_bounces = 2
+    cy.caustics_reflective = True
+    cy.caustics_refractive = True
+    cy.use_denoising = args.denoise
 
 
 if __name__ == "__main__":
