@@ -20,6 +20,7 @@ MODELS = [
     "g1",
     "soma",
     "garment-measurements",
+    "myofullbody",
 ]
 
 

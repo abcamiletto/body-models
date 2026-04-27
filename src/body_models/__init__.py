@@ -1,4 +1,4 @@
-from . import anny, flame, g1, garment_measurements, mhr, skel, smpl, smplx, soma
+from . import anny, flame, g1, garment_measurements, mhr, myofullbody, skel, smpl, smplx, soma
 from .base import BodyModel
 
 __all__ = [
@@ -8,6 +8,7 @@ __all__ = [
     "garment_measurements",
     "g1",
     "mhr",
+    "myofullbody",
     "skel",
     "smpl",
     "smplx",
@@ -29,6 +30,7 @@ def main() -> None:
     from .g1.io import download_model as download_g1_model
     from .garment_measurements.io import download_model as download_garment_measurements_model
     from .mhr.io import download_model as download_mhr_model
+    from .myofullbody.io import download_model as download_myofullbody_model
     from .soma.io import download_model as download_soma_model
 
     Model = Literal[
@@ -45,6 +47,7 @@ def main() -> None:
         "g1",
         "soma",
         "garment-measurements",
+        "myofullbody",
     ]
     app = typer.Typer(add_completion=False)
 
@@ -73,7 +76,19 @@ def main() -> None:
     @app.command()
     def download(
         model: Annotated[
-            Literal["smpl", "smplx", "skel", "flame", "anny", "mhr", "g1", "soma", "garment-measurements", "all"],
+            Literal[
+                "smpl",
+                "smplx",
+                "skel",
+                "flame",
+                "anny",
+                "mhr",
+                "g1",
+                "soma",
+                "garment-measurements",
+                "myofullbody",
+                "all",
+            ],
             typer.Argument(),
         ] = "all",
     ):
@@ -148,5 +163,10 @@ def main() -> None:
             path = download_garment_measurements_model()
             set_model_path("garment-measurements", str(path))
             print(f"Set garment-measurements = {path}")
+
+        if model in ("myofullbody", "all"):
+            path = download_myofullbody_model()
+            set_model_path("myofullbody", str(path))
+            print(f"Set myofullbody = {path}")
 
     app()

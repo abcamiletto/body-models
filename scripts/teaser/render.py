@@ -35,6 +35,7 @@ from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
 from body_models.mhr.numpy import MHR
+from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
 from body_models.smplx.numpy import SMPLX
@@ -56,8 +57,12 @@ PASTELS = {
     "garment_measurements": (0.69, 0.86, 0.93, 1.0),  # powder
     "soma": (0.97, 0.78, 0.78, 1.0),  # coral
     "g1": (0.78, 0.78, 0.86, 1.0),  # steel
+    "myofullbody": (0.94, 0.78, 0.78, 1.0),  # blush
 }
-LABELS = {f: f.upper() for f in PASTELS} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
+LABELS = {f: f.upper() for f in PASTELS} | {
+    "garment_measurements": "GARMENT\nMEASUREMENTS",
+    "myofullbody": "MYO\nFULLBODY",
+}
 # FLAME is head-only: half-size keeps it in scale with the row.
 SCALES = {"flame": 0.5}
 
@@ -71,6 +76,7 @@ LOADERS = {
     "garment_measurements": lambda: GarmentMeasurements(ASSETS_DIR / "garment_measurements/model"),
     "soma": lambda: SOMA(),
     "g1": lambda: G1(ASSETS_DIR / "g1/model", rotation_type="hinge"),
+    "myofullbody": lambda: MyoFullBody(ASSETS_DIR / "myofullbody/model"),
 }
 
 # ── Pose adapters: bring rest poses to a uniform T-pose ──────────────────────
@@ -101,6 +107,10 @@ GM_POSE_OFFSETS = {
 # G1 hinge body_pose: scalar per qpos joint. 16/23 = shoulder roll abducts the
 # arms; 18/25 = elbow extension straightens the forearms laterally.
 G1_HINGE_OFFSETS = {16: np.pi / 2, 23: -np.pi / 2, 18: 1.0, 25: 1.0}
+
+# MyoFullBody scalar body_pose. Lifting both shoulders to a T-pose: qpos 29 is
+# shoulder_elv_r, 67 is shoulder_elv_l (sideways elevation in the default plane).
+MYOFULLBODY_QPOS_OFFSETS = {29: np.pi / 2, 67: np.pi / 2}
 
 # MHR: rows of [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
 MHR_TARGETS = (
@@ -172,6 +182,9 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
         elif family == "g1":
             for qpos_idx, value in G1_HINGE_OFFSETS.items():
                 params["body_pose"][0, qpos_idx, 0] = value
+        elif family == "myofullbody":
+            for qpos_idx, value in MYOFULLBODY_QPOS_OFFSETS.items():
+                params["body_pose"][0, qpos_idx] = value
         verts = np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
     return verts, np.asarray(model.faces, dtype=np.int32)
 

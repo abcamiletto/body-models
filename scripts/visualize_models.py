@@ -32,6 +32,7 @@ from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
 from body_models.mhr.numpy import MHR
+from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
 from body_models.smplx.numpy import SMPLX
@@ -47,6 +48,7 @@ MHR_PATH = ASSETS_DIR / "mhr/model"
 FLAME_PATH = ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"
 GARMENT_MEASUREMENTS_PATH = ASSETS_DIR / "garment_measurements/model"
 G1_PATH = ASSETS_DIR / "g1/model"
+MYOFULLBODY_PATH = ASSETS_DIR / "myofullbody/model"
 SOMA_PATH: Path | None = None  # None → load from body-models cache
 
 # ── Per-tab joint configurations ─────────────────────────────────────────────
@@ -121,6 +123,30 @@ SOMA_POSE_JOINTS = [
     ("R Leg", 72),
 ]
 
+# qpos joint indices into model.qpos_joint_names. body_pose stores one scalar
+# value per qpos entry (hinge angle or slide displacement); each joint = one slider.
+MYOFULLBODY_POSE_JOINTS = [
+    ("Lumbar Flex", 0),
+    ("Lumbar Bend", 1),
+    ("Lumbar Rot", 2),
+    ("L Shoulder Plane", 66),
+    ("L Shoulder Elev", 67),
+    ("L Shoulder Rot", 69),
+    ("L Elbow", 70),
+    ("R Shoulder Plane", 28),
+    ("R Shoulder Elev", 29),
+    ("R Shoulder Rot", 31),
+    ("R Elbow", 32),
+    ("L Hip Flex", 108),
+    ("L Hip Add", 109),
+    ("L Knee", 113),
+    ("L Ankle", 116),
+    ("R Hip Flex", 94),
+    ("R Hip Add", 95),
+    ("R Knee", 99),
+    ("R Ankle", 102),
+]
+
 # qpos joint indices into model.qpos_joint_names. With rotation_type="hinge"
 # body_pose stores one scalar angle per qpos entry, so each joint = one slider.
 G1_POSE_JOINTS = [
@@ -143,7 +169,7 @@ G1_POSE_JOINTS = [
 ]
 
 # Grid layout: split models across rows on the xz ground plane.
-GRID_COLS = 5  # max models per row; with 9 models this gives 5 + 4
+GRID_COLS = 5  # max models per row; with 10 models this gives 5 + 5
 GRID_SPACING_X = 1.8
 GRID_SPACING_Z = 1.8
 
@@ -157,6 +183,7 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "GarmentMeasurements": (176, 224, 230),
     "SOMA": (250, 200, 200),
     "G1": (200, 200, 220),
+    "MyoFullBody": (240, 200, 200),
 }
 
 
@@ -362,6 +389,32 @@ def g1_tab(server, tabs, state) -> None:
         reset_button(server, handles)
 
 
+def myofullbody_tab(server, tabs, state) -> None:
+    handles: list[SliderHandle] = []
+    with tabs.add_tab("MyoFullBody", viser.Icon.USER):
+        with server.gui.add_folder("Pose"):
+            for label, qpos_idx in MYOFULLBODY_POSE_JOINTS:
+                if qpos_idx >= state.model.num_qpos:
+                    continue
+                lo, hi = (float(x) for x in state.model.qpos_limits[qpos_idx])
+                if not np.isfinite(lo) or not np.isfinite(hi):
+                    lo, hi = -np.pi, np.pi
+                handles.append(
+                    add_slider(
+                        server,
+                        state,
+                        label,
+                        lo=lo,
+                        hi=hi,
+                        step=0.02,
+                        initial=0.0,
+                        key="body_pose",
+                        indices=(0, qpos_idx),
+                    )
+                )
+        reset_button(server, handles)
+
+
 TAB_BUILDERS = {
     "SMPL": smpl_tab,
     "SMPLX": smplx_tab,
@@ -372,6 +425,7 @@ TAB_BUILDERS = {
     "GarmentMeasurements": garment_measurements_tab,
     "SOMA": soma_tab,
     "G1": g1_tab,
+    "MyoFullBody": myofullbody_tab,
 }
 
 
@@ -418,6 +472,8 @@ def load_models() -> dict[str, BodyModel]:
     print(f"Loading G1 from {G1_PATH}", flush=True)
     # Hinge parametrization: one scalar angle per qpos joint around its intrinsic axis.
     g1 = G1(G1_PATH, rotation_type="hinge")
+    print(f"Loading MyoFullBody from {MYOFULLBODY_PATH}", flush=True)
+    myo = MyoFullBody(MYOFULLBODY_PATH)
     return {
         "SMPL": smpl,
         "SMPLX": smplx,
@@ -428,6 +484,7 @@ def load_models() -> dict[str, BodyModel]:
         "GarmentMeasurements": gm,
         "SOMA": soma,
         "G1": g1,
+        "MyoFullBody": myo,
     }
 
 
