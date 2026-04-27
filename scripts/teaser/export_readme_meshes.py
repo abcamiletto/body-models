@@ -9,65 +9,106 @@ from typing import Any
 
 import numpy as np
 
-FAMILIES = ("smpl", "smplx", "skel", "mhr", "anny")
+from body_models.anny.numpy import ANNY
+from body_models.flame.numpy import FLAME
+from body_models.g1.numpy import G1
+from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.mhr.numpy import MHR
+from body_models.skel.numpy import SKEL
+from body_models.smpl.numpy import SMPL
+from body_models.smplx.numpy import SMPLX
+from body_models.soma.numpy import SOMA
 
-# Tuned display-pose offsets for README rendering.
-# Mapping key is (joint_name, axis_index) for axis-angle pose entries.
+LOADERS = {
+    "smpl": lambda: SMPL(gender="neutral"),
+    "smplx": lambda: SMPLX(gender="neutral"),
+    "skel": lambda: SKEL(gender="male"),
+    "mhr": lambda: MHR(),
+    "anny": lambda: ANNY(),
+    "flame": lambda: FLAME(),
+    "garment_measurements": lambda: GarmentMeasurements(),
+    "soma": lambda: SOMA(),
+    "g1": lambda: G1(),
+}
+FAMILIES = tuple(LOADERS)
+
+# Pose adapters: axis-angle offsets that turn an A-pose model into a T-pose for the lineup.
+# Mapping key is (joint_name_lowercase, axis_index).
 ANNY_POSE_OFFSETS = {
-    ("shoulder01.l", 2): 0.475,
-    ("shoulder01.r", 2): -0.475,
-    ("upperarm01.l", 2): 0.6,
-    ("upperarm01.r", 2): -0.6,
-    ("clavicle.l", 2): -0.225,
-    ("clavicle.r", 2): 0.225,
-    ("upperleg01.l", 2): 0.09,
-    ("upperleg01.r", 2): -0.09,
+    ("shoulder01.l", 2): 0.475, ("shoulder01.r", 2): -0.475,
+    ("upperarm01.l", 2): 0.6, ("upperarm01.r", 2): -0.6,
+    ("clavicle.l", 2): -0.225, ("clavicle.r", 2): 0.225,
+    ("upperleg01.l", 2): 0.09, ("upperleg01.r", 2): -0.09,
     # Straighten forearms to remove forward elbow tilt.
-    ("lowerarm01.l", 0): -0.75,
-    ("lowerarm01.r", 0): -0.75,
+    ("lowerarm01.l", 0): -0.75, ("lowerarm01.r", 0): -0.75,
 }
 ANNY_GLOBAL_PITCH_X = 0.08
 
+GM_POSE_OFFSETS = {
+    ("upper_arm_l", 2): 1.2, ("upper_arm_r", 2): -1.2,
+    ("clavicle_l", 2): 0.15, ("clavicle_r", 2): -0.15,
+}
+
 # MHR rows use [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
 MHR_TARGETS = (
-    ("l_uparm", 4, 0.8),
-    ("r_uparm", 4, 0.8),
+    ("l_uparm", 4, 0.8), ("r_uparm", 4, 0.8),
     # Straighten elbows while keeping forearms aligned with upper arms.
-    ("l_lowarm", 4, -0.4),
-    ("r_lowarm", 4, -0.4),
-    ("l_lowarm", 5, -0.6),
-    ("r_lowarm", 5, -0.6),
-    ("l_upleg", 4, 0.12),
-    ("r_upleg", 4, 0.12),
-    ("l_upleg", 5, -0.06),
-    ("r_upleg", 5, -0.06),
+    ("l_lowarm", 4, -0.4), ("r_lowarm", 4, -0.4),
+    ("l_lowarm", 5, -0.6), ("r_lowarm", 5, -0.6),
+    ("l_upleg", 4, 0.12), ("r_upleg", 4, 0.12),
+    ("l_upleg", 5, -0.06), ("r_upleg", 5, -0.06),
 )
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export body-model meshes to OBJ")
-    parser.add_argument("--out", type=Path, default=Path("scripts/teaser/.meshes"), help="Output directory")
-    parser.add_argument(
-        "--families",
-        nargs="+",
-        choices=sorted(FAMILIES),
-        default=list(FAMILIES),
-        help="Families to export",
-    )
-    return parser.parse_args()
+def joint_index(model: Any, name: str) -> int:
+    """Case-insensitive joint-name lookup. Raises if missing."""
+    for i, jn in enumerate(model.joint_names):
+        if jn.lower() == name:
+            return i
+    raise ValueError(f"Joint not found in model: {name!r}")
 
 
-def triangulate_faces(faces: np.ndarray) -> np.ndarray:
-    if faces.ndim != 2:
-        raise ValueError(f"faces must be rank-2, got {faces.shape}")
+def apply_pose_offsets(model: Any, params: dict[str, np.ndarray],
+                       offsets: dict[tuple[str, int], float]) -> None:
+    for (joint_name, axis), value in offsets.items():
+        params["pose"][0, joint_index(model, joint_name), axis] = value
+
+
+def solve_mhr_pose(model: Any) -> np.ndarray:
+    """Least-squares solve for the MHR pose vector that hits the target Euler offsets."""
+    rows = [joint_index(model, j) * 7 + c for j, c, _ in MHR_TARGETS]
+    targets = np.asarray([t for _, _, t in MHR_TARGETS], dtype=np.float64)
+    transform = np.asarray(model.parameter_transform, dtype=np.float64)
+    system = transform[np.asarray(rows), : model.pose_dim]
+    x, *_ = np.linalg.lstsq(system, targets, rcond=1e-4)
+    return x.astype(np.float32)
+
+
+def canonical_vertices(model: Any, family: str) -> np.ndarray:
+    if family in ("smpl", "smplx", "skel", "flame"):
+        return np.asarray(model.rest_vertices, dtype=np.float32)
+
+    params = model.get_rest_pose(batch_size=1)
+    if family == "anny":
+        apply_pose_offsets(model, params, ANNY_POSE_OFFSETS)
+        params["global_rotation"][0, 0] = ANNY_GLOBAL_PITCH_X
+    elif family == "mhr":
+        params["pose"][0] = solve_mhr_pose(model)
+    elif family == "garment_measurements":
+        apply_pose_offsets(model, params, GM_POSE_OFFSETS)
+    # soma and g1: forward through with default rest pose.
+    return np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
+
+
+def triangulate(faces: np.ndarray) -> np.ndarray:
     if faces.shape[1] == 3:
         return faces.astype(np.int32)
     if faces.shape[1] == 4:
-        tri = np.empty((faces.shape[0] * 2, 3), dtype=np.int32)
-        tri[0::2] = faces[:, [0, 1, 2]]
-        tri[1::2] = faces[:, [0, 2, 3]]
-        return tri
-    raise ValueError(f"Unsupported face arity {faces.shape[1]} (expected 3 or 4)")
+        out = np.empty((faces.shape[0] * 2, 3), dtype=np.int32)
+        out[0::2] = faces[:, [0, 1, 2]]
+        out[1::2] = faces[:, [0, 2, 3]]
+        return out
+    raise ValueError(f"Unsupported face arity: {faces.shape[1]}")
 
 
 def write_obj(path: Path, vertices: np.ndarray, faces: np.ndarray) -> None:
@@ -79,84 +120,22 @@ def write_obj(path: Path, vertices: np.ndarray, faces: np.ndarray) -> None:
             f.write(f"f {int(a) + 1} {int(b) + 1} {int(c) + 1}\n")  # OBJ is 1-indexed
 
 
-def _clone_params(params: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    return {k: np.array(v, copy=True) for k, v in params.items()}
-
-
-def _require_joint_indices(model: Any, names: list[str]) -> dict[str, int]:
-    idx = {name.lower(): i for i, name in enumerate(model.joint_names)}
-    missing = [n for n in names if n not in idx]
-    if missing:
-        raise ValueError(f"Missing joints for pose adapter: {missing}")
-    return {n: idx[n] for n in names}
-
-
-def _apply_anny_display_pose(model: Any, params: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    out = _clone_params(params)
-    required = _require_joint_indices(model, sorted({joint for joint, _ in ANNY_POSE_OFFSETS}))
-    for (joint_name, axis), value in ANNY_POSE_OFFSETS.items():
-        out["pose"][0, required[joint_name], axis] = value
-    out["global_rotation"][0, 0] = ANNY_GLOBAL_PITCH_X
-    return out
-
-
-def _solve_mhr_display_pose_vector(model: Any) -> np.ndarray:
-    idx = _require_joint_indices(model, [joint for joint, _, _ in MHR_TARGETS])
-    rows = [idx[joint] * 7 + component for joint, component, _ in MHR_TARGETS]
-    targets = [target for _, _, target in MHR_TARGETS]
-
-    transform = np.asarray(model.parameter_transform, dtype=np.float64)
-    system = transform[np.asarray(rows, dtype=np.int64), : model.pose_dim]
-    rhs = np.asarray(targets, dtype=np.float64)
-    x, *_ = np.linalg.lstsq(system, rhs, rcond=1e-4)
-    return x.astype(np.float32)
-
-
-def canonical_vertices(model: Any, family: str) -> np.ndarray:
-    if family == "anny":
-        params = _apply_anny_display_pose(model, model.get_rest_pose(batch_size=1))
-        return np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
-
-    if family == "mhr":
-        params = _clone_params(model.get_rest_pose(batch_size=1))
-        params["pose"][0] = _solve_mhr_display_pose_vector(model)
-        return np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
-
-    return np.asarray(model.rest_vertices, dtype=np.float32)
-
-
-def load_model(family: str) -> Any:
-    if family == "smpl":
-        from body_models.smpl.numpy import SMPL
-
-        return SMPL(gender="neutral")
-    if family == "smplx":
-        from body_models.smplx.numpy import SMPLX
-
-        return SMPLX(gender="neutral")
-    if family == "skel":
-        from body_models.skel.numpy import SKEL
-
-        return SKEL(gender="male")
-    if family == "mhr":
-        from body_models.mhr.numpy import MHR
-
-        return MHR()
-    if family == "anny":
-        from body_models.anny.numpy import ANNY
-
-        return ANNY()
-    raise ValueError(f"Unknown family: {family}")
-
-
-def export_model(out_dir: Path, family: str) -> None:
-    model = load_model(family)
+def export_family(out_dir: Path, family: str) -> None:
+    model = LOADERS[family]()
     vertices = canonical_vertices(model, family)
-    faces = triangulate_faces(np.asarray(model.faces, dtype=np.int32))
-
+    faces = triangulate(np.asarray(model.faces, dtype=np.int32))
     out_path = out_dir / f"{family}.obj"
     write_obj(out_path, vertices, faces)
     print(f"wrote {family}: V={len(vertices)} F={len(faces)} -> {out_path}")
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Export body-model meshes to OBJ")
+    p.add_argument("--out", type=Path, default=Path("scripts/teaser/.meshes"))
+    p.add_argument("--families", nargs="+", choices=sorted(FAMILIES), default=list(FAMILIES))
+    p.add_argument("--strict", action="store_true",
+                   help="Fail on any export error (default: continue if at least one family succeeded).")
+    return p.parse_args()
 
 
 def main() -> None:
@@ -165,16 +144,20 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     failures: list[tuple[str, str]] = []
+    succeeded = 0
     for family in args.families:
         try:
-            export_model(out_dir, family)
+            export_family(out_dir, family)
+            succeeded += 1
         except Exception as e:
             failures.append((family, str(e)))
             print(f"failed {family}: {e}")
 
     if failures:
-        details = "\n".join(f"- {name}: {reason}" for name, reason in failures)
-        raise SystemExit(f"Export incomplete:\n{details}")
+        details = "\n".join(f"- {n}: {r}" for n, r in failures)
+        if args.strict or succeeded == 0:
+            raise SystemExit(f"Export incomplete:\n{details}")
+        print(f"Export incomplete (continuing — at least one family succeeded):\n{details}")
 
 
 if __name__ == "__main__":

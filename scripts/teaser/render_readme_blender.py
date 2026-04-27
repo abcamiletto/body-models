@@ -12,14 +12,20 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 import numpy as np
 
-FAMILY_ORDER = ("smpl", "smplx", "skel", "mhr", "anny")
-PASTELS = (
-    (0.95, 0.63, 0.72, 1.0),  # rose
-    (0.62, 0.78, 0.98, 1.0),  # sky
-    (0.62, 0.93, 0.74, 1.0),  # mint
-    (0.99, 0.73, 0.54, 1.0),  # peach
-    (0.76, 0.68, 0.98, 1.0),  # lavender
-)
+# One pastel per family. Insertion order doubles as the canonical lineup ordering.
+PASTELS: dict[str, tuple[float, float, float, float]] = {
+    "smpl": (0.95, 0.63, 0.72, 1.0),                 # rose
+    "smplx": (0.62, 0.78, 0.98, 1.0),                # sky
+    "skel": (0.62, 0.93, 0.74, 1.0),                 # mint
+    "mhr": (0.99, 0.73, 0.54, 1.0),                  # peach
+    "anny": (0.76, 0.68, 0.98, 1.0),                 # lavender
+    "flame": (0.99, 0.93, 0.62, 1.0),                # butter
+    "garment_measurements": (0.69, 0.86, 0.93, 1.0), # powder
+    "soma": (0.97, 0.78, 0.78, 1.0),                 # coral
+    "g1": (0.78, 0.78, 0.86, 1.0),                   # steel
+}
+FAMILY_ORDER = tuple(PASTELS)
+FAMILY_LABELS = {f: f.upper() for f in FAMILY_ORDER} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
 
 AUTO_SMOOTH_ANGLE = np.radians(30.0)
 MODEL_HEIGHT = 1.75
@@ -76,13 +82,15 @@ def parse_obj_mesh(path: Path) -> tuple[np.ndarray, np.ndarray]:
 
 
 def load_required_meshes(mesh_dir: Path) -> list[tuple[str, np.ndarray, np.ndarray]]:
-    missing = [family for family in FAMILY_ORDER if not (mesh_dir / f"{family}.obj").exists()]
-    if missing:
-        raise RuntimeError(f"Missing required OBJ meshes in {mesh_dir}: {', '.join(missing)}")
-
     loaded: list[tuple[str, np.ndarray, np.ndarray]] = []
     for family in FAMILY_ORDER:
-        loaded.append((family, *parse_obj_mesh(mesh_dir / f"{family}.obj")))
+        path = mesh_dir / f"{family}.obj"
+        if not path.exists():
+            print(f"skipping {family}: no OBJ in {mesh_dir}", flush=True)
+            continue
+        loaded.append((family, *parse_obj_mesh(path)))
+    if not loaded:
+        raise RuntimeError(f"No body-model OBJs found in {mesh_dir}; run export_readme_meshes.py first.")
     return loaded
 
 
@@ -167,16 +175,15 @@ def scene_bounds(objects: list[bpy.types.Object]) -> tuple[np.ndarray, np.ndarra
 
 def instantiate_lineup(meshes: list[tuple[str, np.ndarray, np.ndarray]]) -> list[bpy.types.Object]:
     normalized = [(name, normalize_mesh(vertices), faces) for name, vertices, faces in meshes]
-    widths = [float(vertices[:, 0].max() - vertices[:, 0].min()) for _, vertices, _ in normalized]
+    widths = [float(v[:, 0].max() - v[:, 0].min()) for _, v, _ in normalized]
 
     objects: list[bpy.types.Object] = []
     xpos = -0.5 * (sum(widths) + MODEL_GAP * (len(widths) - 1))
-    for idx, (name, vertices, faces) in enumerate(normalized):
-        width = widths[idx]
+    for (name, vertices, faces), width in zip(normalized, widths):
         obj = create_mesh_object(name, vertices, faces)
         obj.location.x = xpos + 0.5 * width
         obj.rotation_euler[2] = np.radians(180.0)
-        obj.data.materials.append(build_material(f"{name}_Material", PASTELS[idx]))
+        obj.data.materials.append(build_material(f"{name}_Material", PASTELS[name]))
         xpos += width + MODEL_GAP
         objects.append(obj)
 
@@ -244,7 +251,7 @@ def add_family_labels(
         center = 0.5 * (mins + maxs)
 
         curve = bpy.data.curves.new(name=f"{name}_LabelCurve", type="FONT")
-        curve.body = name.upper()
+        curve.body = FAMILY_LABELS.get(name, name.upper())
         curve.align_x = "CENTER"
         curve.align_y = "CENTER"
         curve.extrude = 0.01
