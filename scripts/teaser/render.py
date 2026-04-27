@@ -99,7 +99,7 @@ GM_POSE_OFFSETS = {
 # G1 hinge body_pose: one scalar per qpos joint. 16/23 = shoulder roll abducts
 # the arm sideways; 17/24 = shoulder yaw rotates the upper arm so the elbow
 # back faces backward instead of upward, completing the T-pose.
-G1_HINGE_OFFSETS = {16: np.pi / 2, 23: -np.pi / 2, 18: -1.0, 25: -1.0}
+G1_HINGE_OFFSETS = {16: np.pi / 2, 23: -np.pi / 2}
 
 # MHR rows use [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
 MHR_TARGETS = (
