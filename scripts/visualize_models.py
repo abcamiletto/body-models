@@ -198,6 +198,8 @@ class ModelState:
     y_offset: float
     z_offset: float
     mesh_handle: viser.MeshHandle | None = None
+    muscle_handle: viser.LineSegmentsHandle | None = None
+    muscle_segment_indices: np.ndarray | None = None
     changed: bool = True
 
 
@@ -438,6 +440,18 @@ def triangulate(faces: np.ndarray) -> np.ndarray:
     raise ValueError(f"Unsupported face arity: {faces.shape[1]}")
 
 
+def _muscle_segment_indices(model: BodyModel) -> np.ndarray | None:
+    """Flatten a model's tendons into ``[N_segments, 2]`` index pairs into ``world_sites``."""
+    tendons = getattr(model, "tendons", None)
+    if not tendons:
+        return None
+    segments: list[tuple[int, int]] = []
+    for tendon in tendons:
+        sites = tendon["site_indices"]
+        segments.extend(zip(sites[:-1], sites[1:]))
+    return np.asarray(segments, dtype=np.int64) if segments else None
+
+
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
     verts = state.model.forward_vertices(**state.params)[0]
     if state.mesh_handle is None:
@@ -450,6 +464,21 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
         )
     else:
         state.mesh_handle.vertices = verts
+
+    if state.muscle_segment_indices is not None:
+        skeleton = state.model.forward_skeleton(**state.params)
+        sites = np.asarray(state.model.world_sites(skeleton))[0]
+        seg_points = sites[state.muscle_segment_indices].astype(np.float32)
+        if state.muscle_handle is None:
+            state.muscle_handle = server.scene.add_line_segments(
+                f"/{name}/muscles",
+                points=seg_points,
+                colors=(220, 50, 50),
+                line_width=2.0,
+                position=(state.x_offset, state.y_offset, state.z_offset),
+            )
+        else:
+            state.muscle_handle.points = seg_points
 
 
 def load_models() -> dict[str, BodyModel]:
@@ -513,6 +542,7 @@ def main() -> None:
             x_offset=(col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
             y_offset=-float(verts[..., 1].min()),
             z_offset=(row - 0.5 * (num_rows - 1)) * GRID_SPACING_Z,
+            muscle_segment_indices=_muscle_segment_indices(model),
         )
 
     tabs = server.gui.add_tab_group()

@@ -92,9 +92,10 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     body_records: list[dict] = []
     qpos_records: list[dict] = []
     link_records: list[dict] = []
+    site_records: list[dict] = []
     _walk_body(body_xml, parent_idx=-1, parent_class=None,
                bodies=body_records, qpos=qpos_records, links=link_records,
-               defaults=class_defaults, is_root=True)
+               sites=site_records, defaults=class_defaults, is_root=True)
 
     joint_names = [b["name"] for b in body_records]
     parents = [b["parent"] for b in body_records]
@@ -121,6 +122,11 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         link_records, mesh_files, model_dir, dtype=dtype,
     )
 
+    site_names = [s["name"] for s in site_records]
+    site_positions = _stack_or_empty(site_records, "pos", (0, 3))
+    site_body_indices = [s["body"] for s in site_records]
+    tendons = _parse_tendons(root, site_names, class_defaults)
+
     return {
         "joint_names": joint_names,
         "parents": parents,
@@ -145,6 +151,10 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         "link_geom_positions": link_meta["geom_positions"].astype(dtype),
         "link_geom_rotations": link_meta["geom_rotations"].astype(dtype),
         "link_names": link_meta["names"],
+        "site_names": site_names,
+        "site_positions": site_positions.astype(dtype),
+        "site_body_indices": site_body_indices,
+        "tendons": tendons,
     }
 
 
@@ -193,16 +203,21 @@ def _inline_includes(element: ET.Element, base_dir: Path, visited: set[Path]) ->
 # ----------------------------------------------------------------------------
 
 
-_DEFAULT_JOINT = {"axis": np.array([0.0, 0.0, 1.0], dtype=np.float32), "range": (-np.inf, np.inf), "type": "hinge"}
+_DEFAULT_JOINT = {
+    "axis": np.array([0.0, 0.0, 1.0], dtype=np.float32),
+    "range": (-np.inf, np.inf),
+    "type": "hinge",
+    "tendon_width": 0.005,
+}
 
 
 def _parse_class_defaults(root: ET.Element) -> dict[str, dict]:
-    """Return per-class joint defaults gathered from ``<default class=...>``."""
+    """Return per-class defaults (joint axis/range/type + tendon width) from ``<default class=...>``."""
     out: dict[str, dict] = {}
 
     def visit(element: ET.Element, parent: dict) -> None:
-        joint = element.find("joint")
         local = dict(parent)
+        joint = element.find("joint")
         if joint is not None:
             axis = joint.get("axis")
             if axis:
@@ -213,6 +228,9 @@ def _parse_class_defaults(root: ET.Element) -> dict[str, dict]:
             joint_type = joint.get("type")
             if joint_type:
                 local["type"] = joint_type
+        tendon = element.find("tendon")
+        if tendon is not None and tendon.get("width"):
+            local["tendon_width"] = float(tendon.get("width"))
         class_name = element.get("class")
         if class_name:
             out[class_name] = local
@@ -222,6 +240,32 @@ def _parse_class_defaults(root: ET.Element) -> dict[str, dict]:
     base = dict(_DEFAULT_JOINT)
     for top in root.findall("default"):
         visit(top, base)
+    return out
+
+
+def _parse_tendons(
+    root: ET.Element, site_names: list[str], class_defaults: dict[str, dict]
+) -> list[dict]:
+    """Collect ``<spatial>`` tendons as polyline lists of site indices.
+
+    Wrap geoms (``<geom geom=...>`` inside the tendon) are skipped — we render
+    straight via-point segments only — and any tendon referencing an unknown
+    site is dropped.
+    """
+    site_index = {name: i for i, name in enumerate(site_names)}
+    out: list[dict] = []
+    for spatial in root.findall(".//tendon/spatial"):
+        default = class_defaults.get(spatial.get("class") or "", _DEFAULT_JOINT)
+        width = float(spatial.get("width") or default.get("tendon_width", 0.005))
+
+        refs = [s.get("site") for s in spatial.findall("site")]
+        if any(r is None or r not in site_index for r in refs) or len(refs) < 2:
+            continue
+        out.append({
+            "name": spatial.get("name") or f"tendon_{len(out)}",
+            "site_indices": [site_index[r] for r in refs],
+            "width": width,
+        })
     return out
 
 
@@ -275,6 +319,7 @@ def _walk_body(
     bodies: list[dict],
     qpos: list[dict],
     links: list[dict],
+    sites: list[dict],
     defaults: dict[str, dict],
     is_root: bool,
 ) -> None:
@@ -337,8 +382,19 @@ def _walk_body(
             "geom_rot": (MUJOCO_TO_KIMODO @ grot_raw @ MUJOCO_TO_KIMODO.T).astype(np.float32),
         })
 
+    for site in elem.findall("site"):
+        name = site.get("name")
+        if not name:
+            continue
+        spos_raw = _parse_vec(site.get("pos"), default=np.zeros(3, dtype=np.float32))
+        sites.append({
+            "name": name,
+            "body": body_idx,
+            "pos": (MUJOCO_TO_KIMODO @ spos_raw).astype(np.float32),
+        })
+
     for child in elem.findall("body"):
-        _walk_body(child, body_idx, childclass, bodies, qpos, links, defaults, is_root=False)
+        _walk_body(child, body_idx, childclass, bodies, qpos, links, sites, defaults, is_root=False)
 
 
 # ----------------------------------------------------------------------------

@@ -271,6 +271,32 @@ def forward_vertices(
 
 
 # ----------------------------------------------------------------------------
+# Site / tendon helpers (no FK rerun — accept a forward_skeleton output)
+# ----------------------------------------------------------------------------
+
+
+def world_sites(
+    skeleton: Float[Array, "B J 4 4"],
+    site_positions: Float[Array, "S 3"],
+    site_body_indices: list[int],
+    *,
+    xp: Any = None,
+) -> Float[Array, "B S 3"]:
+    """Apply each site's parent-body world transform to its body-local position.
+
+    ``skeleton`` is the same ``[B, J, 4, 4]`` array produced by
+    :func:`forward_skeleton`. This is just a gather + affine transform — no FK
+    is recomputed — so muscle visualisation reuses the existing forward pass.
+    """
+    if xp is None:
+        xp = get_namespace(skeleton)
+    body_T = skeleton[:, xp.asarray(site_body_indices)]  # [B, S, 4, 4]
+    local = xp.asarray(site_positions, dtype=skeleton.dtype)
+    rotated = xp.squeeze(body_T[..., :3, :3] @ local[None, :, :, None], axis=-1)
+    return rotated + body_T[..., :3, 3]
+
+
+# ----------------------------------------------------------------------------
 # Mesh helpers
 # ----------------------------------------------------------------------------
 

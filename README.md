@@ -570,6 +570,14 @@ When passed manually, `model_path` should be the upstream `musclemimic_models/mo
 directory (containing `body/myofullbody.xml` and the `meshes/`, `torso/`, `leg/`,
 `arm/`, `head/`, `scene/` subtrees).
 
+Muscle visualisation is exposed via the existing `forward_skeleton` output —
+no new forward method. The model also stores `site_positions [S, 3]`,
+`site_body_indices [S]`, and a `tendons` list (each entry has `name`,
+`site_indices`, and `width`); call `model.world_sites(skeleton)` to lift the
+body-local via-points into world space, then walk each tendon's `site_indices`
+to draw straight-segment polylines (wrap surfaces are skipped). The bundled
+`scripts/visualize_models.py` does this with `viser.add_line_segments`.
+
 ## Coordinate System
 
 The unified API returns outputs in:

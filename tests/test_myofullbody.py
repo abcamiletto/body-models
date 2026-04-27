@@ -17,12 +17,15 @@ if not MAIN_XML.exists():
     pytest.skip(f"MyoFullBody test assets not found at {ASSET_DIR}", allow_module_level=True)
 
 # Ground-truth shape derived from the upstream MJCF tree (101 bodies, 122 1-DoF
-# joints split as 112 hinge + 10 slide, 102 link meshes).
+# joints split as 112 hinge + 10 slide, 102 link meshes, 2021 muscle via-points,
+# 424 tendons).
 EXPECTED_NUM_JOINTS = 101
 EXPECTED_NUM_QPOS = 122
 EXPECTED_NUM_HINGE = 112
 EXPECTED_NUM_SLIDE = 10
 EXPECTED_NUM_LINKS = 102
+EXPECTED_NUM_SITES = 2021
+EXPECTED_NUM_TENDONS = 424
 
 
 def _backend(backend: str):
@@ -202,6 +205,65 @@ def test_link_and_joint_meshes_lookup(backend: str) -> None:
 
     direct = model.link_mesh(head_meshes[0]["name"])
     np.testing.assert_allclose(_to_numpy(direct["vertices"]), _to_numpy(head_meshes[0]["vertices"]), atol=1e-7)
+
+
+# ---------------------------------------------------------------------------
+# Sites / muscle tendons (no new forward_* method — reuses forward_skeleton)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_sites_and_tendons_metadata(backend: str) -> None:
+    model = _backend(backend)(model_path=ASSET_DIR)
+
+    assert len(model.site_names) == EXPECTED_NUM_SITES
+    assert len(model.site_body_indices) == EXPECTED_NUM_SITES
+    assert _to_numpy(model.site_positions).shape == (EXPECTED_NUM_SITES, 3)
+    assert all(0 <= b < EXPECTED_NUM_JOINTS for b in model.site_body_indices)
+
+    assert len(model.tendons) == EXPECTED_NUM_TENDONS
+    for tendon in model.tendons:
+        assert "name" in tendon and "site_indices" in tendon and "width" in tendon
+        assert len(tendon["site_indices"]) >= 2
+        assert all(0 <= i < EXPECTED_NUM_SITES for i in tendon["site_indices"])
+        assert tendon["width"] > 0
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_world_sites_follows_skeleton(backend: str) -> None:
+    model = _backend(backend)(model_path=ASSET_DIR)
+    params = model.get_rest_pose(batch_size=1)
+    params = {k: _array(backend, _to_numpy(v)) for k, v in params.items()}
+    params["global_translation"] = _array(backend, [[10.0, 20.0, 30.0]])
+
+    skeleton = model.forward_skeleton(**params)
+    sites = _to_numpy(model.world_sites(skeleton))
+
+    assert sites.shape == (1, EXPECTED_NUM_SITES, 3)
+    # Translating the root by (10, 20, 30) should translate all sites by the same amount.
+    rest_params = {k: _array(backend, _to_numpy(v)) for k, v in model.get_rest_pose(batch_size=1).items()}
+    rest_sites = _to_numpy(model.world_sites(model.forward_skeleton(**rest_params)))
+    expected = np.broadcast_to(np.asarray([10.0, 20.0, 30.0]), (1, EXPECTED_NUM_SITES, 3))
+    np.testing.assert_allclose(sites - rest_sites, expected, atol=1e-5)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_world_sites_matches_per_body_transform(backend: str) -> None:
+    """Site world position should equal body_T @ [local_pos, 1]."""
+    model = _backend(backend)(model_path=ASSET_DIR)
+    rng = np.random.default_rng(0)
+    body_pose = rng.standard_normal((1, EXPECTED_NUM_QPOS)).astype(np.float32) * 0.1
+
+    skeleton = _to_numpy(model.forward_skeleton(body_pose=_array(backend, body_pose)))
+    sites = _to_numpy(model.world_sites(_array(backend, skeleton)))
+
+    site_positions = _to_numpy(model.site_positions)
+    for site_idx in [0, 100, 500, 1000, EXPECTED_NUM_SITES - 1]:
+        body_idx = model.site_body_indices[site_idx]
+        body_T = skeleton[0, body_idx]
+        local = site_positions[site_idx]
+        expected = body_T[:3, :3] @ local + body_T[:3, 3]
+        np.testing.assert_allclose(sites[0, site_idx], expected, atol=1e-5)
 
 
 # ---------------------------------------------------------------------------

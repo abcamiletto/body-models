@@ -43,6 +43,10 @@ class MyoFullBody(BodyModel):
         self.link_geom_rotations = data["link_geom_rotations"]
         self._vertices = data["vertices"]
         self._faces = data["faces"]
+        self.site_names = data["site_names"]
+        self.site_positions = data["site_positions"]
+        self.site_body_indices = data["site_body_indices"]
+        self.tendons = data["tendons"]
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
@@ -181,6 +185,15 @@ class MyoFullBody(BodyModel):
             joint_names=self._joint_names,
             link_names=self.link_names,
             joint_name=joint_name,
+        )
+
+    def world_sites(self, skeleton: Float[np.ndarray, "B J 4 4"]) -> Float[np.ndarray, "B S 3"]:
+        """World-space site positions for a given ``forward_skeleton`` output."""
+        return core.world_sites(
+            skeleton=skeleton,
+            site_positions=self.site_positions,
+            site_body_indices=self.site_body_indices,
+            xp=np,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:

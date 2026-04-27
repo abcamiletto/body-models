@@ -57,11 +57,15 @@ class MyoFullBody(BodyModel, nn.Module):
             "slide_mask": data["slide_mask"],
             "link_geom_positions": data["link_geom_positions"],
             "link_geom_rotations": data["link_geom_rotations"],
+            "site_positions": data["site_positions"],
         }
         for name, value in buffer_map.items():
             self.register_buffer(name, torch.as_tensor(value, dtype=torch.float32))
         self.register_buffer("_vertices", torch.as_tensor(data["vertices"], dtype=torch.float32))
         self.register_buffer("_faces", torch.as_tensor(data["faces"], dtype=torch.int64))
+        self.site_names = data["site_names"]
+        self.site_body_indices = data["site_body_indices"]
+        self.tendons = data["tendons"]
 
     # ------------------------------------------------------------------
     # BodyModel interface
@@ -204,6 +208,15 @@ class MyoFullBody(BodyModel, nn.Module):
             joint_names=self._joint_names,
             link_names=self.link_names,
             joint_name=joint_name,
+        )
+
+    def world_sites(self, skeleton: Float[Tensor, "B J 4 4"]) -> Float[Tensor, "B S 3"]:
+        """World-space site positions for a given ``forward_skeleton`` output."""
+        return core.world_sites(
+            skeleton=skeleton,
+            site_positions=self.site_positions,
+            site_body_indices=self.site_body_indices,
+            xp=torch,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
