@@ -143,9 +143,7 @@ def test_hinge_qpos_rotates_distal_body(backend: str) -> None:
     model = _backend(backend)(model_path=ASSET_DIR)
     params = model.get_rest_pose(batch_size=1)
 
-    rest_skeleton = _to_numpy(
-        model.forward_skeleton(**{k: _array(backend, _to_numpy(v)) for k, v in params.items()})
-    )
+    rest_skeleton = _to_numpy(model.forward_skeleton(**{k: _array(backend, _to_numpy(v)) for k, v in params.items()}))
 
     # Pick the right hip flexion DoF and rotate; tibia_r must move while pelvis stays put.
     qpos_idx = model.qpos_joint_names.index("hip_flexion_r")
@@ -188,9 +186,7 @@ def test_forward_links_attaches_geom_offsets(backend: str) -> None:
     vertices = _to_numpy(model.forward_vertices(**params))
     local_vertex = _to_numpy(model.link_mesh("r_femur")["vertices"])[0]
     transformed = links[0, link_idx, :3, :3] @ local_vertex + links[0, link_idx, :3, 3]
-    np.testing.assert_allclose(
-        transformed, vertices[0, model.link_vertex_starts[link_idx]], atol=1e-5
-    )
+    np.testing.assert_allclose(transformed, vertices[0, model.link_vertex_starts[link_idx]], atol=1e-5)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])

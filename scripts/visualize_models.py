@@ -22,6 +22,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import viser
@@ -466,8 +467,11 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
         state.mesh_handle.vertices = verts
 
     if state.muscle_segment_indices is not None:
+        # The viser mesh handle at /{name} carries the grid offset; nest the
+        # muscles under it so they inherit the same translation rather than
+        # double-applying it.
         skeleton = state.model.forward_skeleton(**state.params)
-        sites = np.asarray(state.model.world_sites(skeleton))[0]
+        sites = np.asarray(cast(Any, state.model).world_sites(skeleton))[0]
         seg_points = sites[state.muscle_segment_indices].astype(np.float32)
         if state.muscle_handle is None:
             state.muscle_handle = server.scene.add_line_segments(
@@ -475,7 +479,6 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
                 points=seg_points,
                 colors=(220, 50, 50),
                 line_width=2.0,
-                position=(state.x_offset, state.y_offset, state.z_offset),
             )
         else:
             state.muscle_handle.points = seg_points

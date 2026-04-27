@@ -90,9 +90,7 @@ def forward_skeleton(
 
     num_joints = len(parents)
     if body_pose.ndim != 2 or body_pose.shape[1] != qpos_axes.shape[0]:
-        raise ValueError(
-            f"body_pose must have shape [B, {qpos_axes.shape[0]}], got {tuple(body_pose.shape)}"
-        )
+        raise ValueError(f"body_pose must have shape [B, {qpos_axes.shape[0]}], got {tuple(body_pose.shape)}")
 
     B = body_pose.shape[0]
     dtype = body_pose.dtype
@@ -106,9 +104,7 @@ def forward_skeleton(
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
     rest_t = xp.asarray(local_offsets, dtype=dtype)
 
-    R_q, t_q = _qpos_local_transforms(
-        body_pose, qpos_axes, qpos_anchors, hinge_mask, slide_mask, xp=xp
-    )
+    R_q, t_q = _qpos_local_transforms(body_pose, qpos_axes, qpos_anchors, hinge_mask, slide_mask, xp=xp)
 
     rot_world: list[Array | None] = [None] * num_joints
     pos_world: list[Array | None] = [None] * num_joints

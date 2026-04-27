@@ -23,9 +23,7 @@ from ..utils import download_and_extract, get_cache_dir
 # additional Ry(+90°) puts left/right on ±X to match SMPL/G1 and the rendering
 # pipeline (X = lateral, Y = up, Z = depth).
 _RY_90 = np.array([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]], dtype=np.float32)
-_MUJOCO_TO_KIMODO_BARE = np.array(
-    [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32
-)
+_MUJOCO_TO_KIMODO_BARE = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 MUJOCO_TO_KIMODO = (_RY_90 @ _MUJOCO_TO_KIMODO_BARE).astype(np.float32)
 MUSCLEMIMIC_REPO_ZIP = "https://github.com/amathislab/musclemimic_models/archive/refs/heads/main.zip"
 MAIN_XML_RELPATH = Path("body") / "myofullbody.xml"
@@ -93,9 +91,17 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     qpos_records: list[dict] = []
     link_records: list[dict] = []
     site_records: list[dict] = []
-    _walk_body(body_xml, parent_idx=-1, parent_class=None,
-               bodies=body_records, qpos=qpos_records, links=link_records,
-               sites=site_records, defaults=class_defaults, is_root=True)
+    _walk_body(
+        body_xml,
+        parent_idx=-1,
+        parent_class=None,
+        bodies=body_records,
+        qpos=qpos_records,
+        links=link_records,
+        sites=site_records,
+        defaults=class_defaults,
+        is_root=True,
+    )
 
     joint_names = [b["name"] for b in body_records]
     parents = [b["parent"] for b in body_records]
@@ -119,7 +125,10 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     slide_mask = np.asarray([t == "slide" for t in qpos_joint_types], dtype=np.float32)
 
     vertices, faces, link_meta = _build_link_meshes(
-        link_records, mesh_files, model_dir, dtype=dtype,
+        link_records,
+        mesh_files,
+        model_dir,
+        dtype=dtype,
     )
 
     site_names = [s["name"] for s in site_records]
@@ -221,7 +230,7 @@ def _parse_class_defaults(root: ET.Element) -> dict[str, dict]:
         if joint is not None:
             axis = joint.get("axis")
             if axis:
-                local["axis"] = _parse_vec(axis, default=local.get("axis"))
+                local["axis"] = _parse_vec(axis, default=local["axis"])
             limit = joint.get("range")
             if limit:
                 local["range"] = tuple(float(x) for x in limit.split())
@@ -229,8 +238,10 @@ def _parse_class_defaults(root: ET.Element) -> dict[str, dict]:
             if joint_type:
                 local["type"] = joint_type
         tendon = element.find("tendon")
-        if tendon is not None and tendon.get("width"):
-            local["tendon_width"] = float(tendon.get("width"))
+        if tendon is not None:
+            width_raw = tendon.get("width")
+            if width_raw:
+                local["tendon_width"] = float(width_raw)
         class_name = element.get("class")
         if class_name:
             out[class_name] = local
@@ -243,9 +254,7 @@ def _parse_class_defaults(root: ET.Element) -> dict[str, dict]:
     return out
 
 
-def _parse_tendons(
-    root: ET.Element, site_names: list[str], class_defaults: dict[str, dict]
-) -> list[dict]:
+def _parse_tendons(root: ET.Element, site_names: list[str], class_defaults: dict[str, dict]) -> list[dict]:
     """Collect ``<spatial>`` tendons as polyline lists of site indices.
 
     Wrap geoms (``<geom geom=...>`` inside the tendon) are skipped — we render
@@ -261,11 +270,13 @@ def _parse_tendons(
         refs = [s.get("site") for s in spatial.findall("site")]
         if any(r is None or r not in site_index for r in refs) or len(refs) < 2:
             continue
-        out.append({
-            "name": spatial.get("name") or f"tendon_{len(out)}",
-            "site_indices": [site_index[r] for r in refs],
-            "width": width,
-        })
+        out.append(
+            {
+                "name": spatial.get("name") or f"tendon_{len(out)}",
+                "site_indices": [site_index[r] for r in refs],
+                "width": width,
+            }
+        )
     return out
 
 
@@ -339,7 +350,7 @@ def _walk_body(
         rot = MUJOCO_TO_KIMODO @ raw_rot @ MUJOCO_TO_KIMODO.T
 
     body_idx = len(bodies)
-    body_record = {"name": name, "parent": parent_idx, "pos": pos, "rot": rot, "qpos_count": 0}
+    body_record: dict = {"name": name, "parent": parent_idx, "pos": pos, "rot": rot, "qpos_count": 0}
     bodies.append(body_record)
 
     for joint in elem.findall("joint"):
@@ -359,13 +370,15 @@ def _walk_body(
             lo, hi = (float(x) for x in rng.split())
         else:
             lo, hi = cls_default.get("range", _DEFAULT_JOINT["range"])
-        qpos.append({
-            "name": joint.get("name") or f"joint_{len(qpos)}",
-            "axis": (MUJOCO_TO_KIMODO @ axis_raw).astype(np.float32),
-            "anchor": (MUJOCO_TO_KIMODO @ anchor_raw).astype(np.float32),
-            "type": joint_type,
-            "range": np.asarray([lo, hi], dtype=np.float32),
-        })
+        qpos.append(
+            {
+                "name": joint.get("name") or f"joint_{len(qpos)}",
+                "axis": (MUJOCO_TO_KIMODO @ axis_raw).astype(np.float32),
+                "anchor": (MUJOCO_TO_KIMODO @ anchor_raw).astype(np.float32),
+                "type": joint_type,
+                "range": np.asarray([lo, hi], dtype=np.float32),
+            }
+        )
         body_record["qpos_count"] += 1
 
     for geom in elem.findall("geom"):
@@ -374,24 +387,28 @@ def _walk_body(
             continue
         gpos_raw = _parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32))
         grot_raw = _parse_orientation(geom)
-        links.append({
-            "body": body_idx,
-            "mesh_name": mesh,
-            "geom_name": geom.get("name") or mesh,
-            "geom_pos": (MUJOCO_TO_KIMODO @ gpos_raw).astype(np.float32),
-            "geom_rot": (MUJOCO_TO_KIMODO @ grot_raw @ MUJOCO_TO_KIMODO.T).astype(np.float32),
-        })
+        links.append(
+            {
+                "body": body_idx,
+                "mesh_name": mesh,
+                "geom_name": geom.get("name") or mesh,
+                "geom_pos": (MUJOCO_TO_KIMODO @ gpos_raw).astype(np.float32),
+                "geom_rot": (MUJOCO_TO_KIMODO @ grot_raw @ MUJOCO_TO_KIMODO.T).astype(np.float32),
+            }
+        )
 
     for site in elem.findall("site"):
         name = site.get("name")
         if not name:
             continue
         spos_raw = _parse_vec(site.get("pos"), default=np.zeros(3, dtype=np.float32))
-        sites.append({
-            "name": name,
-            "body": body_idx,
-            "pos": (MUJOCO_TO_KIMODO @ spos_raw).astype(np.float32),
-        })
+        sites.append(
+            {
+                "name": name,
+                "body": body_idx,
+                "pos": (MUJOCO_TO_KIMODO @ spos_raw).astype(np.float32),
+            }
+        )
 
     for child in elem.findall("body"):
         _walk_body(child, body_idx, childclass, bodies, qpos, links, sites, defaults, is_root=False)
@@ -404,13 +421,13 @@ def _walk_body(
 
 def _build_link_meshes(
     link_records: list[dict],
-    mesh_files: dict[str, str],
+    mesh_files: dict[str, tuple[str, np.ndarray]],
     model_dir: Path,
     *,
     dtype,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     if not link_records:
-        raise FileNotFoundError("No <geom mesh=\"...\"/> entries found in MyoFullBody XML")
+        raise FileNotFoundError('No <geom mesh="..."/> entries found in MyoFullBody XML')
 
     vertices_chunks: list[np.ndarray] = []
     faces_chunks: list[np.ndarray] = []
@@ -465,9 +482,7 @@ def _build_link_meshes(
     )
 
 
-def load_stl_mesh(
-    path: Path, *, dtype=np.float32, scale: np.ndarray | None = None
-) -> tuple[np.ndarray, np.ndarray]:
+def load_stl_mesh(path: Path, *, dtype=np.float32, scale: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Load an STL into kimodo coordinates, applying an optional per-mesh ``scale``.
 
     ``scale`` is the MJCF ``<mesh scale="...">`` triple, applied in the STL's own
@@ -500,9 +515,7 @@ def _load_ascii_stl_raw(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     )
 
 
-_BINARY_STL_TRI_DTYPE = np.dtype(
-    [("normal", "<f4", 3), ("vertices", "<f4", (3, 3)), ("attr", "<u2")]
-)
+_BINARY_STL_TRI_DTYPE = np.dtype([("normal", "<f4", 3), ("vertices", "<f4", (3, 3)), ("attr", "<u2")])
 
 
 def _load_binary_stl_raw(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
