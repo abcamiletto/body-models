@@ -58,8 +58,8 @@ PASTELS = {
 }
 FAMILY_LABELS = {f: f.upper() for f in PASTELS} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
 LOADERS = {
-    "smpl": lambda: SMPL(ASSETS_DIR / "smpl/model/SMPL_NEUTRAL.npz", gender="neutral"),
-    "smplx": lambda: SMPLX(ASSETS_DIR / "smplx/model/SMPLX_NEUTRAL.npz"),
+    "smpl": lambda: SMPL(gender="neutral"),  # Path resolved via body-models config (smpl-neutral).
+    "smplx": lambda: SMPLX(gender="neutral"),  # Path resolved via body-models config (smplx-neutral).
     "skel": lambda: SKEL(ASSETS_DIR / "skel/model", "male"),
     "mhr": lambda: MHR(ASSETS_DIR / "mhr/model"),
     "anny": lambda: ANNY(ASSETS_DIR / "anny/model"),
