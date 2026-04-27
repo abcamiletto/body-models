@@ -12,7 +12,7 @@ dependencies = [
     "jaxtyping>=0.2.28",
     "nanomanifold>=0.8.0",
     "numpy>=2.0.0",
-    "platformdirs>=2.0",
+    "platformdirs>=4.6",
     "ptloader==0.3.0",
     "pyfqmr>=0.3.0",
     "scipy>=1.13.0",
@@ -68,7 +68,7 @@ explicit = true
 [tool.ty.src]
 exclude = [
     "tests/",
-    "scripts/teaser/render_readme_blender.py",
+    "scripts/teaser/render.py",
 ]
 
 [tool.ruff]
