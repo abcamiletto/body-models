@@ -539,6 +539,8 @@ The unified API returns outputs in:
 - **Y-up** coordinate system
 - **Meters** as the unit
 
+SMPL, SMPL-X, SKEL, FLAME, MHR, GarmentMeasurements, and SOMA are natively Y-up and pass through unchanged. ANNY (MakeHuman) and G1 (MuJoCo) are natively Z-up and are rotated to Y-up at load time, so a single rendering or visualisation pipeline works across the entire lineup.
+
 Use the `to_native_outputs()` conversion functions to get outputs in the original library conventions.
 
 ## Development
