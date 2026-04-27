@@ -87,8 +87,8 @@ ANNY_POSE_OFFSETS = {
 ANNY_GLOBAL_PITCH_X = 0.08
 
 GM_POSE_OFFSETS = {
-    ("upper_arm_l", 2): 1.2,
-    ("upper_arm_r", 2): -1.2,
+    ("upper_arm_l", 2): 0.6,
+    ("upper_arm_r", 2): -0.6,
     ("clavicle_l", 2): 0.15,
     ("clavicle_r", 2): -0.15,
 }
