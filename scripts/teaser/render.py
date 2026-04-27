@@ -1,111 +1,149 @@
-#!/usr/bin/env python3
-"""Render the README body-model lineup in Blender from local OBJ meshes."""
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = "==3.11.*"
+# dependencies = [
+#   "body-models",
+#   "numpy>=2.4.1",
+#   "bpy>=4.1",
+# ]
+# [tool.uv.sources]
+# body-models = { path = "../.." }
+# ///
+"""Render the README body-model lineup directly from the body-models API.
+
+A single self-contained script that loads each model in-process, generates the
+canonical mesh, and renders the lineup with Cycles via headless ``bpy``.
+
+Usage:
+    uv run scripts/teaser/render.py [--output PATH] [--samples N] [--denoise]
+"""
 
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import bpy
+import numpy as np
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
-import numpy as np
 
-# One pastel per family. Insertion order doubles as the canonical lineup ordering.
-PASTELS: dict[str, tuple[float, float, float, float]] = {
-    "smpl": (0.95, 0.63, 0.72, 1.0),                 # rose
-    "smplx": (0.62, 0.78, 0.98, 1.0),                # sky
-    "skel": (0.62, 0.93, 0.74, 1.0),                 # mint
-    "mhr": (0.99, 0.73, 0.54, 1.0),                  # peach
-    "anny": (0.76, 0.68, 0.98, 1.0),                 # lavender
-    "flame": (0.99, 0.93, 0.62, 1.0),                # butter
-    "garment_measurements": (0.69, 0.86, 0.93, 1.0), # powder
-    "soma": (0.97, 0.78, 0.78, 1.0),                 # coral
-    "g1": (0.78, 0.78, 0.86, 1.0),                   # steel
+from body_models.anny.numpy import ANNY
+from body_models.flame.numpy import FLAME
+from body_models.g1.numpy import G1
+from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.mhr.numpy import MHR
+from body_models.skel.numpy import SKEL
+from body_models.smpl.numpy import SMPL
+from body_models.smplx.numpy import SMPLX
+from body_models.soma.numpy import SOMA
+
+# ── Lineup configuration ─────────────────────────────────────────────────────
+# Insertion order is the canonical lineup ordering.
+PASTELS = {
+    "smpl": (0.95, 0.63, 0.72, 1.0),                  # rose
+    "smplx": (0.62, 0.78, 0.98, 1.0),                 # sky
+    "skel": (0.62, 0.93, 0.74, 1.0),                  # mint
+    "mhr": (0.99, 0.73, 0.54, 1.0),                   # peach
+    "anny": (0.76, 0.68, 0.98, 1.0),                  # lavender
+    "flame": (0.99, 0.93, 0.62, 1.0),                 # butter
+    "garment_measurements": (0.69, 0.86, 0.93, 1.0),  # powder
+    "soma": (0.97, 0.78, 0.78, 1.0),                  # coral
+    "g1": (0.78, 0.78, 0.86, 1.0),                    # steel
 }
-FAMILY_ORDER = tuple(PASTELS)
-FAMILY_LABELS = {f: f.upper() for f in FAMILY_ORDER} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
+FAMILY_LABELS = {f: f.upper() for f in PASTELS} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
+LOADERS = {
+    "smpl": lambda: SMPL(gender="neutral"),
+    "smplx": lambda: SMPLX(gender="neutral"),
+    "skel": lambda: SKEL(gender="male"),
+    "mhr": lambda: MHR(),
+    "anny": lambda: ANNY(),
+    "flame": lambda: FLAME(),
+    "garment_measurements": lambda: GarmentMeasurements(),
+    "soma": lambda: SOMA(),
+    "g1": lambda: G1(),
+}
 
+# ── Pose adapters: A-pose → T-pose for the lineup ────────────────────────────
+# Mapping key is (joint_name_lowercase, axis_index).
+ANNY_POSE_OFFSETS = {
+    ("shoulder01.l", 2): 0.475, ("shoulder01.r", 2): -0.475,
+    ("upperarm01.l", 2): 0.6, ("upperarm01.r", 2): -0.6,
+    ("clavicle.l", 2): -0.225, ("clavicle.r", 2): 0.225,
+    ("upperleg01.l", 2): 0.09, ("upperleg01.r", 2): -0.09,
+    # Straighten forearms.
+    ("lowerarm01.l", 0): -0.75, ("lowerarm01.r", 0): -0.75,
+}
+ANNY_GLOBAL_PITCH_X = 0.08
+
+GM_POSE_OFFSETS = {
+    ("upper_arm_l", 2): 1.2, ("upper_arm_r", 2): -1.2,
+    ("clavicle_l", 2): 0.15, ("clavicle_r", 2): -0.15,
+}
+
+# MHR rows use [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
+MHR_TARGETS = (
+    ("l_uparm", 4, 0.8), ("r_uparm", 4, 0.8),
+    ("l_lowarm", 4, -0.4), ("r_lowarm", 4, -0.4),
+    ("l_lowarm", 5, -0.6), ("r_lowarm", 5, -0.6),
+    ("l_upleg", 4, 0.12), ("r_upleg", 4, 0.12),
+    ("l_upleg", 5, -0.06), ("r_upleg", 5, -0.06),
+)
+
+# ── Render constants ─────────────────────────────────────────────────────────
 AUTO_SMOOTH_ANGLE = np.radians(30.0)
 MODEL_HEIGHT = 1.75
 MODEL_GAP = 0.30
 BORDER_PAD = 0.03
 
 
-def blender_argv() -> list[str]:
-    if "--" not in sys.argv:
-        return []
-    return sys.argv[sys.argv.index("--") + 1 :]
+# ── Model adapters ───────────────────────────────────────────────────────────
+def joint_index(model, name: str) -> int:
+    for i, jn in enumerate(model.joint_names):
+        if jn.lower() == name:
+            return i
+    raise ValueError(f"Joint not found in model: {name!r}")
 
 
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Render body-model lineup image")
-    p.add_argument("--output", type=Path, default=Path("README_render.png"), help="Output PNG path")
-    p.add_argument("--mesh-dir", type=Path, default=Path("scripts/teaser/.meshes"), help="Directory with OBJ meshes")
-    p.add_argument("--samples", type=int, default=512, help="Cycles samples")
-    p.add_argument("--max-bounces", type=int, default=14, help="Cycles max light bounces")
-    p.add_argument("--diffuse-bounces", type=int, default=6, help="Cycles diffuse bounces")
-    p.add_argument("--glossy-bounces", type=int, default=6, help="Cycles glossy bounces")
-    p.add_argument("--transmission-bounces", type=int, default=8, help="Cycles transmission bounces")
-    p.add_argument("--transparent-max-bounces", type=int, default=16, help="Cycles transparent bounces")
-    p.add_argument("--volume-bounces", type=int, default=2, help="Cycles volume bounces")
-    p.add_argument("--adaptive-threshold", type=float, default=0.003, help="Cycles adaptive sampling threshold")
-    p.add_argument("--denoise", action="store_true", help="Enable Cycles denoising")
-    p.add_argument("--width", type=int, default=2200, help="Output width in px")
-    p.add_argument("--height", type=int, default=1200, help="Output height in px")
-    return p.parse_args(blender_argv())
+def apply_pose_offsets(model, params: dict, offsets: dict[tuple[str, int], float]) -> None:
+    for (joint_name, axis), value in offsets.items():
+        params["pose"][0, joint_index(model, joint_name), axis] = value
 
 
-def parse_obj_mesh(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    vertices: list[list[float]] = []
-    faces: list[list[int]] = []
-    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("v "):
-            tok = line.split()
-            if len(tok) >= 4:
-                vertices.append([float(tok[1]), float(tok[2]), float(tok[3])])
-            continue
-        if line.startswith("f "):
-            idx = [int(token.split("/")[0]) - 1 for token in line.split()[1:]]
-            if len(idx) < 3:
-                continue
-            for i in range(1, len(idx) - 1):
-                faces.append([idx[0], idx[i], idx[i + 1]])
-
-    if not vertices or not faces:
-        raise ValueError(f"Could not parse OBJ mesh from {path}")
-    return np.asarray(vertices, dtype=np.float32), np.asarray(faces, dtype=np.int32)
+def solve_mhr_pose(model) -> np.ndarray:
+    """Least-squares solve for the MHR pose vector that hits the target Euler offsets."""
+    rows = [joint_index(model, j) * 7 + c for j, c, _ in MHR_TARGETS]
+    targets = np.asarray([t for _, _, t in MHR_TARGETS], dtype=np.float64)
+    transform = np.asarray(model.parameter_transform, dtype=np.float64)
+    system = transform[np.asarray(rows), : model.pose_dim]
+    x, *_ = np.linalg.lstsq(system, targets, rcond=1e-4)
+    return x.astype(np.float32)
 
 
-def load_required_meshes(mesh_dir: Path) -> list[tuple[str, np.ndarray, np.ndarray]]:
-    loaded: list[tuple[str, np.ndarray, np.ndarray]] = []
-    for family in FAMILY_ORDER:
-        path = mesh_dir / f"{family}.obj"
-        if not path.exists():
-            print(f"skipping {family}: no OBJ in {mesh_dir}", flush=True)
-            continue
-        loaded.append((family, *parse_obj_mesh(path)))
-    if not loaded:
-        raise RuntimeError(f"No body-model OBJs found in {mesh_dir}; run export_readme_meshes.py first.")
-    return loaded
+def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
+    model = LOADERS[family]()
+    if family in ("smpl", "smplx", "skel", "flame"):
+        verts = np.asarray(model.rest_vertices, dtype=np.float32)
+    else:
+        params = model.get_rest_pose(batch_size=1)
+        if family == "anny":
+            apply_pose_offsets(model, params, ANNY_POSE_OFFSETS)
+            params["global_rotation"][0, 0] = ANNY_GLOBAL_PITCH_X
+        elif family == "mhr":
+            params["pose"][0] = solve_mhr_pose(model)
+        elif family == "garment_measurements":
+            apply_pose_offsets(model, params, GM_POSE_OFFSETS)
+        # soma and g1: forward through with the default rest pose.
+        verts = np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
+    return verts, np.asarray(model.faces, dtype=np.int32)
 
 
+# ── Scene building ───────────────────────────────────────────────────────────
 def clear_scene() -> None:
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-
-    for blocks in (
-        bpy.data.meshes,
-        bpy.data.materials,
-        bpy.data.images,
-        bpy.data.cameras,
-        bpy.data.lights,
-        bpy.data.curves,
-    ):
+    for blocks in (bpy.data.meshes, bpy.data.materials, bpy.data.images,
+                   bpy.data.cameras, bpy.data.lights, bpy.data.curves):
         for block in list(blocks):
             if block.users == 0:
                 blocks.remove(block)
@@ -124,12 +162,9 @@ def normalize_mesh(vertices: np.ndarray, target_height: float = MODEL_HEIGHT) ->
 def build_material(name: str, color: tuple[float, float, float, float]) -> bpy.types.Material:
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
     for node in list(nodes):
         nodes.remove(node)
-
     out = nodes.new(type="ShaderNodeOutputMaterial")
     bsdf = nodes.new(type="ShaderNodeBsdfPrincipled")
     bsdf.inputs["Base Color"].default_value = color
@@ -143,10 +178,11 @@ def build_material(name: str, color: tuple[float, float, float, float]) -> bpy.t
 def create_mesh_object(name: str, vertices: np.ndarray, faces: np.ndarray) -> bpy.types.Object:
     vertices = vertices.copy()
     vertices[:, 1] -= float(vertices[:, 1].min())
-    verts_blender = [(float(x), float(z), float(y)) for x, y, z in vertices]  # Body-models are Y-up, Blender is Z-up.
+    # Body models are Y-up, Blender is Z-up.
+    verts_blender = [(float(x), float(z), float(y)) for x, y, z in vertices]
 
     mesh = bpy.data.meshes.new(f"{name}Mesh")
-    mesh.from_pydata(verts_blender, [], [tuple(map(int, tri)) for tri in faces])
+    mesh.from_pydata(verts_blender, [], [tuple(map(int, p)) for p in faces])
     mesh.update(calc_edges=True)
 
     obj = bpy.data.objects.new(name, mesh)
@@ -159,24 +195,23 @@ def create_mesh_object(name: str, vertices: np.ndarray, faces: np.ndarray) -> bp
 
 
 def object_bounds(obj: bpy.types.Object) -> tuple[np.ndarray, np.ndarray]:
-    corners = np.asarray([np.asarray(obj.matrix_world @ Vector(corner), dtype=np.float32) for corner in obj.bound_box])
+    corners = np.asarray([np.asarray(obj.matrix_world @ Vector(c), dtype=np.float32) for c in obj.bound_box])
     return np.min(corners, axis=0), np.max(corners, axis=0)
 
 
 def scene_bounds(objects: list[bpy.types.Object]) -> tuple[np.ndarray, np.ndarray]:
-    mins = np.array([1e9, 1e9, 1e9], dtype=np.float32)
-    maxs = np.array([-1e9, -1e9, -1e9], dtype=np.float32)
+    mins = np.full(3, 1e9, dtype=np.float32)
+    maxs = np.full(3, -1e9, dtype=np.float32)
     for obj in objects:
-        obj_min, obj_max = object_bounds(obj)
-        mins = np.minimum(mins, obj_min)
-        maxs = np.maximum(maxs, obj_max)
+        omin, omax = object_bounds(obj)
+        mins = np.minimum(mins, omin)
+        maxs = np.maximum(maxs, omax)
     return mins, maxs
 
 
 def instantiate_lineup(meshes: list[tuple[str, np.ndarray, np.ndarray]]) -> list[bpy.types.Object]:
-    normalized = [(name, normalize_mesh(vertices), faces) for name, vertices, faces in meshes]
+    normalized = [(name, normalize_mesh(v), f) for name, v, f in meshes]
     widths = [float(v[:, 0].max() - v[:, 0].min()) for _, v, _ in normalized]
-
     objects: list[bpy.types.Object] = []
     xpos = -0.5 * (sum(widths) + MODEL_GAP * (len(widths) - 1))
     for (name, vertices, faces), width in zip(normalized, widths):
@@ -186,7 +221,6 @@ def instantiate_lineup(meshes: list[tuple[str, np.ndarray, np.ndarray]]) -> list
         obj.data.materials.append(build_material(f"{name}_Material", PASTELS[name]))
         xpos += width + MODEL_GAP
         objects.append(obj)
-
     bpy.context.view_layer.update()
     return objects
 
@@ -251,7 +285,7 @@ def add_family_labels(
         center = 0.5 * (mins + maxs)
 
         curve = bpy.data.curves.new(name=f"{name}_LabelCurve", type="FONT")
-        curve.body = FAMILY_LABELS.get(name, name.upper())
+        curve.body = FAMILY_LABELS[name]
         curve.align_x = "CENTER"
         curve.align_y = "CENTER"
         curve.extrude = 0.01
@@ -275,19 +309,16 @@ def add_family_labels(
 def set_render_border(camera: bpy.types.Object, objects: list[bpy.types.Object], pad: float = BORDER_PAD) -> None:
     scene = bpy.context.scene
     bpy.context.view_layer.update()
-    min_x, min_y = 1.0, 1.0
-    max_x, max_y = 0.0, 0.0
+    min_x, min_y, max_x, max_y = 1.0, 1.0, 0.0, 0.0
     for obj in objects:
         if obj.type == "MESH":
             points = (obj.matrix_world @ v.co for v in obj.data.vertices)
         else:
-            points = (obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+            points = (obj.matrix_world @ Vector(c) for c in obj.bound_box)
         for co in points:
             ndc = world_to_camera_view(scene, camera, co)
-            min_x = min(min_x, float(ndc.x))
-            min_y = min(min_y, float(ndc.y))
-            max_x = max(max_x, float(ndc.x))
-            max_y = max(max_y, float(ndc.y))
+            min_x, min_y = min(min_x, float(ndc.x)), min(min_y, float(ndc.y))
+            max_x, max_y = max(max_x, float(ndc.x)), max(max_y, float(ndc.y))
 
     scene.render.use_border = True
     scene.render.use_crop_to_border = True
@@ -326,34 +357,48 @@ def configure_render(args: argparse.Namespace, output_path: Path) -> None:
     scene.cycles.use_denoising = bool(args.denoise)
 
 
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Render the README body-model lineup")
+    p.add_argument("--output", type=Path, default=Path("README_render.png"))
+    p.add_argument("--samples", type=int, default=512)
+    p.add_argument("--max-bounces", type=int, default=14)
+    p.add_argument("--diffuse-bounces", type=int, default=6)
+    p.add_argument("--glossy-bounces", type=int, default=6)
+    p.add_argument("--transmission-bounces", type=int, default=8)
+    p.add_argument("--transparent-max-bounces", type=int, default=16)
+    p.add_argument("--volume-bounces", type=int, default=2)
+    p.add_argument("--adaptive-threshold", type=float, default=0.003)
+    p.add_argument("--denoise", action="store_true")
+    p.add_argument("--width", type=int, default=2200)
+    p.add_argument("--height", type=int, default=1200)
+    return p.parse_args()
+
+
 def main() -> None:
     args = parse_args()
-    mesh_dir = args.mesh_dir.expanduser().resolve()
     output_path = args.output.expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print("[1/7] Loading canonical family OBJs...", flush=True)
-    loaded = load_required_meshes(mesh_dir)
+    print("[1/6] Generating canonical meshes from body-models...", flush=True)
+    meshes = [(family, *canonical_mesh(family)) for family in PASTELS]
 
-    print("[2/7] Building scene...", flush=True)
+    print("[2/6] Building scene...", flush=True)
     clear_scene()
-    model_objects = instantiate_lineup(loaded)
+    model_objects = instantiate_lineup(meshes)
 
-    print("[3/7] Adding environment...", flush=True)
+    print("[3/6] Adding environment & camera...", flush=True)
     add_lights()
     set_world_background()
-
-    print("[4/7] Positioning camera...", flush=True)
     camera = set_camera(model_objects)
 
-    print("[5/7] Adding labels...", flush=True)
-    labels = add_family_labels([name for name, _, _ in loaded], model_objects, camera)
+    print("[4/6] Adding labels...", flush=True)
+    labels = add_family_labels([m[0] for m in meshes], model_objects, camera)
     set_render_border(camera, model_objects + labels)
 
-    print("[6/7] Configuring renderer...", flush=True)
+    print("[5/6] Configuring renderer...", flush=True)
     configure_render(args, output_path)
 
-    print("[7/7] Rendering...", flush=True)
+    print("[6/6] Rendering...", flush=True)
     bpy.ops.render.render(write_still=True)
     print(f"Rendered image: {output_path}", flush=True)
 
