@@ -92,8 +92,8 @@ GM_POSE_OFFSETS = {
     ("clavicle_l", 2): 0.15,
     ("clavicle_r", 2): -0.15,
     # Slight inward rotation to bring the rest-pose stance closer to T-pose width.
-    ("thigh_l", 2): 0.18,
-    ("thigh_r", 2): -0.18,
+    ("thigh_l", 2): 0.12,
+    ("thigh_r", 2): -0.12,
 }
 
 # G1 hinge body_pose: one scalar per qpos joint. 16/23 = shoulder roll abducts
