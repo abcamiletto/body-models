@@ -112,6 +112,10 @@ AUTO_SMOOTH_ANGLE = np.radians(30.0)
 MODEL_HEIGHT = 1.75
 MODEL_GAP = 0.30
 BORDER_PAD = 0.03
+# Per-family scale relative to MODEL_HEIGHT. FLAME is a head-only model, so it
+# would otherwise be blown up to a full-body height — half-size keeps it in
+# scale with the rest of the lineup.
+FAMILY_SCALES = {"flame": 0.5}
 
 
 # ── Model adapters ───────────────────────────────────────────────────────────
@@ -233,7 +237,9 @@ def scene_bounds(objects: list[bpy.types.Object]) -> tuple[np.ndarray, np.ndarra
 
 
 def instantiate_lineup(meshes: list[tuple[str, np.ndarray, np.ndarray]]) -> list[bpy.types.Object]:
-    normalized = [(name, normalize_mesh(v), f) for name, v, f in meshes]
+    normalized = [
+        (name, normalize_mesh(v, target_height=MODEL_HEIGHT * FAMILY_SCALES.get(name, 1.0)), f) for name, v, f in meshes
+    ]
     widths = [float(v[:, 0].max() - v[:, 0].min()) for _, v, _ in normalized]
     objects: list[bpy.types.Object] = []
     xpos = -0.5 * (sum(widths) + MODEL_GAP * (len(widths) - 1))
