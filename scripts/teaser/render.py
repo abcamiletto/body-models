@@ -46,15 +46,15 @@ ASSETS_DIR = Path(__file__).parent.parent.parent / "tests" / "assets"
 # ── Lineup configuration ─────────────────────────────────────────────────────
 # Insertion order is the canonical lineup ordering.
 PASTELS = {
-    "smpl": (0.95, 0.63, 0.72, 1.0),                  # rose
-    "smplx": (0.62, 0.78, 0.98, 1.0),                 # sky
-    "skel": (0.62, 0.93, 0.74, 1.0),                  # mint
-    "mhr": (0.99, 0.73, 0.54, 1.0),                   # peach
-    "anny": (0.76, 0.68, 0.98, 1.0),                  # lavender
-    "flame": (0.99, 0.93, 0.62, 1.0),                 # butter
+    "smpl": (0.95, 0.63, 0.72, 1.0),  # rose
+    "smplx": (0.62, 0.78, 0.98, 1.0),  # sky
+    "skel": (0.62, 0.93, 0.74, 1.0),  # mint
+    "mhr": (0.99, 0.73, 0.54, 1.0),  # peach
+    "anny": (0.76, 0.68, 0.98, 1.0),  # lavender
+    "flame": (0.99, 0.93, 0.62, 1.0),  # butter
     "garment_measurements": (0.69, 0.86, 0.93, 1.0),  # powder
-    "soma": (0.97, 0.78, 0.78, 1.0),                  # coral
-    "g1": (0.78, 0.78, 0.86, 1.0),                    # steel
+    "soma": (0.97, 0.78, 0.78, 1.0),  # coral
+    "g1": (0.78, 0.78, 0.86, 1.0),  # steel
 }
 FAMILY_LABELS = {f: f.upper() for f in PASTELS} | {"garment_measurements": "GARMENT\nMEASUREMENTS"}
 LOADERS = {
@@ -72,27 +72,39 @@ LOADERS = {
 # ── Pose adapters: A-pose → T-pose for the lineup ────────────────────────────
 # Mapping key is (joint_name_lowercase, axis_index).
 ANNY_POSE_OFFSETS = {
-    ("shoulder01.l", 2): 0.475, ("shoulder01.r", 2): -0.475,
-    ("upperarm01.l", 2): 0.6, ("upperarm01.r", 2): -0.6,
-    ("clavicle.l", 2): -0.225, ("clavicle.r", 2): 0.225,
-    ("upperleg01.l", 2): 0.09, ("upperleg01.r", 2): -0.09,
+    ("shoulder01.l", 2): 0.475,
+    ("shoulder01.r", 2): -0.475,
+    ("upperarm01.l", 2): 0.6,
+    ("upperarm01.r", 2): -0.6,
+    ("clavicle.l", 2): -0.225,
+    ("clavicle.r", 2): 0.225,
+    ("upperleg01.l", 2): 0.09,
+    ("upperleg01.r", 2): -0.09,
     # Straighten forearms.
-    ("lowerarm01.l", 0): -0.75, ("lowerarm01.r", 0): -0.75,
+    ("lowerarm01.l", 0): -0.75,
+    ("lowerarm01.r", 0): -0.75,
 }
 ANNY_GLOBAL_PITCH_X = 0.08
 
 GM_POSE_OFFSETS = {
-    ("upper_arm_l", 2): 1.2, ("upper_arm_r", 2): -1.2,
-    ("clavicle_l", 2): 0.15, ("clavicle_r", 2): -0.15,
+    ("upper_arm_l", 2): 1.2,
+    ("upper_arm_r", 2): -1.2,
+    ("clavicle_l", 2): 0.15,
+    ("clavicle_r", 2): -0.15,
 }
 
 # MHR rows use [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
 MHR_TARGETS = (
-    ("l_uparm", 4, 0.8), ("r_uparm", 4, 0.8),
-    ("l_lowarm", 4, -0.4), ("r_lowarm", 4, -0.4),
-    ("l_lowarm", 5, -0.6), ("r_lowarm", 5, -0.6),
-    ("l_upleg", 4, 0.12), ("r_upleg", 4, 0.12),
-    ("l_upleg", 5, -0.06), ("r_upleg", 5, -0.06),
+    ("l_uparm", 4, 0.8),
+    ("r_uparm", 4, 0.8),
+    ("l_lowarm", 4, -0.4),
+    ("r_lowarm", 4, -0.4),
+    ("l_lowarm", 5, -0.6),
+    ("r_lowarm", 5, -0.6),
+    ("l_upleg", 4, 0.12),
+    ("r_upleg", 4, 0.12),
+    ("l_upleg", 5, -0.06),
+    ("r_upleg", 5, -0.06),
 )
 
 # ── Render constants ─────────────────────────────────────────────────────────
@@ -147,8 +159,14 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
 def clear_scene() -> None:
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-    for blocks in (bpy.data.meshes, bpy.data.materials, bpy.data.images,
-                   bpy.data.cameras, bpy.data.lights, bpy.data.curves):
+    for blocks in (
+        bpy.data.meshes,
+        bpy.data.materials,
+        bpy.data.images,
+        bpy.data.cameras,
+        bpy.data.lights,
+        bpy.data.curves,
+    ):
         for block in list(blocks):
             if block.users == 0:
                 blocks.remove(block)

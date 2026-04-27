@@ -51,51 +51,95 @@ SOMA_PATH: Path | None = None  # None → load from body-models cache
 
 # ── Per-tab joint configurations ─────────────────────────────────────────────
 SMPL_POSE_JOINTS = [
-    ("Spine1", 2), ("Spine2", 5), ("Spine3", 8), ("Neck", 11),
-    ("L_Shoulder", 15), ("R_Shoulder", 16),
+    ("Spine1", 2),
+    ("Spine2", 5),
+    ("Spine3", 8),
+    ("Neck", 11),
+    ("L_Shoulder", 15),
+    ("R_Shoulder", 16),
 ]
 
 SKEL_POSE_DOFS = [
-    ("Hip R flex", 3, (-1.5, 1.5)), ("Hip R abd", 4, (-0.8, 0.8)),
-    ("Hip R rot", 5, (-0.8, 0.8)), ("Knee R", 6, (-2.5, 0.1)),
-    ("Hip L flex", 7, (-1.5, 1.5)), ("Hip L abd", 8, (-0.8, 0.8)),
-    ("Hip L rot", 9, (-0.8, 0.8)), ("Knee L", 10, (-2.5, 0.1)),
-    ("Lumbar flex", 17, (-0.8, 0.8)), ("Lumbar bend", 18, (-0.5, 0.5)),
+    ("Hip R flex", 3, (-1.5, 1.5)),
+    ("Hip R abd", 4, (-0.8, 0.8)),
+    ("Hip R rot", 5, (-0.8, 0.8)),
+    ("Knee R", 6, (-2.5, 0.1)),
+    ("Hip L flex", 7, (-1.5, 1.5)),
+    ("Hip L abd", 8, (-0.8, 0.8)),
+    ("Hip L rot", 9, (-0.8, 0.8)),
+    ("Knee L", 10, (-2.5, 0.1)),
+    ("Lumbar flex", 17, (-0.8, 0.8)),
+    ("Lumbar bend", 18, (-0.5, 0.5)),
     ("Thorax flex", 20, (-0.5, 0.5)),
-    ("Shoulder R", 28, (-1.5, 1.5)), ("Shoulder L", 38, (-1.5, 1.5)),
+    ("Shoulder R", 28, (-1.5, 1.5)),
+    ("Shoulder L", 38, (-1.5, 1.5)),
 ]
 
 FLAME_POSE_JOINTS = [("Neck", 0), ("Jaw", 1), ("L_Eye", 2), ("R_Eye", 3)]
 
 ANNY_PHENOTYPE_PARAMS = ["Gender", "Age", "Muscle", "Weight", "Height", "Proportions"]
 ANNY_POSE_BONES = [
-    ("Spine", 1), ("Spine1", 2), ("Spine2", 3), ("Neck", 4),
-    ("L Shoulder", 8), ("L Arm", 9), ("R Shoulder", 13), ("R Arm", 14),
-    ("L UpLeg", 18), ("R UpLeg", 23),
+    ("Spine", 1),
+    ("Spine1", 2),
+    ("Spine2", 3),
+    ("Neck", 4),
+    ("L Shoulder", 8),
+    ("L Arm", 9),
+    ("R Shoulder", 13),
+    ("R Arm", 14),
+    ("L UpLeg", 18),
+    ("R UpLeg", 23),
 ]
 
 GARMENT_MEASUREMENTS_POSE_JOINTS = [
-    ("Spine1", 1), ("Spine2", 2), ("Chest", 3), ("Neck1", 4), ("Head", 6),
-    ("L Clavicle", 9), ("L UpperArm", 10),
-    ("R Clavicle", 30), ("R UpperArm", 31),
-    ("L Thigh", 51), ("R Thigh", 55),
+    ("Spine1", 1),
+    ("Spine2", 2),
+    ("Chest", 3),
+    ("Neck1", 4),
+    ("Head", 6),
+    ("L Clavicle", 9),
+    ("L UpperArm", 10),
+    ("R Clavicle", 30),
+    ("R UpperArm", 31),
+    ("L Thigh", 51),
+    ("R Thigh", 55),
 ]
 
 SOMA_POSE_JOINTS = [
-    ("Spine1", 1), ("Spine2", 2), ("Chest", 3), ("Neck1", 4), ("Head", 6),
-    ("L Shoulder", 11), ("L Arm", 12), ("L ForeArm", 13),
-    ("R Shoulder", 39), ("R Arm", 40), ("R ForeArm", 41),
-    ("L Leg", 67), ("R Leg", 72),
+    ("Spine1", 1),
+    ("Spine2", 2),
+    ("Chest", 3),
+    ("Neck1", 4),
+    ("Head", 6),
+    ("L Shoulder", 11),
+    ("L Arm", 12),
+    ("L ForeArm", 13),
+    ("R Shoulder", 39),
+    ("R Arm", 40),
+    ("R ForeArm", 41),
+    ("L Leg", 67),
+    ("R Leg", 72),
 ]
 
 # qpos joint indices into model.qpos_joint_names. With rotation_type="hinge"
 # body_pose stores one scalar angle per qpos entry, so each joint = one slider.
 G1_POSE_JOINTS = [
-    ("L Hip Pitch", 0), ("L Hip Roll", 1), ("L Hip Yaw", 2), ("L Knee", 3),
-    ("R Hip Pitch", 6), ("R Hip Roll", 7), ("R Hip Yaw", 8), ("R Knee", 9),
-    ("Waist Yaw", 12), ("Waist Pitch", 14),
-    ("L Shoulder Pitch", 15), ("L Shoulder Roll", 16), ("L Elbow", 18),
-    ("R Shoulder Pitch", 22), ("R Shoulder Roll", 23), ("R Elbow", 25),
+    ("L Hip Pitch", 0),
+    ("L Hip Roll", 1),
+    ("L Hip Yaw", 2),
+    ("L Knee", 3),
+    ("R Hip Pitch", 6),
+    ("R Hip Roll", 7),
+    ("R Hip Yaw", 8),
+    ("R Knee", 9),
+    ("Waist Yaw", 12),
+    ("Waist Pitch", 14),
+    ("L Shoulder Pitch", 15),
+    ("L Shoulder Roll", 16),
+    ("L Elbow", 18),
+    ("R Shoulder Pitch", 22),
+    ("R Shoulder Roll", 23),
+    ("R Elbow", 25),
 ]
 
 # Grid layout: split models across rows on the xz ground plane.
@@ -160,8 +204,7 @@ def add_slider(
 def betas(server, state, *, key, count, prefix="β", lo=-3.0, hi=3.0, step=0.1, initial=0.0) -> list[SliderHandle]:
     """Indexed sliders writing into ``state.params[key][0, i]``."""
     return [
-        add_slider(server, state, f"{prefix}{i}", lo=lo, hi=hi, step=step, initial=initial,
-                   key=key, indices=(0, i))
+        add_slider(server, state, f"{prefix}{i}", lo=lo, hi=hi, step=step, initial=initial, key=key, indices=(0, i))
         for i in range(count)
     ]
 
@@ -173,9 +216,11 @@ def joint_xyz(server, state, *, key, joints, lo=-1.5, hi=1.5, step=0.05, max_joi
         if max_joints is not None and idx >= max_joints:
             continue
         for ax, axn in enumerate("XYZ"):
-            handles.append(add_slider(server, state, f"{name} {axn}",
-                                      lo=lo, hi=hi, step=step, initial=0.0,
-                                      key=key, indices=(0, idx, ax)))
+            handles.append(
+                add_slider(
+                    server, state, f"{name} {axn}", lo=lo, hi=hi, step=step, initial=0.0, key=key, indices=(0, idx, ax)
+                )
+            )
     return handles
 
 
@@ -214,8 +259,9 @@ def skel_tab(server, tabs, state) -> None:
             handles += betas(server, state, key="shape", count=10)
         with server.gui.add_folder("Pose"):
             for label, idx, (lo, hi) in SKEL_POSE_DOFS:
-                handles.append(add_slider(server, state, label, lo=lo, hi=hi, step=0.05, initial=0.0,
-                                          key="pose", indices=(0, idx)))
+                handles.append(
+                    add_slider(server, state, label, lo=lo, hi=hi, step=0.05, initial=0.0, key="pose", indices=(0, idx))
+                )
         reset_button(server, handles)
 
 
@@ -224,11 +270,13 @@ def anny_tab(server, tabs, state) -> None:
     with tabs.add_tab("ANNY", viser.Icon.USER):
         with server.gui.add_folder("Phenotype"):
             for label in ANNY_PHENOTYPE_PARAMS:
-                handles.append(add_slider(server, state, label, lo=0.0, hi=1.0, step=0.05, initial=0.5,
-                                          key=label.lower(), indices=(0,)))
+                handles.append(
+                    add_slider(
+                        server, state, label, lo=0.0, hi=1.0, step=0.05, initial=0.5, key=label.lower(), indices=(0,)
+                    )
+                )
         with server.gui.add_folder("Pose"):
-            handles += joint_xyz(server, state, key="pose", joints=ANNY_POSE_BONES,
-                                 max_joints=state.model.num_joints)
+            handles += joint_xyz(server, state, key="pose", joints=ANNY_POSE_BONES, max_joints=state.model.num_joints)
         reset_button(server, handles)
 
 
@@ -260,8 +308,9 @@ def garment_measurements_tab(server, tabs, state) -> None:
         with server.gui.add_folder("Shape"):
             handles += betas(server, state, key="shape", count=state.model.num_shape_components)
         with server.gui.add_folder("Pose"):
-            handles += joint_xyz(server, state, key="pose", joints=GARMENT_MEASUREMENTS_POSE_JOINTS,
-                                 max_joints=state.model.num_joints)
+            handles += joint_xyz(
+                server, state, key="pose", joints=GARMENT_MEASUREMENTS_POSE_JOINTS, max_joints=state.model.num_joints
+            )
         reset_button(server, handles)
 
 
@@ -270,11 +319,19 @@ def soma_tab(server, tabs, state) -> None:
     identity_default = float(state.params["identity"][0, 0])
     with tabs.add_tab("SOMA", viser.Icon.USER):
         with server.gui.add_folder("Identity"):
-            handles += betas(server, state, key="identity", count=min(10, state.model.identity_dim),
-                             prefix="ι", lo=-1.0, hi=1.0, step=0.05, initial=identity_default)
+            handles += betas(
+                server,
+                state,
+                key="identity",
+                count=min(10, state.model.identity_dim),
+                prefix="ι",
+                lo=-1.0,
+                hi=1.0,
+                step=0.05,
+                initial=identity_default,
+            )
         with server.gui.add_folder("Pose"):
-            handles += joint_xyz(server, state, key="pose", joints=SOMA_POSE_JOINTS,
-                                 max_joints=state.model.num_joints)
+            handles += joint_xyz(server, state, key="pose", joints=SOMA_POSE_JOINTS, max_joints=state.model.num_joints)
         reset_button(server, handles)
 
 
@@ -289,8 +346,19 @@ def g1_tab(server, tabs, state) -> None:
                 # qpos limits can be ±inf for free joints — clamp to a usable range.
                 if not np.isfinite(lo) or not np.isfinite(hi):
                     lo, hi = -np.pi, np.pi
-                handles.append(add_slider(server, state, label, lo=lo, hi=hi, step=0.02, initial=0.0,
-                                          key="body_pose", indices=(0, qpos_idx, 0)))
+                handles.append(
+                    add_slider(
+                        server,
+                        state,
+                        label,
+                        lo=lo,
+                        hi=hi,
+                        step=0.02,
+                        initial=0.0,
+                        key="body_pose",
+                        indices=(0, qpos_idx, 0),
+                    )
+                )
         reset_button(server, handles)
 
 
@@ -351,9 +419,15 @@ def load_models() -> dict[str, BodyModel]:
     # Hinge parametrization: one scalar angle per qpos joint around its intrinsic axis.
     g1 = G1(G1_PATH, rotation_type="hinge")
     return {
-        "SMPL": smpl, "SMPLX": smplx, "SKEL": skel,
-        "ANNY": anny, "MHR": mhr, "FLAME": flame,
-        "GarmentMeasurements": gm, "SOMA": soma, "G1": g1,
+        "SMPL": smpl,
+        "SMPLX": smplx,
+        "SKEL": skel,
+        "ANNY": anny,
+        "MHR": mhr,
+        "FLAME": flame,
+        "GarmentMeasurements": gm,
+        "SOMA": soma,
+        "G1": g1,
     }
 
 
@@ -391,8 +465,7 @@ def main() -> None:
     for name, state in states.items():
         verts = state.model.forward_vertices(**state.params)
         label_y = float(verts[..., 1].max()) + state.y_offset + 0.1
-        server.scene.add_label(f"/labels/{name}", text=name,
-                               position=(state.x_offset, label_y, state.z_offset))
+        server.scene.add_label(f"/labels/{name}", text=name, position=(state.x_offset, label_y, state.z_offset))
 
     print("\nServer running at http://localhost:8080", flush=True)
     while True:
