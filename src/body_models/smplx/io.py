@@ -13,9 +13,6 @@ PathLike = Path | str
 
 __all__ = ["get_model_path", "get_joint_names", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
-SMPLXGender = Literal["neutral", "male", "female"]
-
-
 def validate_path(model_path: PathLike) -> Path:
     model_path = Path(model_path)
     if model_path.is_dir():
@@ -27,7 +24,7 @@ def validate_path(model_path: PathLike) -> Path:
     return model_path
 
 
-def get_model_path(model_path: PathLike | None, gender: SMPLXGender | None) -> Path:
+def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male", "female"] | None) -> Path:
     if model_path is not None:
         if gender is not None:
             raise ValueError("gender is only supported when model_path is not provided.")

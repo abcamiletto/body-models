@@ -1,6 +1,7 @@
 """PyTorch backend for SMPL-X model."""
 
 from pathlib import Path
+from typing import Literal
 
 
 import numpy as np
@@ -14,7 +15,7 @@ from nanomanifold import SO3
 
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
-from .io import SMPLXGender, compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
+from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
 
 PathLike = Path | str
@@ -38,7 +39,7 @@ class SMPLX(BodyModel, nn.Module):
     def __init__(
         self,
         model_path: PathLike | None = None,
-        gender: SMPLXGender | None = None,
+        gender: Literal["neutral", "male", "female"] | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",

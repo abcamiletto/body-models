@@ -10,7 +10,6 @@ from ..common import simplify_mesh
 PathLike = Path | str
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
-SMPLGender = Literal["neutral", "male", "female"]
 
 SMPL_JOINT_NAMES = [
     "pelvis",
@@ -51,7 +50,7 @@ def validate_path(model_path: PathLike) -> Path:
     return model_path
 
 
-def get_model_path(model_path: PathLike | None, gender: SMPLGender | None) -> Path:
+def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male", "female"] | None) -> Path:
     if model_path is not None:
         if gender is not None:
             raise ValueError("gender is only supported when model_path is not provided.")

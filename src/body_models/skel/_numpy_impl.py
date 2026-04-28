@@ -1,6 +1,7 @@
 """NumPy backend for SKEL model."""
 
 from pathlib import Path
+from typing import Literal
 
 import pickle as pkl
 
@@ -10,7 +11,7 @@ from scipy import sparse
 
 from ..base import BodyModel
 from . import core
-from .io import SKELGender, get_model_path, simplify_mesh
+from .io import get_model_path, simplify_mesh
 
 PathLike = Path | str
 
@@ -34,7 +35,7 @@ class SKEL(BodyModel):
     NUM_JOINTS = 24
     NUM_POSE_PARAMS = 46
 
-    def __init__(self, model_path: PathLike | None = None, gender: SKELGender | None = None, simplify: float = 1.0):
+    def __init__(self, model_path: PathLike | None = None, gender: Literal["male", "female"] | None = None, simplify: float = 1.0):
         if gender not in {"male", "female"}:
             raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"

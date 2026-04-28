@@ -8,9 +8,6 @@ from ..common import simplify_mesh
 PathLike = Path | str
 
 __all__ = ["get_model_path", "simplify_mesh"]
-SKELGender = Literal["male", "female"]
-
-
 def validate_path(model_path: PathLike) -> Path:
     model_path = Path(model_path)
     if model_path.is_file():
@@ -23,7 +20,7 @@ def validate_path(model_path: PathLike) -> Path:
     return model_path
 
 
-def get_model_path(model_path: PathLike | None, gender: SKELGender | None) -> Path:
+def get_model_path(model_path: PathLike | None, gender: Literal["male", "female"] | None) -> Path:
     if gender is None:
         raise ValueError("gender must be 'male' or 'female'.")
 

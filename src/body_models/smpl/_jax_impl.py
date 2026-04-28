@@ -1,6 +1,7 @@
 """JAX backend for SMPL model using Flax NNX."""
 
 from pathlib import Path
+from typing import Literal
 
 
 import jax
@@ -14,7 +15,7 @@ from nanomanifold import SO3
 
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
-from .io import SMPLGender, SMPL_JOINT_NAMES, compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
+from .io import SMPL_JOINT_NAMES, compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
 
 PathLike = Path | str
 
@@ -30,7 +31,7 @@ class SMPL(BodyModel, nnx.Module):
     def __init__(
         self,
         model_path: PathLike | None = None,
-        gender: SMPLGender | None = None,
+        gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
     ):
