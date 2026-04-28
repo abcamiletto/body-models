@@ -370,36 +370,3 @@ def _apply_global_transform_to_rt(
     if translation is not None:
         t = t + translation[..., None, :]
     return R, t
-
-
-def from_native_args(
-    shape: Float[Array, "B 10"],
-    expression: Float[Array, "B 10"],
-    body_pose: Float[Array, "B 63"],
-    hand_pose: Float[Array, "B 90"],
-    head_pose: Float[Array, "B 9"],
-    pelvis_rotation: Float[Array, "B 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
-) -> dict[str, Array | None]:
-    """Convert native SMPLX args to forward_* kwargs."""
-    xp = get_namespace(shape)
-    return {
-        "shape": shape,
-        "body_pose": xp.reshape(body_pose, (-1, 21, 3)),
-        "hand_pose": xp.reshape(hand_pose, (-1, 30, 3)),
-        "head_pose": xp.reshape(head_pose, (-1, 3, 3)),
-        "expression": expression,
-        "pelvis_rotation": pelvis_rotation,
-        "global_translation": global_translation,
-    }
-
-
-def to_native_outputs(
-    vertices: Float[Array, "B V 3"],
-    transforms: Float[Array, "B J 4 4"],
-) -> dict[str, Array]:
-    """Convert forward_* outputs to native SMPLX format."""
-    return {
-        "vertices": vertices,
-        "joints": transforms[..., :3, 3],
-    }

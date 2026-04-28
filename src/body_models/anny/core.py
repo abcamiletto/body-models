@@ -14,6 +14,7 @@ Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 IDENTITY_LABELS = ("gender", "age", "muscle", "weight", "height", "proportions")
 
+
 def forward_vertices(
     # Model data
     template_vertices: Float[Array, "V 3"],
@@ -505,34 +506,3 @@ def _pose_to_transform(
     T = common.set(T, idx_R, R, xp=xp)
     T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
-
-
-def from_native_args(pose: Float[Array, "B J 4 4"]) -> dict[str, Array]:
-    """Convert native ANNY args (4x4 transforms) to API format (axis-angle).
-
-    Args:
-        pose: Per-joint 4x4 rotation transforms [B, J, 4, 4] in native coords
-
-    Returns:
-        Dict with 'pose' as axis-angle [B, J, 3]
-    """
-    xp = get_namespace(pose)
-    R = pose[..., :3, :3]
-    axis_angle = SO3.conversions.from_rotmat_to_axis_angle(R, xp=xp)
-    return {"pose": axis_angle}
-
-
-def to_native_outputs(
-    vertices: Float[Array, "B V 3"],
-    transforms: Float[Array, "B J 4 4"],
-) -> dict[str, Array]:
-    """Return API outputs in native ANNY format.
-
-    Args:
-        vertices: Mesh vertices [B, V, 3] in native coords
-        transforms: Joint transforms [B, J, 4, 4] in native coords
-
-    Returns:
-        Dict with 'vertices' and 'bone_poses' in native coords
-    """
-    return {"vertices": vertices, "bone_poses": transforms}

@@ -17,6 +17,8 @@ import torch
 
 from accelerator_utils import get_accelerator_device
 from nanomanifold import SO3
+from body_models import common
+from body_models.common import get_namespace
 from gradient_utils import prepare_params, sampled_gradcheck
 
 pytestmark = pytest.mark.fast
@@ -74,8 +76,40 @@ def _anny_backend(backend: str):
     if backend == "jax":
         pytest.importorskip("jax.numpy")
     module = import_module(f"body_models.anny.{backend}")
-    package = import_module("body_models.anny")
-    return getattr(module, "ANNY"), package.from_native_args, package.to_native_outputs
+    return getattr(module, "ANNY")
+
+
+def native_args(pose):
+    xp = get_namespace(pose)
+    rotation = pose[..., :3, :3]
+    return {"pose": SO3.conversions.from_rotmat_to_axis_angle(rotation, xp=xp)}
+
+
+def native_outputs(vertices, transforms):
+    xp = get_namespace(vertices)
+    dtype = vertices.dtype
+    coord_rotation = xp.asarray([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=dtype)
+    coord_translation = xp.asarray([0.0, 0.852, 0.0], dtype=dtype)
+
+    native_vertices = (vertices - coord_translation) @ coord_rotation
+    coord_transform = common.zeros_as(vertices, shape=(4, 4), xp=xp)
+    coord_transform = common.set(coord_transform, (slice(None, 3), slice(None, 3)), coord_rotation, xp=xp)
+    coord_transform = common.set(coord_transform, (slice(None, 3), 3), coord_translation, xp=xp)
+    coord_transform = common.set(coord_transform, (3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
+    native_transforms = _invert_transform(coord_transform, xp=xp) @ transforms
+    return {"vertices": native_vertices, "bone_poses": native_transforms}
+
+
+def _invert_transform(transform, *, xp):
+    rotation = transform[..., :3, :3]
+    translation = transform[..., :3, 3]
+    rotation_t = rotation.mT
+    inverse = xp.zeros_like(transform)
+    inverse = common.set(inverse, (..., slice(None, 3), slice(None, 3)), rotation_t, xp=xp)
+    inverse = common.set(
+        inverse, (..., slice(None, 3), 3), -xp.squeeze(rotation_t @ translation[..., None], axis=-1), xp=xp
+    )
+    return common.set(inverse, (..., 3, 3), xp.asarray(1.0, dtype=transform.dtype), xp=xp)
 
 
 def _backend_array(backend: str, value):
@@ -103,7 +137,6 @@ def _to_numpy(backend: str, value):
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_torch(idx: int) -> None:
     """Test PyTorch forward_vertices matches reference."""
-    from body_models.anny import from_native_args, to_native_outputs
     from body_models.anny.torch import ANNY
 
     model = ANNY(model_path=MODEL_PATH)
@@ -112,7 +145,7 @@ def test_forward_vertices_torch(idx: int) -> None:
 
     # Convert pose from 4x4 to axis-angle
     pose_4x4 = torch.tensor(inputs["pose_4x4"])[None]
-    pose_args = from_native_args(pose_4x4)
+    pose_args = native_args(pose_4x4)
 
     with torch.no_grad():
         verts = model.forward_vertices(
@@ -134,7 +167,8 @@ def test_forward_vertices_torch(idx: int) -> None:
             **pose_args,
         )
 
-    result = to_native_outputs(verts, transforms)
+    # Convert to native outputs (Z-up) for comparison
+    result = native_outputs(verts, transforms)
 
     np.testing.assert_allclose(result["vertices"][0].numpy(), ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(result["bone_poses"][0].numpy(), ref["bone_poses"], rtol=RTOL, atol=ATOL)
@@ -143,14 +177,14 @@ def test_forward_vertices_torch(idx: int) -> None:
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_numpy(idx: int) -> None:
     """Test NumPy forward_vertices matches reference."""
-    from body_models.anny.numpy import ANNY, from_native_args, to_native_outputs
+    from body_models.anny.numpy import ANNY
 
     model = ANNY(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     # Convert pose from 4x4 to axis-angle
     pose_4x4 = inputs["pose_4x4"][None]  # [1, J, 4, 4]
-    pose_args = from_native_args(pose_4x4)
+    pose_args = native_args(pose_4x4)
 
     verts = model.forward_vertices(
         gender=np.array([inputs["gender"]], dtype=np.float32),
@@ -171,7 +205,8 @@ def test_forward_vertices_numpy(idx: int) -> None:
         **pose_args,
     )
 
-    result = to_native_outputs(verts, transforms)
+    # Convert to native outputs (Z-up) for comparison
+    result = native_outputs(verts, transforms)
 
     np.testing.assert_allclose(result["vertices"][0], ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(result["bone_poses"][0], ref["bone_poses"], rtol=RTOL, atol=ATOL)
@@ -181,14 +216,14 @@ def test_forward_vertices_numpy(idx: int) -> None:
 def test_forward_vertices_jax(idx: int) -> None:
     """Test JAX forward_vertices matches reference."""
     jnp = pytest.importorskip("jax.numpy")
-    from body_models.anny.jax import ANNY, from_native_args, to_native_outputs
+    from body_models.anny.jax import ANNY
 
     model = ANNY(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     # Convert pose from 4x4 to axis-angle
     pose_4x4 = jnp.array(inputs["pose_4x4"])[None]  # [1, J, 4, 4]
-    pose_args = from_native_args(pose_4x4)
+    pose_args = native_args(pose_4x4)
 
     verts = model.forward_vertices(
         gender=jnp.array([inputs["gender"]], dtype=jnp.float32),
@@ -209,7 +244,8 @@ def test_forward_vertices_jax(idx: int) -> None:
         **pose_args,
     )
 
-    result = to_native_outputs(verts, transforms)
+    # Convert to native outputs (Z-up) for comparison
+    result = native_outputs(verts, transforms)
 
     np.testing.assert_allclose(np.asarray(result["vertices"][0]), ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(np.asarray(result["bone_poses"][0]), ref["bone_poses"], rtol=RTOL, atol=ATOL)
@@ -219,10 +255,10 @@ def test_forward_vertices_jax(idx: int) -> None:
 @pytest.mark.parametrize("rotation_type", ROTATION_TYPES)
 def test_rotation_types(rotation_type: str, backend: str) -> None:
     """Test ANNY matches axis-angle across rotation representations."""
-    ANNY, from_native_args, to_native_outputs = _anny_backend(backend)
+    ANNY = _anny_backend(backend)
     inputs, _ = load_test_case(0)
 
-    pose_args = from_native_args(_backend_array(backend, inputs["pose_4x4"][None]))
+    pose_args = native_args(_backend_array(backend, inputs["pose_4x4"][None]))
     pose_axis_angle = _to_numpy(backend, pose_args["pose"])[0]
     native_inputs = {
         **{
@@ -259,11 +295,11 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
     }
 
     with torch.no_grad() if backend == "torch" else nullcontext():
-        native_result = to_native_outputs(
+        native_result = native_outputs(
             native_model.forward_vertices(**native_kwargs),
             native_model.forward_skeleton(**native_kwargs),
         )
-        rotated_result = to_native_outputs(
+        rotated_result = native_outputs(
             rotated_model.forward_vertices(**rotated_kwargs),
             rotated_model.forward_skeleton(**rotated_kwargs),
         )
@@ -285,10 +321,10 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_vertex_subset_matches_full_output(backend: str) -> None:
     """Test vertex_indices returns the same vertices as slicing the full output."""
-    ANNY, from_native_args, _ = _anny_backend(backend)
+    ANNY = _anny_backend(backend)
     model = ANNY(model_path=MODEL_PATH)
     inputs, _ = load_test_case(0)
-    pose_args = from_native_args(_backend_array(backend, inputs["pose_4x4"][None]))
+    pose_args = native_args(_backend_array(backend, inputs["pose_4x4"][None]))
     kwargs = {
         "gender": _backend_array(backend, np.array([inputs["gender"]], dtype=np.float32)),
         "age": _backend_array(backend, np.array([inputs["age"]], dtype=np.float32)),
