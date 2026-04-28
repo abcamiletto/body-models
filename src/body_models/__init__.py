@@ -25,27 +25,12 @@ def main() -> None:
 
     from .anny.io import download_model as download_anny_model
     from . import fetch
-    from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
+    from .config import CONFIG_FILE, MODELS, Model, get_model_path, set_model_path, unset_model_path
     from .g1.io import download_model as download_g1_model
     from .garment_measurements.io import download_model as download_garment_measurements_model
     from .mhr.io import download_model as download_mhr_model
     from .soma.io import download_model as download_soma_model
 
-    Model = Literal[
-        "smpl-male",
-        "smpl-female",
-        "smpl-neutral",
-        "smplx-male",
-        "smplx-female",
-        "smplx-neutral",
-        "skel",
-        "anny",
-        "mhr",
-        "flame",
-        "g1",
-        "soma",
-        "garment-measurements",
-    ]
     app = typer.Typer(add_completion=False)
 
     @app.callback(invoke_without_command=True)
