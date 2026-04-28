@@ -432,6 +432,5 @@ class SOMA(_BodyModel, _nn.Module):
         linear_model_cls = {"smpl": _SMPL, "smplx": _SMPLX}[self.model_type]
         self._identity_linear_model = linear_model_cls(
             model_path=_get_identity_model_path(self.model_type),
-            gender="neutral",
             simplify=1.0,
         )

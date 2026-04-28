@@ -27,7 +27,7 @@ def _get_model_file(model_name: str) -> Path:
     if model_name == "flame":
         return model_dir / "FLAME_NEUTRAL.pkl"
     if model_name == "skel":
-        return model_dir / "skel_male.pkl"
+        return model_dir
     if model_name == "garment_measurements":
         return model_dir / "garment_measurements.npz"
 

@@ -389,7 +389,6 @@ class SOMA(_BodyModel, _nnx.Module):
         self._identity_linear_model = _nnx.data(
             linear_model_cls(
                 model_path=_get_identity_model_path(self.model_type),
-                gender="neutral",
                 simplify=1.0,
             )
         )
