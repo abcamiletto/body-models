@@ -36,19 +36,19 @@ def get_config() -> dict:
     return tomllib.loads(CONFIG_FILE.read_text())
 
 
-def get_model_path(model: Model) -> Path | None:
+def get_model_path(model: str) -> Path | None:
     path = get_config().get("paths", {}).get(model)
     return Path(path) if path else None
 
 
-def set_model_path(model: Model, path: str | Path) -> None:
+def set_model_path(model: str, path: str | Path) -> None:
     path = str(validate_model_path(model, path))
     config = get_config()
     config.setdefault("paths", {})[model] = path
     _write_config(config)
 
 
-def unset_model_path(model: Model) -> None:
+def unset_model_path(model: str) -> None:
     config = get_config()
     if "paths" in config and model in config["paths"]:
         del config["paths"][model]
@@ -57,7 +57,7 @@ def unset_model_path(model: Model) -> None:
         _write_config(config)
 
 
-def validate_model_path(model: Model, path: str | Path) -> Path:
+def validate_model_path(model: str, path: str | Path) -> Path:
     if model in SMPL_MODELS:
         from .smpl.io import validate_path
     elif model in SMPLX_MODELS:

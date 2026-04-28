@@ -19,6 +19,7 @@ from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mes
 
 PathLike = Path | str
 
+
 class FLAME(BodyModel, nn.Module):
     """FLAME head model with PyTorch backend.
 

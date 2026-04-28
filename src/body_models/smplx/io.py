@@ -13,6 +13,8 @@ PathLike = Path | str
 
 __all__ = ["get_model_path", "get_joint_names", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
+
 def validate_path(model_path: PathLike) -> Path:
     model_path = Path(model_path)
     if model_path.is_dir():

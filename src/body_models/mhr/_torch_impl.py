@@ -20,6 +20,7 @@ from .io import get_model_path, load_model_data, load_pose_correctives_weights, 
 
 PathLike = Path | str
 
+
 class MHR(BodyModel, nn.Module):
     """MHR body model with PyTorch backend and neural pose correctives.
 

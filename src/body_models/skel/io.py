@@ -8,6 +8,8 @@ from ..common import simplify_mesh
 PathLike = Path | str
 
 __all__ = ["get_model_path", "simplify_mesh"]
+
+
 def validate_path(model_path: PathLike) -> Path:
     model_path = Path(model_path)
     if model_path.is_file():

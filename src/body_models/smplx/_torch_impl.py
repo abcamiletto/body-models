@@ -20,6 +20,7 @@ from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_
 
 PathLike = Path | str
 
+
 class SMPLX(BodyModel, nn.Module):
     """SMPL-X body model with PyTorch backend."""
 

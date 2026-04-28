@@ -20,6 +20,7 @@ from .io import SMPL_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh
 
 PathLike = Path | str
 
+
 class SMPL(BodyModel, nn.Module):
     """SMPL body model with PyTorch backend."""
 
