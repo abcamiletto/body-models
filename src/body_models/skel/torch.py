@@ -2,6 +2,7 @@
 
 import pickle as pkl
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import torch
@@ -16,7 +17,7 @@ from . import core
 from .io import get_model_path, simplify_mesh
 
 
-__all__ = ["SKEL", "from_native_args", "to_native_outputs"]
+__all__ = ["SKEL"]
 
 
 class SKEL(BodyModel, nn.Module):
@@ -61,7 +62,12 @@ class SKEL(BodyModel, nn.Module):
     _scapula_l_axes: Float[Tensor, "3 3"]
     _spine_axes: Float[Tensor, "3 3"]
 
-    def __init__(self, model_path: Path | str | None = None, gender: str | None = None, simplify: float = 1.0):
+    def __init__(
+        self,
+        model_path: Path | str | None = None,
+        gender: Literal["male", "female"] | None = None,
+        simplify: float = 1.0,
+    ):
         if gender not in {"male", "female"}:
             raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
@@ -593,31 +599,3 @@ _SCALING_KEYPOINTS = {
     (23, 0, 1): (6179, 6137),
     (23, 1, 0): (5670, 5906),
 }
-
-
-# =============================================================================
-# Conversion functions
-# =============================================================================
-
-
-def from_native_args(
-    shape: Float[Tensor, "B 10"],
-    body_pose: Float[Tensor, "B 46"],
-    root_rotation: Float[Tensor, "B 3"] | None = None,
-    global_rotation: Float[Tensor, "B 3"] | None = None,
-    global_translation: Float[Tensor, "B 3"] | None = None,
-) -> dict[str, Tensor | None]:
-    """Convert native SKEL args to forward_* kwargs."""
-    return core.from_native_args(shape, body_pose, root_rotation, global_rotation, global_translation)
-
-
-def to_native_outputs(
-    vertices: Float[Tensor, "B V 3"],
-    transforms: Float[Tensor, "B J 4 4"],
-    skeleton_mesh: Float[Tensor, "B Vs 3"],
-    feet_offset: Float[Tensor, "3"],
-) -> dict[str, Tensor]:
-    """Convert forward_* outputs to native SKEL format."""
-    result = core.to_native_outputs(vertices, transforms, feet_offset)
-    result["skeleton_vertices"] = skeleton_mesh - feet_offset
-    return result
