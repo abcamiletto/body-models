@@ -1,6 +1,7 @@
 """NumPy backend for the Unitree G1 rigid model."""
 
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -14,10 +15,24 @@ from .io import load_model_data
 __all__ = ["G1"]
 
 
+class RestPose(TypedDict):
+    body_pose: Float[np.ndarray, "B 29 N"] | Float[np.ndarray, "B 29 3 3"]
+    global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"]
+    global_translation: Float[np.ndarray, "B 3"]
+
+
 class G1(BodyModel):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
+    local_offsets: Float[np.ndarray, "34 3"]
+    rest_local_rotations: Float[np.ndarray, "34 3 3"]
+    link_geom_positions: Float[np.ndarray, "L 3"]
+    link_geom_rotations: Float[np.ndarray, "L 3 3"]
+    qpos_joint_axes: Float[np.ndarray, "29 3"]
+    qpos_joint_limits: Float[np.ndarray, "29 2"]
+    _vertices: Float[np.ndarray, "V 3"]
+    _faces: Int[np.ndarray, "F 3"]
 
     def __init__(
         self,
@@ -87,7 +102,7 @@ class G1(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        joint_indices=None,
+        joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B 34 4 4"]:
         return core.forward_skeleton(
             local_offsets=self.local_offsets,
@@ -109,7 +124,7 @@ class G1(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
             vertices=self._vertices,
@@ -154,7 +169,7 @@ class G1(BodyModel):
             xp=np,
         )
 
-    def link_mesh(self, link_name: str) -> dict[str, np.ndarray | str | int]:
+    def link_mesh(self, link_name: str) -> dict[str, Float[np.ndarray, "V 3"] | Int[np.ndarray, "F 3"] | str | int]:
         return core.link_mesh(
             vertices=self._vertices,
             faces=self._faces,
@@ -168,7 +183,9 @@ class G1(BodyModel):
             link_name=link_name,
         )
 
-    def joint_meshes(self, joint_name: str) -> list[dict[str, np.ndarray | str | int]]:
+    def joint_meshes(
+        self, joint_name: str
+    ) -> list[dict[str, Float[np.ndarray, "V 3"] | Int[np.ndarray, "F 3"] | str | int]]:
         return core.joint_meshes(
             vertices=self._vertices,
             faces=self._faces,
@@ -182,7 +199,7 @@ class G1(BodyModel):
             joint_name=joint_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> RestPose:
         pose_ref = np.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
         global_ref = np.zeros((batch_size, 3), dtype=dtype)
         body_pose = SO3.identity_as(
