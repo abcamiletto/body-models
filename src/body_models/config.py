@@ -1,14 +1,13 @@
 import json
 import tomllib
 from pathlib import Path
-from typing import Literal, get_args
 
 from platformdirs import user_config_dir
 
 CONFIG_DIR = Path(user_config_dir("body-models"))
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
-Model = Literal[
+MODELS = [
     "smpl-male",
     "smpl-female",
     "smpl-neutral",
@@ -23,8 +22,6 @@ Model = Literal[
     "soma",
     "garment-measurements",
 ]
-
-MODELS = get_args(Model)
 
 SMPL_MODELS = {"smpl-male", "smpl-female", "smpl-neutral"}
 SMPLX_MODELS = {"smplx-male", "smplx-female", "smplx-neutral"}
