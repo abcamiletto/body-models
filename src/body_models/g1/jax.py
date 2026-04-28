@@ -1,7 +1,6 @@
 """JAX backend for the Unitree G1 rigid model."""
 
 from pathlib import Path
-from typing import TypedDict
 
 import jax
 import jax.numpy as jnp
@@ -17,24 +16,16 @@ from .io import load_model_data
 __all__ = ["G1"]
 
 
-class RestPose(TypedDict):
-    body_pose: Float[jax.Array, "B 29 N"] | Float[jax.Array, "B 29 3 3"]
-    global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"]
-    global_translation: Float[jax.Array, "B 3"]
-
-
 class G1(BodyModel, nnx.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
-    local_offsets: nnx.Variable[Float[jax.Array, "34 3"]]
-    rest_local_rotations: nnx.Variable[Float[jax.Array, "34 3 3"]]
-    link_geom_positions: nnx.Variable[Float[jax.Array, "L 3"]]
-    link_geom_rotations: nnx.Variable[Float[jax.Array, "L 3 3"]]
-    qpos_joint_axes: nnx.Variable[Float[jax.Array, "29 3"]]
-    qpos_joint_limits: nnx.Variable[Float[jax.Array, "29 2"]]
-    _vertices: nnx.Variable[Float[jax.Array, "V 3"]]
-    _faces: nnx.Variable[Int[jax.Array, "F 3"]]
+    local_offsets: nnx.Variable[jax.Array]
+    rest_local_rotations: nnx.Variable[jax.Array]
+    link_geom_positions: nnx.Variable[jax.Array]
+    link_geom_rotations: nnx.Variable[jax.Array]
+    qpos_joint_axes: nnx.Variable[jax.Array]
+    qpos_joint_limits: nnx.Variable[jax.Array]
 
     def __init__(
         self,
@@ -45,8 +36,6 @@ class G1(BodyModel, nnx.Module):
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if convention not in core.VALID_CONVENTIONS:
-            raise ValueError(f"Invalid convention: {convention}")
         self.rotation_type = rotation_type
         self.convention = convention
         data = load_model_data(model_path, convention=convention)
@@ -201,7 +190,7 @@ class G1(BodyModel, nnx.Module):
             joint_name=joint_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> RestPose:
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         pose_ref = jnp.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
         global_ref = jnp.zeros((batch_size, 3), dtype=dtype)
         body_pose = SO3.identity_as(

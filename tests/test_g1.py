@@ -168,8 +168,9 @@ def test_g1_convention_selects_output_coordinate_system(backend: str) -> None:
     mujoco_params = mujoco_model.get_rest_pose(batch_size=1)
     soma_params = {key: _array(backend, _to_numpy(value)) for key, value in soma_params.items()}
     mujoco_params = {key: _array(backend, _to_numpy(value)) for key, value in mujoco_params.items()}
-    mujoco_params["global_translation"] = _array(backend, [[1.0, 2.0, 3.0]])
-    soma_params["global_translation"] = _array(backend, (MUJOCO_TO_SOMA @ np.array([[1.0], [2.0], [3.0]])).T)
+    mujoco_translation = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+    mujoco_params["global_translation"] = _array(backend, mujoco_translation)
+    soma_params["global_translation"] = _array(backend, mujoco_translation @ MUJOCO_TO_SOMA.T)
 
     soma_skeleton = _to_numpy(soma_model.forward_skeleton(**soma_params))
     mujoco_skeleton = _to_numpy(mujoco_model.forward_skeleton(**mujoco_params))

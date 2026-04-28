@@ -1,7 +1,6 @@
 """NumPy backend for the Unitree G1 rigid model."""
 
 from pathlib import Path
-from typing import TypedDict
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -15,24 +14,10 @@ from .io import load_model_data
 __all__ = ["G1"]
 
 
-class RestPose(TypedDict):
-    body_pose: Float[np.ndarray, "B 29 N"] | Float[np.ndarray, "B 29 3 3"]
-    global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"]
-    global_translation: Float[np.ndarray, "B 3"]
-
-
 class G1(BodyModel):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
-    local_offsets: Float[np.ndarray, "34 3"]
-    rest_local_rotations: Float[np.ndarray, "34 3 3"]
-    link_geom_positions: Float[np.ndarray, "L 3"]
-    link_geom_rotations: Float[np.ndarray, "L 3 3"]
-    qpos_joint_axes: Float[np.ndarray, "29 3"]
-    qpos_joint_limits: Float[np.ndarray, "29 2"]
-    _vertices: Float[np.ndarray, "V 3"]
-    _faces: Int[np.ndarray, "F 3"]
 
     def __init__(
         self,
@@ -43,8 +28,6 @@ class G1(BodyModel):
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if convention not in core.VALID_CONVENTIONS:
-            raise ValueError(f"Invalid convention: {convention}")
         self.rotation_type = rotation_type
         self.convention = convention
         data = load_model_data(model_path, convention=convention)
@@ -199,7 +182,7 @@ class G1(BodyModel):
             joint_name=joint_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> RestPose:
+    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
         pose_ref = np.zeros((batch_size, len(self.qpos_joint_indices), 3), dtype=dtype)
         global_ref = np.zeros((batch_size, 3), dtype=dtype)
         body_pose = SO3.identity_as(

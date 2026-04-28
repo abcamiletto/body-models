@@ -1,7 +1,6 @@
 """PyTorch backend for the Unitree G1 rigid model."""
 
 from pathlib import Path
-from typing import TypedDict
 
 import torch
 import torch.nn as nn
@@ -17,24 +16,18 @@ from .io import load_model_data
 __all__ = ["G1"]
 
 
-class RestPose(TypedDict):
-    body_pose: Float[Tensor, "B 29 N"] | Float[Tensor, "B 29 3 3"]
-    global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"]
-    global_translation: Float[Tensor, "B 3"]
-
-
 class G1(BodyModel, nn.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
-    local_offsets: Float[Tensor, "34 3"]
-    rest_local_rotations: Float[Tensor, "34 3 3"]
-    link_geom_positions: Float[Tensor, "L 3"]
-    link_geom_rotations: Float[Tensor, "L 3 3"]
-    qpos_joint_axes: Float[Tensor, "29 3"]
-    qpos_joint_limits: Float[Tensor, "29 2"]
-    _vertices: Float[Tensor, "V 3"]
-    _faces: Int[Tensor, "F 3"]
+    local_offsets: Tensor
+    rest_local_rotations: Tensor
+    link_geom_positions: Tensor
+    link_geom_rotations: Tensor
+    qpos_joint_axes: Tensor
+    qpos_joint_limits: Tensor
+    _vertices: Tensor
+    _faces: Tensor
 
     def __init__(
         self,
@@ -45,8 +38,6 @@ class G1(BodyModel, nn.Module):
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if convention not in core.VALID_CONVENTIONS:
-            raise ValueError(f"Invalid convention: {convention}")
         super().__init__()
         self.rotation_type = rotation_type
         self.convention = convention
@@ -203,7 +194,7 @@ class G1(BodyModel, nn.Module):
             joint_name=joint_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> RestPose:
+    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self._vertices.device
         pose_ref = torch.zeros((batch_size, len(self.qpos_joint_indices), 3), device=device, dtype=dtype)
         global_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
