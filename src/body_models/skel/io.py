@@ -16,9 +16,8 @@ def validate_path(model_path: PathLike) -> Path:
         raise ValueError(f"Expected a SKEL model directory, got file: {model_path}")
     if not model_path.is_dir():
         raise FileNotFoundError(f"SKEL model directory not found: {model_path}")
-    missing = [name for name in ("skel_male.pkl", "skel_female.pkl") if not (model_path / name).is_file()]
-    if missing:
-        raise FileNotFoundError(f"SKEL model directory {model_path} is missing required files: {', '.join(missing)}")
+    if not any((model_path / name).is_file() for name in ("skel_male.pkl", "skel_female.pkl")):
+        raise FileNotFoundError(f"SKEL model directory {model_path} must contain skel_male.pkl or skel_female.pkl")
     return model_path
 
 
