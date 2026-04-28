@@ -48,6 +48,7 @@ FLAME_PATH = ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"
 GARMENT_MEASUREMENTS_PATH = ASSETS_DIR / "garment_measurements/model"
 G1_PATH = ASSETS_DIR / "g1/model"
 SOMA_PATH: Path | None = None  # None → load from body-models cache
+ANNY_DISPLAY_ROTATION_X = -np.pi / 2
 
 # ── Per-tab joint configurations ─────────────────────────────────────────────
 SMPL_POSE_JOINTS = [
@@ -447,6 +448,8 @@ def main() -> None:
         row, col = divmod(i, GRID_COLS)
         row_count = min(GRID_COLS, n - row * GRID_COLS)
         params = model.get_rest_pose()
+        if name == "ANNY":
+            params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
         verts = model.forward_vertices(**params)
         states[name] = ModelState(
             model=model,

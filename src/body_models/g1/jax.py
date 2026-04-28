@@ -32,11 +32,13 @@ class G1(BodyModel, nnx.Module):
         model_path: Path | str | None = None,
         *,
         rotation_type: core.RotationType = "rotmat",
+        convention: core.Convention = "soma",
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
-        data = load_model_data(model_path)
+        self.convention = convention
+        data = load_model_data(model_path, convention=convention)
         self._joint_names = data["joint_names"]
         self.parents = data["parents"]
         self.link_names = data["link_names"]
@@ -91,7 +93,7 @@ class G1(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        joint_indices=None,
+        joint_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B 34 4 4"]:
         return core.forward_skeleton(
             local_offsets=self.local_offsets[...],
@@ -113,7 +115,7 @@ class G1(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B V 3"]:
         return core.forward_vertices(
             vertices=self._vertices[...],
@@ -158,7 +160,7 @@ class G1(BodyModel, nnx.Module):
             xp=jnp,
         )
 
-    def link_mesh(self, link_name: str) -> dict[str, jax.Array | str | int]:
+    def link_mesh(self, link_name: str) -> dict[str, Float[jax.Array, "V 3"] | Int[jax.Array, "F 3"] | str | int]:
         return core.link_mesh(
             vertices=self._vertices[...],
             faces=self._faces[...],
@@ -172,7 +174,9 @@ class G1(BodyModel, nnx.Module):
             link_name=link_name,
         )
 
-    def joint_meshes(self, joint_name: str) -> list[dict[str, jax.Array | str | int]]:
+    def joint_meshes(
+        self, joint_name: str
+    ) -> list[dict[str, Float[jax.Array, "V 3"] | Int[jax.Array, "F 3"] | str | int]]:
         return core.joint_meshes(
             vertices=self._vertices[...],
             faces=self._faces[...],

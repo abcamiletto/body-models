@@ -24,11 +24,13 @@ class G1(BodyModel):
         model_path: Path | str | None = None,
         *,
         rotation_type: core.RotationType = "rotmat",
+        convention: core.Convention = "soma",
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
-        data = load_model_data(model_path)
+        self.convention = convention
+        data = load_model_data(model_path, convention=convention)
         self._joint_names = data["joint_names"]
         self.parents = data["parents"]
         self.local_offsets = data["local_offsets"]
@@ -83,7 +85,7 @@ class G1(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        joint_indices=None,
+        joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B 34 4 4"]:
         return core.forward_skeleton(
             local_offsets=self.local_offsets,
@@ -105,7 +107,7 @@ class G1(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
             vertices=self._vertices,
@@ -150,7 +152,7 @@ class G1(BodyModel):
             xp=np,
         )
 
-    def link_mesh(self, link_name: str) -> dict[str, np.ndarray | str | int]:
+    def link_mesh(self, link_name: str) -> dict[str, Float[np.ndarray, "V 3"] | Int[np.ndarray, "F 3"] | str | int]:
         return core.link_mesh(
             vertices=self._vertices,
             faces=self._faces,
@@ -164,7 +166,9 @@ class G1(BodyModel):
             link_name=link_name,
         )
 
-    def joint_meshes(self, joint_name: str) -> list[dict[str, np.ndarray | str | int]]:
+    def joint_meshes(
+        self, joint_name: str
+    ) -> list[dict[str, Float[np.ndarray, "V 3"] | Int[np.ndarray, "F 3"] | str | int]]:
         return core.joint_meshes(
             vertices=self._vertices,
             faces=self._faces,

@@ -64,8 +64,6 @@ class ANNY(BodyModel, nn.Module):
     phenotype_mask: Float[Tensor, "S P"]
     _y_axis: Float[Tensor, "3"]
     _degenerate_rotation: Float[Tensor, "3 3"]
-    _coord_rotation: Float[Tensor, "3 3"]
-    _coord_translation: Float[Tensor, "3"]
 
     def __init__(
         self,
@@ -153,13 +151,6 @@ class ANNY(BodyModel, nn.Module):
         self.register_buffer(
             "_degenerate_rotation", torch.diag(torch.tensor([1.0, -1.0, -1.0], dtype=dtype)), persistent=False
         )
-        self.register_buffer(
-            "_coord_rotation",
-            torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=dtype),
-            persistent=False,
-        )
-        self.register_buffer("_coord_translation", torch.tensor([0.0, 0.852, 0.0], dtype=dtype), persistent=False)
-
         # Precompute dense LBS weights for faster skinning
         V, J = data["vertex_bone_weights"].shape[0], len(data["bone_labels"])
         lbs_weights = torch.zeros(V, J, dtype=dtype)
@@ -217,7 +208,7 @@ class ANNY(BodyModel, nn.Module):
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.template_vertices @ self._coord_rotation.T + self._coord_translation
+        return self.template_vertices
 
     def forward_vertices(
         self,
@@ -245,8 +236,6 @@ class ANNY(BodyModel, nn.Module):
             phenotype_mask=self.phenotype_mask,
             anchors=self._get_anchors_dict(),
             kinematic_fronts=self._kinematic_fronts,
-            coord_rotation=self._coord_rotation,
-            coord_translation=self._coord_translation,
             y_axis=self._y_axis,
             degenerate_rotation=self._degenerate_rotation,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
@@ -287,8 +276,6 @@ class ANNY(BodyModel, nn.Module):
             phenotype_mask=self.phenotype_mask,
             anchors=self._get_anchors_dict(),
             kinematic_fronts=self._kinematic_fronts,
-            coord_rotation=self._coord_rotation,
-            coord_translation=self._coord_translation,
             y_axis=self._y_axis,
             degenerate_rotation=self._degenerate_rotation,
             extrapolate_phenotypes=self.extrapolate_phenotypes,

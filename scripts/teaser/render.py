@@ -87,7 +87,7 @@ ANNY_POSE_OFFSETS = {
     ("lowerarm01.l", 0): -0.75,
     ("lowerarm01.r", 0): -0.75,
 }
-ANNY_GLOBAL_PITCH_X = 0.08
+ANNY_DISPLAY_ROTATION_X = -np.pi / 2 + 0.08
 
 GM_POSE_OFFSETS = {
     ("upper_arm_l", 2): 0.6,
@@ -164,7 +164,7 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
         params = model.get_rest_pose(batch_size=1)
         if family == "anny":
             apply_pose_offsets(model, params, ANNY_POSE_OFFSETS)
-            params["global_rotation"][0, 0] = ANNY_GLOBAL_PITCH_X
+            params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
         elif family == "mhr":
             params["pose"][0] = solve_mhr_pose(model)
         elif family == "garment_measurements":
@@ -245,7 +245,7 @@ def normalize_mesh(vertices: np.ndarray, target_height: float) -> np.ndarray:
 def create_mesh_object(name, vertices, faces):
     vertices = vertices.copy()
     vertices[:, 1] -= float(vertices[:, 1].min())
-    # Body models are Y-up, Blender is Z-up.
+    # Display meshes are Y-up, Blender is Z-up.
     verts_blender = [(float(x), float(z), float(y)) for x, y, z in vertices]
 
     mesh = bpy.data.meshes.new(f"{name}Mesh")

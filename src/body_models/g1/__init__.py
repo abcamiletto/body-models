@@ -24,4 +24,5 @@ def to_mujoco_qpos(
         global_rotation=global_rotation,
         clamp_to_limits=clamp_to_limits,
         rotation_type=model.rotation_type,
+        convention=model.convention,
     )
