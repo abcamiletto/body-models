@@ -511,6 +511,7 @@ from body_models import g1
 from body_models.g1.torch import G1
 
 model = G1(rotation_type="rotmat")  # Auto-downloads assets from Hugging Face if unset
+mujoco_model = G1(rotation_type="rotmat", convention="mujoco")
 params = model.get_rest_pose(batch_size=1)
 
 transforms = model.forward_skeleton(**params)  # [B, 34, 4, 4]
@@ -541,7 +542,7 @@ The unified API returns outputs in:
 
 SMPL, SMPL-X, SKEL, FLAME, MHR, GarmentMeasurements, and SOMA are natively Y-up and pass through unchanged. ANNY (MakeHuman) and G1 (MuJoCo) are natively Z-up and are rotated to Y-up at load time, so a single rendering or visualisation pipeline works across the entire lineup.
 
-Use the `to_native_outputs()` conversion functions to get outputs in the original library conventions.
+For G1, pass `convention="mujoco"` to keep the MuJoCo-native Z-up asset coordinates instead of the default `convention="soma"` Y-up coordinates.
 
 ## Development
 

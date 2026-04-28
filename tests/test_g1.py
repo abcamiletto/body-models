@@ -56,6 +56,7 @@ G1_JOINT_NAMES = [
     "right_hand_roll_skel",
 ]
 G1_NUM_LINK_MESHES = sum(len(meshes) for meshes in G1_MESH_JOINT_MAP.values())
+MUJOCO_TO_SOMA = np.array(core.MUJOCO_TO_KIMODO, dtype=np.float32)
 GLOBAL_ROTATION_SHAPES = {
     "axis_angle": (2, 3),
     "quat": (2, 4),
@@ -157,6 +158,32 @@ def test_forward_skeleton_uses_xml_offsets_in_kimodo_coordinates(backend: str) -
     subset = _to_numpy(model.forward_skeleton(**params, joint_indices=[1, 0]))
     np.testing.assert_allclose(subset[:, 0], skeleton[:, 1], atol=1e-6)
     np.testing.assert_allclose(subset[:, 1], skeleton[:, 0], atol=1e-6)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_g1_convention_selects_output_coordinate_system(backend: str) -> None:
+    soma_model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat")
+    mujoco_model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat", convention="mujoco")
+    soma_params = soma_model.get_rest_pose(batch_size=1)
+    mujoco_params = mujoco_model.get_rest_pose(batch_size=1)
+    soma_params = {key: _array(backend, _to_numpy(value)) for key, value in soma_params.items()}
+    mujoco_params = {key: _array(backend, _to_numpy(value)) for key, value in mujoco_params.items()}
+    mujoco_params["global_translation"] = _array(backend, [[1.0, 2.0, 3.0]])
+    soma_params["global_translation"] = _array(backend, (MUJOCO_TO_SOMA @ np.array([[1.0], [2.0], [3.0]])).T)
+
+    soma_skeleton = _to_numpy(soma_model.forward_skeleton(**soma_params))
+    mujoco_skeleton = _to_numpy(mujoco_model.forward_skeleton(**mujoco_params))
+    soma_vertices = _to_numpy(soma_model.forward_vertices(**soma_params))
+    mujoco_vertices = _to_numpy(mujoco_model.forward_vertices(**mujoco_params))
+
+    np.testing.assert_allclose(soma_skeleton[..., :3, 3], mujoco_skeleton[..., :3, 3] @ MUJOCO_TO_SOMA.T, atol=1e-6)
+    np.testing.assert_allclose(soma_vertices, mujoco_vertices @ MUJOCO_TO_SOMA.T, atol=1e-6)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_g1_rejects_invalid_convention(backend: str) -> None:
+    with pytest.raises(ValueError, match="Invalid convention"):
+        _backend(backend)(model_path=ASSET_DIR, convention="z-up")
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
@@ -294,6 +321,23 @@ def test_to_mujoco_qpos_uses_xml_axis_limits_and_coordinate_transform(backend: s
     np.testing.assert_allclose(qpos[0, :3], [3.0, 1.0, 2.0], atol=1e-6)
     np.testing.assert_allclose(qpos[0, 3:7], [1.0, 0.0, 0.0, 0.0], atol=1e-6)
     np.testing.assert_allclose(qpos[0, 7 + left_hip_qpos], 2.8798, atol=1e-6)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_to_mujoco_qpos_preserves_mujoco_convention_root(backend: str) -> None:
+    model = _backend(backend)(model_path=ASSET_DIR, rotation_type="rotmat", convention="mujoco")
+    body_pose = np.tile(np.eye(3, dtype=np.float32), (1, len(model.qpos_joint_indices), 1, 1))
+
+    qpos = _to_numpy(
+        g1.to_mujoco_qpos(
+            model,
+            body_pose=_array(backend, body_pose),
+            global_translation=_array(backend, [[1.0, 2.0, 3.0]]),
+        )
+    )
+
+    np.testing.assert_allclose(qpos[0, :3], [1.0, 2.0, 3.0], atol=1e-6)
+    np.testing.assert_allclose(qpos[0, 3:7], [1.0, 0.0, 0.0, 0.0], atol=1e-6)
 
 
 # ============================================================================

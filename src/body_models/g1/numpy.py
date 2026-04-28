@@ -24,11 +24,15 @@ class G1(BodyModel):
         model_path: Path | str | None = None,
         *,
         rotation_type: core.RotationType = "rotmat",
+        convention: core.Convention = "soma",
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if convention not in core.VALID_CONVENTIONS:
+            raise ValueError(f"Invalid convention: {convention}")
         self.rotation_type = rotation_type
-        data = load_model_data(model_path)
+        self.convention = convention
+        data = load_model_data(model_path, convention=convention)
         self._joint_names = data["joint_names"]
         self.parents = data["parents"]
         self.local_offsets = data["local_offsets"]
