@@ -19,6 +19,9 @@ __all__ = ["MyoFullBody"]
 class MyoFullBody(BodyModel, nn.Module):
     """MyoSuite-derived full-body MJCF model with rigid STL link meshes."""
 
+    is_rigid_body = True
+    has_tendons = True
+
     local_offsets: Tensor
     rest_local_rotations: Tensor
     qpos_axes: Tensor

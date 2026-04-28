@@ -443,11 +443,10 @@ def triangulate(faces: np.ndarray) -> np.ndarray:
 
 def _muscle_segment_indices(model: BodyModel) -> np.ndarray | None:
     """Flatten a model's tendons into ``[N_segments, 2]`` index pairs into ``world_sites``."""
-    tendons = getattr(model, "tendons", None)
-    if not tendons:
+    if not model.has_tendons:
         return None
     segments: list[tuple[int, int]] = []
-    for tendon in tendons:
+    for tendon in cast(Any, model).tendons:
         sites = tendon["site_indices"]
         segments.extend(zip(sites[:-1], sites[1:]))
     return np.asarray(segments, dtype=np.int64)

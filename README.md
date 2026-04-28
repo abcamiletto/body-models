@@ -203,8 +203,10 @@ Rigged models inherit from `BodyModel` and share these properties:
 | `num_vertices` | `int` | Number of mesh vertices |
 | `joint_names` | `list[str]` | Joint names |
 | `faces` | `[F, 3]` | Mesh face indices |
-| `skin_weights` | `[V, J]` | Skinning weights |
+| `skin_weights` | `[V, J]` | Skinning weights (raises for rigid models) |
 | `rest_vertices` | `[V, 3]` | Vertices in rest pose |
+| `is_rigid_body` | `bool` | `True` for rigid articulated models (G1, MyoFullBody) — meshes are rigidly attached to bodies, no LBS |
+| `has_tendons` | `bool` | `True` if the model exposes MJCF muscle via-points + tendons (MyoFullBody) |
 
 ### Common Methods
 

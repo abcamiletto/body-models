@@ -19,6 +19,9 @@ __all__ = ["MyoFullBody"]
 class MyoFullBody(BodyModel, nnx.Module):
     """MyoSuite-derived full-body MJCF model with rigid STL link meshes."""
 
+    is_rigid_body = True
+    has_tendons = True
+
     local_offsets: nnx.Variable[jax.Array]
     rest_local_rotations: nnx.Variable[jax.Array]
     qpos_axes: nnx.Variable[jax.Array]

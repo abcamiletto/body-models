@@ -97,7 +97,7 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert isinstance(model.parents, list)
     assert len(model.parents) == model.num_joints
     assert all(isinstance(parent, int) for parent in model.parents)
-    if model_name in {"g1", "myofullbody"}:
+    if model.is_rigid_body:
         with pytest.raises(NotImplementedError, match="rigid articulated"):
             model.skin_weights
     else:
@@ -145,7 +145,7 @@ def test_viser_exports_match_model_outputs(model_name: str, backend: str) -> Non
     model = _build_model(model_name, backend)
 
     forward_kwargs = model.get_rest_pose(batch_size=1)
-    if model_name in {"g1", "myofullbody"}:
+    if model.is_rigid_body:
         with pytest.raises(NotImplementedError, match="skin_weights"):
             model.to_viser_skinned_mesh(**forward_kwargs)
         bones = model.to_viser_bones(**forward_kwargs)

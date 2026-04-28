@@ -19,6 +19,7 @@ class G1(BodyModel, nn.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
+    is_rigid_body = True
     local_offsets: Tensor
     rest_local_rotations: Tensor
     link_geom_positions: Tensor

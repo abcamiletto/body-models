@@ -17,6 +17,7 @@ class G1(BodyModel):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     NUM_JOINTS = 34
+    is_rigid_body = True
 
     def __init__(
         self,

@@ -78,6 +78,8 @@ def test_metadata_matches_upstream_mjcf(backend: str) -> None:
     assert "femur_r" in model.joint_names
     assert model.faces.ndim == 2 and model.faces.shape[1] == 3
     assert model.num_vertices > EXPECTED_NUM_LINKS * 3
+    assert model.is_rigid_body is True
+    assert model.has_tendons is True
 
     with pytest.raises(NotImplementedError, match="rigid articulated"):
         model.skin_weights
