@@ -23,6 +23,7 @@ import torch
 
 from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
+from nanomanifold import SO3
 
 pytestmark = pytest.mark.fast
 
@@ -79,6 +80,17 @@ def _to_numpy(backend: str, value):
     if backend == "torch":
         return value.numpy()
     return np.asarray(value)
+
+
+def native_outputs(vertices: torch.Tensor, transforms: torch.Tensor) -> dict[str, torch.Tensor]:
+    translation = transforms[..., :3, 3] * 100
+    rotation = transforms[..., :3, :3]
+    scale = torch.linalg.vector_norm(rotation[..., :, 0], dim=-1, keepdim=True)
+    quat = SO3.conversions.from_rotmat_to_quat(rotation / scale[..., None], convention="xyzw", xp=torch)
+    return {
+        "vertices": vertices * 100,
+        "joints": torch.cat([translation, quat, scale], dim=-1),
+    }
 
 
 def _assert_skeleton_close(
@@ -169,7 +181,6 @@ def test_forward_vertices_jax(idx: int) -> None:
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_skeleton_torch(idx: int) -> None:
     """Test PyTorch forward_skeleton matches reference."""
-    from body_models.mhr import to_native_outputs
     from body_models.mhr.torch import MHR
 
     model = MHR(model_path=MODEL_PATH)
@@ -187,7 +198,7 @@ def test_forward_skeleton_torch(idx: int) -> None:
             expression=torch.tensor(inputs["expression"])[None],
         )
 
-    result = to_native_outputs(verts, transforms)
+    result = native_outputs(verts, transforms)
     _assert_skeleton_close(result["joints"][0], torch.from_numpy(ref["skeleton"]), rtol=RTOL, atol=ATOL)
 
 

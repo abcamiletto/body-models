@@ -309,20 +309,6 @@ vertices = model.forward_vertices(
 )
 ```
 
-Conversion functions for working with the official smplx library format:
-
-```python
-from body_models import smpl
-
-# Convert flat tensors to API format
-args = smpl.from_native_args(shape, body_pose, pelvis_rotation, global_translation)
-vertices = model.forward_vertices(**args)
-transforms = model.forward_skeleton(**args)
-
-# Convert outputs back to native format
-result = smpl.to_native_outputs(vertices, transforms)
-```
-
 ### SMPL-X
 
 Expressive body model with articulated hands and facial expressions.
@@ -345,21 +331,6 @@ vertices = model.forward_vertices(
     global_rotation,     # [B, 3] post-transform rotation (optional)
     global_translation,  # [B, 3] translation (optional)
 )
-```
-
-Conversion functions for working with the official smplx library format:
-
-```python
-from body_models import smplx
-
-# Convert flat tensors to API format
-args = smplx.from_native_args(shape, expression, body_pose, hand_pose, head_pose,
-                              pelvis_rotation, global_translation)
-vertices = model.forward_vertices(**args)
-transforms = model.forward_skeleton(**args)
-
-# Convert outputs back to native format
-result = smplx.to_native_outputs(vertices, transforms)
 ```
 
 ### SKEL
@@ -396,20 +367,6 @@ vertices = model.forward_vertices(
     global_rotation,     # [B, 3] post-transform rotation (optional)
     global_translation,  # [B, 3] translation (optional)
 )
-```
-
-Conversion functions for working with the official FLAME/smplx library format:
-
-```python
-from body_models import flame
-
-# Convert native args to API format
-args = flame.from_native_args(shape, expression, pose, head_rotation, global_rotation, global_translation)
-vertices = model.forward_vertices(**args)
-transforms = model.forward_skeleton(**args)
-
-# Convert outputs back to native format
-result = flame.to_native_outputs(vertices, transforms)
 ```
 
 ### ANNY
@@ -455,20 +412,6 @@ vertices = model.forward_vertices(
     global_rotation,     # [B, 3] axis-angle (optional)
     global_translation,  # [B, 3] (optional)
 )
-```
-
-Conversion functions for working with the original MHR format (cm units):
-
-```python
-from body_models import mhr
-
-# Convert native args (shape, expression, pose order) to API format
-args = mhr.from_native_args(shape, expression, pose)
-vertices = model.forward_vertices(**args)
-transforms = model.forward_skeleton(**args)
-
-# Convert outputs to native format (cm units, skeleton state [t, q, s])
-result = mhr.to_native_outputs(vertices, transforms)
 ```
 
 ### GarmentMeasurements
@@ -540,8 +483,6 @@ The unified API returns outputs in:
 - **Meters** as the unit
 
 SMPL, SMPL-X, SKEL, FLAME, MHR, GarmentMeasurements, and SOMA are natively Y-up and pass through unchanged. ANNY (MakeHuman) and G1 (MuJoCo) are natively Z-up and are rotated to Y-up at load time, so a single rendering or visualisation pipeline works across the entire lineup.
-
-Use the `to_native_outputs()` conversion functions to get outputs in the original library conventions.
 
 ## Development
 

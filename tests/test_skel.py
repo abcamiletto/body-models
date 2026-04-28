@@ -59,7 +59,28 @@ def _skel_backend(backend: str):
     if backend == "jax":
         pytest.importorskip("jax.numpy")
     module = import_module(f"body_models.skel.{backend}")
-    return getattr(module, "SKEL"), module.from_native_args
+    return getattr(module, "SKEL")
+
+
+def native_args(shape, body_pose, global_translation, root_rotation=None, global_rotation=None):
+    if root_rotation is not None:
+        if isinstance(body_pose, torch.Tensor):
+            body_pose = torch.cat([root_rotation, body_pose[:, 3:]], dim=1)
+        else:
+            body_pose = np.concatenate([root_rotation, body_pose[:, 3:]], axis=1)
+    return {
+        "shape": shape,
+        "pose": body_pose,
+        "global_rotation": global_rotation,
+        "global_translation": global_translation,
+    }
+
+
+def native_outputs(vertices, transforms, feet_offset):
+    return {
+        "vertices": vertices - feet_offset,
+        "joints": transforms[..., :3, 3] - feet_offset,
+    }
 
 
 def _backend_array(backend: str, value: np.ndarray):
@@ -87,13 +108,13 @@ def _to_numpy(backend: str, value):
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_torch(idx: int) -> None:
     """Test PyTorch forward_vertices matches reference."""
-    from body_models.skel.torch import SKEL, from_native_args, to_native_outputs
+    from body_models.skel.torch import SKEL
 
     inputs, ref = load_test_case(idx)
     model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
     model.eval()
 
-    args = from_native_args(
+    args = native_args(
         shape=torch.tensor(inputs["shape"])[None],
         body_pose=torch.tensor(inputs["body_pose"])[None],
         global_translation=torch.tensor(inputs["global_translation"])[None],
@@ -102,9 +123,8 @@ def test_forward_vertices_torch(idx: int) -> None:
     with torch.no_grad():
         verts = model.forward_vertices(**args)
         transforms = model.forward_skeleton(**args)
-        skel_mesh = model.forward_skeleton_mesh(**args)
 
-    result = to_native_outputs(verts, transforms, skel_mesh, model._feet_offset)
+    result = native_outputs(verts, transforms, model._feet_offset)
     np.testing.assert_allclose(result["vertices"][0].numpy(), ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(result["joints"][0].numpy(), ref["joints"], rtol=RTOL, atol=ATOL)
 
@@ -113,12 +133,12 @@ def test_forward_vertices_torch(idx: int) -> None:
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_numpy(idx: int) -> None:
     """Test NumPy forward_vertices matches reference."""
-    from body_models.skel.numpy import SKEL, from_native_args, to_native_outputs
+    from body_models.skel.numpy import SKEL
 
     inputs, ref = load_test_case(idx)
     model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
 
-    args = from_native_args(
+    args = native_args(
         shape=inputs["shape"][None],
         body_pose=inputs["body_pose"][None],
         global_translation=inputs["global_translation"][None],
@@ -126,7 +146,7 @@ def test_forward_vertices_numpy(idx: int) -> None:
 
     verts = model.forward_vertices(**args)
     transforms = model.forward_skeleton(**args)
-    result = to_native_outputs(verts, transforms, model._feet_offset)
+    result = native_outputs(verts, transforms, model._feet_offset)
 
     np.testing.assert_allclose(result["vertices"][0], ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(result["joints"][0], ref["joints"], rtol=RTOL, atol=ATOL)
@@ -137,12 +157,12 @@ def test_forward_vertices_numpy(idx: int) -> None:
 def test_forward_vertices_jax(idx: int) -> None:
     """Test JAX forward_vertices matches reference."""
     jnp = pytest.importorskip("jax.numpy")
-    from body_models.skel.jax import SKEL, from_native_args, to_native_outputs
+    from body_models.skel.jax import SKEL
 
     inputs, ref = load_test_case(idx)
     model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
 
-    args = from_native_args(
+    args = native_args(
         shape=jnp.array(inputs["shape"])[None],
         body_pose=jnp.array(inputs["body_pose"])[None],
         global_translation=jnp.array(inputs["global_translation"])[None],
@@ -150,7 +170,7 @@ def test_forward_vertices_jax(idx: int) -> None:
 
     verts = model.forward_vertices(**args)
     transforms = model.forward_skeleton(**args)
-    result = to_native_outputs(verts, transforms, model._feet_offset[...])
+    result = native_outputs(verts, transforms, model._feet_offset[...])
 
     np.testing.assert_allclose(np.asarray(result["vertices"][0]), ref["vertices"], rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(np.asarray(result["joints"][0]), ref["joints"], rtol=RTOL, atol=ATOL)
@@ -160,10 +180,10 @@ def test_forward_vertices_jax(idx: int) -> None:
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_vertex_subset_matches_full_output(backend: str) -> None:
     """Test vertex_indices returns the same vertices as slicing the full output."""
-    SKEL, from_native_args = _skel_backend(backend)
+    SKEL = _skel_backend(backend)
     inputs, _ = load_test_case(0)
     model = SKEL(gender=inputs["gender"], model_path=MODEL_PATH)
-    args = from_native_args(
+    args = native_args(
         shape=_backend_array(backend, inputs["shape"])[None],
         body_pose=_backend_array(backend, inputs["body_pose"])[None],
         global_translation=_backend_array(backend, inputs["global_translation"])[None],

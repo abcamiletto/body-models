@@ -1,6 +1,7 @@
 """NumPy backend for SMPL model."""
 
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -25,7 +26,7 @@ class SMPL(BodyModel):
     def __init__(
         self,
         model_path: Path | str | None = None,
-        gender: str | None = None,
+        gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
     ):

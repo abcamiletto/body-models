@@ -1,6 +1,7 @@
 """JAX backend for SMPL model using Flax NNX."""
 
 from pathlib import Path
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -28,7 +29,7 @@ class SMPL(BodyModel, nnx.Module):
     def __init__(
         self,
         model_path: Path | str | None = None,
-        gender: str | None = None,
+        gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
     ):
