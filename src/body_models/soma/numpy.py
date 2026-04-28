@@ -7,7 +7,6 @@ import numpy as _np
 from jaxtyping import Float as _Float, Int as _Int
 from nanomanifold import SO3 as _SO3
 
-from ..anny import core as _anny_core
 from ..anny.numpy import ANNY as _ANNY
 from ..base import BodyModel as _BodyModel
 from ..mhr.numpy import MHR as _MHR
@@ -408,7 +407,10 @@ class SOMA(_BodyModel):
         )
         self._identity_internal_to_source_rotation = rotation.astype(_np.float32, copy=False)
         self._identity_internal_to_source_translation = translation.astype(_np.float32, copy=False)
-        self._identity_source_to_soma_rotation = _np.asarray(_anny_core.COORD_ROTATION, dtype=_np.float32)
+        self._identity_source_to_soma_rotation = _np.asarray(
+            [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
+            dtype=_np.float32,
+        )
 
     def _init_linear_identity_backend(self, _transfer_data: dict[str, _np.ndarray]) -> None:
         linear_model_cls = {"smpl": _SMPL, "smplx": _SMPLX}[self.model_type]

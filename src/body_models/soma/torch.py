@@ -10,7 +10,6 @@ from jaxtyping import Float as _Float, Int as _Int
 from nanomanifold import SO3 as _SO3
 from torch import Tensor as _Tensor
 
-from ..anny import core as _anny_core
 from ..anny.torch import ANNY as _ANNY
 from ..base import BodyModel as _BodyModel
 from ..mhr.torch import MHR as _MHR
@@ -424,7 +423,7 @@ class SOMA(_BodyModel, _nn.Module):
         self._identity_internal_to_source_rotation = rotation
         self._identity_internal_to_source_translation = translation
         self._identity_source_to_soma_rotation = _torch.as_tensor(
-            _anny_core.COORD_ROTATION,
+            [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
             dtype=self.mean_full.dtype,
         )
 

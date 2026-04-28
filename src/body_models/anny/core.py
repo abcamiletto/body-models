@@ -2,7 +2,6 @@
 
 from typing import Any
 
-import numpy as np
 from jaxtyping import Float
 from nanomanifold import SO3
 
@@ -14,10 +13,6 @@ from .io import PHENOTYPE_VARIATIONS
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 IDENTITY_LABELS = ("gender", "age", "muscle", "weight", "height", "proportions")
-
-# Coordinate transform constants (Z-up to Y-up)
-COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=np.float32)
-COORD_TRANSLATION = np.array([0.0, 0.852, 0.0], dtype=np.float32)
 
 
 def forward_vertices(
@@ -33,8 +28,6 @@ def forward_vertices(
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
     kinematic_fronts: list[Front],
-    coord_rotation: Float[Array, "3 3"],
-    coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
@@ -105,8 +98,7 @@ def forward_vertices(
     W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t)  # [B, V, 3]
     vertices = xp.squeeze(W_R @ rest_verts[..., None], axis=-1) + W_t
 
-    # Coordinate transform + global
-    vertices = vertices @ coord_rotation.T + coord_translation
+    # Global transform
     if global_rotation is not None:
         global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
         R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
@@ -156,8 +148,6 @@ def forward_skeleton(
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
     kinematic_fronts: list[Front],
-    coord_rotation: Float[Array, "3 3"],
-    coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
@@ -237,19 +227,12 @@ def forward_skeleton(
         joint_indices=joint_indices,
     )
 
-    # Coordinate transform
-    B = bone_poses.shape[0]
-    idx_R = (slice(None, 3), slice(None, 3))
-    idx_t = (slice(None, 3), 3)
-    coord_T = common.zeros_as(bone_poses, shape=(4, 4), xp=xp)
-    coord_T = common.set(coord_T, idx_R, coord_rotation, xp=xp)
-    coord_T = common.set(coord_T, idx_t, coord_translation, xp=xp)
-    coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=bone_poses.dtype), xp=xp)
-    transforms = coord_T @ bone_poses
+    transforms = bone_poses
 
     # Global transform
     if global_rotation is not None or global_translation is not None:
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
+        B = bone_poses.shape[0]
         idx_R = (slice(None), slice(None, 3), slice(None, 3))
         idx_t = (slice(None), slice(None, 3), 3)
         G = common.eye_as(transforms, batch_dims=(B,), xp=xp)

@@ -6,6 +6,7 @@ import struct
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
@@ -13,8 +14,10 @@ from .. import config
 from ..utils import get_cache_dir
 
 PathLike = Path | str
+Convention = Literal["soma", "mujoco"]
 
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
+VALID_CONVENTIONS = ("soma", "mujoco")
 G1_HF_BASE_URL = "https://huggingface.co/lerobot/unitree-g1-mujoco/resolve/main/assets"
 G1_HF_XML = "g1_29dof_no_hand.xml"
 
@@ -172,7 +175,10 @@ def validate_path(path: PathLike) -> Path:
     return path
 
 
-def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> dict:
+def load_model_data(model_path: PathLike | None = None, *, convention: Convention = "soma", dtype=np.float32) -> dict:
+    if convention not in VALID_CONVENTIONS:
+        raise ValueError(f"Invalid convention: {convention}")
+    coord = MUJOCO_TO_KIMODO if convention == "soma" else np.eye(3, dtype=np.float32)
     model_dir = get_model_path(model_path)
     xml_path = model_dir / "xml" / "g1.xml"
     mesh_dir = model_dir / "meshes" / "g1"
@@ -180,14 +186,15 @@ def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> 
     root = tree.getroot()
 
     class_axes, class_limits = _parse_joint_defaults(root)
-    local_offsets, rest_local_rotations = _parse_joint_rest(root)
-    mesh_transforms = _parse_mesh_local_transforms(root)
+    local_offsets, rest_local_rotations = _parse_joint_rest(root, coord)
+    mesh_transforms = _parse_mesh_local_transforms(root, coord)
     qpos_joint_indices, qpos_joint_axes, qpos_joint_limits, qpos_joint_names = _parse_qpos_joints(
         root,
         class_axes,
         class_limits,
+        coord,
     )
-    vertices, faces, link_data = _load_link_meshes(mesh_dir, mesh_transforms, dtype=dtype)
+    vertices, faces, link_data = _load_link_meshes(mesh_dir, mesh_transforms, coord, dtype=dtype)
     return {
         "joint_names": JOINT_NAMES.copy(),
         "parents": PARENTS.copy(),
@@ -230,7 +237,7 @@ def _parse_joint_defaults(root: ET.Element) -> tuple[dict[str, np.ndarray], dict
     return class_axes, class_limits
 
 
-def _parse_joint_rest(root: ET.Element) -> tuple[np.ndarray, np.ndarray]:
+def _parse_joint_rest(root: ET.Element, coord: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     local_offsets = np.zeros((len(JOINT_NAMES), 3), dtype=np.float32)
     rest_local_rotations = np.repeat(np.eye(3, dtype=np.float32)[None], len(JOINT_NAMES), axis=0)
     worldbody = root.find("worldbody")
@@ -244,8 +251,8 @@ def _parse_joint_rest(root: ET.Element) -> tuple[np.ndarray, np.ndarray]:
         body_pos = _parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32))
         body_quat = _parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32))
         body_rot = _quat_wxyz_to_matrix(body_quat)
-        offset_k = MUJOCO_TO_KIMODO @ body_pos
-        rot_k = MUJOCO_TO_KIMODO @ body_rot @ MUJOCO_TO_KIMODO.T
+        offset_k = coord @ body_pos
+        rot_k = coord @ body_rot @ coord.T
         if joint_name in by_name:
             idx = by_name[joint_name]
             if idx != 0:
@@ -260,7 +267,7 @@ def _parse_joint_rest(root: ET.Element) -> tuple[np.ndarray, np.ndarray]:
     return local_offsets, rest_local_rotations
 
 
-def _parse_mesh_local_transforms(root: ET.Element) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+def _parse_mesh_local_transforms(root: ET.Element, coord: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     mesh_file_by_name = {
         mesh.get("name"): mesh.get("file")
         for mesh in root.findall(".//asset/mesh")
@@ -275,7 +282,7 @@ def _parse_mesh_local_transforms(root: ET.Element) -> dict[str, tuple[np.ndarray
         pos = _parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32))
         quat = _parse_vec(geom.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32))
         rot = _quat_wxyz_to_matrix(quat)
-        out[mesh_file] = (MUJOCO_TO_KIMODO @ pos, MUJOCO_TO_KIMODO @ rot @ MUJOCO_TO_KIMODO.T)
+        out[mesh_file] = (coord @ pos, coord @ rot @ coord.T)
     return out
 
 
@@ -283,6 +290,7 @@ def _parse_qpos_joints(
     root: ET.Element,
     class_axes: dict[str, np.ndarray],
     class_limits: dict[str, tuple[float, float]],
+    coord: np.ndarray,
 ) -> tuple[list[int], np.ndarray, np.ndarray, list[str]]:
     indices: list[int] = []
     axes: list[np.ndarray] = []
@@ -301,7 +309,7 @@ def _parse_qpos_joints(
         if skel_name not in by_name:
             continue
         axis = _joint_axis(joint, class_axes)
-        axis_k = MUJOCO_TO_KIMODO @ axis
+        axis_k = coord @ axis
         norm = np.linalg.norm(axis_k)
         if norm <= 1e-8:
             continue
@@ -312,7 +320,13 @@ def _parse_qpos_joints(
     return indices, np.asarray(axes), np.asarray(limits), names
 
 
-def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]], *, dtype) -> tuple:
+def _load_link_meshes(
+    mesh_dir: Path,
+    mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]],
+    coord: np.ndarray,
+    *,
+    dtype,
+) -> tuple:
     vertices_by_link: list[np.ndarray] = []
     faces_by_link: list[np.ndarray] = []
     joint_indices: list[int] = []
@@ -335,7 +349,7 @@ def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarra
             path = mesh_dir / mesh_file
             if not path.exists():
                 raise FileNotFoundError(f"G1 mesh not found: {path}")
-            vertices, faces = load_stl_mesh(path, dtype=dtype)
+            vertices, faces = load_stl_mesh(path, coord=coord, dtype=dtype)
             vertices_by_link.append(vertices)
             faces_by_link.append(faces + vertex_offset)
             geom_pos, geom_rot = mesh_transforms[mesh_file]
@@ -365,14 +379,16 @@ def _load_link_meshes(mesh_dir: Path, mesh_transforms: dict[str, tuple[np.ndarra
     return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
 
 
-def load_stl_mesh(path: Path, *, dtype=np.float32) -> tuple[np.ndarray, np.ndarray]:
+def load_stl_mesh(
+    path: Path, *, coord: np.ndarray = MUJOCO_TO_KIMODO, dtype=np.float32
+) -> tuple[np.ndarray, np.ndarray]:
     data = path.read_bytes()
     if _looks_like_binary_stl(data):
-        return _load_binary_stl(data, dtype=dtype)
-    return _load_ascii_stl(data.decode("utf-8"), dtype=dtype)
+        return _load_binary_stl(data, coord=coord, dtype=dtype)
+    return _load_ascii_stl(data.decode("utf-8"), coord=coord, dtype=dtype)
 
 
-def _load_ascii_stl(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _load_ascii_stl(text: str, *, coord: np.ndarray, dtype) -> tuple[np.ndarray, np.ndarray]:
     vertices: list[list[float]] = []
     for line in text.splitlines():
         parts = line.strip().split()
@@ -380,12 +396,12 @@ def _load_ascii_stl(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
             vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
     if len(vertices) % 3 != 0 or not vertices:
         raise ValueError("ASCII STL contains no triangular facets")
-    verts = np.asarray(vertices, dtype=dtype) @ MUJOCO_TO_KIMODO.T
+    verts = np.asarray(vertices, dtype=dtype) @ coord.T
     faces = np.arange(len(vertices), dtype=np.int64).reshape(-1, 3)
     return verts, faces
 
 
-def _load_binary_stl(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _load_binary_stl(data: bytes, *, coord: np.ndarray, dtype) -> tuple[np.ndarray, np.ndarray]:
     n_tri = struct.unpack_from("<I", data, 80)[0]
     expected = 84 + n_tri * 50
     if len(data) < expected:
@@ -398,7 +414,7 @@ def _load_binary_stl(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
             vertices[tri * 3 + corner] = struct.unpack_from("<fff", data, offset)
             offset += 12
         offset += 2
-    return vertices @ MUJOCO_TO_KIMODO.T, np.arange(n_tri * 3, dtype=np.int64).reshape(-1, 3)
+    return vertices @ coord.T, np.arange(n_tri * 3, dtype=np.int64).reshape(-1, 3)
 
 
 def _looks_like_binary_stl(data: bytes) -> bool:
