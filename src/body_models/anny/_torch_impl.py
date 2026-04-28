@@ -20,6 +20,8 @@ from ..utils import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
@@ -63,9 +65,9 @@ class ANNY(BodyModel, nn.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
-        cache_dir: Path | str | None = None,
+        cache_dir: PathLike | None = None,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,

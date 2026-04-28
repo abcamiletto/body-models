@@ -18,6 +18,8 @@ from .. import config
 from ..common import simplify_mesh
 from ..utils import get_cache_dir
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]
 
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
@@ -106,26 +108,28 @@ MODEL_TYPE_SPECS = {
 IDENTITY_MODEL_TYPES = tuple(name for name, spec in MODEL_TYPE_SPECS.items() if spec.asset_dir is not None)
 
 
-def get_model_path(model_path: Path | str | None = None) -> Path:
+def validate_path(model_path: PathLike) -> Path:
+    model_path = Path(model_path)
+    if model_path.is_file():
+        raise ValueError(f"Expected a SOMA asset directory, got file: {model_path}")
+    if not model_path.is_dir():
+        raise FileNotFoundError(f"SOMA model path {model_path} does not exist.")
+    missing = _missing_assets(model_path)
+    if missing:
+        raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
+    return model_path
+
+
+def get_model_path(model_path: PathLike | None = None) -> Path:
     """Resolve SOMA model directory, downloading if necessary."""
     if model_path is None:
         model_path = config.get_model_path("soma")
 
     if model_path is not None:
         model_path = Path(model_path)
-        if model_path.is_file():
-            raise ValueError(
-                f"Expected a SOMA asset directory, got file: {model_path}\n"
-                f"Please provide a directory containing {SOMA_CORE_ASSET}."
-            )
-        if model_path.is_dir():
-            missing = _missing_assets(model_path)
-            if not missing:
-                return model_path
-            if (model_path / SOMA_CORE_ASSET).exists():
-                return download_model(model_path)
-            raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
-        raise FileNotFoundError(f"SOMA model path {model_path} does not exist.")
+        if model_path.is_dir() and (model_path / SOMA_CORE_ASSET).exists() and _missing_assets(model_path):
+            return download_model(model_path)
+        return validate_path(model_path)
 
     cache_path = get_cache_dir() / "soma"
     if not _missing_assets(cache_path):
@@ -134,7 +138,7 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
     return download_model()
 
 
-def download_model(model_dir: Path | str | None = None) -> Path:
+def download_model(model_dir: PathLike | None = None) -> Path:
     """Download SOMA assets from Hugging Face."""
     import urllib.request
 
@@ -189,6 +193,10 @@ def get_identity_model_path(model_type: str) -> Path | None:
             f"Directory paths are no longer supported for {normalized}: {path}\n"
             f"Please set {spec.config_key} to a direct {spec.filename_hint}.npz or {spec.filename_hint}.pkl path."
         )
+    if spec.requires_direct_file and not path.is_file():
+        raise FileNotFoundError(f"SOMA {normalized} identity model file not found: {path}")
+    if spec.requires_direct_file and path.suffix not in {".pkl", ".npz"}:
+        raise ValueError(f"Expected a SOMA {normalized} identity .pkl or .npz file, got: {path}")
     return path
 
 

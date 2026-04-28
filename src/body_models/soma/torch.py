@@ -1,6 +1,7 @@
 """PyTorch backend for SOMA model."""
 
-from pathlib import Path as _Path
+from pathlib import Path
+
 from typing import cast as _cast
 
 import numpy as _np
@@ -28,6 +29,8 @@ from .io import (
     load_pose_correctives_weights as _load_pose_correctives_weights,
     simplify_mesh as _simplify_mesh,
 )
+
+PathLike = Path | str
 
 __all__ = ["SOMA"]
 
@@ -75,7 +78,7 @@ class SOMA(_BodyModel, _nn.Module):
 
     def __init__(
         self,
-        model_path: _Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         model_type: str = "soma",
         simplify: float = 1.0,

@@ -12,6 +12,8 @@ import numpy as np
 from .. import config
 from ..utils import get_cache_dir
 
+PathLike = Path | str
+
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 G1_HF_BASE_URL = "https://huggingface.co/lerobot/unitree-g1-mujoco/resolve/main/assets"
 G1_HF_XML = "g1_29dof_no_hand.xml"
@@ -124,14 +126,13 @@ G1_MESH_JOINT_MAP = {
 }
 
 
-def get_model_path(model_path: Path | str | None = None) -> Path:
+def get_model_path(model_path: PathLike | None = None) -> Path:
     """Resolve a G1 asset directory containing ``xml/g1.xml`` and ``meshes/g1``."""
     if model_path is None:
         model_path = config.get_model_path("g1")
 
     if model_path is not None:
-        path = Path(model_path)
-        return _validate_model_path(path)
+        return validate_path(model_path)
 
     cache_path = get_cache_dir() / "g1"
     if (cache_path / "xml" / "g1.xml").exists() and (cache_path / "meshes" / "g1").is_dir():
@@ -156,7 +157,12 @@ def download_model() -> Path:
     return cache_dir
 
 
-def _validate_model_path(path: Path) -> Path:
+def validate_path(path: PathLike) -> Path:
+    path = Path(path)
+    if path.is_file():
+        raise ValueError(f"Expected a G1 asset directory, got file: {path}")
+    if not path.is_dir():
+        raise FileNotFoundError(f"G1 model directory not found: {path}")
     xml_path = path / "xml" / "g1.xml"
     mesh_dir = path / "meshes" / "g1"
     if not xml_path.exists():
@@ -166,7 +172,7 @@ def _validate_model_path(path: Path) -> Path:
     return path
 
 
-def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -> dict:
+def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> dict:
     model_dir = get_model_path(model_path)
     xml_path = model_dir / "xml" / "g1.xml"
     mesh_dir = model_dir / "meshes" / "g1"

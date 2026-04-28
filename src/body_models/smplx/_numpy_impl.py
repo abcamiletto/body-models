@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import numpy as np
 from jaxtyping import Float, Int
 
@@ -10,9 +11,11 @@ from nanomanifold import SO3
 
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
-from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
+from .io import SMPLXGender, compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
 Array = np.ndarray
+
+PathLike = Path | str
 
 __all__ = ["SMPLX"]
 
@@ -27,8 +30,8 @@ class SMPLX(BodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
-        gender: str | None = None,
+        model_path: PathLike | None = None,
+        gender: SMPLXGender | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
@@ -39,8 +42,7 @@ class SMPLX(BodyModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
 
-        # Default gender to "neutral" for attribute storage when model_path is given
-        self.gender = gender if gender is not None else "neutral"
+        self.gender = gender
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)

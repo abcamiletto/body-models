@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
@@ -11,6 +12,8 @@ from torch import Tensor
 from ..base import BodyModel
 from . import core
 from .io import load_model_data
+
+PathLike = Path | str
 
 __all__ = ["G1"]
 
@@ -30,7 +33,7 @@ class G1(BodyModel, nn.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         rotation_type: core.RotationType = "rotmat",
     ) -> None:

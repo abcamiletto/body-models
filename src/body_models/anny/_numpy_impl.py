@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import numpy as np
 from jaxtyping import Float, Int
 
@@ -21,6 +22,8 @@ from .io import (
 from_native_args = core.from_native_args
 to_native_outputs = core.to_native_outputs
 
+PathLike = Path | str
+
 __all__ = ["ANNY", "from_native_args", "to_native_outputs"]
 
 
@@ -39,9 +42,9 @@ class ANNY(BodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
-        cache_dir: Path | str | None = None,
+        cache_dir: PathLike | None = None,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,8 +14,10 @@ from nanomanifold import SO3
 
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
-from .io import SMPL_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
+from .io import SMPLGender, SMPL_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
+
+PathLike = Path | str
 
 class SMPL(BodyModel, nn.Module):
     """SMPL body model with PyTorch backend."""
@@ -31,8 +34,8 @@ class SMPL(BodyModel, nn.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
-        gender: str | None = None,
+        model_path: PathLike | None = None,
+        gender: SMPLGender | None = None,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
     ):
@@ -43,8 +46,7 @@ class SMPL(BodyModel, nn.Module):
         assert simplify >= 1.0
         super().__init__()
 
-        # Default gender to "neutral" for attribute storage when model_path is given
-        self.gender = gender if gender is not None else "neutral"
+        self.gender = gender
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)

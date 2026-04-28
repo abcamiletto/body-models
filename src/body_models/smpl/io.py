@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from jaxtyping import Int
@@ -6,7 +7,10 @@ from jaxtyping import Int
 from .. import config
 from ..common import simplify_mesh
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+SMPLGender = Literal["neutral", "male", "female"]
 
 SMPL_JOINT_NAMES = [
     "pelvis",
@@ -36,44 +40,25 @@ SMPL_JOINT_NAMES = [
 ]
 
 
-def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
-    """Resolve SMPL model file path.
-
-    Args:
-        model_path: Direct path to model file, or None to use config.
-        gender: Gender for config lookup when model_path is None.
-
-    Returns:
-        Path to the model file.
-
-    Raises:
-        ValueError: If model_path is a directory (no longer supported) or
-            if neither model_path nor gender is provided.
-        FileNotFoundError: If the model file cannot be found.
-    """
-    if model_path is not None:
-        model_path = Path(model_path)
-
-        if model_path.is_dir():
-            raise ValueError(
-                f"Directory paths are no longer supported: {model_path}\n"
-                "Please provide a direct path to the model file, e.g.:\n"
-                f"  SMPL(model_path='{model_path}/SMPL_NEUTRAL.pkl')"
-            )
-
-        if model_path.is_file():
-            return model_path
-
+def validate_path(model_path: PathLike) -> Path:
+    model_path = Path(model_path)
+    if model_path.is_dir():
+        raise ValueError(f"Expected an SMPL model file, got directory: {model_path}")
+    if not model_path.is_file():
         raise FileNotFoundError(f"SMPL model file not found: {model_path}")
+    if model_path.suffix not in {".pkl", ".npz"}:
+        raise ValueError(f"Expected an SMPL .pkl or .npz file, got: {model_path}")
+    return model_path
 
-    # model_path is None, lookup from config using gender
+
+def get_model_path(model_path: PathLike | None, gender: SMPLGender | None) -> Path:
+    if model_path is not None:
+        if gender is not None:
+            raise ValueError("gender is only supported when model_path is not provided.")
+        return validate_path(model_path)
+
     if gender is None:
-        raise ValueError(
-            "Either model_path or gender must be provided.\n"
-            "Examples:\n"
-            "  SMPL(model_path='/path/to/SMPL_NEUTRAL.pkl')\n"
-            "  SMPL(gender='neutral')  # Uses smpl-neutral config key"
-        )
+        raise ValueError("Either model_path or gender must be provided.")
 
     config_key = f"smpl-{gender}"
     resolved_path = config.get_model_path(config_key)
@@ -84,7 +69,7 @@ def get_model_path(model_path: Path | str | None, gender: str | None) -> Path:
             f"and run: body-models set smpl-{gender} /path/to/SMPL_{gender.upper()}.pkl"
         )
 
-    return resolved_path
+    return validate_path(resolved_path)
 
 
 def load_model_data(model_path: Path) -> dict:

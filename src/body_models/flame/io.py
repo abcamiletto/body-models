@@ -6,6 +6,8 @@ from jaxtyping import Int
 from .. import config
 from ..common import simplify_mesh
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 FLAME_JOINT_NAMES = ["root", "neck", "jaw", "left_eye", "right_eye"]
@@ -13,7 +15,18 @@ FLAME_JOINT_NAMES = ["root", "neck", "jaw", "left_eye", "right_eye"]
 __all__ = ["FLAME_JOINT_NAMES", "get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
 
 
-def get_model_path(model_path: Path | str | None) -> Path:
+def validate_path(model_path: PathLike) -> Path:
+    model_path = Path(model_path)
+    if model_path.is_dir():
+        raise ValueError(f"Expected a FLAME model file, got directory: {model_path}")
+    if not model_path.is_file():
+        raise FileNotFoundError(f"FLAME model file not found: {model_path}")
+    if model_path.suffix not in {".pkl", ".npz"}:
+        raise ValueError(f"Expected a FLAME .pkl or .npz file, got: {model_path}")
+    return model_path
+
+
+def get_model_path(model_path: PathLike | None) -> Path:
     if model_path is None:
         model_path = config.get_model_path("flame")
 
@@ -23,19 +36,7 @@ def get_model_path(model_path: Path | str | None) -> Path:
             "and run: body-models set flame /path/to/FLAME_NEUTRAL.pkl"
         )
 
-    model_path = Path(model_path)
-
-    if model_path.is_dir():
-        raise ValueError(
-            f"Directory paths are no longer supported: {model_path}\n"
-            "Please provide a direct path to the model file, e.g.:\n"
-            f"  FLAME(model_path='{model_path}/FLAME_NEUTRAL.pkl')"
-        )
-
-    if model_path.is_file():
-        return model_path
-
-    raise FileNotFoundError(f"FLAME model file not found: {model_path}")
+    return validate_path(model_path)
 
 
 def load_model_data(model_path: Path) -> dict:
