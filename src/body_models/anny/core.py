@@ -2,7 +2,6 @@
 
 from typing import Any
 
-import numpy as np
 from jaxtyping import Float
 from nanomanifold import SO3
 
@@ -14,11 +13,6 @@ from .io import PHENOTYPE_VARIATIONS
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 IDENTITY_LABELS = ("gender", "age", "muscle", "weight", "height", "proportions")
-
-# Coordinate transform constants (Z-up to Y-up)
-COORD_ROTATION = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=np.float32)
-COORD_TRANSLATION = np.array([0.0, 0.852, 0.0], dtype=np.float32)
-
 
 def forward_vertices(
     # Model data
@@ -33,8 +27,6 @@ def forward_vertices(
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
     kinematic_fronts: list[Front],
-    coord_rotation: Float[Array, "3 3"],
-    coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
@@ -105,8 +97,7 @@ def forward_vertices(
     W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t)  # [B, V, 3]
     vertices = xp.squeeze(W_R @ rest_verts[..., None], axis=-1) + W_t
 
-    # Coordinate transform + global
-    vertices = vertices @ coord_rotation.T + coord_translation
+    # Global transform
     if global_rotation is not None:
         global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
         R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
@@ -156,8 +147,6 @@ def forward_skeleton(
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
     kinematic_fronts: list[Front],
-    coord_rotation: Float[Array, "3 3"],
-    coord_translation: Float[Array, "3"],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
@@ -237,19 +226,12 @@ def forward_skeleton(
         joint_indices=joint_indices,
     )
 
-    # Coordinate transform
-    B = bone_poses.shape[0]
-    idx_R = (slice(None, 3), slice(None, 3))
-    idx_t = (slice(None, 3), 3)
-    coord_T = common.zeros_as(bone_poses, shape=(4, 4), xp=xp)
-    coord_T = common.set(coord_T, idx_R, coord_rotation, xp=xp)
-    coord_T = common.set(coord_T, idx_t, coord_translation, xp=xp)
-    coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=bone_poses.dtype), xp=xp)
-    transforms = coord_T @ bone_poses
+    transforms = bone_poses
 
     # Global transform
     if global_rotation is not None or global_translation is not None:
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
+        B = bone_poses.shape[0]
         idx_R = (slice(None), slice(None, 3), slice(None, 3))
         idx_t = (slice(None), slice(None, 3), 3)
         G = common.eye_as(transforms, batch_dims=(B,), xp=xp)
@@ -529,7 +511,7 @@ def from_native_args(pose: Float[Array, "B J 4 4"]) -> dict[str, Array]:
     """Convert native ANNY args (4x4 transforms) to API format (axis-angle).
 
     Args:
-        pose: Per-joint 4x4 rotation transforms [B, J, 4, 4] in Z-up coords
+        pose: Per-joint 4x4 rotation transforms [B, J, 4, 4] in native coords
 
     Returns:
         Dict with 'pose' as axis-angle [B, J, 3]
@@ -544,35 +526,13 @@ def to_native_outputs(
     vertices: Float[Array, "B V 3"],
     transforms: Float[Array, "B J 4 4"],
 ) -> dict[str, Array]:
-    """Convert API outputs (Y-up) to native ANNY format (Z-up).
+    """Return API outputs in native ANNY format.
 
     Args:
-        vertices: Mesh vertices [B, V, 3] in Y-up coords
-        transforms: Joint transforms [B, J, 4, 4] in Y-up coords
+        vertices: Mesh vertices [B, V, 3] in native coords
+        transforms: Joint transforms [B, J, 4, 4] in native coords
 
     Returns:
-        Dict with 'vertices' and 'bone_poses' in Z-up coords
+        Dict with 'vertices' and 'bone_poses' in native coords
     """
-    xp = get_namespace(vertices)
-    dtype = vertices.dtype
-
-    coord_rot = xp.asarray(COORD_ROTATION, dtype=dtype)
-    coord_trans = xp.asarray(COORD_TRANSLATION, dtype=dtype)
-
-    # Inverse transform: Y-up -> Z-up
-    # Forward was: v_yup = v_zup @ R.T + t
-    # Inverse: v_zup = (v_yup - t) @ R
-    native_verts = (vertices - coord_trans) @ coord_rot
-
-    # For transforms: T_yup = coord @ T_zup
-    # Inverse: T_zup = coord_inv @ T_yup
-    idx_R = (slice(None, 3), slice(None, 3))
-    idx_t = (slice(None, 3), 3)
-    coord_T = common.zeros_as(vertices, shape=(4, 4), xp=xp)
-    coord_T = common.set(coord_T, idx_R, coord_rot, xp=xp)
-    coord_T = common.set(coord_T, idx_t, coord_trans, xp=xp)
-    coord_T = common.set(coord_T, (3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
-    coord_T_inv = _invert_transform(xp, coord_T)
-    native_transforms = coord_T_inv @ transforms
-
-    return {"vertices": native_verts, "bone_poses": native_transforms}
+    return {"vertices": vertices, "bone_poses": transforms}

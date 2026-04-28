@@ -10,7 +10,6 @@ from flax import nnx as _nnx
 from jaxtyping import Float as _Float, Int as _Int
 from nanomanifold import SO3 as _SO3
 
-from ..anny import core as _anny_core
 from ..anny.jax import ANNY as _ANNY
 from ..base import BodyModel as _BodyModel
 from ..mhr.jax import MHR as _MHR
@@ -382,7 +381,9 @@ class SOMA(_BodyModel, _nnx.Module):
         )
         self._identity_internal_to_source_rotation = _nnx.Variable(rotation)
         self._identity_internal_to_source_translation = _nnx.Variable(translation)
-        self._identity_source_to_soma_rotation = _nnx.Variable(_jnp.asarray(_anny_core.COORD_ROTATION))
+        self._identity_source_to_soma_rotation = _nnx.Variable(
+            _jnp.asarray([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
+        )
 
     def _init_linear_identity_backend(self, _transfer_data: dict[str, _np.ndarray]) -> None:
         linear_model_cls = {"smpl": _SMPL, "smplx": _SMPLX}[self.model_type]

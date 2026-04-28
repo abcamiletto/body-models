@@ -84,8 +84,6 @@ class ANNY(BodyModel):
         dtype = np.float32
         self._y_axis = np.array([0.0, 1.0, 0.0], dtype=dtype)
         self._degenerate_rotation = np.diag(np.array([1.0, -1.0, -1.0], dtype=dtype))
-        self._coord_rotation = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=dtype)
-        self._coord_translation = np.array([0.0, 0.852, 0.0], dtype=dtype)
 
         # Phenotype anchors
         self._anchors = build_anchors(dtype=dtype)
@@ -120,7 +118,7 @@ class ANNY(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
-        return self.template_vertices @ self._coord_rotation.T + self._coord_translation
+        return self.template_vertices
 
     def forward_vertices(
         self,
@@ -148,8 +146,6 @@ class ANNY(BodyModel):
             phenotype_mask=self.phenotype_mask,
             anchors=self._anchors,
             kinematic_fronts=self._kinematic_fronts,
-            coord_rotation=self._coord_rotation,
-            coord_translation=self._coord_translation,
             y_axis=self._y_axis,
             degenerate_rotation=self._degenerate_rotation,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
@@ -189,8 +185,6 @@ class ANNY(BodyModel):
             phenotype_mask=self.phenotype_mask,
             anchors=self._anchors,
             kinematic_fronts=self._kinematic_fronts,
-            coord_rotation=self._coord_rotation,
-            coord_translation=self._coord_translation,
             y_axis=self._y_axis,
             degenerate_rotation=self._degenerate_rotation,
             extrapolate_phenotypes=self.extrapolate_phenotypes,

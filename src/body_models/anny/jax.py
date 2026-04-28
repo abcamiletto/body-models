@@ -87,10 +87,6 @@ class ANNY(BodyModel, nnx.Module):
         dtype = jnp.float32
         self._y_axis = nnx.Variable(jnp.array([0.0, 1.0, 0.0], dtype=dtype))
         self._degenerate_rotation = nnx.Variable(jnp.diag(jnp.array([1.0, -1.0, -1.0], dtype=dtype)))
-        self._coord_rotation = nnx.Variable(
-            jnp.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]], dtype=dtype)
-        )
-        self._coord_translation = nnx.Variable(jnp.array([0.0, 0.852, 0.0], dtype=dtype))
 
         # Phenotype anchors (stored as individual nnx.Variable)
         anchors_np = build_anchors(dtype=np.float32)
@@ -133,7 +129,7 @@ class ANNY(BodyModel, nnx.Module):
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.template_vertices[...] @ self._coord_rotation[...].T + self._coord_translation[...]
+        return self.template_vertices[...]
 
     def _get_anchors_dict(self) -> dict[str, jnp.ndarray]:
         """Get anchors as plain arrays for core functions."""
@@ -174,8 +170,6 @@ class ANNY(BodyModel, nnx.Module):
             phenotype_mask=self.phenotype_mask[...],
             anchors=self._get_anchors_dict(),
             kinematic_fronts=self._kinematic_fronts,
-            coord_rotation=self._coord_rotation[...],
-            coord_translation=self._coord_translation[...],
             y_axis=self._y_axis[...],
             degenerate_rotation=self._degenerate_rotation[...],
             extrapolate_phenotypes=self.extrapolate_phenotypes,
@@ -215,8 +209,6 @@ class ANNY(BodyModel, nnx.Module):
             phenotype_mask=self.phenotype_mask[...],
             anchors=self._get_anchors_dict(),
             kinematic_fronts=self._kinematic_fronts,
-            coord_rotation=self._coord_rotation[...],
-            coord_translation=self._coord_translation[...],
             y_axis=self._y_axis[...],
             degenerate_rotation=self._degenerate_rotation[...],
             extrapolate_phenotypes=self.extrapolate_phenotypes,

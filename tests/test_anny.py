@@ -134,7 +134,6 @@ def test_forward_vertices_torch(idx: int) -> None:
             **pose_args,
         )
 
-    # Convert to native outputs (Z-up) for comparison
     result = to_native_outputs(verts, transforms)
 
     np.testing.assert_allclose(result["vertices"][0].numpy(), ref["vertices"], rtol=RTOL, atol=ATOL)
@@ -172,7 +171,6 @@ def test_forward_vertices_numpy(idx: int) -> None:
         **pose_args,
     )
 
-    # Convert to native outputs (Z-up) for comparison
     result = to_native_outputs(verts, transforms)
 
     np.testing.assert_allclose(result["vertices"][0], ref["vertices"], rtol=RTOL, atol=ATOL)
@@ -211,7 +209,6 @@ def test_forward_vertices_jax(idx: int) -> None:
         **pose_args,
     )
 
-    # Convert to native outputs (Z-up) for comparison
     result = to_native_outputs(verts, transforms)
 
     np.testing.assert_allclose(np.asarray(result["vertices"][0]), ref["vertices"], rtol=RTOL, atol=ATOL)
