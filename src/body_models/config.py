@@ -14,6 +14,9 @@ MODELS = [
     "smplx-male",
     "smplx-female",
     "smplx-neutral",
+    "smplh-male",
+    "smplh-female",
+    "smplh-neutral",
     "skel",
     "anny",
     "mhr",
@@ -25,6 +28,7 @@ MODELS = [
 
 SMPL_MODELS = {"smpl-male", "smpl-female", "smpl-neutral"}
 SMPLX_MODELS = {"smplx-male", "smplx-female", "smplx-neutral"}
+SMPLH_MODELS = {"smplh-male", "smplh-female", "smplh-neutral"}
 
 
 def get_config() -> dict:
@@ -59,6 +63,8 @@ def validate_model_path(model: str, path: str | Path) -> Path:
         from .smpl.io import validate_path
     elif model in SMPLX_MODELS:
         from .smplx.io import validate_path
+    elif model in SMPLH_MODELS:
+        from .smplh.io import validate_path
     elif model == "skel":
         from .skel.io import validate_path
     elif model == "anny":
