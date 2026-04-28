@@ -2,6 +2,7 @@
 
 import pickle as pkl
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -12,7 +13,7 @@ from . import core
 from .io import get_model_path, simplify_mesh
 
 
-__all__ = ["SKEL", "from_native_args", "to_native_outputs"]
+__all__ = ["SKEL"]
 
 
 class SKEL(BodyModel):
@@ -32,7 +33,12 @@ class SKEL(BodyModel):
     NUM_JOINTS = 24
     NUM_POSE_PARAMS = 46
 
-    def __init__(self, model_path: Path | str | None = None, gender: str | None = None, simplify: float = 1.0):
+    def __init__(
+        self,
+        model_path: Path | str | None = None,
+        gender: Literal["male", "female"] | None = None,
+        simplify: float = 1.0,
+    ):
         if gender not in {"male", "female"}:
             raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
         assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
@@ -294,23 +300,3 @@ def _sparse_to_dense(arr_coo) -> np.ndarray:
     if sparse.issparse(arr_coo):
         return np.asarray(arr_coo.toarray(), dtype=np.float32)
     return np.asarray(arr_coo, dtype=np.float32)
-
-
-def from_native_args(
-    shape: Float[np.ndarray, "B|1 10"],
-    body_pose: Float[np.ndarray, "B 46"],
-    root_rotation: Float[np.ndarray, "B 3"] | None = None,
-    global_rotation: Float[np.ndarray, "B 3"] | None = None,
-    global_translation: Float[np.ndarray, "B 3"] | None = None,
-) -> dict[str, np.ndarray | None]:
-    """Convert native SKEL args to forward_* kwargs."""
-    return core.from_native_args(shape, body_pose, root_rotation, global_rotation, global_translation)
-
-
-def to_native_outputs(
-    vertices: Float[np.ndarray, "B V 3"],
-    transforms: Float[np.ndarray, "B 24 4 4"],
-    feet_offset: Float[np.ndarray, "3"],
-) -> dict[str, np.ndarray]:
-    """Convert forward_* outputs to native SKEL format."""
-    return core.to_native_outputs(vertices, transforms, feet_offset)

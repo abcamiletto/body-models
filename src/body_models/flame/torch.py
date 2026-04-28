@@ -15,12 +15,7 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
-
-# Re-export conversion functions from core
-from_native_args = core.from_native_args
-to_native_outputs = core.to_native_outputs
-
-__all__ = ["FLAME", "from_native_args", "to_native_outputs"]
+__all__ = ["FLAME"]
 
 
 class FLAME(BodyModel, nn.Module):
