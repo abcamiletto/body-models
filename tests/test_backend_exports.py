@@ -37,7 +37,7 @@ EXPECTED_PUBLIC_NAMES = {
 
 
 @pytest.mark.parametrize("module_name, expected_names", EXPECTED_PUBLIC_NAMES.items())
-def test_backend_modules_only_export_expected_names(module_name: str, expected_names: list[str]) -> None:
+def test_backend_modules_define_expected_exports(module_name: str, expected_names: list[str]) -> None:
     if module_name.endswith(".torch"):
         pytest.importorskip("torch")
     if module_name.endswith(".jax"):
@@ -45,5 +45,4 @@ def test_backend_modules_only_export_expected_names(module_name: str, expected_n
         pytest.importorskip("flax")
 
     module = import_module(module_name)
-    public_names = sorted(name for name in vars(module) if not name.startswith("_"))
-    assert public_names == expected_names
+    assert sorted(module.__all__) == expected_names

@@ -35,7 +35,6 @@ class ANNY(BodyModel, nnx.Module):
 
     Args:
         model_path: Path to ANNY model directory. Auto-downloads if None.
-        cache_dir: Cache directory for preprocessed data.
         rig: Skeleton rig type ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo").
         topology: Mesh topology ("default" or "makehuman").
         all_phenotypes: Include race, cupsize, firmness phenotypes.
@@ -47,7 +46,6 @@ class ANNY(BodyModel, nnx.Module):
         self,
         model_path: PathLike | None = None,
         *,
-        cache_dir: PathLike | None = None,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,
@@ -63,7 +61,6 @@ class ANNY(BodyModel, nnx.Module):
 
         data = load_model_data_numpy(
             model_path=model_path,
-            cache_dir=cache_dir,
             rig=rig,
             topology=topology,
             simplify=simplify,

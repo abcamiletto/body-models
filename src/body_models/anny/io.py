@@ -102,7 +102,6 @@ def build_anchors(dtype=np.float32) -> dict[str, np.ndarray]:
 
 def load_model_data_numpy(
     model_path: PathLike | None = None,
-    cache_dir: PathLike | None = None,
     rig: str = "default",
     topology: str = "default",
     simplify: float = 1.0,
@@ -110,7 +109,7 @@ def load_model_data_numpy(
 ) -> dict:
     """Load ANNY model data as numpy arrays."""
     resolved_path = get_model_path(model_path)
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "anny" / "preprocessed"
+    cache_dir = get_cache_dir() / "anny" / "preprocessed"
     data = _load_data_numpy(resolved_path, cache_dir, rig=rig, eyes=True, tongue=True, dtype=dtype)
 
     # Apply topology edits

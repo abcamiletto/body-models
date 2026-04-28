@@ -1,8 +1,7 @@
 """NumPy backend for SOMA model."""
 
 from pathlib import Path
-
-from typing import cast as _cast
+from typing import cast
 
 import numpy as _np
 from jaxtyping import Float as _Float, Int as _Int
@@ -336,7 +335,7 @@ class SOMA(_BodyModel):
             return identity, None, None
 
         if self.model_type == "mhr":
-            num_scale_params = _cast(int, self.num_scale_params)
+            num_scale_params = cast(int, self.num_scale_params)
             rest_shape = _core.mhr_identity_shape(
                 model=self._identity_mhr_model,
                 identity=identity,

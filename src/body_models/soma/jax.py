@@ -1,8 +1,7 @@
 """JAX backend for SOMA model using Flax NNX."""
 
 from pathlib import Path
-
-from typing import cast as _cast
+from typing import cast
 
 import jax as _jax
 import jax.numpy as _jnp
@@ -308,7 +307,7 @@ class SOMA(_BodyModel, _nnx.Module):
             return identity, None, None
 
         if self.model_type == "mhr":
-            num_scale_params = _cast(int, self.num_scale_params)
+            num_scale_params = cast(int, self.num_scale_params)
             rest_shape = _core.mhr_identity_shape(
                 model=self._identity_mhr_model,
                 identity=identity,
