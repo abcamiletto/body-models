@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -14,6 +15,8 @@ from nanomanifold import SO3
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
+
+PathLike = Path | str
 
 __all__ = ["FLAME"]
 
@@ -41,7 +44,7 @@ class FLAME(BodyModel, nnx.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
     ):

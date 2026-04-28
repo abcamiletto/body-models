@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -11,6 +12,8 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, load_model_data
 
+PathLike = Path | str
+
 __all__ = ["GarmentMeasurements"]
 
 
@@ -19,7 +22,7 @@ class GarmentMeasurements(BodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         rotation_type: core.RotationType = "axis_angle",
     ) -> None:
