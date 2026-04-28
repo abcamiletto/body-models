@@ -20,6 +20,8 @@ from ..utils import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
@@ -28,7 +30,6 @@ class ANNY(BodyModel, nn.Module):
 
     Args:
         model_path: Path to ANNY model directory. Auto-downloads if None.
-        cache_dir: Cache directory for preprocessed data.
         rig: Skeleton rig type ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo").
         topology: Mesh topology ("default" or "makehuman").
         all_phenotypes: Include race, cupsize, firmness phenotypes.
@@ -63,9 +64,8 @@ class ANNY(BodyModel, nn.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
-        cache_dir: Path | str | None = None,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,
@@ -81,7 +81,7 @@ class ANNY(BodyModel, nn.Module):
         super().__init__()
 
         resolved_path = get_model_path(model_path)
-        cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "anny" / "preprocessed"
+        cache_dir = get_cache_dir() / "anny" / "preprocessed"
 
         data = _load_data(resolved_path, cache_dir, rig=rig, eyes=True, tongue=True)
 

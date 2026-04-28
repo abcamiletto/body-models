@@ -1,6 +1,8 @@
 """JAX backend for SMPL model using Flax NNX."""
 
 from pathlib import Path
+from typing import Literal
+
 
 import jax
 import jax.numpy as jnp
@@ -15,6 +17,8 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import SMPL_JOINT_NAMES, compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
 
+PathLike = Path | str
+
 __all__ = ["SMPL"]
 
 
@@ -26,8 +30,8 @@ class SMPL(BodyModel, nnx.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
-        gender: str | None = None,
+        model_path: PathLike | None = None,
+        gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
     ):
@@ -37,8 +41,7 @@ class SMPL(BodyModel, nnx.Module):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
 
-        # Default gender to "neutral" for attribute storage when model_path is given
-        self.gender = gender if gender is not None else "neutral"
+        self.gender = gender
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)

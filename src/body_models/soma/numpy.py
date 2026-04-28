@@ -1,7 +1,7 @@
 """NumPy backend for SOMA model."""
 
-from pathlib import Path as _Path
-from typing import cast as _cast
+from pathlib import Path
+from typing import cast
 
 import numpy as _np
 from jaxtyping import Float as _Float, Int as _Int
@@ -25,6 +25,8 @@ from .io import (
     load_pose_correctives_weights as _load_pose_correctives_weights,
     simplify_mesh as _simplify_mesh,
 )
+
+PathLike = Path | str
 
 __all__ = ["SOMA"]
 
@@ -72,7 +74,7 @@ class SOMA(_BodyModel):
 
     def __init__(
         self,
-        model_path: _Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         model_type: str = "soma",
         simplify: float = 1.0,
@@ -333,7 +335,7 @@ class SOMA(_BodyModel):
             return identity, None, None
 
         if self.model_type == "mhr":
-            num_scale_params = _cast(int, self.num_scale_params)
+            num_scale_params = cast(int, self.num_scale_params)
             rest_shape = _core.mhr_identity_shape(
                 model=self._identity_mhr_model,
                 identity=identity,
@@ -412,6 +414,5 @@ class SOMA(_BodyModel):
         linear_model_cls = {"smpl": _SMPL, "smplx": _SMPLX}[self.model_type]
         self._identity_linear_model = linear_model_cls(
             model_path=_get_identity_model_path(self.model_type),
-            gender="neutral",
             simplify=1.0,
         )

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
@@ -12,6 +13,8 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, load_model_data
+
+PathLike = Path | str
 
 __all__ = ["GarmentMeasurements"]
 
@@ -28,7 +31,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         rotation_type: core.RotationType = "axis_angle",
     ) -> None:

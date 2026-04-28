@@ -11,6 +11,8 @@ from nanomanifold import SO3
 from .. import config
 from ..utils import download_and_extract, get_cache_dir
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 ANNY_URL = "https://github.com/naver/anny/archive/refs/heads/main.zip"
@@ -38,15 +40,23 @@ _RIG_CONFIGS = {
 }
 
 
-def get_model_path(model_path: Path | str | None = None) -> Path:
+def validate_path(model_path: PathLike) -> Path:
+    model_path = Path(model_path)
+    if model_path.is_file():
+        raise ValueError(f"Expected an ANNY model directory, got file: {model_path}")
+    if not model_path.is_dir():
+        raise FileNotFoundError(f"ANNY model path {model_path} does not exist")
+    if not (model_path / "data" / "mpfb2").is_dir():
+        raise FileNotFoundError(f"ANNY model directory is missing data/mpfb2: {model_path}")
+    return model_path
+
+
+def get_model_path(model_path: PathLike | None = None) -> Path:
     if model_path is None:
         model_path = config.get_model_path("anny")
 
     if model_path is not None:
-        model_path = Path(model_path)
-        if model_path.exists():
-            return model_path
-        raise FileNotFoundError(f"ANNY model path {model_path} does not exist")
+        return validate_path(model_path)
 
     cache_path = get_cache_dir() / "anny"
     if (cache_path / "data" / "mpfb2").exists():
@@ -91,8 +101,7 @@ def build_anchors(dtype=np.float32) -> dict[str, np.ndarray]:
 
 
 def load_model_data_numpy(
-    model_path: Path | str | None = None,
-    cache_dir: Path | str | None = None,
+    model_path: PathLike | None = None,
     rig: str = "default",
     topology: str = "default",
     simplify: float = 1.0,
@@ -100,7 +109,7 @@ def load_model_data_numpy(
 ) -> dict:
     """Load ANNY model data as numpy arrays."""
     resolved_path = get_model_path(model_path)
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "anny" / "preprocessed"
+    cache_dir = get_cache_dir() / "anny" / "preprocessed"
     data = _load_data_numpy(resolved_path, cache_dir, rig=rig, eyes=True, tongue=True, dtype=dtype)
 
     # Apply topology edits

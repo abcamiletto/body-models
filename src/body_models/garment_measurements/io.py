@@ -13,6 +13,8 @@ import numpy as np
 from .. import config
 from ..utils import download_and_extract, get_cache_dir
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 GARMENT_MEASUREMENTS_URL = "https://github.com/mbotsch/GarmentMeasurements/archive/refs/heads/main.zip"
@@ -20,24 +22,28 @@ PREPROCESSED_FILENAME = "garment_measurements.npz"
 GENERATOR_PYTHON = "3.11"
 
 
-def get_model_path(model_path: Path | str | None = None) -> Path:
+def get_model_path(model_path: PathLike | None = None) -> Path:
     """Resolve a GarmentMeasurements data directory, downloading if needed."""
     if model_path is None:
         model_path = config.get_model_path("garment-measurements")
 
     if model_path is not None:
-        model_path = Path(model_path)
-        if _find_preprocessed_file(model_path) is not None or _find_upstream_data_dir(model_path) is not None:
-            return model_path
-        raise FileNotFoundError(
-            f"GarmentMeasurements model path {model_path} does not contain {PREPROCESSED_FILENAME} "
-            "or upstream pca/point.pca, pca/mean.obj, and template/male.fbx"
-        )
+        return validate_path(model_path)
 
     cache_path = get_cache_dir() / "garment_measurements"
     if _find_preprocessed_file(cache_path) is not None or _find_upstream_data_dir(cache_path) is not None:
         return cache_path
     return download_model()
+
+
+def validate_path(model_path: PathLike) -> Path:
+    model_path = Path(model_path)
+    if _find_preprocessed_file(model_path) is not None or _find_upstream_data_dir(model_path) is not None:
+        return model_path
+    raise FileNotFoundError(
+        f"GarmentMeasurements model path {model_path} does not contain {PREPROCESSED_FILENAME} "
+        "or upstream pca/point.pca, pca/mean.obj, and template/male.fbx"
+    )
 
 
 def download_model() -> Path:
@@ -53,7 +59,7 @@ def download_model() -> Path:
     return cache_dir
 
 
-def load_model_data(model_path: Path | str | None = None, dtype: Any = np.float32) -> dict[str, Any]:
+def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32) -> dict[str, Any]:
     """Load preprocessed model data as NumPy arrays."""
     resolved_path = get_model_path(model_path)
     model_file = _find_preprocessed_file(resolved_path)
@@ -70,7 +76,7 @@ def load_model_data(model_path: Path | str | None = None, dtype: Any = np.float3
     )
 
 
-def preprocess_model(upstream_data: Path | str, output_dir: Path | str | None = None) -> Path:
+def preprocess_model(upstream_data: PathLike, output_dir: PathLike | None = None) -> Path:
     """Generate ``garment_measurements.npz`` from an upstream GarmentMeasurements data directory."""
     resolved_upstream = _find_upstream_data_dir(Path(upstream_data))
     if resolved_upstream is None:
@@ -91,7 +97,7 @@ def preprocess_model(upstream_data: Path | str, output_dir: Path | str | None = 
     return output_file
 
 
-def load_preprocessed_model(model_path: Path | str, dtype: Any = np.float32) -> dict[str, Any]:
+def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> dict[str, Any]:
     """Load a preprocessed dependency-free GarmentMeasurements ``.npz`` asset."""
     path = Path(model_path)
     with np.load(path, allow_pickle=False) as data:

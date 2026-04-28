@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import jax
 import jax.numpy as jnp
 from flax import nnx
@@ -11,6 +12,8 @@ from nanomanifold import SO3
 from ..base import BodyModel
 from . import core
 from .io import load_model_data
+
+PathLike = Path | str
 
 __all__ = ["G1"]
 
@@ -28,7 +31,7 @@ class G1(BodyModel, nnx.Module):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         rotation_type: core.RotationType = "rotmat",
     ) -> None:

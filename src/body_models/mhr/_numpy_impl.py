@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -9,6 +10,8 @@ from nanomanifold import SO3
 from ..base import BodyModel
 from . import core
 from .io import get_model_path, load_model_data, load_pose_correctives_weights, compute_kinematic_fronts, simplify_mesh
+
+PathLike = Path | str
 
 __all__ = ["MHR"]
 
@@ -35,7 +38,7 @@ class MHR(BodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         lod: int = 1,
         simplify: float = 1.0,

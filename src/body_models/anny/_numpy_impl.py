@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+
 import numpy as np
 from jaxtyping import Float, Int
 
@@ -21,6 +22,8 @@ from .io import (
 from_native_args = core.from_native_args
 to_native_outputs = core.to_native_outputs
 
+PathLike = Path | str
+
 __all__ = ["ANNY", "from_native_args", "to_native_outputs"]
 
 
@@ -29,7 +32,6 @@ class ANNY(BodyModel):
 
     Args:
         model_path: Path to ANNY model directory. Auto-downloads if None.
-        cache_dir: Cache directory for preprocessed data.
         rig: Skeleton rig type ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo").
         topology: Mesh topology ("default" or "makehuman").
         all_phenotypes: Include race, cupsize, firmness phenotypes.
@@ -39,9 +41,8 @@ class ANNY(BodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
-        cache_dir: Path | str | None = None,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,
@@ -57,7 +58,6 @@ class ANNY(BodyModel):
 
         data = load_model_data_numpy(
             model_path=model_path,
-            cache_dir=cache_dir,
             rig=rig,
             topology=topology,
             simplify=simplify,
