@@ -1,7 +1,5 @@
 """NumPy backend for SMPL-X model."""
 
-__all__ = ["SMPLX"]
-
 from pathlib import Path
 
 import numpy as np
@@ -14,8 +12,10 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
-Array = np.ndarray
 
+__all__ = ["SMPLX"]
+
+Array = np.ndarray
 
 
 class SMPLX(BodyModel):

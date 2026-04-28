@@ -1,7 +1,5 @@
 """JAX backend for the Unitree G1 rigid model."""
 
-__all__ = ["G1"]
-
 from pathlib import Path
 
 import jax
@@ -14,6 +12,8 @@ from ..base import BodyModel
 from . import core
 from .io import load_model_data
 
+
+__all__ = ["G1"]
 
 
 class G1(BodyModel, nnx.Module):

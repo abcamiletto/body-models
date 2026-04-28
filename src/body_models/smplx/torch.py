@@ -1,7 +1,5 @@
 """PyTorch backend for SMPL-X model."""
 
-__all__ = ["SMPLX", "from_native_args", "to_native_outputs"]
-
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +14,13 @@ from nanomanifold import SO3
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
+
+
+# Re-export conversion functions from core
+from_native_args = core.from_native_args
+to_native_outputs = core.to_native_outputs
+
+__all__ = ["SMPLX", "from_native_args", "to_native_outputs"]
 
 
 class SMPLX(BodyModel, nn.Module):
@@ -242,8 +247,3 @@ class SMPLX(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
-
-
-# Re-export conversion functions from core
-from_native_args = core.from_native_args
-to_native_outputs = core.to_native_outputs

@@ -1,7 +1,5 @@
 """JAX backend for MHR model using Flax NNX."""
 
-__all__ = ["MHR"]
-
 from pathlib import Path
 
 import jax
@@ -15,6 +13,8 @@ from ..base import BodyModel
 from . import core
 from .io import get_model_path, load_model_data, load_pose_correctives_weights, compute_kinematic_fronts, simplify_mesh
 
+
+__all__ = ["MHR"]
 
 
 class MHR(BodyModel, nnx.Module):

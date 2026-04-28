@@ -33,6 +33,7 @@ PathLike = Path | str
 
 __all__ = ["SOMA"]
 
+
 class SOMA(_BodyModel, _nn.Module):
     """SOMA body model with PyTorch backend."""
 

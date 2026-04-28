@@ -30,6 +30,7 @@ PathLike = Path | str
 
 __all__ = ["SOMA"]
 
+
 class SOMA(_BodyModel):
     """SOMA body model with NumPy backend."""
 

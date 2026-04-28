@@ -33,6 +33,7 @@ PathLike = Path | str
 
 __all__ = ["SOMA"]
 
+
 class SOMA(_BodyModel, _nnx.Module):
     """SOMA body model with JAX/Flax NNX backend."""
 

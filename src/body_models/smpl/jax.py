@@ -1,7 +1,5 @@
 """JAX backend for SMPL model using Flax NNX."""
 
-__all__ = ["SMPL"]
-
 from pathlib import Path
 
 import jax
@@ -17,6 +15,8 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import SMPL_JOINT_NAMES, compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
 
+
+__all__ = ["SMPL"]
 
 
 class SMPL(BodyModel, nnx.Module):

@@ -1,7 +1,5 @@
 """NumPy backend for FLAME model."""
 
-__all__ = ["FLAME"]
-
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +12,8 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
 
+
+__all__ = ["FLAME"]
 
 
 class FLAME(BodyModel):

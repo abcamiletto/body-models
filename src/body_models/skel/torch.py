@@ -1,7 +1,5 @@
 """PyTorch backend for SKEL model."""
 
-__all__ = ["SKEL", "from_native_args", "to_native_outputs"]
-
 import pickle as pkl
 from pathlib import Path
 
@@ -16,6 +14,9 @@ from ..base import BodyModel
 from ..common import get_namespace
 from . import core
 from .io import get_model_path, simplify_mesh
+
+
+__all__ = ["SKEL", "from_native_args", "to_native_outputs"]
 
 
 class SKEL(BodyModel, nn.Module):

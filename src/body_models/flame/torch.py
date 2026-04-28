@@ -1,7 +1,5 @@
 """PyTorch backend for FLAME model."""
 
-__all__ = ["FLAME", "from_native_args", "to_native_outputs"]
-
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +14,13 @@ from nanomanifold import SO3
 from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import FLAME_JOINT_NAMES, get_model_path, load_model_data, simplify_mesh, compute_kinematic_fronts
+
+
+# Re-export conversion functions from core
+from_native_args = core.from_native_args
+to_native_outputs = core.to_native_outputs
+
+__all__ = ["FLAME", "from_native_args", "to_native_outputs"]
 
 
 class FLAME(BodyModel, nn.Module):
@@ -245,8 +250,3 @@ class FLAME(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
-
-
-# Re-export conversion functions from core
-from_native_args = core.from_native_args
-to_native_outputs = core.to_native_outputs

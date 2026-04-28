@@ -1,6 +1,5 @@
 """PyTorch backend for ANNY model."""
 
-__all__ = ["ANNY"]
 
 # Derived from: https://github.com/naver/anny
 # Original license: Apache 2.0 (https://github.com/naver/anny/blob/main/LICENSE)
@@ -23,6 +22,8 @@ from ..rotations import VALID_ROTATION_TYPES
 from ..utils import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
+
+__all__ = ["ANNY"]
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 

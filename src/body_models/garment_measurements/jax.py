@@ -1,7 +1,5 @@
 """JAX backend for the GarmentMeasurements PCA body model."""
 
-__all__ = ["GarmentMeasurements"]
-
 from pathlib import Path
 
 import jax
@@ -16,6 +14,8 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, load_model_data
 
+
+__all__ = ["GarmentMeasurements"]
 
 
 class GarmentMeasurements(BodyModel, nnx.Module):

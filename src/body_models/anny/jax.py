@@ -1,7 +1,5 @@
 """JAX backend for ANNY model using Flax NNX."""
 
-__all__ = ["ANNY", "from_native_args", "to_native_outputs"]
-
 from pathlib import Path
 
 import jax
@@ -26,6 +24,8 @@ from .io import (
 from_native_args = core.from_native_args
 to_native_outputs = core.to_native_outputs
 
+
+__all__ = ["ANNY", "from_native_args", "to_native_outputs"]
 
 
 class ANNY(BodyModel, nnx.Module):
