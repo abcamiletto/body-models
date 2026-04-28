@@ -265,16 +265,14 @@ def _parse_tendons(root: ET.Element, site_names: list[str], class_defaults: dict
     out: list[dict] = []
     for spatial in root.findall(".//tendon/spatial"):
         default = class_defaults.get(spatial.get("class") or "", _DEFAULT_JOINT)
-        width = float(spatial.get("width") or default.get("tendon_width", 0.005))
-
-        refs = [s.get("site") for s in spatial.findall("site")]
-        if any(r is None or r not in site_index for r in refs) or len(refs) < 2:
+        refs = [s.attrib["site"] for s in spatial.findall("site")]
+        if len(refs) < 2 or any(r not in site_index for r in refs):
             continue
         out.append(
             {
                 "name": spatial.get("name") or f"tendon_{len(out)}",
                 "site_indices": [site_index[r] for r in refs],
-                "width": width,
+                "width": float(spatial.get("width") or default["tendon_width"]),
             }
         )
     return out
@@ -355,21 +353,15 @@ def _walk_body(
 
     for joint in elem.findall("joint"):
         cls_default = defaults.get(joint.get("class") or childclass or "", _DEFAULT_JOINT)
-        joint_type = joint.get("type") or cls_default.get("type", "hinge")
+        joint_type = joint.get("type") or cls_default["type"]
         # Ball/freejoint-typed entries fall outside our hinge+slide chain composition.
         if joint_type not in {"hinge", "slide"}:
             continue
-        axis_raw = _parse_vec(
-            joint.get("axis"),
-            default=np.asarray(cls_default.get("axis", _DEFAULT_JOINT["axis"]), dtype=np.float32),
-        )
+        axis_raw = _parse_vec(joint.get("axis"), default=np.asarray(cls_default["axis"], dtype=np.float32))
         axis_raw = axis_raw / max(float(np.linalg.norm(axis_raw)), 1e-12)
         anchor_raw = _parse_vec(joint.get("pos"), default=np.zeros(3, dtype=np.float32))
         rng = joint.get("range")
-        if rng:
-            lo, hi = (float(x) for x in rng.split())
-        else:
-            lo, hi = cls_default.get("range", _DEFAULT_JOINT["range"])
+        lo, hi = (float(x) for x in rng.split()) if rng else cls_default["range"]
         qpos.append(
             {
                 "name": joint.get("name") or f"joint_{len(qpos)}",

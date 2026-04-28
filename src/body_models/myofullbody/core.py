@@ -286,10 +286,9 @@ def world_sites(
     """
     if xp is None:
         xp = get_namespace(skeleton)
-    body_T = skeleton[:, xp.asarray(site_body_indices)]  # [B, S, 4, 4]
+    body_T = skeleton[:, xp.asarray(site_body_indices)]
     local = xp.asarray(site_positions, dtype=skeleton.dtype)
-    rotated = xp.squeeze(body_T[..., :3, :3] @ local[None, :, :, None], axis=-1)
-    return rotated + body_T[..., :3, 3]
+    return xp.squeeze(body_T[..., :3, :3] @ local[None, :, :, None], axis=-1) + body_T[..., :3, 3]
 
 
 # ----------------------------------------------------------------------------

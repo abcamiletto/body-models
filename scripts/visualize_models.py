@@ -450,7 +450,7 @@ def _muscle_segment_indices(model: BodyModel) -> np.ndarray | None:
     for tendon in tendons:
         sites = tendon["site_indices"]
         segments.extend(zip(sites[:-1], sites[1:]))
-    return np.asarray(segments, dtype=np.int64) if segments else None
+    return np.asarray(segments, dtype=np.int64)
 
 
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
