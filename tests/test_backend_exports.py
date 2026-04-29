@@ -7,9 +7,9 @@ import pytest
 
 EXPECTED_PUBLIC_NAMES = {
     "body_models.anny.torch": ["ANNY"],
-    "body_models.anny.numpy": ["ANNY", "from_native_args", "to_native_outputs"],
-    "body_models.anny.jax": ["ANNY", "from_native_args", "to_native_outputs"],
-    "body_models.flame.torch": ["FLAME", "from_native_args", "to_native_outputs"],
+    "body_models.anny.numpy": ["ANNY"],
+    "body_models.anny.jax": ["ANNY"],
+    "body_models.flame.torch": ["FLAME"],
     "body_models.flame.numpy": ["FLAME"],
     "body_models.flame.jax": ["FLAME"],
     "body_models.garment_measurements.torch": ["GarmentMeasurements"],
@@ -24,13 +24,16 @@ EXPECTED_PUBLIC_NAMES = {
     "body_models.myofullbody.torch": ["MyoFullBody"],
     "body_models.myofullbody.numpy": ["MyoFullBody"],
     "body_models.myofullbody.jax": ["MyoFullBody"],
-    "body_models.skel.torch": ["SKEL", "from_native_args", "to_native_outputs"],
-    "body_models.skel.numpy": ["SKEL", "from_native_args", "to_native_outputs"],
-    "body_models.skel.jax": ["SKEL", "from_native_args", "to_native_outputs"],
-    "body_models.smpl.torch": ["SMPL", "from_native_args", "to_native_outputs"],
+    "body_models.skel.torch": ["SKEL"],
+    "body_models.skel.numpy": ["SKEL"],
+    "body_models.skel.jax": ["SKEL"],
+    "body_models.smpl.torch": ["SMPL"],
     "body_models.smpl.numpy": ["SMPL"],
     "body_models.smpl.jax": ["SMPL"],
-    "body_models.smplx.torch": ["SMPLX", "from_native_args", "to_native_outputs"],
+    "body_models.smplh.torch": ["SMPLH"],
+    "body_models.smplh.numpy": ["SMPLH"],
+    "body_models.smplh.jax": ["SMPLH"],
+    "body_models.smplx.torch": ["SMPLX"],
     "body_models.smplx.numpy": ["SMPLX"],
     "body_models.smplx.jax": ["SMPLX"],
     "body_models.soma.torch": ["SOMA"],
@@ -40,7 +43,7 @@ EXPECTED_PUBLIC_NAMES = {
 
 
 @pytest.mark.parametrize("module_name, expected_names", EXPECTED_PUBLIC_NAMES.items())
-def test_backend_modules_only_export_expected_names(module_name: str, expected_names: list[str]) -> None:
+def test_backend_modules_define_expected_exports(module_name: str, expected_names: list[str]) -> None:
     if module_name.endswith(".torch"):
         pytest.importorskip("torch")
     if module_name.endswith(".jax"):
@@ -48,5 +51,4 @@ def test_backend_modules_only_export_expected_names(module_name: str, expected_n
         pytest.importorskip("flax")
 
     module = import_module(module_name)
-    public_names = sorted(name for name in vars(module) if not name.startswith("_"))
-    assert public_names == expected_names
+    assert sorted(module.__all__) == expected_names

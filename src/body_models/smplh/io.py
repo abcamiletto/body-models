@@ -1,4 +1,4 @@
-"""I/O utilities for SMPL-X model."""
+"""I/O utilities for SMPL-H model."""
 
 from pathlib import Path
 from typing import Literal
@@ -8,21 +8,84 @@ from jaxtyping import Int
 
 from .. import config
 from ..common import simplify_mesh
+from ..smpl.io import _load_smpl_pkl
 
 PathLike = Path | str
 
-__all__ = ["get_model_path", "get_joint_names", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
+__all__ = [
+    "validate_path",
+    "get_model_path",
+    "get_joint_names",
+    "load_model_data",
+    "compute_kinematic_fronts",
+    "simplify_mesh",
+]
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
+SMPLH_JOINT_NAMES = [
+    "pelvis",
+    "left_hip",
+    "right_hip",
+    "spine1",
+    "left_knee",
+    "right_knee",
+    "spine2",
+    "left_ankle",
+    "right_ankle",
+    "spine3",
+    "left_foot",
+    "right_foot",
+    "neck",
+    "left_collar",
+    "right_collar",
+    "head",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_index1",
+    "left_index2",
+    "left_index3",
+    "left_middle1",
+    "left_middle2",
+    "left_middle3",
+    "left_pinky1",
+    "left_pinky2",
+    "left_pinky3",
+    "left_ring1",
+    "left_ring2",
+    "left_ring3",
+    "left_thumb1",
+    "left_thumb2",
+    "left_thumb3",
+    "right_index1",
+    "right_index2",
+    "right_index3",
+    "right_middle1",
+    "right_middle2",
+    "right_middle3",
+    "right_pinky1",
+    "right_pinky2",
+    "right_pinky3",
+    "right_ring1",
+    "right_ring2",
+    "right_ring3",
+    "right_thumb1",
+    "right_thumb2",
+    "right_thumb3",
+]
 
 
 def validate_path(model_path: PathLike) -> Path:
     model_path = Path(model_path)
     if model_path.is_dir():
-        raise ValueError(f"Expected an SMPLX model file, got directory: {model_path}")
+        raise ValueError(f"Expected an SMPLH model file, got directory: {model_path}")
     if not model_path.is_file():
-        raise FileNotFoundError(f"SMPLX model file not found: {model_path}")
-    if model_path.suffix != ".npz":
-        raise ValueError(f"Expected an SMPLX .npz file, got: {model_path}")
+        raise FileNotFoundError(f"SMPLH model file not found: {model_path}")
+    if model_path.suffix not in {".npz", ".pkl"}:
+        raise ValueError(f"Expected an SMPLH .npz or .pkl file, got: {model_path}")
     return model_path
 
 
@@ -35,25 +98,30 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
     if gender is None:
         raise ValueError("Either model_path or gender must be provided.")
 
-    config_key = f"smplx-{gender}"
+    config_key = f"smplh-{gender}"
     resolved_path = config.get_model_path(config_key)
 
     if resolved_path is None:
         raise FileNotFoundError(
-            f"SMPLX model not found. Download from https://smpl-x.is.tue.mpg.de/ "
-            f"and run: body-models set smplx-{gender} /path/to/SMPLX_{gender.upper()}.npz"
+            "SMPLH model not found. Download from https://mano.is.tue.mpg.de/ "
+            f"and run: body-models set smplh-{gender} /path/to/smplh/{gender}/model.npz"
         )
 
     return validate_path(resolved_path)
 
 
 def load_model_data(path: Path) -> dict:
-    """Load SMPL-X model data from .npz file."""
-    return dict(np.load(path, allow_pickle=True))
+    """Load SMPL-H model data from .pkl or .npz file."""
+    data = dict(np.load(path, allow_pickle=True)) if path.suffix == ".npz" else _load_smpl_pkl(path)
+    if hasattr(data["J_regressor"], "toarray"):
+        data["J_regressor"] = data["J_regressor"].toarray()
+    return data
 
 
 def get_joint_names(model_data: dict) -> list[str]:
-    """Extract ordered SMPL-X joint names from model data."""
+    """Extract ordered SMPL-H joint names from model data."""
+    if "joint2num" not in model_data:
+        return list(SMPLH_JOINT_NAMES)
     joint2num = model_data["joint2num"].item()
     return [name for name, _ in sorted(joint2num.items(), key=lambda item: int(item[1]))]
 

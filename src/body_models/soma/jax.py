@@ -1,7 +1,7 @@
 """JAX backend for SOMA model using Flax NNX."""
 
-from pathlib import Path as _Path
-from typing import cast as _cast
+from pathlib import Path
+from typing import cast
 
 import jax as _jax
 import jax.numpy as _jnp
@@ -10,7 +10,6 @@ from flax import nnx as _nnx
 from jaxtyping import Float as _Float, Int as _Int
 from nanomanifold import SO3 as _SO3
 
-from ..anny import core as _anny_core
 from ..anny.jax import ANNY as _ANNY
 from ..base import BodyModel as _BodyModel
 from ..mhr.jax import MHR as _MHR
@@ -29,6 +28,8 @@ from .io import (
     simplify_mesh as _simplify_mesh,
 )
 
+PathLike = Path | str
+
 __all__ = ["SOMA"]
 
 
@@ -44,7 +45,7 @@ class SOMA(_BodyModel, _nnx.Module):
 
     def __init__(
         self,
-        model_path: _Path | str | None = None,
+        model_path: PathLike | None = None,
         *,
         model_type: str = "soma",
         simplify: float = 1.0,
@@ -305,7 +306,7 @@ class SOMA(_BodyModel, _nnx.Module):
             return identity, None, None
 
         if self.model_type == "mhr":
-            num_scale_params = _cast(int, self.num_scale_params)
+            num_scale_params = cast(int, self.num_scale_params)
             rest_shape = _core.mhr_identity_shape(
                 model=self._identity_mhr_model,
                 identity=identity,
@@ -380,14 +381,15 @@ class SOMA(_BodyModel, _nnx.Module):
         )
         self._identity_internal_to_source_rotation = _nnx.Variable(rotation)
         self._identity_internal_to_source_translation = _nnx.Variable(translation)
-        self._identity_source_to_soma_rotation = _nnx.Variable(_jnp.asarray(_anny_core.COORD_ROTATION))
+        self._identity_source_to_soma_rotation = _nnx.Variable(
+            _jnp.asarray([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
+        )
 
     def _init_linear_identity_backend(self, _transfer_data: dict[str, _np.ndarray]) -> None:
         linear_model_cls = {"smpl": _SMPL, "smplx": _SMPLX}[self.model_type]
         self._identity_linear_model = _nnx.data(
             linear_model_cls(
                 model_path=_get_identity_model_path(self.model_type),
-                gender="neutral",
                 simplify=1.0,
             )
         )

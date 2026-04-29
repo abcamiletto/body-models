@@ -60,7 +60,7 @@ class BodyModel(ABC):
         """
         Compute mesh vertices.
 
-        Signature varies by model. Outputs are in Y-up coordinate system
+        Signature varies by model. Outputs use the model's native coordinate system.
         in meters.
 
         Returns:
@@ -72,7 +72,7 @@ class BodyModel(ABC):
         """
         Compute skeleton joint transforms.
 
-        Signature varies by model. Outputs are in Y-up coordinate system
+        Signature varies by model. Outputs use the model's native coordinate system.
         in meters.
 
         Returns:

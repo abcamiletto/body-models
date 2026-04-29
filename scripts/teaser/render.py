@@ -38,6 +38,7 @@ from body_models.mhr.numpy import MHR
 from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
+from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
 
@@ -49,6 +50,7 @@ MODEL_GAP = 0.30
 # Insertion order doubles as the canonical lineup ordering.
 PASTELS = {
     "smpl": (0.95, 0.63, 0.72, 1.0),  # rose
+    "smplh": (0.80, 0.70, 0.95, 1.0),  # lilac
     "smplx": (0.62, 0.78, 0.98, 1.0),  # sky
     "skel": (0.62, 0.93, 0.74, 1.0),  # mint
     "mhr": (0.99, 0.73, 0.54, 1.0),  # peach
@@ -68,6 +70,7 @@ SCALES = {"flame": 0.5}
 
 LOADERS = {
     "smpl": lambda: SMPL(gender="neutral"),  # path via body-models config
+    "smplh": lambda: SMPLH(gender="neutral"),  # path via body-models config
     "smplx": lambda: SMPLX(gender="neutral"),  # path via body-models config
     "skel": lambda: SKEL(ASSETS_DIR / "skel/model", "male"),
     "mhr": lambda: MHR(ASSETS_DIR / "mhr/model"),
@@ -93,7 +96,7 @@ ANNY_POSE_OFFSETS = {
     ("lowerarm01.l", 0): -0.75,
     ("lowerarm01.r", 0): -0.75,
 }
-ANNY_GLOBAL_PITCH_X = 0.08
+ANNY_DISPLAY_ROTATION_X = -np.pi / 2 + 0.08
 
 GM_POSE_OFFSETS = {
     ("upper_arm_l", 2): 0.6,
@@ -168,13 +171,13 @@ def parse_args() -> argparse.Namespace:
 # ── Per-family canonical mesh ────────────────────────────────────────────────
 def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
-    if family in ("smpl", "smplx", "skel", "flame"):
+    if family in ("smpl", "smplh", "smplx", "skel", "flame"):
         verts = np.asarray(model.rest_vertices, dtype=np.float32)
     else:
         params = model.get_rest_pose(batch_size=1)
         if family == "anny":
             apply_pose_offsets(model, params, ANNY_POSE_OFFSETS)
-            params["global_rotation"][0, 0] = ANNY_GLOBAL_PITCH_X
+            params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
         elif family == "mhr":
             params["pose"][0] = solve_mhr_pose(model)
         elif family == "garment_measurements":
@@ -258,7 +261,7 @@ def normalize_mesh(vertices: np.ndarray, target_height: float) -> np.ndarray:
 def create_mesh_object(name, vertices, faces):
     vertices = vertices.copy()
     vertices[:, 1] -= float(vertices[:, 1].min())
-    # Body models are Y-up, Blender is Z-up.
+    # Display meshes are Y-up, Blender is Z-up.
     verts_blender = [(float(x), float(z), float(y)) for x, y, z in vertices]
 
     mesh = bpy.data.meshes.new(f"{name}Mesh")

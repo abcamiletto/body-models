@@ -1,4 +1,4 @@
-from . import anny, flame, g1, garment_measurements, mhr, myofullbody, skel, smpl, smplx, soma
+from . import anny, flame, g1, garment_measurements, mhr, myofullbody, skel, smpl, smplh, smplx, soma
 from .base import BodyModel
 
 __all__ = [
@@ -11,6 +11,7 @@ __all__ = [
     "myofullbody",
     "skel",
     "smpl",
+    "smplh",
     "smplx",
     "soma",
     # Base class
@@ -40,6 +41,9 @@ def main() -> None:
         "smplx-male",
         "smplx-female",
         "smplx-neutral",
+        "smplh-male",
+        "smplh-female",
+        "smplh-neutral",
         "skel",
         "anny",
         "mhr",
@@ -78,6 +82,7 @@ def main() -> None:
         model: Annotated[
             Literal[
                 "smpl",
+                "smplh",
                 "smplx",
                 "skel",
                 "flame",
@@ -101,6 +106,18 @@ def main() -> None:
                 username = typer.prompt("Username (SMPL)")
                 password = typer.prompt("Password (SMPL)", hide_input=True)
             paths = fetch.download_smpl(username=username, password=password)
+            for key, path in sorted(paths.items()):
+                set_model_path(key, str(path))
+                print(f"Set {key} = {path}")
+
+        if model in ("smplh", "all"):
+            username = os.getenv("SMPLH_USERNAME")
+            password = os.getenv("SMPLH_PASSWORD")
+            if username is None or password is None:
+                typer.echo("SMPL-H account: https://mano.is.tue.mpg.de/")
+                username = typer.prompt("Username (SMPL-H)")
+                password = typer.prompt("Password (SMPL-H)", hide_input=True)
+            paths = fetch.download_smplh(username=username, password=password)
             for key, path in sorted(paths.items()):
                 set_model_path(key, str(path))
                 print(f"Set {key} = {path}")

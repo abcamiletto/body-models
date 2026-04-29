@@ -11,6 +11,8 @@ from .. import config
 from ..common import simplify_mesh
 from ..utils import download_and_extract, get_cache_dir
 
+PathLike = Path | str
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 __all__ = [
@@ -40,23 +42,25 @@ class MHRModelData(TypedDict):
     faces: np.ndarray
 
 
-def get_model_path(model_path: Path | str | None = None) -> Path:
+def validate_path(model_path: PathLike) -> Path:
+    model_path = Path(model_path)
+    if model_path.is_file():
+        raise ValueError(f"Expected an MHR model directory, got file: {model_path}")
+    if not model_path.is_dir():
+        raise FileNotFoundError(f"MHR model path {model_path} does not exist")
+    model_file = model_path / "mhr_model.pt"
+    if not model_file.is_file():
+        raise FileNotFoundError(f"MHR model directory is missing mhr_model.pt: {model_path}")
+    return model_path
+
+
+def get_model_path(model_path: PathLike | None = None) -> Path:
     """Resolve MHR model path, downloading if necessary."""
     if model_path is None:
         model_path = config.get_model_path("mhr")
 
     if model_path is not None:
-        model_path = Path(model_path)
-        if model_path.is_file():
-            raise ValueError(
-                f"Expected an MHR model directory, got file: {model_path}\n"
-                "Please provide a directory containing mhr_model.pt."
-            )
-        if (model_path / "mhr_model.pt").exists():
-            return model_path
-        if model_path.is_dir():
-            raise FileNotFoundError(f"MHR model directory is missing mhr_model.pt: {model_path}")
-        raise FileNotFoundError(f"MHR model path {model_path} does not exist")
+        return validate_path(model_path)
 
     cache_path = get_cache_dir() / "mhr"
     if (cache_path / "mhr_model.pt").exists():

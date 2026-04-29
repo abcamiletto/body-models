@@ -1,9 +1,13 @@
-"""NumPy backend for SMPL-X model."""
+"""PyTorch backend for SMPL-H model."""
 
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
+import torch
+import torch.nn as nn
 from jaxtyping import Float, Int
+from torch import Tensor
 
 from ..base import BodyModel
 from nanomanifold import SO3
@@ -12,23 +16,28 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
-Array = np.ndarray
-
-__all__ = ["SMPLX"]
+__all__ = ["SMPLH"]
 
 
-class SMPLX(BodyModel):
-    """SMPL-X body model with NumPy backend."""
+class SMPLH(BodyModel, nn.Module):
+    """SMPL-H body model with PyTorch backend."""
 
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30  # 15 per hand
-    NUM_HEAD_JOINTS = 3  # jaw, left eye, right eye
-    NUM_JOINTS = 55  # 22 body + 30 hands + 3 head
+    NUM_JOINTS = 52  # pelvis + 21 body joints + 30 hand joints
+
+    # Type declarations for registered buffers
+    v_template: Tensor
+    v_template_full: Tensor
+    lbs_weights: Tensor
+    J_regressor: Tensor
+    hand_mean: Tensor
+    _faces: Tensor
 
     def __init__(
         self,
         model_path: Path | str | None = None,
-        gender: str | None = None,
+        gender: Literal["neutral", "male", "female"] | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
@@ -38,6 +47,7 @@ class SMPLX(BodyModel):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
+        super().__init__()
 
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
@@ -65,42 +75,41 @@ class SMPLX(BodyModel):
         else:
             v_template = v_template_full
 
-        # Store arrays as instance attributes
-        self.v_template = v_template
-        self.v_template_full = v_template_full
-        self.lbs_weights = lbs_weights
-        self.J_regressor = J_regressor
-        self.parents = parents.tolist()
-        self._faces = faces
+        # Register buffers for device management
+        self.register_buffer("v_template", torch.as_tensor(v_template))
+        self.register_buffer("v_template_full", torch.as_tensor(v_template_full))
+        self.register_buffer("lbs_weights", torch.as_tensor(lbs_weights))
+        self.register_buffer("J_regressor", torch.as_tensor(J_regressor))
+        self.register_buffer("_faces", torch.as_tensor(faces))
 
         # Hand pose mean
         hand_mean = np.stack(
             [
-                np.asarray(data["hands_meanl"], dtype=np.float32),
-                np.asarray(data["hands_meanr"], dtype=np.float32),
+                np.asarray(data.get("hands_meanl", np.zeros(45)), dtype=np.float32),
+                np.asarray(data.get("hands_meanr", np.zeros(45)), dtype=np.float32),
             ]
         )
         if flat_hand_mean:
             hand_mean = np.zeros_like(hand_mean)
-        self.hand_mean = hand_mean
+        self.register_buffer("hand_mean", torch.as_tensor(hand_mean))
 
-        # Blend shapes - split into shape and expression
-        self.shapedirs = shapedirs[:, :, :300]
-        self.shapedirs_full = shapedirs_full[:, :, :300]
-        self.exprdirs = shapedirs[:, :, 300:400]
-        self.exprdirs_full = shapedirs_full[:, :, 300:400]
-        self.posedirs = posedirs.reshape(-1, posedirs.shape[-1]).T
+        self.shapedirs = nn.Parameter(torch.as_tensor(shapedirs), requires_grad=False)
+        self.shapedirs_full = nn.Parameter(torch.as_tensor(shapedirs_full), requires_grad=False)
+        self.posedirs = nn.Parameter(torch.as_tensor(posedirs.reshape(-1, posedirs.shape[-1]).T), requires_grad=False)
 
+        self.parents = parents.tolist()
         self._kinematic_fronts = compute_kinematic_fronts(parents)
         self._joint_names = get_joint_names(data)
 
-        # Precomputed joint regression matrices
-        self._j_template = J_regressor @ v_template_full
-        self._j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full[:, :, :300])
-        self._j_exprdirs = np.einsum("jv,vde->jde", J_regressor, shapedirs_full[:, :, 300:400])
+        # Precomputed joint regression: j_t = j_template + einsum(params, j_dirs)
+        # Avoids materializing [B, V_full, 3] intermediate at runtime
+        _j_template = J_regressor @ v_template_full
+        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full)
+        self.register_buffer("_j_template", torch.as_tensor(_j_template))
+        self.register_buffer("_j_shapedirs", torch.as_tensor(_j_shapedirs))
 
     @property
-    def faces(self) -> Int[Array, "F 3"]:
+    def faces(self) -> Int[Tensor, "F 3"]:
         return self._faces
 
     @property
@@ -116,111 +125,95 @@ class SMPLX(BodyModel):
         return self.v_template.shape[0]
 
     @property
-    def skin_weights(self) -> Float[Array, "V J"]:
+    def skin_weights(self) -> Float[Tensor, "V 52"]:
         return self.lbs_weights
 
     @property
-    def rest_vertices(self) -> Float[Array, "V 3"]:
+    def rest_vertices(self) -> Float[Tensor, "V 3"]:
         return self.v_template
 
     def forward_vertices(
         self,
-        shape: Float[Array, "B|1 10"],
-        body_pose: Float[Array, "B 21 N"] | Float[Array, "B 21 3 3"],
-        hand_pose: Float[Array, "B 30 N"] | Float[Array, "B 30 3 3"],
-        head_pose: Float[Array, "B 3 N"] | Float[Array, "B 3 3 3"],
-        expression: Float[Array, "B 10"] | None = None,
-        pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_translation: Float[Array, "B 3"] | None = None,
+        shape: Float[Tensor, "B|1 10"],
+        body_pose: Float[Tensor, "B 21 N"] | Float[Tensor, "B 21 3 3"],
+        hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
-    ) -> Float[Array, "B V 3"]:
+    ) -> Float[Tensor, "B V 3"]:
         return core.forward_vertices(
             v_template=self.v_template,
             shapedirs=self.shapedirs,
-            exprdirs=self.exprdirs,
             posedirs=self.posedirs,
             lbs_weights=self.lbs_weights,
             j_template=self._j_template,
             j_shapedirs=self._j_shapedirs,
-            j_exprdirs=self._j_exprdirs,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
-            head_pose=head_pose,
-            expression=expression,
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            xp=torch,
         )
 
     def forward_skeleton(
         self,
-        shape: Float[Array, "B|1 10"],
-        body_pose: Float[Array, "B 21 N"] | Float[Array, "B 21 3 3"],
-        hand_pose: Float[Array, "B 30 N"] | Float[Array, "B 30 3 3"],
-        head_pose: Float[Array, "B 3 N"] | Float[Array, "B 3 3 3"],
-        expression: Float[Array, "B 10"] | None = None,
-        pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_translation: Float[Array, "B 3"] | None = None,
+        shape: Float[Tensor, "B|1 10"],
+        body_pose: Float[Tensor, "B 21 N"] | Float[Tensor, "B 21 3 3"],
+        hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
-    ) -> Float[Array, "B 55 4 4"]:
+    ) -> Float[Tensor, "B 52 4 4"]:
         return core.forward_skeleton(
             j_template=self._j_template,
             j_shapedirs=self._j_shapedirs,
-            j_exprdirs=self._j_exprdirs,
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
-            head_pose=head_pose,
-            expression=expression,
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            xp=torch,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, Array]:
-        body_pose_ref = np.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype)
-        hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
-        head_pose_ref = np.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), dtype=dtype)
-        pelvis_ref = np.zeros((batch_size, 3), dtype=dtype)
+    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+        device = self.v_template.device
+        body_pose_ref = torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
+        hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
+        pelvis_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         return {
-            "shape": np.zeros((1, 10), dtype=dtype),
+            "shape": torch.zeros((1, 10), device=device, dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
                 batch_dims=(batch_size, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
-                xp=np,
+                xp=torch,
             ),
             "hand_pose": SO3.identity_as(
                 hand_pose_ref,
                 batch_dims=(batch_size, self.NUM_HAND_JOINTS),
                 rotation_type=self.rotation_type,
-                xp=np,
+                xp=torch,
             ),
-            "head_pose": SO3.identity_as(
-                head_pose_ref,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=np,
-            ),
-            "expression": np.zeros((batch_size, 10), dtype=dtype),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
-                xp=np,
+                xp=torch,
             ),
-            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }

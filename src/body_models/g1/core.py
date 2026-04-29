@@ -13,6 +13,7 @@ from ..rotations import RotationType as SO3RotationType
 
 Array = Any
 RotationType = SO3RotationType | Literal["hinge"]
+Convention = Literal["soma", "mujoco"]
 
 MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
 SKIN_WEIGHTS_ERROR = "G1 is a rigid articulated model and does not define skin_weights."
@@ -279,6 +280,7 @@ def to_mujoco_qpos(
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     clamp_to_limits: bool = True,
     rotation_type: RotationType = "rotmat",
+    convention: Convention = "soma",
     xp: Any = None,
 ) -> Float[Array, "B 7+Q"]:
     """Build MuJoCo qpos from root translation and local joint rotations."""
@@ -306,7 +308,12 @@ def to_mujoco_qpos(
         global_rotation_type = GLOBAL_ROTATION_TYPES[rotation_type]
         root_rot = SO3.convert(global_rotation, src=global_rotation_type, dst="rotmat", xp=xp)
 
-    coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
+    if convention == "soma":
+        coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
+    elif convention == "mujoco":
+        coord = xp.eye(3, dtype=dtype)
+    else:
+        raise ValueError(f"Invalid convention: {convention}")
     kimodo_to_mujoco = coord.mT
     root_t = xp.squeeze(kimodo_to_mujoco @ global_translation[..., None], axis=-1)
     root_rot_mujoco = kimodo_to_mujoco[None] @ root_rot @ coord[None]

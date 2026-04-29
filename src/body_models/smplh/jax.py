@@ -1,6 +1,7 @@
-"""JAX backend for SMPL-X model using Flax NNX."""
+"""JAX backend for SMPL-H model using Flax NNX."""
 
 from pathlib import Path
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -15,21 +16,20 @@ from ..rotations import VALID_ROTATION_TYPES
 from . import core
 from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
 
-__all__ = ["SMPLX"]
+__all__ = ["SMPLH"]
 
 
-class SMPLX(BodyModel, nnx.Module):
-    """SMPL-X body model with JAX/Flax NNX backend."""
+class SMPLH(BodyModel, nnx.Module):
+    """SMPL-H body model with JAX/Flax NNX backend."""
 
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30  # 15 per hand
-    NUM_HEAD_JOINTS = 3  # jaw, left eye, right eye
-    NUM_JOINTS = 55  # 22 body + 30 hands + 3 head
+    NUM_JOINTS = 52  # pelvis + 21 body joints + 30 hand joints
 
     def __init__(
         self,
         model_path: Path | str | None = None,
-        gender: str | None = None,
+        gender: Literal["neutral", "male", "female"] | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: core.RotationType = "axis_angle",
@@ -76,19 +76,16 @@ class SMPLX(BodyModel, nnx.Module):
         # Hand pose mean
         hand_mean = np.stack(
             [
-                np.asarray(data["hands_meanl"], dtype=np.float32),
-                np.asarray(data["hands_meanr"], dtype=np.float32),
+                np.asarray(data.get("hands_meanl", np.zeros(45)), dtype=np.float32),
+                np.asarray(data.get("hands_meanr", np.zeros(45)), dtype=np.float32),
             ]
         )
         if flat_hand_mean:
             hand_mean = np.zeros_like(hand_mean)
         self.hand_mean = nnx.Variable(jnp.asarray(hand_mean))
 
-        # Blend shapes - split into shape and expression
-        self.shapedirs = nnx.Variable(jnp.asarray(shapedirs[:, :, :300]))
-        self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full[:, :, :300]))
-        self.exprdirs = nnx.Variable(jnp.asarray(shapedirs[:, :, 300:400]))
-        self.exprdirs_full = nnx.Variable(jnp.asarray(shapedirs_full[:, :, 300:400]))
+        self.shapedirs = nnx.Variable(jnp.asarray(shapedirs))
+        self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full))
         self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
 
         self.parents = parents.tolist()
@@ -97,11 +94,9 @@ class SMPLX(BodyModel, nnx.Module):
 
         # Precomputed joint regression matrices
         _j_template = J_regressor @ v_template_full
-        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full[:, :, :300])
-        _j_exprdirs = np.einsum("jv,vde->jde", J_regressor, shapedirs_full[:, :, 300:400])
+        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full)
         self._j_template = nnx.Variable(jnp.asarray(_j_template))
         self._j_shapedirs = nnx.Variable(jnp.asarray(_j_shapedirs))
-        self._j_exprdirs = nnx.Variable(jnp.asarray(_j_exprdirs))
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
@@ -120,7 +115,7 @@ class SMPLX(BodyModel, nnx.Module):
         return self.v_template[...].shape[0]
 
     @property
-    def skin_weights(self) -> Float[jax.Array, "V 55"]:
+    def skin_weights(self) -> Float[jax.Array, "V 52"]:
         return self.lbs_weights[...]
 
     @property
@@ -132,8 +127,6 @@ class SMPLX(BodyModel, nnx.Module):
         shape: Float[jax.Array, "B|1 10"],
         body_pose: Float[jax.Array, "B 21 N"] | Float[jax.Array, "B 21 3 3"],
         hand_pose: Float[jax.Array, "B 30 N"] | Float[jax.Array, "B 30 3 3"],
-        head_pose: Float[jax.Array, "B 3 N"] | Float[jax.Array, "B 3 3 3"],
-        expression: Float[jax.Array, "B 10"] | None = None,
         pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
@@ -142,20 +135,16 @@ class SMPLX(BodyModel, nnx.Module):
         return core.forward_vertices(
             v_template=self.v_template[...],
             shapedirs=self.shapedirs[...],
-            exprdirs=self.exprdirs[...],
             posedirs=self.posedirs[...],
             lbs_weights=self.lbs_weights[...],
             j_template=self._j_template[...],
             j_shapedirs=self._j_shapedirs[...],
-            j_exprdirs=self._j_exprdirs[...],
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
-            head_pose=head_pose,
-            expression=expression,
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -168,25 +157,20 @@ class SMPLX(BodyModel, nnx.Module):
         shape: Float[jax.Array, "B|1 10"],
         body_pose: Float[jax.Array, "B 21 N"] | Float[jax.Array, "B 21 3 3"],
         hand_pose: Float[jax.Array, "B 30 N"] | Float[jax.Array, "B 30 3 3"],
-        head_pose: Float[jax.Array, "B 3 N"] | Float[jax.Array, "B 3 3 3"],
-        expression: Float[jax.Array, "B 10"] | None = None,
         pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
-    ) -> Float[jax.Array, "B 55 4 4"]:
+    ) -> Float[jax.Array, "B 52 4 4"]:
         return core.forward_skeleton(
             j_template=self._j_template[...],
             j_shapedirs=self._j_shapedirs[...],
-            j_exprdirs=self._j_exprdirs[...],
             parents=self.parents,
             kinematic_fronts=self._kinematic_fronts,
             hand_mean=self.hand_mean[...],
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
-            head_pose=head_pose,
-            expression=expression,
             pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -197,7 +181,6 @@ class SMPLX(BodyModel, nnx.Module):
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         body_pose_ref = jnp.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype)
         hand_pose_ref = jnp.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
-        head_pose_ref = jnp.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), dtype=dtype)
         pelvis_ref = jnp.zeros((batch_size, 3), dtype=dtype)
         return {
             "shape": jnp.zeros((1, 10), dtype=dtype),
@@ -213,13 +196,6 @@ class SMPLX(BodyModel, nnx.Module):
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "head_pose": SO3.identity_as(
-                head_pose_ref,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            ),
-            "expression": jnp.zeros((batch_size, 10), dtype=dtype),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
                 batch_dims=(batch_size,),

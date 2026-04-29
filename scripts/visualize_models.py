@@ -36,12 +36,14 @@ from body_models.mhr.numpy import MHR
 from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
+from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
 
 # ── Asset locations ──────────────────────────────────────────────────────────
 ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets"
 SMPL_PATH = ASSETS_DIR / "smpl/model/SMPL_NEUTRAL.npz"
+SMPLH_PATH = ASSETS_DIR / "smplh/model/neutral/model.npz"
 SMPLX_PATH = ASSETS_DIR / "smplx/model/SMPLX_NEUTRAL.npz"
 SKEL_PATH = ASSETS_DIR / "skel/model"
 ANNY_PATH = ASSETS_DIR / "anny/model"
@@ -51,6 +53,7 @@ GARMENT_MEASUREMENTS_PATH = ASSETS_DIR / "garment_measurements/model"
 G1_PATH = ASSETS_DIR / "g1/model"
 MYOFULLBODY_PATH = ASSETS_DIR / "myofullbody/model"
 SOMA_PATH: Path | None = None  # None → load from body-models cache
+ANNY_DISPLAY_ROTATION_X = -np.pi / 2
 
 # ── Per-tab joint configurations ─────────────────────────────────────────────
 SMPL_POSE_JOINTS = [
@@ -176,6 +179,7 @@ GRID_SPACING_Z = 1.8
 
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "SMPL": (173, 216, 230),
+    "SMPLH": (216, 191, 216),
     "SMPLX": (255, 182, 193),
     "SKEL": (144, 238, 144),
     "ANNY": (255, 218, 185),
@@ -280,6 +284,10 @@ def smpl_tab(server, tabs, state, *, name="SMPL", with_expression=False) -> None
 
 def smplx_tab(server, tabs, state) -> None:
     smpl_tab(server, tabs, state, name="SMPLX", with_expression=True)
+
+
+def smplh_tab(server, tabs, state) -> None:
+    smpl_tab(server, tabs, state, name="SMPLH")
 
 
 def skel_tab(server, tabs, state) -> None:
@@ -420,6 +428,7 @@ def myofullbody_tab(server, tabs, state) -> None:
 
 TAB_BUILDERS = {
     "SMPL": smpl_tab,
+    "SMPLH": smplh_tab,
     "SMPLX": smplx_tab,
     "SKEL": skel_tab,
     "ANNY": anny_tab,
@@ -485,7 +494,9 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
 
 def load_models() -> dict[str, BodyModel]:
     print(f"Loading SMPL from {SMPL_PATH}", flush=True)
-    smpl = SMPL(SMPL_PATH, gender="neutral")
+    smpl = SMPL(SMPL_PATH)
+    print(f"Loading SMPLH from {SMPLH_PATH}", flush=True)
+    smplh = SMPLH(SMPLH_PATH)
     print(f"Loading SMPLX from {SMPLX_PATH}", flush=True)
     smplx = SMPLX(SMPLX_PATH)
     print(f"Loading SKEL from {SKEL_PATH}", flush=True)
@@ -507,6 +518,7 @@ def load_models() -> dict[str, BodyModel]:
     myo = MyoFullBody(MYOFULLBODY_PATH)
     return {
         "SMPL": smpl,
+        "SMPLH": smplh,
         "SMPLX": smplx,
         "SKEL": skel,
         "ANNY": anny,
@@ -535,6 +547,8 @@ def main() -> None:
         row, col = divmod(i, GRID_COLS)
         row_count = min(GRID_COLS, n - row * GRID_COLS)
         params = model.get_rest_pose()
+        if name == "ANNY":
+            params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
         verts = model.forward_vertices(**params)
         states[name] = ModelState(
             model=model,
