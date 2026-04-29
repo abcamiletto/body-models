@@ -18,7 +18,9 @@ from ..utils import get_cache_dir
 PathLike = Path | str
 Side = Literal["left", "right"]
 VALID_SIDES = ("left", "right")
-BRAINCO_REVO2_MUJOCO_URL = "https://brainco-common-public.oss-cn-hangzhou.aliyuncs.com/web-config/docs-sdk/Revo2_xml.zip"
+BRAINCO_REVO2_MUJOCO_URL = (
+    "https://brainco-common-public.oss-cn-hangzhou.aliyuncs.com/web-config/docs-sdk/Revo2_xml.zip"
+)
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 JOINT_SUFFIXES = [
     "base_skel",
@@ -167,11 +169,13 @@ def _parse_rest_and_mesh_transforms(
     offsets = np.zeros((len(names), 3), dtype=np.float32)
     rotations = np.repeat(np.eye(3, dtype=np.float32)[None], len(names), axis=0)
     mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-    mesh_file_by_name = {
-        mesh.get("name"): mesh.get("file")
-        for mesh in root.findall(".//asset/mesh")
-        if mesh.get("name") and mesh.get("file")
-    }
+    mesh_file_by_name: dict[str, str] = {}
+    for mesh in root.findall(".//asset/mesh"):
+        name = mesh.get("name")
+        filename = mesh.get("file")
+        if name is None or filename is None:
+            continue
+        mesh_file_by_name[name] = filename
     worldbody = root.find("worldbody")
     if worldbody is None:
         raise ValueError("BrainCo XML is missing a worldbody")
@@ -324,7 +328,9 @@ def _load_ascii_stl(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
             vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
     if len(vertices) % 3 != 0 or not vertices:
         raise ValueError("ASCII STL contains no triangular facets")
-    return np.asarray(vertices, dtype=dtype) @ MUJOCO_TO_KIMODO.T, np.arange(len(vertices), dtype=np.int64).reshape(-1, 3)
+    return np.asarray(vertices, dtype=dtype) @ MUJOCO_TO_KIMODO.T, np.arange(len(vertices), dtype=np.int64).reshape(
+        -1, 3
+    )
 
 
 def _load_binary_stl(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
@@ -347,12 +353,15 @@ def _looks_like_binary_stl(data: bytes) -> bool:
 def _add_mesh_transforms(
     body: ET.Element,
     side: str,
-    mesh_file_by_name: dict[str, str | None],
+    mesh_file_by_name: dict[str, str],
     base_rot: np.ndarray,
     out: dict[str, tuple[np.ndarray, np.ndarray]],
 ) -> None:
     for geom in body.findall("geom"):
-        mesh_file = mesh_file_by_name.get(geom.get("mesh"))
+        mesh_name = geom.get("mesh")
+        if mesh_name is None:
+            continue
+        mesh_file = mesh_file_by_name.get(mesh_name)
         if mesh_file is None:
             continue
         name = _mesh_name(side, Path(mesh_file).name)
@@ -403,8 +412,10 @@ def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndar
 
 
 def _joint_limit(joint: ET.Element, class_limits: dict[str, tuple[float, float]]) -> tuple[float, float]:
-    if joint.get("range"):
-        return tuple(float(x) for x in joint.get("range", "").split())
+    limit = joint.get("range")
+    if limit is not None:
+        lo, hi = [float(x) for x in limit.split()]
+        return lo, hi
     class_name = joint.get("class")
     if class_name in class_limits:
         return class_limits[class_name]
