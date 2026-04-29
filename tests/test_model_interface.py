@@ -11,7 +11,20 @@ from nanomanifold import SO3
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ["smpl", "smplh", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements", "g1", "myofullbody"]
+MODELS = [
+    "smpl",
+    "smplh",
+    "mano",
+    "smplx",
+    "flame",
+    "skel",
+    "anny",
+    "mhr",
+    "soma",
+    "garment_measurements",
+    "g1",
+    "myofullbody",
+]
 BACKENDS = ["torch", "numpy", "jax"]
 
 
@@ -24,6 +37,8 @@ def _get_model_file(model_name: str) -> Path:
         return model_dir / "SMPL_NEUTRAL.npz"
     if model_name == "smplh":
         return model_dir / "neutral" / "model.npz"
+    if model_name == "mano":
+        return model_dir / "right" / "MANO_RIGHT.pkl"
     if model_name == "smplx":
         return model_dir / "SMPLX_NEUTRAL.npz"
     if model_name == "flame":
@@ -59,7 +74,7 @@ def _build_model(model_name: str, backend: str) -> Any:
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["gender"] = "male"
         kwargs["model_path"] = model_path
-    elif model_name in {"smpl", "smplh", "smplx", "flame", "garment_measurements"}:
+    elif model_name in {"smpl", "smplh", "mano", "smplx", "flame", "garment_measurements"}:
         if not model_path.exists():
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["model_path"] = model_path

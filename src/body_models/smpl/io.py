@@ -92,6 +92,14 @@ def _load_smpl_pkl(model_path: Path) -> dict:
             if isinstance(state, dict) and "x" in state:
                 self.data = np.asarray(state["x"])
                 return
+            if isinstance(state, dict) and "a" in state and "idxs" in state:
+                source = state["a"]
+                source_data = source.data if isinstance(source, _ChumpyPlaceholder) else np.asarray(source)
+                data = np.asarray(source_data).reshape(-1)[np.asarray(state["idxs"], dtype=np.int64)]
+                if "preferred_shape" in state:
+                    data = data.reshape(tuple(state["preferred_shape"]))
+                self.data = data
+                return
             if isinstance(state, dict):
                 for value in state.values():
                     if isinstance(value, np.ndarray):

@@ -17,6 +17,7 @@ ASSET_DIR = Path(__file__).parent / "assets"
 MODEL_FILES = {
     "smpl": "SMPL_NEUTRAL.npz",
     "smplh": "neutral/model.npz",
+    "mano": "right/MANO_RIGHT.pkl",
     "smplx": "SMPLX_NEUTRAL.npz",
     "flame": "FLAME_NEUTRAL.pkl",
     "skel": "skel_male.pkl",
@@ -27,6 +28,7 @@ CLASS_NAMES["garment_measurements"] = "GarmentMeasurements"
 MODEL_CASES = (
     pytest.param("smpl", {}, id="smpl", marks=pytest.mark.fast),
     pytest.param("smplh", {}, id="smplh", marks=pytest.mark.slow),
+    pytest.param("mano", {}, id="mano", marks=pytest.mark.slow),
     pytest.param("smplx", {}, id="smplx", marks=pytest.mark.slow),
     pytest.param("skel", {}, id="skel", marks=pytest.mark.slow),
     pytest.param("flame", {}, id="flame", marks=pytest.mark.slow),
