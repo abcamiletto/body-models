@@ -1,9 +1,10 @@
-from . import anny, flame, g1, garment_measurements, mano, mhr, myofullbody, skel, smpl, smplh, smplx, soma
+from . import anny, brainco, flame, g1, garment_measurements, mano, mhr, myofullbody, skel, smpl, smplh, smplx, soma
 from .base import BodyModel
 
 __all__ = [
     # Submodules
     "anny",
+    "brainco",
     "flame",
     "garment_measurements",
     "g1",
@@ -26,8 +27,9 @@ def main() -> None:
 
     import typer
 
-    from .anny.io import download_model as download_anny_model
     from . import fetch
+    from .anny.io import download_model as download_anny_model
+    from .brainco.io import download_model as download_brainco_model
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
     from .g1.io import download_model as download_g1_model
     from .garment_measurements.io import download_model as download_garment_measurements_model
@@ -51,6 +53,7 @@ def main() -> None:
         "anny",
         "mhr",
         "flame",
+        "brainco",
         "g1",
         "soma",
         "garment-measurements",
@@ -91,6 +94,7 @@ def main() -> None:
                 "skel",
                 "flame",
                 "anny",
+                "brainco",
                 "mhr",
                 "g1",
                 "soma",
@@ -176,6 +180,11 @@ def main() -> None:
             path = download_anny_model()
             set_model_path("anny", str(path))
             print(f"Set anny = {path}")
+
+        if model in ("brainco", "all"):
+            path = download_brainco_model()
+            set_model_path("brainco", str(path))
+            print(f"Set brainco = {path}")
 
         if model in ("mhr", "all"):
             path = download_mhr_model()
