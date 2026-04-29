@@ -127,6 +127,8 @@ def test_g1_metadata_matches_kimodo_skeleton(backend: str) -> None:
     assert model.faces.shape[0] > G1_NUM_LINK_MESHES
     assert model.faces.shape[1] == 3
     assert len(model.link_names) == G1_NUM_LINK_MESHES
+    assert model.is_rigid_body is True
+    assert model.has_tendons is False
     with pytest.raises(NotImplementedError, match="rigid articulated"):
         model.skin_weights
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import viser
@@ -32,6 +33,7 @@ from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
 from body_models.mhr.numpy import MHR
+from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
 from body_models.smplh.numpy import SMPLH
@@ -49,6 +51,7 @@ MHR_PATH = ASSETS_DIR / "mhr/model"
 FLAME_PATH = ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"
 GARMENT_MEASUREMENTS_PATH = ASSETS_DIR / "garment_measurements/model"
 G1_PATH = ASSETS_DIR / "g1/model"
+MYOFULLBODY_PATH = ASSETS_DIR / "myofullbody/model"
 SOMA_PATH: Path | None = None  # None → load from body-models cache
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2
 
@@ -124,6 +127,30 @@ SOMA_POSE_JOINTS = [
     ("R Leg", 72),
 ]
 
+# qpos joint indices into model.qpos_joint_names. body_pose stores one scalar
+# value per qpos entry (hinge angle or slide displacement); each joint = one slider.
+MYOFULLBODY_POSE_JOINTS = [
+    ("Lumbar Flex", 0),
+    ("Lumbar Bend", 1),
+    ("Lumbar Rot", 2),
+    ("L Shoulder Plane", 66),
+    ("L Shoulder Elev", 67),
+    ("L Shoulder Rot", 69),
+    ("L Elbow", 70),
+    ("R Shoulder Plane", 28),
+    ("R Shoulder Elev", 29),
+    ("R Shoulder Rot", 31),
+    ("R Elbow", 32),
+    ("L Hip Flex", 108),
+    ("L Hip Add", 109),
+    ("L Knee", 113),
+    ("L Ankle", 116),
+    ("R Hip Flex", 94),
+    ("R Hip Add", 95),
+    ("R Knee", 99),
+    ("R Ankle", 102),
+]
+
 # qpos joint indices into model.qpos_joint_names. With rotation_type="hinge"
 # body_pose stores one scalar angle per qpos entry, so each joint = one slider.
 G1_POSE_JOINTS = [
@@ -146,7 +173,7 @@ G1_POSE_JOINTS = [
 ]
 
 # Grid layout: split models across rows on the xz ground plane.
-GRID_COLS = 5  # max models per row; with 9 models this gives 5 + 4
+GRID_COLS = 5  # max models per row; with 10 models this gives 5 + 5
 GRID_SPACING_X = 1.8
 GRID_SPACING_Z = 1.8
 
@@ -161,6 +188,7 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "GarmentMeasurements": (176, 224, 230),
     "SOMA": (250, 200, 200),
     "G1": (200, 200, 220),
+    "MyoFullBody": (240, 200, 200),
 }
 
 
@@ -175,6 +203,8 @@ class ModelState:
     y_offset: float
     z_offset: float
     mesh_handle: viser.MeshHandle | None = None
+    muscle_handle: viser.LineSegmentsHandle | None = None
+    muscle_segment_indices: np.ndarray | None = None
     changed: bool = True
 
 
@@ -370,6 +400,32 @@ def g1_tab(server, tabs, state) -> None:
         reset_button(server, handles)
 
 
+def myofullbody_tab(server, tabs, state) -> None:
+    handles: list[SliderHandle] = []
+    with tabs.add_tab("MyoFullBody", viser.Icon.USER):
+        with server.gui.add_folder("Pose"):
+            for label, qpos_idx in MYOFULLBODY_POSE_JOINTS:
+                if qpos_idx >= state.model.num_qpos:
+                    continue
+                lo, hi = (float(x) for x in state.model.qpos_limits[qpos_idx])
+                if not np.isfinite(lo) or not np.isfinite(hi):
+                    lo, hi = -np.pi, np.pi
+                handles.append(
+                    add_slider(
+                        server,
+                        state,
+                        label,
+                        lo=lo,
+                        hi=hi,
+                        step=0.02,
+                        initial=0.0,
+                        key="body_pose",
+                        indices=(0, qpos_idx),
+                    )
+                )
+        reset_button(server, handles)
+
+
 TAB_BUILDERS = {
     "SMPL": smpl_tab,
     "SMPLH": smplh_tab,
@@ -381,6 +437,7 @@ TAB_BUILDERS = {
     "GarmentMeasurements": garment_measurements_tab,
     "SOMA": soma_tab,
     "G1": g1_tab,
+    "MyoFullBody": myofullbody_tab,
 }
 
 
@@ -391,6 +448,17 @@ def triangulate(faces: np.ndarray) -> np.ndarray:
     if faces.shape[1] == 4:
         return np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
     raise ValueError(f"Unsupported face arity: {faces.shape[1]}")
+
+
+def _muscle_segment_indices(model: BodyModel) -> np.ndarray | None:
+    """Flatten a model's tendons into ``[N_segments, 2]`` index pairs into ``world_sites``."""
+    if not model.has_tendons:
+        return None
+    segments: list[tuple[int, int]] = []
+    for tendon in cast(Any, model).tendons:
+        sites = tendon["site_indices"]
+        segments.extend(zip(sites[:-1], sites[1:]))
+    return np.asarray(segments, dtype=np.int64)
 
 
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
@@ -405,6 +473,23 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
         )
     else:
         state.mesh_handle.vertices = verts
+
+    if state.muscle_segment_indices is not None:
+        # The viser mesh handle at /{name} carries the grid offset; nest the
+        # muscles under it so they inherit the same translation rather than
+        # double-applying it.
+        skeleton = state.model.forward_skeleton(**state.params)
+        sites = np.asarray(cast(Any, state.model).world_sites(skeleton))[0]
+        seg_points = sites[state.muscle_segment_indices].astype(np.float32)
+        if state.muscle_handle is None:
+            state.muscle_handle = server.scene.add_line_segments(
+                f"/{name}/muscles",
+                points=seg_points,
+                colors=(220, 50, 50),
+                line_width=2.0,
+            )
+        else:
+            state.muscle_handle.points = seg_points
 
 
 def load_models() -> dict[str, BodyModel]:
@@ -429,6 +514,8 @@ def load_models() -> dict[str, BodyModel]:
     print(f"Loading G1 from {G1_PATH}", flush=True)
     # Hinge parametrization: one scalar angle per qpos joint around its intrinsic axis.
     g1 = G1(G1_PATH, rotation_type="hinge")
+    print(f"Loading MyoFullBody from {MYOFULLBODY_PATH}", flush=True)
+    myo = MyoFullBody(MYOFULLBODY_PATH)
     return {
         "SMPL": smpl,
         "SMPLH": smplh,
@@ -440,6 +527,7 @@ def load_models() -> dict[str, BodyModel]:
         "GarmentMeasurements": gm,
         "SOMA": soma,
         "G1": g1,
+        "MyoFullBody": myo,
     }
 
 
@@ -470,6 +558,7 @@ def main() -> None:
             x_offset=(col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
             y_offset=-float(verts[..., 1].min()),
             z_offset=(row - 0.5 * (num_rows - 1)) * GRID_SPACING_Z,
+            muscle_segment_indices=_muscle_segment_indices(model),
         )
 
     tabs = server.gui.add_tab_group()

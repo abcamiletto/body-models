@@ -17,6 +17,13 @@ class BodyModel(ABC):
     """
 
     parents: list[int]
+    # True for models whose meshes are rigidly attached to bodies (no LBS skin
+    # weights), e.g. G1 and MyoFullBody. Used to gate skin_weights / viser
+    # skinned-mesh exports without sniffing for NotImplementedError.
+    is_rigid_body: bool = False
+    # True for models that expose MJCF-style muscle via-points and tendons
+    # (currently MyoFullBody only). Renderers branch on this to draw muscles.
+    has_tendons: bool = False
 
     @property
     @abstractmethod
