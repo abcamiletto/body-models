@@ -29,6 +29,7 @@ import viser
 
 from body_models.anny.numpy import ANNY
 from body_models.base import BodyModel
+from body_models.brainco.numpy import BrainCoHand
 from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
@@ -54,6 +55,7 @@ FLAME_PATH = ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"
 GARMENT_MEASUREMENTS_PATH = ASSETS_DIR / "garment_measurements/model"
 G1_PATH = ASSETS_DIR / "g1/model"
 MYOFULLBODY_PATH = ASSETS_DIR / "myofullbody/model"
+BRAINCO_PATH: Path | None = None  # None -> load from body-models config/cache
 SOMA_PATH: Path | None = None  # None → load from body-models cache
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2
 
@@ -174,6 +176,15 @@ G1_POSE_JOINTS = [
     ("R Elbow", 25),
 ]
 
+BRAINCO_POSE_JOINTS = [
+    ("Thumb Metacarpal", 0),
+    ("Thumb Proximal", 1),
+    ("Index", 2),
+    ("Middle", 3),
+    ("Ring", 4),
+    ("Pinky", 5),
+]
+
 # Grid layout: split models across rows on the xz ground plane.
 GRID_COLS = 5  # max models per row; with 11 models this gives 5 + 5 + 1
 GRID_SPACING_X = 1.8
@@ -192,6 +203,7 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "SOMA": (250, 200, 200),
     "G1": (200, 200, 220),
     "MyoFullBody": (240, 200, 200),
+    "BrainCo": (180, 210, 170),
 }
 
 
@@ -439,6 +451,28 @@ def myofullbody_tab(server, tabs, state) -> None:
         reset_button(server, handles)
 
 
+def brainco_tab(server, tabs, state) -> None:
+    handles: list[SliderHandle] = []
+    with tabs.add_tab("BrainCo", viser.Icon.USER):
+        with server.gui.add_folder("Hinge Pose"):
+            for label, qpos_idx in BRAINCO_POSE_JOINTS:
+                lo, hi = (float(x) for x in state.model.qpos_joint_limits[qpos_idx])
+                handles.append(
+                    add_slider(
+                        server,
+                        state,
+                        label,
+                        lo=lo,
+                        hi=hi,
+                        step=0.02,
+                        initial=0.0,
+                        key="pose",
+                        indices=(0, qpos_idx, 0),
+                    )
+                )
+        reset_button(server, handles)
+
+
 TAB_BUILDERS = {
     "SMPL": smpl_tab,
     "SMPLH": smplh_tab,
@@ -452,6 +486,7 @@ TAB_BUILDERS = {
     "SOMA": soma_tab,
     "G1": g1_tab,
     "MyoFullBody": myofullbody_tab,
+    "BrainCo": brainco_tab,
 }
 
 
@@ -532,6 +567,8 @@ def load_models() -> dict[str, BodyModel]:
     g1 = G1(G1_PATH, rotation_type="hinge")
     print(f"Loading MyoFullBody from {MYOFULLBODY_PATH}", flush=True)
     myo = MyoFullBody(MYOFULLBODY_PATH)
+    print(f"Loading BrainCo from {BRAINCO_PATH or '<config/cache>'}", flush=True)
+    brainco = BrainCoHand(model_path=BRAINCO_PATH, side="right", rotation_type="hinge")
     return {
         "SMPL": smpl,
         "SMPLH": smplh,
@@ -545,6 +582,7 @@ def load_models() -> dict[str, BodyModel]:
         "SOMA": soma,
         "G1": g1,
         "MyoFullBody": myo,
+        "BrainCo": brainco,
     }
 
 

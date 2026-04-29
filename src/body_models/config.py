@@ -23,6 +23,7 @@ MODELS = [
     "anny",
     "mhr",
     "flame",
+    "brainco",
     "g1",
     "soma",
     "garment-measurements",
@@ -79,6 +80,8 @@ def validate_model_path(model: str, path: str | Path) -> Path:
         from .mhr.io import validate_path
     elif model == "flame":
         from .flame.io import validate_path
+    elif model == "brainco":
+        from .brainco.io import validate_path
     elif model == "g1":
         from .g1.io import validate_path
     elif model == "soma":

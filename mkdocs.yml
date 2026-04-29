@@ -64,6 +64,7 @@ nav:
       - MHR: models/mhr.md
       - SOMA: models/soma.md
       - GarmentMeasurements: models/garment-measurements.md
+      - BrainCo: models/brainco.md
       - G1: models/g1.md
 
 strict: true
