@@ -55,6 +55,8 @@ jobs:
             paths: tests/test_smpl.py
           - group: smplh
             paths: tests/test_smplh.py
+          - group: mano
+            paths: tests/test_mano.py
           - group: smplx
             paths: tests/test_smplx.py
           - group: soma

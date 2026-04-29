@@ -56,6 +56,7 @@ nav:
   - Models:
       - SMPL: models/smpl.md
       - SMPL-H: models/smplh.md
+      - MANO: models/mano.md
       - SMPL-X: models/smplx.md
       - FLAME: models/flame.md
       - SKEL: models/skel.md

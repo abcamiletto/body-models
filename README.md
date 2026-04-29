@@ -4,7 +4,7 @@
 
 A unified library for body models.
 
-Provides a shared interface across SMPL, SMPL-H, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, G1, and MyoFullBody models with PyTorch, NumPy, and JAX backends.
+Provides a shared interface across SMPL, SMPL-H, MANO, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, G1, and MyoFullBody models with PyTorch, NumPy, and JAX backends.
 
 ## Features
 
@@ -77,9 +77,10 @@ SOMA is implemented natively in `body-models`; it does not require installing `p
 
 ### Registration-required models
 
-SMPL, SMPL-H, SMPL-X, SKEL, and FLAME require registration. Download from:
+SMPL, SMPL-H, MANO, SMPL-X, SKEL, and FLAME require registration. Download from:
 - SMPL: https://smpl.is.tue.mpg.de/
 - SMPL-H: https://mano.is.tue.mpg.de/
+- MANO: https://mano.is.tue.mpg.de/
 - SMPL-X: https://smpl-x.is.tue.mpg.de/
 - SKEL: https://skel.is.tue.mpg.de/
 - FLAME: https://flame.is.tue.mpg.de/
@@ -95,6 +96,7 @@ body-models download myofullbody
 body-models download soma
 body-models download smpl
 body-models download smplh
+body-models download mano
 body-models download smplx
 body-models download skel
 body-models download flame
@@ -106,12 +108,13 @@ Or set credentials via environment variables first:
 ```bash
 SMPL_USERNAME=you@example.com SMPL_PASSWORD=... body-models download smpl
 SMPLH_USERNAME=you@example.com SMPLH_PASSWORD=... body-models download smplh
+MANO_USERNAME=you@example.com MANO_PASSWORD=... body-models download mano
 SMPLX_USERNAME=you@example.com SMPLX_PASSWORD=... body-models download smplx
 SKEL_USERNAME=you@example.com SKEL_PASSWORD=... body-models download skel
 FLAME_USERNAME=you@example.com FLAME_PASSWORD=... body-models download flame
 ```
 
-SMPL `.pkl` and `.npz` files are both supported directly. SMPL-H supports the AMASS `model.npz` files and smplx-ready `.pkl` files. You can also configure paths manually (per gender):
+SMPL `.pkl` and `.npz` files are both supported directly. SMPL-H supports the AMASS `model.npz` files and smplx-ready `.pkl` files. MANO supports `.pkl` and `.npz` files. You can also configure paths manually:
 
 ```bash
 body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl
@@ -120,6 +123,8 @@ body-models set smpl-female /path/to/SMPL_FEMALE.pkl
 body-models set smplh-neutral /path/to/smplh/neutral/model.npz
 body-models set smplh-male /path/to/smplh/male/model.npz
 body-models set smplh-female /path/to/smplh/female/model.npz
+body-models set mano-right /path/to/MANO_RIGHT.pkl
+body-models set mano-left /path/to/MANO_LEFT.pkl
 body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel_models_v1.1
 body-models set flame /path/to/FLAME_NEUTRAL.pkl
@@ -154,6 +159,8 @@ Current settings:
   smplh-male: (not set)
   smplh-female: (not set)
   smplh-neutral: (not set)
+  mano-right: (not set)
+  mano-left: (not set)
   smplx-male: (not set)
   smplx-female: (not set)
   smplx-neutral: (not set)
@@ -172,7 +179,7 @@ Manage paths:
 ```bash
 body-models set <model> <path>   # Set model path
 body-models unset <model>        # Remove from config
-body-models download <model>     # Download anny, g1, mhr, myofullbody, soma, smpl, smplh, smplx, skel, flame, or all
+body-models download <model>     # Download anny, g1, mhr, myofullbody, soma, smpl, smplh, mano, smplx, skel, flame, or all
 ```
 
 ## Quick Start
