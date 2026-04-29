@@ -20,6 +20,7 @@ uv add "body-models[jax]"
 | Model | Scope | Setup |
 | --- | --- | --- |
 | [SMPL](models/smpl.md) | body | registration required |
+| [SMPL-H](models/smplh.md) | body and hands | registration required |
 | [SMPL-X](models/smplx.md) | body, hands, face | registration required |
 | [FLAME](models/flame.md) | head and face | registration required |
 | [SKEL](models/skel.md) | body with anatomical skeleton | registration required |

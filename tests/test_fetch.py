@@ -1,4 +1,6 @@
+import io
 from pathlib import Path
+import tarfile
 import zipfile
 
 from body_models import fetch
@@ -8,6 +10,14 @@ def _make_zip(path: Path, members: dict[str, bytes]) -> None:
     with zipfile.ZipFile(path, "w") as zf:
         for name, data in members.items():
             zf.writestr(name, data)
+
+
+def _make_tar_xz(path: Path, members: dict[str, bytes]) -> None:
+    with tarfile.open(path, "w:xz") as tf:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
 
 
 def test_download_smpl_uses_downloaded_archive_and_reuses_cache(tmp_path, monkeypatch) -> None:
@@ -77,6 +87,41 @@ def test_download_smplx_uses_downloaded_archive_and_reuses_cache(tmp_path, monke
         "smplx-female": b"female",
         "smplx-male": b"male",
         "smplx-neutral": b"neutral",
+    }
+
+
+def test_download_smplh_uses_downloaded_archive_and_reuses_cache(tmp_path, monkeypatch) -> None:
+    source_archive = tmp_path / "smplh-source.tar.xz"
+    _make_tar_xz(
+        source_archive,
+        {
+            "smplh/neutral/model.npz": b"neutral",
+            "smplh/female/model.npz": b"female",
+            "smplh/male/model.npz": b"male",
+        },
+    )
+
+    def fake_download(url: str, archive_path: Path, username: str, password: str) -> None:
+        assert url == fetch.SMPLH_URL
+        assert username == "user"
+        assert password == "secret"
+        archive_path.write_bytes(source_archive.read_bytes())
+
+    monkeypatch.setattr(fetch, "_download_tar_xz", fake_download)
+
+    cache_dir = tmp_path / "smplh-cache"
+    paths = fetch.download_smplh(cache_dir=cache_dir, username="user", password="secret")
+    assert {key: path.read_bytes() for key, path in paths.items()} == {
+        "smplh-female": b"female",
+        "smplh-male": b"male",
+        "smplh-neutral": b"neutral",
+    }
+
+    paths = fetch.download_smplh(cache_dir=cache_dir)
+    assert {key: path.read_bytes() for key, path in paths.items()} == {
+        "smplh-female": b"female",
+        "smplh-male": b"male",
+        "smplh-neutral": b"neutral",
     }
 
 
