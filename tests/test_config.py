@@ -43,6 +43,8 @@ def _valid_model_paths(tmp_path: Path) -> dict[str, Path]:
         "smplh-neutral": _touch(tmp_path / "smplh" / "neutral" / "model.npz"),
         "smplh-male": _touch(tmp_path / "smplh" / "male" / "model.npz"),
         "smplh-female": _touch(tmp_path / "smplh" / "female" / "model.npz"),
+        "mano-right": _touch(tmp_path / "mano" / "MANO_RIGHT.pkl"),
+        "mano-left": _touch(tmp_path / "mano" / "MANO_LEFT.pkl"),
         "skel": skel_dir,
         "anny": anny_dir,
         "mhr": mhr_dir,
@@ -75,14 +77,17 @@ def test_gendered_file_models_use_gender_only_for_config_lookup(tmp_path: Path) 
     from body_models.smpl.io import get_model_path as get_smpl_model_path
     from body_models.smplh.io import get_model_path as get_smplh_model_path
     from body_models.smplx.io import get_model_path as get_smplx_model_path
+    from body_models.mano.io import get_model_path as get_mano_model_path
 
     smpl_path = _touch(tmp_path / "SMPL_NEUTRAL.pkl")
     smplx_path = _touch(tmp_path / "SMPLX_NEUTRAL.npz")
     smplh_path = _touch(tmp_path / "SMPLH_NEUTRAL.npz")
+    mano_path = _touch(tmp_path / "MANO_RIGHT.pkl")
 
     assert get_smpl_model_path(smpl_path, gender=None) == smpl_path
     assert get_smplx_model_path(smplx_path, gender=None) == smplx_path
     assert get_smplh_model_path(smplh_path, gender=None) == smplh_path
+    assert get_mano_model_path(mano_path, side=None) == mano_path
 
     with pytest.raises(ValueError, match="gender is only supported"):
         get_smpl_model_path(smpl_path, gender="neutral")
@@ -92,3 +97,6 @@ def test_gendered_file_models_use_gender_only_for_config_lookup(tmp_path: Path) 
 
     with pytest.raises(ValueError, match="gender is only supported"):
         get_smplh_model_path(smplh_path, gender="neutral")
+
+    with pytest.raises(ValueError, match="side is only supported"):
+        get_mano_model_path(mano_path, side="right")

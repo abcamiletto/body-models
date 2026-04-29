@@ -32,6 +32,7 @@ from body_models.base import BodyModel
 from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.mano.numpy import MANO
 from body_models.mhr.numpy import MHR
 from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
@@ -44,6 +45,7 @@ from body_models.soma.numpy import SOMA
 ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets"
 SMPL_PATH = ASSETS_DIR / "smpl/model/SMPL_NEUTRAL.npz"
 SMPLH_PATH = ASSETS_DIR / "smplh/model/neutral/model.npz"
+MANO_PATH = ASSETS_DIR / "mano/model/right/MANO_RIGHT.pkl"
 SMPLX_PATH = ASSETS_DIR / "smplx/model/SMPLX_NEUTRAL.npz"
 SKEL_PATH = ASSETS_DIR / "skel/model"
 ANNY_PATH = ASSETS_DIR / "anny/model"
@@ -173,13 +175,14 @@ G1_POSE_JOINTS = [
 ]
 
 # Grid layout: split models across rows on the xz ground plane.
-GRID_COLS = 5  # max models per row; with 10 models this gives 5 + 5
+GRID_COLS = 5  # max models per row; with 11 models this gives 5 + 5 + 1
 GRID_SPACING_X = 1.8
 GRID_SPACING_Z = 1.8
 
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "SMPL": (173, 216, 230),
     "SMPLH": (216, 191, 216),
+    "MANO": (245, 205, 155),
     "SMPLX": (255, 182, 193),
     "SKEL": (144, 238, 144),
     "ANNY": (255, 218, 185),
@@ -288,6 +291,16 @@ def smplx_tab(server, tabs, state) -> None:
 
 def smplh_tab(server, tabs, state) -> None:
     smpl_tab(server, tabs, state, name="SMPLH")
+
+
+def mano_tab(server, tabs, state) -> None:
+    handles: list[SliderHandle] = []
+    with tabs.add_tab("MANO", viser.Icon.USER):
+        with server.gui.add_folder("Shape"):
+            handles += betas(server, state, key="shape", count=10)
+        with server.gui.add_folder("Hand Pose"):
+            handles += joint_xyz(server, state, key="hand_pose", joints=[(f"Joint {i}", i) for i in range(15)])
+        reset_button(server, handles)
 
 
 def skel_tab(server, tabs, state) -> None:
@@ -429,6 +442,7 @@ def myofullbody_tab(server, tabs, state) -> None:
 TAB_BUILDERS = {
     "SMPL": smpl_tab,
     "SMPLH": smplh_tab,
+    "MANO": mano_tab,
     "SMPLX": smplx_tab,
     "SKEL": skel_tab,
     "ANNY": anny_tab,
@@ -497,6 +511,8 @@ def load_models() -> dict[str, BodyModel]:
     smpl = SMPL(SMPL_PATH)
     print(f"Loading SMPLH from {SMPLH_PATH}", flush=True)
     smplh = SMPLH(SMPLH_PATH)
+    print(f"Loading MANO from {MANO_PATH}", flush=True)
+    mano = MANO(MANO_PATH)
     print(f"Loading SMPLX from {SMPLX_PATH}", flush=True)
     smplx = SMPLX(SMPLX_PATH)
     print(f"Loading SKEL from {SKEL_PATH}", flush=True)
@@ -519,6 +535,7 @@ def load_models() -> dict[str, BodyModel]:
     return {
         "SMPL": smpl,
         "SMPLH": smplh,
+        "MANO": mano,
         "SMPLX": smplx,
         "SKEL": skel,
         "ANNY": anny,

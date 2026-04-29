@@ -34,6 +34,7 @@ from body_models.anny.numpy import ANNY
 from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.mano.numpy import MANO
 from body_models.mhr.numpy import MHR
 from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
@@ -51,6 +52,7 @@ MODEL_GAP = 0.30
 PASTELS = {
     "smpl": (0.95, 0.63, 0.72, 1.0),  # rose
     "smplh": (0.80, 0.70, 0.95, 1.0),  # lilac
+    "mano": (0.95, 0.80, 0.56, 1.0),  # apricot
     "smplx": (0.62, 0.78, 0.98, 1.0),  # sky
     "skel": (0.62, 0.93, 0.74, 1.0),  # mint
     "mhr": (0.99, 0.73, 0.54, 1.0),  # peach
@@ -66,11 +68,12 @@ LABELS = {f: f.upper() for f in PASTELS} | {
     "myofullbody": "MYO\nFULLBODY",
 }
 # FLAME is head-only: half-size keeps it in scale with the row.
-SCALES = {"flame": 0.5}
+SCALES = {"flame": 0.5, "mano": 2.0}
 
 LOADERS = {
     "smpl": lambda: SMPL(gender="neutral"),  # path via body-models config
     "smplh": lambda: SMPLH(gender="neutral"),  # path via body-models config
+    "mano": lambda: MANO(side="right"),  # path via body-models config
     "smplx": lambda: SMPLX(gender="neutral"),  # path via body-models config
     "skel": lambda: SKEL(ASSETS_DIR / "skel/model", "male"),
     "mhr": lambda: MHR(ASSETS_DIR / "mhr/model"),
@@ -171,7 +174,7 @@ def parse_args() -> argparse.Namespace:
 # ── Per-family canonical mesh ────────────────────────────────────────────────
 def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
-    if family in ("smpl", "smplh", "smplx", "skel", "flame"):
+    if family in ("smpl", "smplh", "mano", "smplx", "skel", "flame"):
         verts = np.asarray(model.rest_vertices, dtype=np.float32)
     else:
         params = model.get_rest_pose(batch_size=1)

@@ -19,6 +19,8 @@ def setup_model_paths(monkeypatch):
             return ASSET_DIR / "smpl" / "model" / "SMPL_NEUTRAL.npz"
         if model.startswith("smplh-"):
             return ASSET_DIR / "smplh" / "model" / "neutral" / "model.npz"
+        if model.startswith("mano-"):
+            return ASSET_DIR / "mano" / "model" / "right" / "MANO_RIGHT.pkl"
         if model.startswith("smplx-"):
             return ASSET_DIR / "smplx" / "model" / "SMPLX_NEUTRAL.npz"
         if model == "flame":

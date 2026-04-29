@@ -13,6 +13,7 @@ from .utils import get_cache_dir
 SMPL_URL = "https://download.is.tue.mpg.de/download.php?domain=smpl&sfile=SMPL_python_v.1.1.0.zip"
 SMPLX_URL = "https://download.is.tue.mpg.de/download.php?domain=smplx&sfile=models_smplx_v1_1.zip"
 SMPLH_URL = "https://download.is.tue.mpg.de/download.php?domain=mano&resume=1&sfile=smplh.tar.xz"
+MANO_URL = "https://download.is.tue.mpg.de/download.php?domain=mano&resume=1&sfile=mano_v1_2.zip"
 SKEL_URL = "https://download.is.tue.mpg.de/download.php?domain=skel&resume=1&sfile=skel_models_v1.1.zip&resume=1"
 FLAME_URL = "https://download.is.tue.mpg.de/download.php?domain=flame&sfile=FLAME2023.zip&resume=1"
 
@@ -30,6 +31,10 @@ SMPLH_FILES = {
     "smplh-neutral": "neutral/model.npz",
     "smplh-female": "female/model.npz",
     "smplh-male": "male/model.npz",
+}
+MANO_FILES = {
+    "mano-right": "MANO_RIGHT.pkl",
+    "mano-left": "MANO_LEFT.pkl",
 }
 FLAME_FILES = ["flame2023.pkl", "FLAME_NEUTRAL.pkl", "generic_model.pkl", "flame2023_no_jaw.pkl"]
 
@@ -120,6 +125,36 @@ def download_smplh(
     paths = {model: _find_relative_path(cache_dir, name) for model, name in SMPLH_FILES.items()}
     if None in paths.values():
         raise FileNotFoundError(f"Expected SMPL-H model files were not found in {cache_dir}")
+
+    return {model: path for model, path in paths.items() if path is not None}
+
+
+def download_mano(
+    cache_dir: Path | None = None,
+    username: str | None = None,
+    password: str | None = None,
+) -> dict[str, Path]:
+    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "mano"
+    paths = {model: next(cache_dir.rglob(name), None) for model, name in MANO_FILES.items()}
+    if None not in paths.values():
+        return {model: path for model, path in paths.items() if path is not None}
+
+    if username is None or password is None:
+        raise ValueError("MANO credentials are required to download the model.")
+
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    archive_path = cache_dir / "mano.zip"
+    _download_zip(MANO_URL, archive_path, username, password)
+    with zipfile.ZipFile(archive_path) as zf:
+        zf.extractall(cache_dir)
+    archive_path.unlink(missing_ok=True)
+
+    paths = {model: next(cache_dir.rglob(name), None) for model, name in MANO_FILES.items()}
+    if None in paths.values():
+        raise FileNotFoundError(f"Expected MANO model files were not found in {cache_dir}")
 
     return {model: path for model, path in paths.items() if path is not None}
 

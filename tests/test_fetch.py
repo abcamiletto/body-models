@@ -125,6 +125,38 @@ def test_download_smplh_uses_downloaded_archive_and_reuses_cache(tmp_path, monke
     }
 
 
+def test_download_mano_uses_downloaded_archive_and_reuses_cache(tmp_path, monkeypatch) -> None:
+    source_zip = tmp_path / "mano-source.zip"
+    _make_zip(
+        source_zip,
+        {
+            "mano/models/MANO_RIGHT.pkl": b"right",
+            "mano/models/MANO_LEFT.pkl": b"left",
+        },
+    )
+
+    def fake_download(url: str, archive_path: Path, username: str, password: str) -> None:
+        assert url == fetch.MANO_URL
+        assert username == "user"
+        assert password == "secret"
+        archive_path.write_bytes(source_zip.read_bytes())
+
+    monkeypatch.setattr(fetch, "_download_zip", fake_download)
+
+    cache_dir = tmp_path / "mano-cache"
+    paths = fetch.download_mano(cache_dir=cache_dir, username="user", password="secret")
+    assert {key: path.read_bytes() for key, path in paths.items()} == {
+        "mano-left": b"left",
+        "mano-right": b"right",
+    }
+
+    paths = fetch.download_mano(cache_dir=cache_dir)
+    assert {key: path.read_bytes() for key, path in paths.items()} == {
+        "mano-left": b"left",
+        "mano-right": b"right",
+    }
+
+
 def test_download_flame_uses_downloaded_archive_and_reuses_cache(tmp_path, monkeypatch) -> None:
     source_zip = tmp_path / "flame-source.zip"
     _make_zip(source_zip, {"FLAME2023/flame2023.pkl": b"flame"})
