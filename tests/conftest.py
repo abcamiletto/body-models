@@ -17,6 +17,8 @@ def setup_model_paths(monkeypatch):
     def mock_get_model_path(model: str) -> Path | None:
         if model.startswith("smpl-"):
             return ASSET_DIR / "smpl" / "model" / "SMPL_NEUTRAL.npz"
+        if model.startswith("smplh-"):
+            return ASSET_DIR / "smplh" / "model" / "neutral" / "model.npz"
         if model.startswith("smplx-"):
             return ASSET_DIR / "smplx" / "model" / "SMPLX_NEUTRAL.npz"
         if model == "flame":

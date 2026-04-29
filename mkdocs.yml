@@ -55,6 +55,7 @@ nav:
   - Home: index.md
   - Models:
       - SMPL: models/smpl.md
+      - SMPL-H: models/smplh.md
       - SMPL-X: models/smplx.md
       - FLAME: models/flame.md
       - SKEL: models/skel.md

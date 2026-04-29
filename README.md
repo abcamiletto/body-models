@@ -4,7 +4,7 @@
 
 A unified library for body models.
 
-Provides a shared interface across SMPL, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, and G1 models with PyTorch, NumPy, and JAX backends.
+Provides a shared interface across SMPL, SMPL-H, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, and G1 models with PyTorch, NumPy, and JAX backends.
 
 ## Features
 
@@ -74,8 +74,9 @@ SOMA is implemented natively in `body-models`; it does not require installing `p
 
 ### Registration-required models
 
-SMPL, SMPL-X, SKEL, and FLAME require registration. Download from:
+SMPL, SMPL-H, SMPL-X, SKEL, and FLAME require registration. Download from:
 - SMPL: https://smpl.is.tue.mpg.de/
+- SMPL-H: https://mano.is.tue.mpg.de/
 - SMPL-X: https://smpl-x.is.tue.mpg.de/
 - SKEL: https://skel.is.tue.mpg.de/
 - FLAME: https://flame.is.tue.mpg.de/
@@ -89,6 +90,7 @@ body-models download garment-measurements
 body-models download mhr
 body-models download soma
 body-models download smpl
+body-models download smplh
 body-models download smplx
 body-models download skel
 body-models download flame
@@ -99,17 +101,21 @@ Or set credentials via environment variables first:
 
 ```bash
 SMPL_USERNAME=you@example.com SMPL_PASSWORD=... body-models download smpl
+SMPLH_USERNAME=you@example.com SMPLH_PASSWORD=... body-models download smplh
 SMPLX_USERNAME=you@example.com SMPLX_PASSWORD=... body-models download smplx
 SKEL_USERNAME=you@example.com SKEL_PASSWORD=... body-models download skel
 FLAME_USERNAME=you@example.com FLAME_PASSWORD=... body-models download flame
 ```
 
-SMPL `.pkl` and `.npz` files are both supported directly. You can also configure paths manually (per gender):
+SMPL `.pkl` and `.npz` files are both supported directly. SMPL-H supports the AMASS `model.npz` files and smplx-ready `.pkl` files. You can also configure paths manually (per gender):
 
 ```bash
 body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl
 body-models set smpl-male /path/to/SMPL_MALE.pkl
 body-models set smpl-female /path/to/SMPL_FEMALE.pkl
+body-models set smplh-neutral /path/to/smplh/neutral/model.npz
+body-models set smplh-male /path/to/smplh/male/model.npz
+body-models set smplh-female /path/to/smplh/female/model.npz
 body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
 body-models set skel /path/to/skel_models_v1.1
 body-models set flame /path/to/FLAME_NEUTRAL.pkl
@@ -141,6 +147,9 @@ Current settings:
   smpl-male: /data/models/smpl/SMPL_MALE.pkl
   smpl-female: /data/models/smpl/SMPL_FEMALE.pkl
   smpl-neutral: /data/models/smpl/SMPL_NEUTRAL.pkl
+  smplh-male: (not set)
+  smplh-female: (not set)
+  smplh-neutral: (not set)
   smplx-male: (not set)
   smplx-female: (not set)
   smplx-neutral: (not set)
@@ -158,7 +167,7 @@ Manage paths:
 ```bash
 body-models set <model> <path>   # Set model path
 body-models unset <model>        # Remove from config
-body-models download <model>     # Download anny, g1, mhr, soma, smpl, smplx, skel, flame, or all
+body-models download <model>     # Download anny, g1, mhr, soma, smpl, smplh, smplx, skel, flame, or all
 ```
 
 ## Quick Start
@@ -303,6 +312,28 @@ model = SMPL(gender="neutral")  # "neutral", "male", or "female"
 vertices = model.forward_vertices(
     shape,               # [B, 10] body shape betas
     body_pose,           # [B, 23, 3] axis-angle per joint
+    pelvis_rotation,     # [B, 3] root joint rotation (optional)
+    global_rotation,     # [B, 3] post-transform rotation (optional)
+    global_translation,  # [B, 3] translation (optional)
+)
+```
+
+### SMPL-H
+
+SMPL body model with articulated MANO hands.
+
+```python
+from body_models.smplh.torch import SMPLH  # or .numpy, .jax
+
+model = SMPLH(
+    gender="neutral",     # "neutral", "male", or "female"
+    flat_hand_mean=False, # Flat hands as mean pose
+)
+
+vertices = model.forward_vertices(
+    shape,               # [B, 10] body shape betas
+    body_pose,           # [B, 21, 3] axis-angle per body joint
+    hand_pose,           # [B, 30, 3] axis-angle (left 15 + right 15)
     pelvis_rotation,     # [B, 3] root joint rotation (optional)
     global_rotation,     # [B, 3] post-transform rotation (optional)
     global_translation,  # [B, 3] translation (optional)
