@@ -54,20 +54,6 @@ class BrainCoHand(BodyModel):
         self.coupled_polycoef = data["coupled_polycoef"]
 
     @property
-    def _core_args(self):
-        return (
-            self.local_offsets,
-            self.rest_local_rotations,
-            self.qpos_joint_axes,
-            self.qpos_joint_indices,
-            self.coupled_joint_axes,
-            self.coupled_joint_indices,
-            self.coupled_driver_indices,
-            self.coupled_polycoef,
-            self.parents,
-        )
-
-    @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
         return self._faces
 
@@ -100,9 +86,17 @@ class BrainCoHand(BodyModel):
         joint_indices=None,
     ) -> Float[np.ndarray, "B 12 4 4"]:
         return core.forward_skeleton(
-            *self._core_args,
-            pose,
-            global_translation,
+            local_offsets=self.local_offsets,
+            rest_local_rotations=self.rest_local_rotations,
+            joint_axes=self.qpos_joint_axes,
+            joint_indices=self.qpos_joint_indices,
+            coupled_joint_axes=self.coupled_joint_axes,
+            coupled_joint_indices=self.coupled_joint_indices,
+            coupled_driver_indices=self.coupled_driver_indices,
+            coupled_polycoef=self.coupled_polycoef,
+            parents=self.parents,
+            pose=pose,
+            global_translation=global_translation,
             global_rotation=global_rotation,
             skeleton_indices=joint_indices,
             rotation_type=self.rotation_type,
@@ -118,15 +112,23 @@ class BrainCoHand(BodyModel):
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
         return core.forward_vertices(
-            self._vertices,
-            *self._core_args,
-            self.link_joint_indices,
-            self.link_vertex_starts,
-            self.link_vertex_counts,
-            self.link_geom_positions,
-            self.link_geom_rotations,
-            pose,
-            global_translation,
+            vertices=self._vertices,
+            local_offsets=self.local_offsets,
+            rest_local_rotations=self.rest_local_rotations,
+            joint_axes=self.qpos_joint_axes,
+            joint_indices=self.qpos_joint_indices,
+            coupled_joint_axes=self.coupled_joint_axes,
+            coupled_joint_indices=self.coupled_joint_indices,
+            coupled_driver_indices=self.coupled_driver_indices,
+            coupled_polycoef=self.coupled_polycoef,
+            parents=self.parents,
+            link_joint_indices=self.link_joint_indices,
+            link_vertex_starts=self.link_vertex_starts,
+            link_vertex_counts=self.link_vertex_counts,
+            link_geom_positions=self.link_geom_positions,
+            link_geom_rotations=self.link_geom_rotations,
+            pose=pose,
+            global_translation=global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
@@ -135,12 +137,20 @@ class BrainCoHand(BodyModel):
 
     def forward_links(self, pose, global_translation=None, *, global_rotation=None):
         return core.forward_links(
-            *self._core_args,
-            self.link_joint_indices,
-            self.link_geom_positions,
-            self.link_geom_rotations,
-            pose,
-            global_translation,
+            local_offsets=self.local_offsets,
+            rest_local_rotations=self.rest_local_rotations,
+            joint_axes=self.qpos_joint_axes,
+            joint_indices=self.qpos_joint_indices,
+            coupled_joint_axes=self.coupled_joint_axes,
+            coupled_joint_indices=self.coupled_joint_indices,
+            coupled_driver_indices=self.coupled_driver_indices,
+            coupled_polycoef=self.coupled_polycoef,
+            parents=self.parents,
+            link_joint_indices=self.link_joint_indices,
+            link_geom_positions=self.link_geom_positions,
+            link_geom_rotations=self.link_geom_rotations,
+            pose=pose,
+            global_translation=global_translation,
             global_rotation=global_rotation,
             rotation_type=self.rotation_type,
             xp=np,
