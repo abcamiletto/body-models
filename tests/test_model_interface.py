@@ -24,6 +24,7 @@ MODELS = [
     "garment_measurements",
     "g1",
     "myofullbody",
+    "brainco",
 ]
 BACKENDS = ["torch", "numpy", "jax"]
 
@@ -56,6 +57,8 @@ def _class_name(model_name: str) -> str:
         return "GarmentMeasurements"
     if model_name == "myofullbody":
         return "MyoFullBody"
+    if model_name == "brainco":
+        return "BrainCoHand"
     return model_name.upper() if model_name != "flame" else "FLAME"
 
 
@@ -82,6 +85,8 @@ def _build_model(model_name: str, backend: str) -> Any:
         if not model_path.exists():
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["model_path"] = model_path
+    elif model_name == "brainco":
+        kwargs["rotation_type"] = "hinge"
     elif model_path.exists():
         kwargs["model_path"] = model_path
 
