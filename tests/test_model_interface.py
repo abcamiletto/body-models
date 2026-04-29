@@ -11,7 +11,7 @@ from nanomanifold import SO3
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets"
-MODELS = ["smpl", "smplh", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements", "g1"]
+MODELS = ["smpl", "smplh", "smplx", "flame", "skel", "anny", "mhr", "soma", "garment_measurements", "g1", "myofullbody"]
 BACKENDS = ["torch", "numpy", "jax"]
 
 
@@ -39,6 +39,8 @@ def _get_model_file(model_name: str) -> Path:
 def _class_name(model_name: str) -> str:
     if model_name == "garment_measurements":
         return "GarmentMeasurements"
+    if model_name == "myofullbody":
+        return "MyoFullBody"
     return model_name.upper() if model_name != "flame" else "FLAME"
 
 
@@ -61,7 +63,7 @@ def _build_model(model_name: str, backend: str) -> Any:
         if not model_path.exists():
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["model_path"] = model_path
-    elif model_name == "g1":
+    elif model_name in {"g1", "myofullbody"}:
         if not model_path.exists():
             pytest.skip(f"Model assets not found: {model_path}")
         kwargs["model_path"] = model_path
@@ -97,7 +99,7 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert isinstance(model.parents, list)
     assert len(model.parents) == model.num_joints
     assert all(isinstance(parent, int) for parent in model.parents)
-    if model_name == "g1":
+    if model.is_rigid_body:
         with pytest.raises(NotImplementedError, match="rigid articulated"):
             model.skin_weights
     else:
@@ -145,7 +147,7 @@ def test_viser_exports_match_model_outputs(model_name: str, backend: str) -> Non
     model = _build_model(model_name, backend)
 
     forward_kwargs = model.get_rest_pose(batch_size=1)
-    if model_name == "g1":
+    if model.is_rigid_body:
         with pytest.raises(NotImplementedError, match="skin_weights"):
             model.to_viser_skinned_mesh(**forward_kwargs)
         bones = model.to_viser_bones(**forward_kwargs)

@@ -4,7 +4,7 @@
 
 A unified library for body models.
 
-Provides a shared interface across SMPL, SMPL-H, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, and G1 models with PyTorch, NumPy, and JAX backends.
+Provides a shared interface across SMPL, SMPL-H, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, G1, and MyoFullBody models with PyTorch, NumPy, and JAX backends.
 
 ## Features
 
@@ -44,19 +44,21 @@ Note: NumPy/JAX backends can load MHR torch checkpoints without installing PyTor
 
 ### Auto-download models
 
-ANNY, MHR, SOMA, GarmentMeasurements, and G1 models are automatically downloaded on first use:
+ANNY, MHR, SOMA, GarmentMeasurements, G1, and MyoFullBody models are automatically downloaded on first use:
 
 ```python
 from body_models.anny.torch import ANNY
 from body_models.g1.torch import G1
 from body_models.garment_measurements.torch import GarmentMeasurements
 from body_models.mhr.torch import MHR
+from body_models.myofullbody.torch import MyoFullBody
 from body_models.soma.torch import SOMA
 
 model = ANNY()  # Downloads automatically (CC0 license)
 model = G1()  # Downloads Unitree G1 MuJoCo assets from Hugging Face
 model = GarmentMeasurements()  # Downloads upstream data, then preprocesses with bpy via uv
 model = MHR()   # Downloads automatically (Apache 2.0)
+model = MyoFullBody()  # Downloads MuscleMimic full-body MJCF + STLs (Apache 2.0)
 model = SOMA()  # Downloads SOMA_neutral.npz from SOMA-X
 ```
 
@@ -67,6 +69,7 @@ body-models download anny
 body-models download g1
 body-models download garment-measurements
 body-models download mhr
+body-models download myofullbody
 body-models download soma
 ```
 
@@ -88,6 +91,7 @@ body-models download anny
 body-models download g1
 body-models download garment-measurements
 body-models download mhr
+body-models download myofullbody
 body-models download soma
 body-models download smpl
 body-models download smplh
@@ -160,6 +164,7 @@ Current settings:
   mhr: (not set)
   soma: (not set)
   garment-measurements: (not set)
+  myofullbody: (not set)
 ```
 
 Manage paths:
@@ -167,7 +172,7 @@ Manage paths:
 ```bash
 body-models set <model> <path>   # Set model path
 body-models unset <model>        # Remove from config
-body-models download <model>     # Download anny, g1, mhr, soma, smpl, smplh, smplx, skel, flame, or all
+body-models download <model>     # Download anny, g1, mhr, myofullbody, soma, smpl, smplh, smplx, skel, flame, or all
 ```
 
 ## Quick Start
@@ -207,8 +212,10 @@ Rigged models inherit from `BodyModel` and share these properties:
 | `num_vertices` | `int` | Number of mesh vertices |
 | `joint_names` | `list[str]` | Joint names |
 | `faces` | `[F, 3]` | Mesh face indices |
-| `skin_weights` | `[V, J]` | Skinning weights |
+| `skin_weights` | `[V, J]` | Skinning weights (raises for rigid models) |
 | `rest_vertices` | `[V, 3]` | Vertices in rest pose |
+| `is_rigid_body` | `bool` | `True` for rigid articulated models (G1, MyoFullBody) — meshes are rigidly attached to bodies, no LBS |
+| `has_tendons` | `bool` | `True` if the model exposes MJCF muscle via-points + tendons (MyoFullBody) |
 
 ### Common Methods
 
@@ -508,13 +515,53 @@ vertices = hinge_model.forward_vertices(body_pose=body_pose)
 Use `body-models download g1` to download and configure the assets explicitly.
 When passed manually, `model_path` should contain `xml/g1.xml` and `meshes/g1/*.STL`.
 
+### MyoFullBody
+
+MuscleMimic / MyoSuite full-body musculoskeletal model parsed from MuJoCo MJCF
+(`amathislab/musclemimic_models`). 101 body frames built from per-link STL
+meshes, driven by 122 scalar joint coordinates (112 hinge + 10 slide) plus a
+free-root pose. No muscle dynamics — body-models exposes only kinematics.
+
+```python
+import numpy as np
+from body_models import myofullbody
+from body_models.myofullbody.torch import MyoFullBody
+
+model = MyoFullBody()  # Auto-downloads MJCF + STLs from GitHub on first use
+params = model.get_rest_pose(batch_size=1)
+
+# body_pose is a flat scalar qpos vector in MJCF order (hinge angles + slide displacements).
+qpos_idx = model.qpos_joint_names.index("hip_flexion_r")
+params["body_pose"][:, qpos_idx] = 0.6
+
+skeleton = model.forward_skeleton(**params)        # [B, 101, 4, 4]
+links = model.forward_links(**params)              # [B, 102, 4, 4]
+vertices = model.forward_vertices(**params)        # rigid concatenated STL verts
+
+# Round-trip with MuJoCo qpos (free root + 122 joint coordinates):
+qpos = myofullbody.to_mujoco_qpos(model, **params)        # [B, 7+122]
+restored = myofullbody.from_mujoco_qpos(qpos)             # body_pose + global_*
+```
+
+When passed manually, `model_path` should be the upstream `musclemimic_models/model/`
+directory (containing `body/myofullbody.xml` and the `meshes/`, `torso/`, `leg/`,
+`arm/`, `head/`, `scene/` subtrees).
+
+Muscle visualisation is exposed via the existing `forward_skeleton` output —
+no new forward method. The model also stores `site_positions [S, 3]`,
+`site_body_indices [S]`, and a `tendons` list (each entry has `name`,
+`site_indices`, and `width`); call `model.world_sites(skeleton)` to lift the
+body-local via-points into world space, then walk each tendon's `site_indices`
+to draw straight-segment polylines (wrap surfaces are skipped). The bundled
+`scripts/visualize_models.py` does this with `viser.add_line_segments`.
+
 ## Coordinate System
 
 The unified API returns outputs in:
 - **Y-up** coordinate system
 - **Meters** as the unit
 
-SMPL, SMPL-X, SKEL, FLAME, MHR, GarmentMeasurements, and SOMA are natively Y-up and pass through unchanged. ANNY (MakeHuman) and G1 (MuJoCo) are natively Z-up and are rotated to Y-up at load time, so a single rendering or visualisation pipeline works across the entire lineup.
+SMPL, SMPL-X, SKEL, FLAME, MHR, GarmentMeasurements, and SOMA are natively Y-up and pass through unchanged. ANNY (MakeHuman), G1 (MuJoCo), and MyoFullBody (MuJoCo) are natively Z-up and are rotated to Y-up at load time, so a single rendering or visualisation pipeline works across the entire lineup.
 
 For G1, pass `convention="mujoco"` to keep the MuJoCo-native Z-up asset coordinates instead of the default `convention="soma"` Y-up coordinates.
 
@@ -538,3 +585,4 @@ See individual model licenses for usage terms:
 - SOMA: See NVIDIA SOMA-X license terms
 - GarmentMeasurements: GPL-3.0
 - G1: follows the license of the provided Unitree/Kimodo robot assets
+- MyoFullBody: Apache 2.0 (MuscleMimic / MyoSuite)

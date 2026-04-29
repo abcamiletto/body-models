@@ -24,6 +24,7 @@ MODELS = [
     "g1",
     "soma",
     "garment-measurements",
+    "myofullbody",
 ]
 
 SMPL_MODELS = {"smpl-male", "smpl-female", "smpl-neutral"}
