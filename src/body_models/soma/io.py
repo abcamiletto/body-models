@@ -229,9 +229,14 @@ def _missing_assets(model_dir: Path) -> list[str]:
     return [name for name in SOMA_ASSETS if not (model_dir / name).exists()]
 
 
-def _identity_transfer_cache_file(asset_dir: Path, model_type: str) -> Path:
+def _soma_preprocessed_cache_dir() -> Path:
     preprocessed_dir = get_cache_dir() / "soma" / "preprocessed"
     preprocessed_dir.mkdir(parents=True, exist_ok=True)
+    return preprocessed_dir
+
+
+def _identity_transfer_cache_file(asset_dir: Path, model_type: str) -> Path:
+    preprocessed_dir = _soma_preprocessed_cache_dir()
     key = hashlib.md5(f"identity-transfer-v2:{model_type}:{asset_dir.resolve()}".encode()).hexdigest()
     return preprocessed_dir / f"identity_transfer_{key}.npz"
 
@@ -407,10 +412,19 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
 
 
 def _correctives_cache_file(asset_dir: Path) -> Path:
-    preprocessed_dir = get_cache_dir() / "soma" / "preprocessed"
-    preprocessed_dir.mkdir(parents=True, exist_ok=True)
+    preprocessed_dir = _soma_preprocessed_cache_dir()
     key = hashlib.md5(f"v3:{(asset_dir / SOMA_CORRECTIVES_ASSET).resolve()}".encode()).hexdigest()
     return preprocessed_dir / f"correctives_{key}.npz"
+
+
+def _joint_regressor_cache_file(asset_dir: Path) -> Path:
+    preprocessed_dir = _soma_preprocessed_cache_dir()
+    asset_path = asset_dir / SOMA_CORE_ASSET
+    stat = asset_path.stat()
+    key = hashlib.md5(
+        f"joint-regressor-v1:{asset_path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}".encode()
+    ).hexdigest()
+    return preprocessed_dir / f"joint_regressor_{key}.npz"
 
 
 def _get_layout(name: str) -> str:
@@ -533,20 +547,19 @@ def _get_joint_children_ids(parents: np.ndarray) -> list[list[int]]:
     return children
 
 
-def _pairwise_dist(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+def _pairwise_dist(a: Float[np.ndarray, "A D"], b: Float[np.ndarray, "B D"]) -> Float[np.ndarray, "A B"]:
     diff = a[:, None, :] - b[None, :, :]
     return np.linalg.norm(diff, axis=-1)
 
 
-def _linear_rbf(r: np.ndarray) -> np.ndarray:
-    return r
-
-
-def _get_basis_weights(control_points: np.ndarray, query_point: np.ndarray) -> np.ndarray:
+def _get_basis_weights(
+    control_points: Float[np.ndarray, "C 3"],
+    query_point: Float[np.ndarray, "3"],
+) -> Float[np.ndarray, "C"]:
     """Compute dense linear-RBF interpolation weights for one query point."""
     num_points, dim = control_points.shape
 
-    K = _linear_rbf(_pairwise_dist(control_points, control_points)).astype(np.float64, copy=False)
+    K = _pairwise_dist(control_points, control_points).astype(np.float64, copy=False)
     K[np.diag_indices(num_points)] += 1e-8
 
     ones = np.ones((num_points, 1), dtype=np.float64)
@@ -554,9 +567,10 @@ def _get_basis_weights(control_points: np.ndarray, query_point: np.ndarray) -> n
     Z = np.zeros((dim + 1, dim + 1), dtype=np.float64)
     A = np.block([[K, P], [P.T, Z]])
 
+    r = np.linalg.norm(control_points - query_point[None, :], axis=1)
     rhs = np.concatenate(
         [
-            _linear_rbf(np.linalg.norm(control_points - query_point[None, :], axis=1)).astype(np.float64, copy=False),
+            r.astype(np.float64, copy=False),
             np.array([1.0], dtype=np.float64),
             query_point.astype(np.float64, copy=False),
         ]
@@ -567,12 +581,12 @@ def _get_basis_weights(control_points: np.ndarray, query_point: np.ndarray) -> n
 
 
 def _build_joint_position_regressor(
-    bind_shape: np.ndarray,
-    bind_world_transforms: np.ndarray,
-    skin_weights: np.ndarray,
-    joint_parents: np.ndarray,
-    vertex_ids_to_exclude: np.ndarray | None,
-) -> np.ndarray:
+    bind_shape: Float[np.ndarray, "V 3"],
+    bind_world_transforms: Float[np.ndarray, "J 4 4"],
+    skin_weights: Float[np.ndarray, "V J"],
+    joint_parents: Int[np.ndarray, "J"],
+    vertex_ids_to_exclude: Int[np.ndarray, "N"] | None,
+) -> Float[np.ndarray, "J V"]:
     """Precompute dense vertex-to-joint regressors used by SOMA skeleton fitting."""
     regressor_mask = (skin_weights > 0.0) & (skin_weights[:, joint_parents] > 0.0)
     zero_weight_ids = np.where(regressor_mask.sum(axis=0) == 0.0)[0]
@@ -612,6 +626,30 @@ def _build_joint_position_regressor(
     return joint_regressor
 
 
+def _load_or_build_joint_position_regressor(
+    asset_dir: Path,
+    bind_shape: Float[np.ndarray, "V 3"],
+    bind_world_transforms: Float[np.ndarray, "J 4 4"],
+    skin_weights: Float[np.ndarray, "V J"],
+    joint_parents: Int[np.ndarray, "J"],
+    vertex_ids_to_exclude: Int[np.ndarray, "N"] | None,
+) -> Float[np.ndarray, "J V"]:
+    cache_file = _joint_regressor_cache_file(asset_dir)
+    if cache_file.exists():
+        with np.load(cache_file, allow_pickle=False) as data:
+            return np.asarray(data["joint_regressor"], dtype=np.float32).copy()
+
+    joint_regressor = _build_joint_position_regressor(
+        bind_shape=bind_shape,
+        bind_world_transforms=bind_world_transforms,
+        skin_weights=skin_weights,
+        joint_parents=joint_parents,
+        vertex_ids_to_exclude=vertex_ids_to_exclude,
+    )
+    np.savez(cache_file, joint_regressor=joint_regressor)
+    return joint_regressor
+
+
 @lru_cache(maxsize=None)
 def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
     asset_dir = Path(model_dir)
@@ -645,7 +683,8 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
                 np.asarray(data["segment_mouth_bag"], dtype=np.int64),
             ]
         )
-    joint_regressor = _build_joint_position_regressor(
+    joint_regressor = _load_or_build_joint_position_regressor(
+        asset_dir=asset_dir,
         bind_shape=bind_shape,
         bind_world_transforms=bind_pose_world,
         skin_weights=skin_weights,
