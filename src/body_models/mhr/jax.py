@@ -55,6 +55,9 @@ class MHR(BodyModel, nnx.Module):
         skin_indices_full = data["skin_indices"].astype(np.int64)
         faces = data["faces"]
 
+        corrective_weights = load_pose_correctives_weights(resolved_path, lod)
+        corrective_W2 = corrective_weights["W2"]
+
         # Apply mesh simplification if requested
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -65,6 +68,8 @@ class MHR(BodyModel, nnx.Module):
             skin_weights = skin_weights_full[vertex_map]
             skin_indices = skin_indices_full[vertex_map]
             faces = new_faces.astype(np.int64)
+            corrective_W2_vertices = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])
+            corrective_W2 = corrective_W2_vertices[vertex_map].reshape(-1, corrective_W2.shape[-1])
         else:
             base_vertices = base_vertices_full
             blendshape_dirs = blendshape_dirs_full
@@ -91,10 +96,8 @@ class MHR(BodyModel, nnx.Module):
         )
         self.bind_inv_translation = nnx.Variable(jnp.asarray(t))
 
-        # Load pose correctives weights
-        corrective_weights = load_pose_correctives_weights(resolved_path, lod)
         self.corrective_W1 = nnx.Variable(jnp.asarray(corrective_weights["W1"]))
-        self.corrective_W2 = nnx.Variable(jnp.asarray(corrective_weights["W2"]))
+        self.corrective_W2 = nnx.Variable(jnp.asarray(corrective_W2))
 
         joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
         self.parents = joint_parents.tolist()
