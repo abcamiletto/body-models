@@ -347,3 +347,16 @@ def test_simplify() -> None:
     skel_orig = model_orig.forward_skeleton(**params_orig)
     skel_2x = model_2x.forward_skeleton(**params_orig)
     assert (skel_orig - skel_2x).abs().max() < 1e-6
+
+
+@pytest.mark.parametrize("backend", ["numpy", "jax"])
+def test_simplify_forward_vertices_non_torch(backend: str) -> None:
+    """Test simplified MHR forward pass works with non-torch pose correctives."""
+    MHR = _mhr_backend(backend)
+    model = MHR(model_path=MODEL_PATH, simplify=5.0)
+
+    params = model.get_rest_pose(batch_size=1)
+    vertices = model.forward_vertices(**params)
+
+    assert _to_numpy(backend, vertices).shape == (1, model.num_vertices, 3)
+    assert model.corrective_W2.shape[0] // 3 == model.num_vertices
