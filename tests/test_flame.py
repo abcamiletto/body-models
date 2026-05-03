@@ -19,8 +19,6 @@ from accelerator_utils import get_accelerator_device
 from nanomanifold import SO3
 from gradient_utils import prepare_params, sampled_gradcheck
 
-pytestmark = pytest.mark.fast
-
 ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "flame"
 REFERENCE_DIR = Path(__file__).parent / "assets" / "references" / "flame"
 MODEL_PATH = ASSET_DIR / "model.pkl"
@@ -30,6 +28,14 @@ NUM_CASES = 1
 GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 1e-4, 1e-4
 ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
+
+pytestmark = [
+    pytest.mark.fast,
+    pytest.mark.skipif(
+        not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists(),
+        reason=f"FLAME reference assets not found at {REFERENCE_DIR}",
+    ),
+]
 
 requires_model = pytest.mark.skipif(
     not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists(),

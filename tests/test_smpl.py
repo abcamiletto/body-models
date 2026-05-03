@@ -19,8 +19,6 @@ from accelerator_utils import get_accelerator_device
 from nanomanifold import SO3
 from gradient_utils import prepare_params, sampled_gradcheck
 
-pytestmark = pytest.mark.fast
-
 ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "smpl-neutral"
 REFERENCE_DIR = Path(__file__).parent / "assets" / "references" / "smpl-neutral"
 MODEL_PATH = ASSET_DIR / "model.npz"
@@ -31,8 +29,13 @@ GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 1e-4, 1e-4
 ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 
-if not MODEL_PATH.exists():
-    pytest.skip(f"SMPL model not found at {MODEL_PATH}", allow_module_level=True)
+pytestmark = [
+    pytest.mark.fast,
+    pytest.mark.skipif(
+        not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists(),
+        reason=f"SMPL reference assets not found at {REFERENCE_DIR}",
+    ),
+]
 
 
 # ============================================================================
