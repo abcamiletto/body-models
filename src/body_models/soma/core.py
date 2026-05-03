@@ -29,9 +29,12 @@ def forward_vertices(
     t_pose_world: Float[Array, "Jf 4 4"],
     joint_regressor: Float[Array, "Jf Vf"],
     joint_children_full: list[list[int]],
+    joint_children_indices_full: Int[Array, "Jf C"],
     skinned_vertex_indices_full: list[list[int]],
+    skinned_vertex_indices_full_index: Int[Array, "Jf K"],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
+    parents_full_index: Int[Array, "Jf"],
     identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     corrective_bindpose: Float[Array, "Jf 3 3"],
@@ -58,7 +61,7 @@ def forward_vertices(
 
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     B = pose_rot.shape[0]
-    pose_rot_full = _orient_pose_rot_full(xp, pose_rot, t_pose_world, parents_full)
+    pose_rot_full = _orient_pose_rot_full(xp, pose_rot, t_pose_world, parents_full_index)
     rest_shape_full, rest_shape_active, world_bind_pose_fit = _prepare_rest_shapes(
         xp=xp,
         batch_size=B,
@@ -71,7 +74,9 @@ def forward_vertices(
         bind_pose_world=bind_pose_world,
         joint_regressor=joint_regressor,
         joint_children_full=joint_children_full,
+        joint_children_indices_full=joint_children_indices_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
         parents_full=parents_full,
         identity=identity,
         rest_shape_full=rest_shape_full,
@@ -87,7 +92,7 @@ def forward_vertices(
             world_bind_pose_fit=world_bind_pose_fit,
             bind_pose_local=bind_pose_local,
             kinematic_fronts=kinematic_fronts_full,
-            parents_full=parents_full,
+            parents_full_index=parents_full_index,
         )
         corrective_offsets = apply_pose_correctives(
             pose_rot_full=pose_rot_full,
@@ -112,7 +117,7 @@ def forward_vertices(
         skin_weights=skin_weights_active,
         world_bind_pose=world_bind_pose,
         kinematic_fronts=kinematic_fronts_full,
-        parents_full=parents_full,
+        parents_full_index=parents_full_index,
         pose_rot_full=pose_rot_full,
     )
 
@@ -134,9 +139,12 @@ def forward_skeleton(
     t_pose_world: Float[Array, "Jf 4 4"],
     joint_regressor: Float[Array, "Jf V"],
     joint_children_full: list[list[int]],
+    joint_children_indices_full: Int[Array, "Jf C"],
     skinned_vertex_indices_full: list[list[int]],
+    skinned_vertex_indices_full_index: Int[Array, "Jf K"],
     kinematic_fronts_full: list[Front],
     parents_full: list[int],
+    parents_full_index: Int[Array, "Jf"],
     identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rest_shape_full: Float[Array, "B|1 V 3"] | None = None,
@@ -165,7 +173,9 @@ def forward_skeleton(
         bind_pose_world=bind_pose_world,
         joint_regressor=joint_regressor,
         joint_children_full=joint_children_full,
+        joint_children_indices_full=joint_children_indices_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
         parents_full=parents_full,
         identity=identity,
         rest_shape=rest_shape_full,
@@ -179,16 +189,16 @@ def forward_skeleton(
             world_bind_pose_fit=world_bind_pose,
             bind_pose_local=bind_pose_local,
             kinematic_fronts=kinematic_fronts_full,
-            parents_full=parents_full,
+            parents_full_index=parents_full_index,
         )
-    pose_rot_full = _orient_pose_rot_full(xp, pose_rot, t_pose_world, parents_full)
+    pose_rot_full = _orient_pose_rot_full(xp, pose_rot, t_pose_world, parents_full_index)
     _, T_world_cm = _pose_mesh_from_oriented_pose(
         xp=xp,
         rest_shape=rest_shape_full,
         skin_weights=skin_weights_full,
         world_bind_pose=world_bind_pose,
         kinematic_fronts=kinematic_fronts_full,
-        parents_full=parents_full,
+        parents_full_index=parents_full_index,
         pose_rot_full=pose_rot_full,
     )
 
@@ -439,7 +449,9 @@ def _fit_rest_shape_to_bind_pose(
     bind_pose_world: Float[Array, "J 4 4"],
     joint_regressor: Float[Array, "J V"],
     joint_children_full: list[list[int]],
+    joint_children_indices_full: Int[Array, "J C"],
     skinned_vertex_indices_full: list[list[int]],
+    skinned_vertex_indices_full_index: Int[Array, "J K"],
     parents_full: list[int],
     rest_shape: Float[Array, "B V 3"],
     match_warp: bool,
@@ -450,7 +462,9 @@ def _fit_rest_shape_to_bind_pose(
         bind_shape=bind_shape,
         bind_pose_world=bind_pose_world,
         joint_children_full=joint_children_full,
+        joint_children_indices_full=joint_children_indices_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
         parents_full=parents_full,
         joint_positions=joint_positions,
         target_shape=rest_shape,
@@ -469,7 +483,9 @@ def _prepare_identity_from_inputs(
     bind_pose_world: Float[Array, "J 4 4"],
     joint_regressor: Float[Array, "J V"],
     joint_children_full: list[list[int]],
+    joint_children_indices_full: Int[Array, "J C"],
     skinned_vertex_indices_full: list[list[int]],
+    skinned_vertex_indices_full_index: Int[Array, "J K"],
     parents_full: list[int],
     identity: Float[Array, "B|1 S"] | None,
     rest_shape: Float[Array, "B|1 V 3"] | None,
@@ -488,7 +504,9 @@ def _prepare_identity_from_inputs(
         bind_pose_world=bind_pose_world,
         joint_regressor=joint_regressor,
         joint_children_full=joint_children_full,
+        joint_children_indices_full=joint_children_indices_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
         parents_full=parents_full,
         rest_shape=rest_shape,
         match_warp=match_warp,
@@ -507,7 +525,9 @@ def _prepare_rest_shapes(
     bind_pose_world: Float[Array, "Jf 4 4"],
     joint_regressor: Float[Array, "Jf Vf"],
     joint_children_full: list[list[int]],
+    joint_children_indices_full: Int[Array, "Jf C"],
     skinned_vertex_indices_full: list[list[int]],
+    skinned_vertex_indices_full_index: Int[Array, "Jf K"],
     parents_full: list[int],
     identity: Float[Array, "B|1 S"] | None,
     rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
@@ -524,7 +544,9 @@ def _prepare_rest_shapes(
         bind_pose_world=bind_pose_world,
         joint_regressor=joint_regressor,
         joint_children_full=joint_children_full,
+        joint_children_indices_full=joint_children_indices_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
         parents_full=parents_full,
         identity=identity,
         rest_shape=rest_shape_full,
@@ -548,11 +570,11 @@ def _repose_to_bind_pose(
     world_bind_pose_fit: Float[Array, "B J 4 4"],
     bind_pose_local: Float[Array, "J 4 4"],
     kinematic_fronts: list[Front],
-    parents_full: list[int],
+    parents_full_index: Int[Array, "J"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     """Repose an identity-specific rest shape into SOMA's corrective bind pose."""
     B = rest_shape.shape[0]
-    bind_local_fit = _joint_world_to_local(xp, world_bind_pose_fit, parents_full)
+    bind_local_fit = _joint_world_to_local(xp, world_bind_pose_fit, parents_full_index)
     local_t = bind_local_fit[..., :3, 3]
 
     zeros = xp.asarray(0.0, dtype=local_t.dtype)
@@ -580,13 +602,13 @@ def _orient_pose_rot_full(
     xp,
     pose_rot: Float[Array, "B J 3 3"],
     t_pose_world: Float[Array, "Jf 4 4"],
-    parents_full: list[int],
+    parents_full_index: Int[Array, "Jf"],
 ) -> Float[Array, "B Jf 3 3"]:
     B = pose_rot.shape[0]
     root_identity = common.eye_as(pose_rot, batch_dims=(B, 1), xp=xp)
     pose_rot_full = xp.concat([root_identity, pose_rot], axis=1)
     orient = t_pose_world[:, :3, :3]
-    orient_parent_T = orient[xp.asarray(parents_full)].swapaxes(-2, -1)
+    orient_parent_T = orient[parents_full_index].swapaxes(-2, -1)
     return orient_parent_T[None] @ pose_rot_full @ orient[None]
 
 
@@ -596,11 +618,11 @@ def _pose_mesh_from_oriented_pose(
     skin_weights: Float[Array, "V Jf"],
     world_bind_pose: Float[Array, "B Jf 4 4"],
     kinematic_fronts: list[Front],
-    parents_full: list[int],
+    parents_full_index: Int[Array, "Jf"],
     pose_rot_full: Float[Array, "B Jf 3 3"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B Jf 4 4"]]:
     B = pose_rot_full.shape[0]
-    bind_local = _joint_world_to_local(xp, world_bind_pose, parents_full)
+    bind_local = _joint_world_to_local(xp, world_bind_pose, parents_full_index)
     local_t = bind_local[..., :3, 3]
     if local_t.shape[1] > 1:
         zeros = common.zeros_as(local_t[:, 1], shape=(B, 3), xp=xp)
@@ -618,7 +640,9 @@ def _fit_joint_rotations(
     bind_shape: Float[Array, "V 3"],
     bind_pose_world: Float[Array, "J 4 4"],
     joint_children_full: list[list[int]],
+    joint_children_indices_full: Int[Array, "J C"],
     skinned_vertex_indices_full: list[list[int]],
+    skinned_vertex_indices_full_index: Int[Array, "J K"],
     parents_full: list[int],
     joint_positions: Float[Array, "B J 3"],
     target_shape: Float[Array, "B V 3"],
@@ -638,7 +662,7 @@ def _fit_joint_rotations(
 
         skinned_vids = skinned_vertex_indices_full[joint_index]
         if skinned_vids:
-            skinned_idx = xp.asarray(skinned_vids)
+            skinned_idx = skinned_vertex_indices_full_index[joint_index, : len(skinned_vids)]
             skinned_orig = bind_shape[skinned_idx] - bind_pos[joint_index]
             skinned_new = target_shape[:, skinned_idx, :] - joint_positions[:, joint_index : joint_index + 1, :]
             R_init = _align_vectors(
@@ -650,7 +674,7 @@ def _fit_joint_rotations(
         else:
             R_init = common.eye_as(bind_rot, batch_dims=(B,), xp=xp)
 
-        child_idx = xp.asarray(children)
+        child_idx = joint_children_indices_full[joint_index, : len(children)]
         pos_children_orig = bind_pos[child_idx] - bind_pos[joint_index : joint_index + 1]
         pos_children_orig = xp.einsum("bij,cj->bci", R_init, pos_children_orig)
         pos_children_new = joint_positions[:, child_idx, :] - joint_positions[:, joint_index : joint_index + 1, :]
@@ -749,9 +773,11 @@ def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
     )
 
 
-def _joint_world_to_local(xp, world: Float[Array, "B J 4 4"], parents_full: list[int]) -> Float[Array, "B J 4 4"]:
+def _joint_world_to_local(
+    xp, world: Float[Array, "B J 4 4"], parents_full_index: Int[Array, "J"]
+) -> Float[Array, "B J 4 4"]:
     inv = _invert_transforms(xp, world)
-    return inv[:, xp.asarray(parents_full)] @ world
+    return inv[:, parents_full_index] @ world
 
 
 def _linear_blend_skinning(
@@ -762,8 +788,9 @@ def _linear_blend_skinning(
 ) -> Float[Array, "B V 3"]:
     R = bone_transforms[..., :3, :3]
     t = bone_transforms[..., :3, 3]
-    transformed = xp.einsum("bjik,bvk->bjvi", R, bind_shape) + t[:, :, None, :]
-    return xp.einsum("vj,bjvi->bvi", skin_weights, transformed)
+    R_blend = xp.einsum("vj,bjik->bvik", skin_weights, R)
+    t_blend = xp.einsum("vj,bji->bvi", skin_weights, t)
+    return xp.einsum("bvik,bvk->bvi", R_blend, bind_shape) + t_blend
 
 
 def _invert_transforms(xp, T: Float[Array, "B J 4 4"]) -> Float[Array, "B J 4 4"]:
