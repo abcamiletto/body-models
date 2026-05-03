@@ -1,4 +1,4 @@
-"""Benchmark forward_skeleton and forward_vertices for supported body models.
+"""Benchmark forward_skeleton and geometry forwards for supported body models.
 
 Usage:
     uv run bench/run.py
@@ -65,6 +65,7 @@ class ModelSpec:
     numpy: Callable[[], Any] | None
     torch: Callable[[torch.device], torch.nn.Module] | None
     prepare_identity: bool = False
+    vertices_method: str = "forward_vertices"
 
 
 @dataclass(frozen=True)
@@ -110,8 +111,8 @@ MODELS = [
     ),
     ModelSpec("ANNY", lambda: anny_numpy.ANNY(), lambda d: torch_model(anny_torch.ANNY(), d)),
     ModelSpec("MHR", lambda: mhr_numpy.MHR(), lambda d: torch_model(mhr_torch.MHR(), d)),
-    ModelSpec("BRAINCO", lambda: brainco_numpy.BrainCoHand(side="right"), None),
-    ModelSpec("G1", lambda: g1_numpy.G1(), lambda d: torch_model(g1_torch.G1(), d)),
+    ModelSpec("BRAINCO", lambda: brainco_numpy.BrainCoHand(side="right"), None, vertices_method="forward_links"),
+    ModelSpec("G1", lambda: g1_numpy.G1(), lambda d: torch_model(g1_torch.G1(), d), vertices_method="forward_links"),
     ModelSpec(
         "SOMA",
         lambda: soma_numpy.SOMA(model_type="soma"),
@@ -151,6 +152,7 @@ MODELS = [
         "MYOFULLBODY",
         lambda: myofullbody_numpy.MyoFullBody(),
         lambda d: torch_model(myofullbody_torch.MyoFullBody(), d),
+        vertices_method="forward_links",
     ),
 ]
 MODEL_NAMES = [model.name for model in MODELS]
@@ -234,6 +236,7 @@ def benchmark_all(
                 "numpy",
                 None,
                 spec.prepare_identity,
+                spec.vertices_method,
                 methods,
                 skeleton_batch_sizes,
                 vertices_batch_sizes,
@@ -253,6 +256,7 @@ def benchmark_all(
                     "torch",
                     device,
                     False,
+                    spec.vertices_method,
                     methods,
                     skeleton_batch_sizes,
                     vertices_batch_sizes,
@@ -271,6 +275,7 @@ def benchmark_model(
     backend: str,
     device: torch.device | None,
     prepare_identity: bool,
+    vertices_method: str,
     methods: list[str],
     skeleton_batch_sizes: list[int],
     vertices_batch_sizes: list[int],
@@ -282,11 +287,11 @@ def benchmark_model(
     results = {}
     method_configs = []
     if "skeleton" in methods:
-        method_configs.append(("forward_skeleton", skeleton_batch_sizes, skeleton_runs))
+        method_configs.append(("forward_skeleton", "forward_skeleton", skeleton_batch_sizes, skeleton_runs))
     if "vertices" in methods:
-        method_configs.append(("forward_vertices", vertices_batch_sizes, vertices_runs))
+        method_configs.append(("forward_vertices", vertices_method, vertices_batch_sizes, vertices_runs))
 
-    for method_name, batch_sizes, runs in method_configs:
+    for result_name, method_name, batch_sizes, runs in method_configs:
         method = getattr(model, method_name)
         if backend == "torch":
             method = compile_method(method, model, device, prepare_identity)
@@ -295,7 +300,7 @@ def benchmark_model(
             params = benchmark_params(model, batch_size, prepare_identity)
             params = move_tensors(params, device)
             mean_ms = benchmark_method(method, params, backend, device, runs, warmup)
-            results[(method_name, batch_size)] = mean_ms
+            results[(result_name, batch_size)] = mean_ms
             print(f"  {method_name} (B={batch_size:>4}): {mean_ms:8.2f} ms")
 
     return BenchmarkResult(label, results)
@@ -383,7 +388,7 @@ def write_markdown(
         lines.extend(["## `forward_skeleton` (ms)", "", skeleton_table, ""])
     if "vertices" in methods:
         vertices_table = format_table(results, "forward_vertices", vertices_batch_sizes)
-        lines.extend(["## `forward_vertices` (ms)", "", vertices_table, ""])
+        lines.extend(["## `forward_vertices` / `forward_links` (ms)", "", vertices_table, ""])
 
     output_path.write_text("\n".join(lines))
     print(f"\nResults saved to {output_path}")
