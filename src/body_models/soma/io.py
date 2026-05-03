@@ -715,11 +715,20 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
         "skin_weights_full": skin_weights,
         "facial_inner_vertices": facial_inner,
         "skinned_vertex_indices_full": skinned_vertex_indices_full,
+        "skinned_vertex_indices_full_index": _pad_indices(skinned_vertex_indices_full),
         "joint_children_full": joint_children_full,
+        "joint_children_indices_full": _pad_indices(joint_children_full),
         "kinematic_fronts_full": compute_kinematic_fronts(joint_parents_full),
         "joint_names": joint_names_full[1:],
         "parents": public_parents,
     }
+
+
+def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
+    out = np.zeros((len(indices), max(map(len, indices))), dtype=np.int64)
+    for index, values in enumerate(indices):
+        out[index, : len(values)] = values
+    return out
 
 
 def load_model_data(model_path: Path) -> dict[str, Any]:
