@@ -773,7 +773,9 @@ def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
     )
 
 
-def _joint_world_to_local(xp, world: Float[Array, "B J 4 4"], parents_full_index: Int[Array, "J"]) -> Float[Array, "B J 4 4"]:
+def _joint_world_to_local(
+    xp, world: Float[Array, "B J 4 4"], parents_full_index: Int[Array, "J"]
+) -> Float[Array, "B J 4 4"]:
     inv = _invert_transforms(xp, world)
     return inv[:, parents_full_index] @ world
 

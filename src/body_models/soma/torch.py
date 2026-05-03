@@ -170,9 +170,7 @@ class SOMA(BodyModel, nn.Module):
         )
         self.register_buffer("_identity_face_ids", torch.as_tensor(transfer_data["face_ids"], dtype=torch.int64))
         self.register_buffer("_identity_bary_coords", torch.as_tensor(transfer_data["bary_coords"]))
-        self.register_buffer(
-            "_identity_unknown_ids", torch.as_tensor(transfer_data["unknown_ids"], dtype=torch.int64)
-        )
+        self.register_buffer("_identity_unknown_ids", torch.as_tensor(transfer_data["unknown_ids"], dtype=torch.int64))
         self.register_buffer("_identity_anchor_ids", torch.as_tensor(transfer_data["anchor_ids"], dtype=torch.int64))
         self.register_buffer("_identity_solve_matrix", torch.as_tensor(transfer_data["solve_matrix"]))
         self.register_buffer("_identity_anchor_matrix", torch.as_tensor(transfer_data["anchor_matrix"]))
