@@ -6,23 +6,26 @@ from dataclasses import replace
 from typing import Any
 
 import numpy as np
+from jaxtyping import Float, Int
 from scipy import sparse
 
 from . import base
 
+Array = Any
+
 
 def apply_pose_correctives(
-    pose_rot_full,
-    bindpose,
-    W1,
-    W2_rows,
-    W2_cols,
-    W2_values,
+    pose_rot_full: Float[Array, "B Jf 3 3"],
+    bindpose: Float[Array, "Jf 3 3"],
+    W1: Float[Array, "D K"],
+    W2_rows: Int[Array, "NNZ"],
+    W2_cols: Int[Array, "NNZ"],
+    W2_values: Float[Array, "NNZ"],
     num_vertices: int,
     use_tanh: bool,
     *,
     xp: Any = None,
-):
+) -> Float[Array, "B V 3"]:
     if xp is None:
         xp = np
 
@@ -42,7 +45,12 @@ def apply_pose_correctives(
     return xp.asarray(z @ W2).reshape(batch_size, num_vertices, 3)
 
 
-def linear_blend_skinning(xp, bind_shape, skin_weights, bone_transforms):
+def linear_blend_skinning(
+    xp,
+    bind_shape: Float[Array, "B V 3"],
+    skin_weights: Float[Array, "V J"],
+    bone_transforms: Float[Array, "B J 4 4"],
+) -> Float[Array, "B V 3"]:
     skin_weights = sparse.csr_matrix(skin_weights)
     R = bone_transforms[..., :3, :3]
     t = bone_transforms[..., :3, 3]

@@ -1011,8 +1011,7 @@ class SomaOps:
     apply_pose_correctives: Any = apply_pose_correctives
     linear_blend_skinning: Any = linear_blend_skinning
 
-    def forward_vertices(self, *args, **kwargs):
-        return _forward_vertices(self, *args, **kwargs)
+    forward_vertices = _forward_vertices
 
     def repose_to_bind_pose(
         self,
