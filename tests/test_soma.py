@@ -108,6 +108,42 @@ def test_simplify_reduces_mesh(model_path: Path) -> None:
     assert skel.shape == (2, model_half.num_joints, 4, 4)
 
 
+def test_numpy_prepare_identity_matches_forward(model_path: Path) -> None:
+    from body_models.soma.numpy import SOMA
+
+    model = SOMA(model_path=model_path)
+    params = model.get_rest_pose(batch_size=4)
+    prepared_identity = model.prepare_identity(identity=params["identity"])
+
+    vertices = model.forward_vertices(
+        pose=params["pose"],
+        identity=params["identity"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+    skeleton = model.forward_skeleton(
+        pose=params["pose"],
+        identity=params["identity"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+    prepared_vertices = model.forward_vertices(
+        pose=params["pose"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+        prepared_identity=prepared_identity,
+    )
+    prepared_skeleton = model.forward_skeleton(
+        pose=params["pose"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+        prepared_identity=prepared_identity,
+    )
+
+    np.testing.assert_allclose(prepared_vertices, vertices, atol=1e-5, rtol=1e-5)
+    np.testing.assert_allclose(prepared_skeleton, skeleton, atol=1e-5, rtol=1e-5)
+
+
 def test_mhr_rotmat_backward_without_correctives(model_path: Path) -> None:
     torch = pytest.importorskip("torch")
     from body_models.soma.torch import SOMA

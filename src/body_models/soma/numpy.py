@@ -1,5 +1,6 @@
 """NumPy backend for SOMA model."""
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -27,7 +28,14 @@ from .io import (
 
 PathLike = Path | str
 
-__all__ = ["SOMA"]
+__all__ = ["SOMA", "SOMAIdentity"]
+
+
+@dataclass
+class SOMAIdentity:
+    rest_shape_full: Float[np.ndarray, "1 Vf 3"]
+    rest_shape_active: Float[np.ndarray, "1 Va 3"]
+    world_bind_pose_fit: Float[np.ndarray, "1 Jf 4 4"]
 
 
 class SOMA(BodyModel):
@@ -206,11 +214,13 @@ class SOMA(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
+        prepared_identity: SOMAIdentity | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
-        identity, rest_shape_full, rest_shape_active = self._get_rest_shape(
+        identity_state = self._prepare_or_use_identity(
             identity=identity,
             scale_params=scale_params,
-            ref=pose,
+            dtype=pose.dtype,
+            prepared_identity=prepared_identity,
         )
         return core.forward_vertices(
             mean_full=self.mean_full,
@@ -231,10 +241,11 @@ class SOMA(BodyModel):
             kinematic_fronts_full=self._kinematic_fronts_full,
             parents_full=self._parents_full,
             parents_full_index=self._parents_full_index,
-            identity=identity,
+            identity=None,
             pose=pose,
-            rest_shape_full=rest_shape_full,
-            rest_shape_active=rest_shape_active,
+            rest_shape_full=identity_state.rest_shape_full,
+            rest_shape_active=identity_state.rest_shape_active,
+            world_bind_pose_fit=identity_state.world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
@@ -260,11 +271,13 @@ class SOMA(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
+        prepared_identity: SOMAIdentity | None = None,
     ) -> Float[np.ndarray, "B 77 4 4"]:
-        identity, rest_shape_full, _rest_shape_active = self._get_rest_shape(
+        identity_state = self._prepare_or_use_identity(
             identity=identity,
             scale_params=scale_params,
-            ref=pose,
+            dtype=pose.dtype,
+            prepared_identity=prepared_identity,
         )
         return core.forward_skeleton(
             mean_full=self.mean_full,
@@ -283,9 +296,10 @@ class SOMA(BodyModel):
             kinematic_fronts_full=self._kinematic_fronts_full,
             parents_full=self._parents_full,
             parents_full_index=self._parents_full_index,
-            identity=identity,
+            identity=None,
             pose=pose,
-            rest_shape_full=rest_shape_full,
+            rest_shape_full=identity_state.rest_shape_full,
+            world_bind_pose_fit=identity_state.world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
@@ -317,20 +331,61 @@ class SOMA(BodyModel):
             params["scale_params"] = np.zeros((1, self.num_scale_params), dtype=dtype)
         return params
 
-    def _get_rest_shape(
+    def prepare_identity(
+        self,
+        *,
+        identity: Float[np.ndarray, "B|1 I"] | None = None,
+        scale_params: Float[np.ndarray, "B|1 K"] | None = None,
+        dtype=np.float32,
+    ) -> SOMAIdentity:
+        if identity is not None:
+            dtype = identity.dtype
+        ref = np.empty((1, 1), dtype=dtype)
+        identity, scale_params = self._resolve_identity_inputs(identity, scale_params, ref)
+        rest_shape_full, rest_shape_active = self._get_rest_shape_from_identity(identity, scale_params)
+        rest_shape_full, rest_shape_active, world_bind_pose_fit = core.prepare_identity_state(
+            mean_full=self.mean_full,
+            mean_active=self.mean_active,
+            shapedirs_full=self.shapedirs_full,
+            shapedirs_active=self.shapedirs_active,
+            eigenvalues=self.eigenvalues,
+            bind_shape=self.bind_shape_full,
+            bind_pose_world=self.bind_pose_world,
+            joint_regressor=self.joint_regressor,
+            joint_children_full=self._joint_children_full,
+            joint_children_indices_full=self._joint_children_indices_full,
+            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
+            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index,
+            parents_full=self._parents_full,
+            identity=identity,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
+            match_warp=self.match_warp,
+            xp=np,
+        )
+        return SOMAIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
+
+    def _prepare_or_use_identity(
         self,
         *,
         identity: Float[np.ndarray, "B|1 I"] | None,
         scale_params: Float[np.ndarray, "B|1 K"] | None,
+        dtype: np.dtype,
+        prepared_identity: SOMAIdentity | None,
+    ) -> SOMAIdentity:
+        if prepared_identity is not None:
+            return prepared_identity
+        return self.prepare_identity(identity=identity, scale_params=scale_params, dtype=dtype)
+
+    def _resolve_identity_inputs(
+        self,
+        identity: Float[np.ndarray, "B|1 I"] | None,
+        scale_params: Float[np.ndarray, "B|1 K"] | None,
         ref: Float[np.ndarray, "B ..."],
-    ) -> tuple[
-        Float[np.ndarray, "B|1 I"] | None,
-        Float[np.ndarray, "B V 3"] | None,
-        Float[np.ndarray, "B V 3"] | None,
-    ]:
+    ) -> tuple[Float[np.ndarray, "B I"], Float[np.ndarray, "B K"] | None]:
         if identity is None:
             identity = np.full((1, self.identity_dim), self._default_identity_value, dtype=ref.dtype)
-        identity, scale_params = core.resolve_identity_inputs(
+        return core.resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
@@ -339,8 +394,14 @@ class SOMA(BodyModel):
             ref=ref,
             xp=np,
         )
+
+    def _get_rest_shape_from_identity(
+        self,
+        identity: Float[np.ndarray, "B I"],
+        scale_params: Float[np.ndarray, "B K"] | None,
+    ) -> tuple[Float[np.ndarray, "B V 3"] | None, Float[np.ndarray, "B V 3"] | None]:
         if self.model_type == "soma":
-            return identity, None, None
+            return None, None
 
         if self.model_type == "mhr":
             num_scale_params = cast(int, self.num_scale_params)
@@ -397,7 +458,7 @@ class SOMA(BodyModel):
         if self._identity_output_scale != 1.0:
             rest_shape = rest_shape * self._identity_output_scale
         rest_shape_active = rest_shape if self._vertex_map is None else rest_shape[:, self._vertex_map]
-        return None, rest_shape, rest_shape_active
+        return rest_shape, rest_shape_active
 
     def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
         self._identity_mhr_model = MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
