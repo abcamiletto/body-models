@@ -289,7 +289,7 @@ def benchmark_model(
     return BenchmarkResult(label, results)
 
 
-def compile_method(method, model: torch.nn.Module, device: torch.device):
+def compile_method(method: Any, model: Any, device: torch.device | None) -> Any:
     method = torch.compile(method, mode=TORCH_COMPILE_MODE)
     params = model.get_rest_pose(batch_size=2)
     params = move_tensors(params, device)
