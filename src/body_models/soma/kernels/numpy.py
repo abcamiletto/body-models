@@ -2,4 +2,4 @@
 
 from . import base
 
-ops = base.ops
+ops = base.SomaOps()

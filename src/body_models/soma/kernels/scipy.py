@@ -55,7 +55,7 @@ def linear_blend_skinning(xp, bind_shape, skin_weights, bone_transforms):
 
 
 ops = replace(
-    base.ops,
+    base.SomaOps(),
     apply_pose_correctives=apply_pose_correctives,
     linear_blend_skinning=linear_blend_skinning,
 )
