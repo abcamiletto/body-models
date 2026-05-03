@@ -27,7 +27,6 @@ import torch
 from body_models.anny import numpy as anny_numpy
 from body_models.anny import torch as anny_torch
 from body_models.brainco import numpy as brainco_numpy
-from body_models.config import get_model_path
 from body_models.flame import numpy as flame_numpy
 from body_models.flame import torch as flame_torch
 from body_models.g1 import numpy as g1_numpy
@@ -65,19 +64,13 @@ class ModelSpec:
     name: str
     numpy: Callable[[], Any] | None
     torch: Callable[[torch.device], torch.nn.Module] | None
+    prepare_identity: bool = False
 
 
 @dataclass(frozen=True)
 class BenchmarkResult:
     label: str
     timings: dict[tuple[str, int], float]
-
-
-def path(model: str) -> str:
-    model_path = get_model_path(model)
-    if model_path is None:
-        raise FileNotFoundError(f"No configured path for {model}")
-    return str(model_path)
 
 
 def torch_model(model: torch.nn.Module, device: torch.device) -> torch.nn.Module:
@@ -87,74 +80,77 @@ def torch_model(model: torch.nn.Module, device: torch.device) -> torch.nn.Module
 MODELS = [
     ModelSpec(
         "SMPL",
-        lambda: smpl_numpy.SMPL(model_path=path("smpl-neutral")),
-        lambda d: torch_model(smpl_torch.SMPL(model_path=path("smpl-neutral")), d),
+        lambda: smpl_numpy.SMPL(gender="neutral"),
+        lambda d: torch_model(smpl_torch.SMPL(gender="neutral"), d),
     ),
     ModelSpec(
         "SMPLH",
-        lambda: smplh_numpy.SMPLH(model_path=path("smplh-neutral")),
-        lambda d: torch_model(smplh_torch.SMPLH(model_path=path("smplh-neutral")), d),
+        lambda: smplh_numpy.SMPLH(gender="neutral"),
+        lambda d: torch_model(smplh_torch.SMPLH(gender="neutral"), d),
     ),
     ModelSpec(
         "SMPLX",
-        lambda: smplx_numpy.SMPLX(model_path=path("smplx-neutral")),
-        lambda d: torch_model(smplx_torch.SMPLX(model_path=path("smplx-neutral")), d),
+        lambda: smplx_numpy.SMPLX(gender="neutral"),
+        lambda d: torch_model(smplx_torch.SMPLX(gender="neutral"), d),
     ),
     ModelSpec(
         "MANO",
-        lambda: mano_numpy.MANO(model_path=path("mano-right")),
-        lambda d: torch_model(mano_torch.MANO(model_path=path("mano-right")), d),
+        lambda: mano_numpy.MANO(side="left"),
+        lambda d: torch_model(mano_torch.MANO(side="left"), d),
     ),
     ModelSpec(
         "SKEL",
-        lambda: skel_numpy.SKEL(model_path=path("skel"), gender="male"),
-        lambda d: torch_model(skel_torch.SKEL(model_path=path("skel"), gender="male"), d),
+        lambda: skel_numpy.SKEL(gender="male"),
+        lambda d: torch_model(skel_torch.SKEL(gender="male"), d),
     ),
     ModelSpec(
         "FLAME",
-        lambda: flame_numpy.FLAME(model_path=path("flame")),
-        lambda d: torch_model(flame_torch.FLAME(model_path=path("flame")), d),
+        lambda: flame_numpy.FLAME(),
+        lambda d: torch_model(flame_torch.FLAME(), d),
     ),
     ModelSpec("ANNY", lambda: anny_numpy.ANNY(), lambda d: torch_model(anny_torch.ANNY(), d)),
     ModelSpec("MHR", lambda: mhr_numpy.MHR(), lambda d: torch_model(mhr_torch.MHR(), d)),
-    ModelSpec("BRAINCO", lambda: brainco_numpy.BrainCoHand(), None),
+    ModelSpec("BRAINCO", lambda: brainco_numpy.BrainCoHand(side="right"), None),
     ModelSpec("G1", lambda: g1_numpy.G1(), lambda d: torch_model(g1_torch.G1(), d)),
     ModelSpec(
         "SOMA",
         lambda: soma_numpy.SOMA(model_type="soma"),
         lambda d: torch_model(soma_torch.SOMA(model_type="soma"), d),
+        prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-ANNY",
-        lambda: soma_numpy.SOMA(model_path=path("soma"), model_type="anny"),
-        lambda d: torch_model(soma_torch.SOMA(model_path=path("soma"), model_type="anny"), d),
+        lambda: soma_numpy.SOMA(model_type="anny"),
+        lambda d: torch_model(soma_torch.SOMA(model_type="anny"), d),
+        prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-MHR",
-        lambda: soma_numpy.SOMA(model_path=path("soma"), model_type="mhr"),
-        lambda d: torch_model(soma_torch.SOMA(model_path=path("soma"), model_type="mhr"), d),
+        lambda: soma_numpy.SOMA(model_type="mhr"),
+        lambda d: torch_model(soma_torch.SOMA(model_type="mhr"), d),
+        prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-SMPL",
-        lambda: soma_numpy.SOMA(model_path=path("soma"), model_type="smpl"),
-        lambda d: torch_model(soma_torch.SOMA(model_path=path("soma"), model_type="smpl"), d),
+        lambda: soma_numpy.SOMA(model_type="smpl"),
+        lambda d: torch_model(soma_torch.SOMA(model_type="smpl"), d),
+        prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-SMPLX",
-        lambda: soma_numpy.SOMA(model_path=path("soma"), model_type="smplx"),
-        lambda d: torch_model(soma_torch.SOMA(model_path=path("soma"), model_type="smplx"), d),
+        lambda: soma_numpy.SOMA(model_type="smplx"),
+        lambda d: torch_model(soma_torch.SOMA(model_type="smplx"), d),
+        prepare_identity=True,
     ),
     ModelSpec(
         "GARMENT-MEASUREMENTS",
-        lambda: garment_measurements_numpy.GarmentMeasurements(model_path=path("garment-measurements")),
-        lambda d: torch_model(
-            garment_measurements_torch.GarmentMeasurements(model_path=path("garment-measurements")), d
-        ),
+        lambda: garment_measurements_numpy.GarmentMeasurements(),
+        lambda d: torch_model(garment_measurements_torch.GarmentMeasurements(), d),
     ),
     ModelSpec(
         "MYOFULLBODY",
-        lambda: myofullbody_numpy.MyoFullBody(model_path=path("myofullbody")),
-        lambda d: torch_model(myofullbody_torch.MyoFullBody(model_path=path("myofullbody")), d),
+        lambda: myofullbody_numpy.MyoFullBody(),
+        lambda d: torch_model(myofullbody_torch.MyoFullBody(), d),
     ),
 ]
 MODEL_NAMES = [model.name for model in MODELS]
@@ -168,6 +164,7 @@ def main() -> None:
     backends = args.backends or BACKENDS
     devices = parse_devices(args.devices)
     methods = args.methods or ["skeleton", "vertices"]
+    preflight_models(args.models or MODEL_NAMES)
     results = benchmark_all(
         model_names=args.models or MODEL_NAMES,
         backends=backends,
@@ -198,6 +195,18 @@ def main() -> None:
     )
 
 
+def preflight_models(model_names: list[str]) -> None:
+    print("Checking model instantiation...")
+    wanted = {normalize_model_name(name) for name in model_names}
+
+    for spec in MODELS:
+        if spec.name not in wanted or spec.numpy is None:
+            continue
+
+        spec.numpy()
+        print(f"  {spec.name} (numpy)")
+
+
 def benchmark_all(
     *,
     model_names: list[str],
@@ -224,6 +233,7 @@ def benchmark_all(
                 spec.numpy(),
                 "numpy",
                 None,
+                spec.prepare_identity,
                 methods,
                 skeleton_batch_sizes,
                 vertices_batch_sizes,
@@ -242,6 +252,7 @@ def benchmark_all(
                     spec.torch(device),
                     "torch",
                     device,
+                    False,
                     methods,
                     skeleton_batch_sizes,
                     vertices_batch_sizes,
@@ -259,6 +270,7 @@ def benchmark_model(
     model: Any,
     backend: str,
     device: torch.device | None,
+    prepare_identity: bool,
     methods: list[str],
     skeleton_batch_sizes: list[int],
     vertices_batch_sizes: list[int],
@@ -277,10 +289,10 @@ def benchmark_model(
     for method_name, batch_sizes, runs in method_configs:
         method = getattr(model, method_name)
         if backend == "torch":
-            method = compile_method(method, model, device)
+            method = compile_method(method, model, device, prepare_identity)
 
         for batch_size in batch_sizes:
-            params = model.get_rest_pose(batch_size=batch_size)
+            params = benchmark_params(model, batch_size, prepare_identity)
             params = move_tensors(params, device)
             mean_ms = benchmark_method(method, params, backend, device, runs, warmup)
             results[(method_name, batch_size)] = mean_ms
@@ -289,9 +301,22 @@ def benchmark_model(
     return BenchmarkResult(label, results)
 
 
-def compile_method(method: Any, model: Any, device: torch.device | None) -> Any:
+def benchmark_params(model: Any, batch_size: int, prepare_identity: bool = False) -> dict[str, Any]:
+    params = model.get_rest_pose(batch_size=batch_size)
+    if not prepare_identity:
+        return params
+
+    prepared_identity = model.prepare_identity(
+        identity=params.pop("identity", None),
+        scale_params=params.pop("scale_params", None),
+    )
+    params["prepared_identity"] = prepared_identity
+    return params
+
+
+def compile_method(method: Any, model: Any, device: torch.device | None, prepare_identity: bool) -> Any:
     method = torch.compile(method, mode=TORCH_COMPILE_MODE)
-    params = model.get_rest_pose(batch_size=2)
+    params = benchmark_params(model, batch_size=2, prepare_identity=prepare_identity)
     params = move_tensors(params, device)
     with torch.inference_mode():
         method(**params)
