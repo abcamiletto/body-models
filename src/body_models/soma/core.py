@@ -762,8 +762,9 @@ def _linear_blend_skinning(
 ) -> Float[Array, "B V 3"]:
     R = bone_transforms[..., :3, :3]
     t = bone_transforms[..., :3, 3]
-    transformed = xp.einsum("bjik,bvk->bjvi", R, bind_shape) + t[:, :, None, :]
-    return xp.einsum("vj,bjvi->bvi", skin_weights, transformed)
+    R_blend = xp.einsum("vj,bjik->bvik", skin_weights, R)
+    t_blend = xp.einsum("vj,bji->bvi", skin_weights, t)
+    return xp.einsum("bvik,bvk->bvi", R_blend, bind_shape) + t_blend
 
 
 def _invert_transforms(xp, T: Float[Array, "B J 4 4"]) -> Float[Array, "B J 4 4"]:

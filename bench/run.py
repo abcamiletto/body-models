@@ -121,8 +121,8 @@ MODELS = [
     ModelSpec("G1", lambda: g1_numpy.G1(), lambda d: torch_model(g1_torch.G1(), d)),
     ModelSpec(
         "SOMA",
-        lambda: soma_numpy.SOMA(model_path=path("soma"), model_type="soma"),
-        lambda d: torch_model(soma_torch.SOMA(model_path=path("soma"), model_type="soma"), d),
+        lambda: soma_numpy.SOMA(model_type="soma"),
+        lambda d: torch_model(soma_torch.SOMA(model_type="soma"), d),
     ),
     ModelSpec(
         "SOMA-ANNY",
