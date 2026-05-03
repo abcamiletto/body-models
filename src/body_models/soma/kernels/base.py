@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from ..anny import core as anny_core
-from .. import common
-from ..common import get_namespace
-from ..rotations import RotationType
+from ...anny import core as anny_core
+from ... import common
+from ...common import get_namespace
+from ...rotations import RotationType
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -260,6 +261,91 @@ def prepare_identity_state(
         world_bind_pose_fit=None,
         match_warp=match_warp,
     )
+
+
+def _value(value):
+    return value[...] if hasattr(value, "__getitem__") else value
+
+
+def prepare_identity_shape(
+    *,
+    model_type: str,
+    identity_model: Any,
+    identity: Array,
+    scale_params: Array | None,
+    num_scale_params: int | None,
+    identity_internal_to_source_rotation: Array,
+    identity_internal_to_source_translation: Array,
+    identity_source_to_soma_rotation: Array,
+    identity_source_scale: float,
+    identity_output_scale: float,
+    identity_source_tetrahedra: Array,
+    identity_face_ids: Array,
+    identity_bary_coords: Array,
+    identity_unknown_ids: Array,
+    identity_anchor_ids: Array,
+    identity_solve_matrix: Array,
+    identity_anchor_matrix: Array,
+    identity_rhs_base: Array,
+    vertex_map: Array | None,
+    xp: Any,
+) -> tuple[Array | None, Array | None]:
+    if model_type == "mhr":
+        assert num_scale_params is not None
+        rest_shape = mhr_identity_shape(
+            model=identity_model,
+            identity=identity,
+            scale_params=scale_params,
+            num_scale_params=num_scale_params,
+            xp=xp,
+        )
+    elif model_type == "anny":
+        anny_model = identity_model
+        rest_shape = anny_identity_shape(
+            template_vertices=_value(anny_model.template_vertices),
+            blendshapes=_value(anny_model.blendshapes),
+            phenotype_mask=_value(anny_model.phenotype_mask),
+            anchors=anny_model._anchors if hasattr(anny_model, "_anchors") else anny_model._get_anchors_dict(),
+            identity=identity,
+            xp=xp,
+        )
+    else:
+        linear_model = identity_model
+        rest_shape = linear_identity_shape(
+            mean=_value(linear_model.v_template_full),
+            shapedirs=_value(linear_model.shapedirs_full),
+            identity=identity,
+            xp=xp,
+        )
+
+    rest_shape = apply_rigid_transform(
+        rest_shape,
+        rotation=_value(identity_internal_to_source_rotation),
+        translation=_value(identity_internal_to_source_translation),
+        xp=xp,
+    )
+    rest_shape = rest_shape * identity_source_scale
+    rest_shape = transfer_identity_rest_shape(
+        source_shape=rest_shape,
+        source_tetrahedra=_value(identity_source_tetrahedra),
+        face_ids=_value(identity_face_ids),
+        bary_coords=_value(identity_bary_coords),
+        unknown_ids=_value(identity_unknown_ids),
+        anchor_ids=_value(identity_anchor_ids),
+        solve_matrix=_value(identity_solve_matrix),
+        anchor_matrix=_value(identity_anchor_matrix),
+        rhs_base=_value(identity_rhs_base),
+        xp=xp,
+    )
+    rest_shape = apply_rigid_transform(
+        rest_shape,
+        rotation=_value(identity_source_to_soma_rotation),
+        xp=xp,
+    )
+    rest_shape = rest_shape * identity_output_scale
+    vertex_map = None if vertex_map is None else _value(vertex_map)
+    rest_shape_active = rest_shape if vertex_map is None else rest_shape[:, vertex_map]
+    return rest_shape, rest_shape_active
 
 
 def transfer_identity_rest_shape(
@@ -643,7 +729,7 @@ def _repose_to_bind_pose(
     )
 
     bone = T_world @ _invert_transforms(xp, world_bind_pose_fit)
-    verts = _linear_blend_skinning(xp, rest_shape, skin_weights, bone)
+    verts = linear_blend_skinning(xp, rest_shape, skin_weights, bone)
     return verts, T_world
 
 
@@ -706,7 +792,7 @@ def _pose_mesh_from_oriented_pose(
         pose_rot_full=pose_rot_full,
     )
     bone = T_world @ _invert_transforms(xp, world_bind_pose)
-    verts = _linear_blend_skinning(xp, rest_shape, skin_weights, bone)
+    verts = linear_blend_skinning(xp, rest_shape, skin_weights, bone)
     return verts, T_world
 
 
@@ -873,7 +959,7 @@ def _joint_world_to_local(
     return inv[:, parents_full_index] @ world
 
 
-def _linear_blend_skinning(
+def linear_blend_skinning(
     xp,
     bind_shape: Float[Array, "B V 3"],
     skin_weights: Float[Array, "V J"],
@@ -956,3 +1042,18 @@ def _apply_global_transform_transforms(
     if translation is not None:
         global_T = common.set(global_T, (slice(None), slice(None, 3), 3), translation, xp=xp)
     return xp.einsum("bij,bnjk->bnik", global_T, transforms)
+
+
+@dataclass(frozen=True)
+class SomaOps:
+    forward_vertices: Any = forward_vertices
+    forward_skeleton: Any = forward_skeleton
+    prepare_identity_state: Any = prepare_identity_state
+    prepare_identity_shape: Any = prepare_identity_shape
+    fit_rigid_transform: Any = fit_rigid_transform
+    resolve_identity_inputs: Any = resolve_identity_inputs
+    apply_pose_correctives: Any = apply_pose_correctives
+    linear_blend_skinning: Any = linear_blend_skinning
+
+
+ops = SomaOps()

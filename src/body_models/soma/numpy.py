@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -11,10 +11,9 @@ from nanomanifold import SO3
 from ..anny.numpy import ANNY
 from ..base import BodyModel
 from ..mhr.numpy import MHR
-from ..rotations import VALID_ROTATION_TYPES
+from ..rotations import VALID_ROTATION_TYPES, RotationType
 from ..smpl.numpy import SMPL
 from ..smplx.numpy import SMPLX
-from . import core
 from .io import (
     MODEL_TYPE_SPECS,
     compute_kinematic_fronts,
@@ -25,8 +24,11 @@ from .io import (
     load_pose_correctives_weights,
     simplify_mesh,
 )
+import body_models.soma.kernels.numpy as numpy_kernel
+import body_models.soma.kernels.scipy as scipy_kernel
 
 PathLike = Path | str
+KernelBackend = Literal["numpy", "scipy"]
 
 __all__ = ["SOMA", "SOMAIdentity"]
 
@@ -75,9 +77,8 @@ class SOMA(BodyModel):
     _identity_internal_to_source_rotation: Float[np.ndarray, "3 3"]
     _identity_internal_to_source_translation: Float[np.ndarray, "3"]
     _identity_source_to_soma_rotation: Float[np.ndarray, "3 3"]
-    _identity_anny_model: ANNY
-    _identity_mhr_model: MHR
-    _identity_linear_model: SMPL | SMPLX
+    _identity_model: ANNY | MHR | SMPL | SMPLX
+    _kernel: Any
 
     def __init__(
         self,
@@ -85,8 +86,9 @@ class SOMA(BodyModel):
         *,
         model_type: str = "soma",
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
+        backend: KernelBackend = "numpy",
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -100,6 +102,7 @@ class SOMA(BodyModel):
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
         self.match_warp = match_warp
+        self._kernel = {"numpy": numpy_kernel, "scipy": scipy_kernel}[backend]
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
         corrective_weights = load_pose_correctives_weights(resolved_path)
@@ -173,7 +176,7 @@ class SOMA(BodyModel):
         self._identity_solve_matrix = np.asarray(transfer_data["solve_matrix"], dtype=np.float32)
         self._identity_anchor_matrix = np.asarray(transfer_data["anchor_matrix"], dtype=np.float32)
         self._identity_rhs_base = np.asarray(transfer_data["rhs_base"], dtype=np.float32)
-        {
+        self._identity_model = {
             "mhr": self._init_mhr_identity_backend,
             "anny": self._init_anny_identity_backend,
             "smpl": self._init_linear_identity_backend,
@@ -222,7 +225,7 @@ class SOMA(BodyModel):
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
-        return core.forward_vertices(
+        return self._kernel.ops.forward_vertices(
             mean_full=self.mean_full,
             mean_active=self.mean_active,
             shapedirs_full=self.shapedirs_full,
@@ -279,7 +282,7 @@ class SOMA(BodyModel):
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
-        return core.forward_skeleton(
+        return self._kernel.ops.forward_skeleton(
             mean_full=self.mean_full,
             shapedirs_full=self.shapedirs_full,
             eigenvalues=self.eigenvalues,
@@ -343,7 +346,7 @@ class SOMA(BodyModel):
         ref = np.empty((1, 1), dtype=dtype)
         identity, scale_params = self._resolve_identity_inputs(identity, scale_params, ref)
         rest_shape_full, rest_shape_active = self._get_rest_shape_from_identity(identity, scale_params)
-        rest_shape_full, rest_shape_active, world_bind_pose_fit = core.prepare_identity_state(
+        rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.ops.prepare_identity_state(
             mean_full=self.mean_full,
             mean_active=self.mean_active,
             shapedirs_full=self.shapedirs_full,
@@ -385,7 +388,7 @@ class SOMA(BodyModel):
     ) -> tuple[Float[np.ndarray, "B I"], Float[np.ndarray, "B K"] | None]:
         if identity is None:
             identity = np.full((1, self.identity_dim), self._default_identity_value, dtype=ref.dtype)
-        return core.resolve_identity_inputs(
+        return self._kernel.ops.resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
@@ -402,76 +405,41 @@ class SOMA(BodyModel):
     ) -> tuple[Float[np.ndarray, "B V 3"] | None, Float[np.ndarray, "B V 3"] | None]:
         if self.model_type == "soma":
             return None, None
-
-        if self.model_type == "mhr":
-            num_scale_params = cast(int, self.num_scale_params)
-            rest_shape = core.mhr_identity_shape(
-                model=self._identity_mhr_model,
-                identity=identity,
-                scale_params=scale_params,
-                num_scale_params=num_scale_params,
-                xp=np,
-            )
-        elif self.model_type == "anny":
-            rest_shape = core.anny_identity_shape(
-                template_vertices=self._identity_anny_model.template_vertices,
-                blendshapes=self._identity_anny_model.blendshapes,
-                phenotype_mask=self._identity_anny_model.phenotype_mask,
-                anchors=self._identity_anny_model._anchors,
-                identity=identity,
-                xp=np,
-            )
-        else:
-            rest_shape = core.linear_identity_shape(
-                mean=self._identity_linear_model.v_template_full,
-                shapedirs=self._identity_linear_model.shapedirs_full,
-                identity=identity,
-                xp=np,
-            )
-
-        rest_shape = core.apply_rigid_transform(
-            rest_shape,
-            rotation=self._identity_internal_to_source_rotation,
-            translation=self._identity_internal_to_source_translation,
+        return self._kernel.ops.prepare_identity_shape(
+            model_type=self.model_type,
+            identity_model=self._identity_model,
+            identity=identity,
+            scale_params=scale_params,
+            num_scale_params=self.num_scale_params,
+            identity_internal_to_source_rotation=self._identity_internal_to_source_rotation,
+            identity_internal_to_source_translation=self._identity_internal_to_source_translation,
+            identity_source_to_soma_rotation=self._identity_source_to_soma_rotation,
+            identity_source_scale=self._identity_source_scale,
+            identity_output_scale=self._identity_output_scale,
+            identity_source_tetrahedra=self._identity_source_tetrahedra,
+            identity_face_ids=self._identity_face_ids,
+            identity_bary_coords=self._identity_bary_coords,
+            identity_unknown_ids=self._identity_unknown_ids,
+            identity_anchor_ids=self._identity_anchor_ids,
+            identity_solve_matrix=self._identity_solve_matrix,
+            identity_anchor_matrix=self._identity_anchor_matrix,
+            identity_rhs_base=self._identity_rhs_base,
+            vertex_map=self._vertex_map,
             xp=np,
         )
-        if self._identity_source_scale != 1.0:
-            rest_shape = rest_shape * self._identity_source_scale
 
-        rest_shape = core.transfer_identity_rest_shape(
-            source_shape=rest_shape,
-            source_tetrahedra=self._identity_source_tetrahedra,
-            face_ids=self._identity_face_ids,
-            bary_coords=self._identity_bary_coords,
-            unknown_ids=self._identity_unknown_ids,
-            anchor_ids=self._identity_anchor_ids,
-            solve_matrix=self._identity_solve_matrix,
-            anchor_matrix=self._identity_anchor_matrix,
-            rhs_base=self._identity_rhs_base,
-            xp=np,
-        )
-        rest_shape = core.apply_rigid_transform(
-            rest_shape,
-            rotation=self._identity_source_to_soma_rotation,
-            xp=np,
-        )
-        if self._identity_output_scale != 1.0:
-            rest_shape = rest_shape * self._identity_output_scale
-        rest_shape_active = rest_shape if self._vertex_map is None else rest_shape[:, self._vertex_map]
-        return rest_shape, rest_shape_active
+    def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> MHR:
+        return MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
 
-    def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
-        self._identity_mhr_model = MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
-
-    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> None:
-        self._identity_anny_model = ANNY(
+    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> ANNY:
+        identity_model = ANNY(
             model_path=get_identity_model_path("anny"),
             all_phenotypes=False,
             simplify=1.0,
         )
         source_vertices = np.asarray(transfer_data["source_vertices"], dtype=np.float32)
-        rotation, translation = core.fit_rigid_transform(
-            self._identity_anny_model.template_vertices,
+        rotation, translation = self._kernel.ops.fit_rigid_transform(
+            identity_model.template_vertices,
             source_vertices,
             xp=np,
         )
@@ -481,10 +449,11 @@ class SOMA(BodyModel):
             [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
             dtype=np.float32,
         )
+        return identity_model
 
-    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> SMPL | SMPLX:
         linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
-        self._identity_linear_model = linear_model_cls(
+        return linear_model_cls(
             model_path=get_identity_model_path(self.model_type),
             simplify=1.0,
         )

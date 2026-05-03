@@ -144,6 +144,42 @@ def test_numpy_prepare_identity_matches_forward(model_path: Path) -> None:
     np.testing.assert_allclose(prepared_skeleton, skeleton, atol=1e-5, rtol=1e-5)
 
 
+def test_scipy_kernel_matches_numpy(model_path: Path) -> None:
+    from body_models.soma.numpy import SOMA
+
+    params = SOMA(model_path=model_path).get_rest_pose(batch_size=2)
+    model_numpy = SOMA(model_path=model_path, backend="numpy")
+    model_scipy = SOMA(model_path=model_path, backend="scipy")
+
+    vertices_numpy = model_numpy.forward_vertices(
+        pose=params["pose"],
+        identity=params["identity"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+    vertices_scipy = model_scipy.forward_vertices(
+        pose=params["pose"],
+        identity=params["identity"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+    skeleton_numpy = model_numpy.forward_skeleton(
+        pose=params["pose"],
+        identity=params["identity"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+    skeleton_scipy = model_scipy.forward_skeleton(
+        pose=params["pose"],
+        identity=params["identity"],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+
+    np.testing.assert_allclose(vertices_scipy, vertices_numpy, atol=1e-5, rtol=1e-5)
+    np.testing.assert_allclose(skeleton_scipy, skeleton_numpy, atol=1e-5, rtol=1e-5)
+
+
 def test_mhr_rotmat_backward_without_correctives(model_path: Path) -> None:
     torch = pytest.importorskip("torch")
     from body_models.soma.torch import SOMA
