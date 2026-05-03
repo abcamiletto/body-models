@@ -23,10 +23,11 @@ from gradient_utils import prepare_params, sampled_gradcheck
 
 pytestmark = pytest.mark.fast
 
-ASSET_DIR = Path(__file__).parent / "assets" / "anny"
+ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "anny"
+REFERENCE_DIR = Path(__file__).parent / "assets" / "references" / "anny"
 MODEL_PATH = ASSET_DIR
-INPUTS_DIR = ASSET_DIR / "reference" / "inputs"
-OUTPUTS_DIR = ASSET_DIR / "reference" / "outputs"
+INPUTS_DIR = REFERENCE_DIR / "inputs"
+OUTPUTS_DIR = REFERENCE_DIR / "outputs"
 NUM_CASES = 1
 GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 5e-4, 2e-4

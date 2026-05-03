@@ -12,7 +12,7 @@ from gradient_utils import prepare_params, sampled_gradcheck
 
 pytestmark = pytest.mark.fast
 
-ASSET_DIR = Path(__file__).parent / "assets" / "g1"
+ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "g1"
 XML_PATH = ASSET_DIR / "xml" / "g1.xml"
 MESH_DIR = ASSET_DIR / "meshes" / "g1"
 

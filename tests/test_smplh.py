@@ -12,7 +12,7 @@ from nanomanifold import SO3
 
 pytestmark = pytest.mark.fast
 
-MODEL_PATH = Path(__file__).parent / "assets" / "smplh-neutral" / "model.npz"
+MODEL_PATH = Path(__file__).parent / "assets" / "models_hub" / "smplh-neutral" / "model.npz"
 RTOL, ATOL = 1e-4, 1e-4
 ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 

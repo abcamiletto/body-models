@@ -18,7 +18,7 @@ from body_models.soma.io import get_model_path
 
 pytestmark = pytest.mark.fast
 
-ASSET_DIR = Path(__file__).parent / "assets"
+ASSET_DIR = Path(__file__).parent / "assets" / "models_hub"
 RTOL = 1e-4
 ATOL = 1e-4
 SEEDS = {"soma": 101, "anny": 151, "mhr": 202, "smplx": 303}
