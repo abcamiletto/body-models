@@ -4,7 +4,7 @@ from pathlib import Path
 
 from body_models import config
 
-ASSET_DIR = Path(__file__).parent / "assets"
+ASSET_DIR = Path(__file__).parent / "assets" / "models_hub"
 
 TEST_ASSET_PATHS = {
     "anny": Path("anny"),

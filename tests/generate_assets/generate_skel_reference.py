@@ -10,7 +10,7 @@
 """Generate reference assets from the official skel package.
 
 Runs the official SKEL implementation to produce vertices and joints, and saves
-inputs/outputs under `tests/assets/skel`.
+inputs/outputs under `tests/assets/references/skel-male`.
 
 Usage:
     uv run scripts/generate_skel_reference.py /path/to/skel_models_v1.1
@@ -26,7 +26,7 @@ from skel.skel_model import SKEL as OfficialSKEL
 
 torch.manual_seed(42)
 
-TEST_ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets" / "skel-male"
+TEST_ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets" / "references" / "skel-male"
 NUM_CASES = 5
 
 
@@ -56,7 +56,7 @@ def run(model_path: Path, gender: str = "male"):
         joints = output.joints[0].cpu().numpy()
 
         # Save inputs
-        input_dir = TEST_ASSETS_DIR / "reference" / "inputs"
+        input_dir = TEST_ASSETS_DIR / "inputs"
         input_dir.mkdir(parents=True, exist_ok=True)
 
         input_data = {
@@ -71,7 +71,7 @@ def run(model_path: Path, gender: str = "male"):
             json.dump(input_data, f, indent=4)
 
         # Save outputs
-        output_dir = TEST_ASSETS_DIR / "reference" / "outputs" / str(idx)
+        output_dir = TEST_ASSETS_DIR / "outputs" / str(idx)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         np.save(output_dir / "vertices.npy", skin_verts)
