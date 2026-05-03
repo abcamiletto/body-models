@@ -79,6 +79,7 @@ class SOMA(BodyModel):
     _identity_source_to_soma_rotation: Float[np.ndarray, "3 3"]
     _identity_model: ANNY | MHR | SMPL | SMPLX
     _kernel: Any
+    _data: Any
 
     def __init__(
         self,
@@ -156,6 +157,7 @@ class SOMA(BodyModel):
         self._skinned_vertex_indices_full_index = data["skinned_vertex_indices_full_index"]
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data["joint_names"])
+        self._data = self._prepare_kernel_data()
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -225,25 +227,7 @@ class SOMA(BodyModel):
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
-        return self._kernel.ops.forward_vertices(
-            mean_full=self.mean_full,
-            mean_active=self.mean_active,
-            shapedirs_full=self.shapedirs_full,
-            shapedirs_active=self.shapedirs_active,
-            eigenvalues=self.eigenvalues,
-            bind_shape_full=self.bind_shape_full,
-            skin_weights_active=self._skin_weights_active,
-            bind_pose_world=self.bind_pose_world,
-            bind_pose_local=self.bind_pose_local,
-            t_pose_world=self.t_pose_world,
-            joint_regressor=self.joint_regressor,
-            joint_children_full=self._joint_children_full,
-            joint_children_indices_full=self._joint_children_indices_full,
-            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
-            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index,
-            kinematic_fronts_full=self._kinematic_fronts_full,
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index,
+        return self._data.forward_vertices(
             identity=None,
             pose=pose,
             rest_shape_full=identity_state.rest_shape_full,
@@ -252,12 +236,6 @@ class SOMA(BodyModel):
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            vertex_map=self._vertex_map,
-            corrective_bindpose=self.corrective_bindpose,
-            corrective_W1=self.corrective_W1,
-            corrective_W2_rows=self.corrective_W2_rows,
-            corrective_W2_cols=self.corrective_W2_cols,
-            corrective_W2_values=self.corrective_W2_values,
             corrective_use_tanh=self._corrective_use_tanh,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
@@ -282,23 +260,7 @@ class SOMA(BodyModel):
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
-        return self._kernel.ops.forward_skeleton(
-            mean_full=self.mean_full,
-            shapedirs_full=self.shapedirs_full,
-            eigenvalues=self.eigenvalues,
-            bind_shape_full=self.bind_shape_full,
-            skin_weights_full=self._skin_weights_full,
-            bind_pose_world=self.bind_pose_world,
-            bind_pose_local=self.bind_pose_local,
-            t_pose_world=self.t_pose_world,
-            joint_regressor=self.joint_regressor,
-            joint_children_full=self._joint_children_full,
-            joint_children_indices_full=self._joint_children_indices_full,
-            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
-            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index,
-            kinematic_fronts_full=self._kinematic_fronts_full,
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index,
+        return self._data.forward_skeleton(
             identity=None,
             pose=pose,
             rest_shape_full=identity_state.rest_shape_full,
@@ -346,20 +308,7 @@ class SOMA(BodyModel):
         ref = np.empty((1, 1), dtype=dtype)
         identity, scale_params = self._resolve_identity_inputs(identity, scale_params, ref)
         rest_shape_full, rest_shape_active = self._get_rest_shape_from_identity(identity, scale_params)
-        rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.ops.prepare_identity_state(
-            mean_full=self.mean_full,
-            mean_active=self.mean_active,
-            shapedirs_full=self.shapedirs_full,
-            shapedirs_active=self.shapedirs_active,
-            eigenvalues=self.eigenvalues,
-            bind_shape=self.bind_shape_full,
-            bind_pose_world=self.bind_pose_world,
-            joint_regressor=self.joint_regressor,
-            joint_children_full=self._joint_children_full,
-            joint_children_indices_full=self._joint_children_indices_full,
-            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
-            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index,
-            parents_full=self._parents_full,
+        rest_shape_full, rest_shape_active, world_bind_pose_fit = self._data.prepare_identity_state(
             identity=identity,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
@@ -367,6 +316,37 @@ class SOMA(BodyModel):
             xp=np,
         )
         return SOMAIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
+
+    def _prepare_kernel_data(self):
+        return self._kernel.prepare_data(
+            mean_full=self.mean_full,
+            mean_active=self.mean_active,
+            shapedirs_full=self.shapedirs_full,
+            shapedirs_active=self.shapedirs_active,
+            eigenvalues=self.eigenvalues,
+            bind_shape_full=self.bind_shape_full,
+            bind_pose_world=self.bind_pose_world,
+            bind_pose_local=self.bind_pose_local,
+            t_pose_world=self.t_pose_world,
+            joint_regressor=self.joint_regressor,
+            corrective_bindpose=self.corrective_bindpose,
+            corrective_W1=self.corrective_W1,
+            corrective_W2_rows=self.corrective_W2_rows,
+            corrective_W2_cols=self.corrective_W2_cols,
+            corrective_W2_values=self.corrective_W2_values,
+            corrective_W2=None,
+            skin_weights_full=self._skin_weights_full,
+            skin_weights_active=self._skin_weights_active,
+            faces=self._faces,
+            vertex_map=self._vertex_map,
+            parents_full=self._parents_full,
+            parents_full_index=self._parents_full_index,
+            joint_children_full=self._joint_children_full,
+            joint_children_indices_full=self._joint_children_indices_full,
+            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
+            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index,
+            kinematic_fronts_full=self._kinematic_fronts_full,
+        )
 
     def _prepare_or_use_identity(
         self,
