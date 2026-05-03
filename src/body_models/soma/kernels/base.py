@@ -17,7 +17,8 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 
-def forward_vertices(
+def _forward_vertices(
+    self,
     mean_full: Float[Array, "Vf 3"],
     mean_active: Float[Array, "Va 3"],
     shapedirs_full: Float[Array, "S Vf 3"],
@@ -88,7 +89,7 @@ def forward_vertices(
     )
 
     if apply_correctives:
-        rest_shape_active, world_bind_pose = _repose_to_bind_pose(
+        rest_shape_active, world_bind_pose = self.repose_to_bind_pose(
             xp=xp,
             rest_shape=rest_shape_active,
             skin_weights=skin_weights_active,
@@ -97,7 +98,7 @@ def forward_vertices(
             kinematic_fronts=kinematic_fronts_full,
             parents_full_index=parents_full_index,
         )
-        corrective_offsets = apply_pose_correctives(
+        corrective_offsets = self.apply_pose_correctives(
             pose_rot_full=pose_rot_full,
             bindpose=corrective_bindpose,
             W1=corrective_W1,
@@ -114,7 +115,7 @@ def forward_vertices(
     else:
         world_bind_pose = world_bind_pose_fit
 
-    verts_cm, _ = _pose_mesh_from_oriented_pose(
+    verts_cm, _ = self.pose_mesh_from_oriented_pose(
         xp=xp,
         rest_shape=rest_shape_active,
         skin_weights=skin_weights_active,
@@ -710,29 +711,6 @@ def _prepare_rest_shapes(
     return full_shape, active_shape, world_bind_pose
 
 
-def _repose_to_bind_pose(
-    xp,
-    rest_shape: Float[Array, "B V 3"],
-    skin_weights: Float[Array, "V J"],
-    world_bind_pose_fit: Float[Array, "B J 4 4"],
-    bind_pose_local: Float[Array, "J 4 4"],
-    kinematic_fronts: list[Front],
-    parents_full_index: Int[Array, "J"],
-) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
-    """Repose an identity-specific rest shape into SOMA's corrective bind pose."""
-    T_world = _repose_skeleton_to_bind_pose(
-        xp=xp,
-        world_bind_pose_fit=world_bind_pose_fit,
-        bind_pose_local=bind_pose_local,
-        kinematic_fronts=kinematic_fronts,
-        parents_full_index=parents_full_index,
-    )
-
-    bone = T_world @ _invert_transforms(xp, world_bind_pose_fit)
-    verts = linear_blend_skinning(xp, rest_shape, skin_weights, bone)
-    return verts, T_world
-
-
 def _repose_skeleton_to_bind_pose(
     xp,
     world_bind_pose_fit: Float[Array, "B J 4 4"],
@@ -773,27 +751,6 @@ def _orient_pose_rot_full(
     orient = t_pose_world[:, :3, :3]
     orient_parent_T = orient[parents_full_index].swapaxes(-2, -1)
     return orient_parent_T[None] @ pose_rot_full @ orient[None]
-
-
-def _pose_mesh_from_oriented_pose(
-    xp,
-    rest_shape: Float[Array, "B V 3"],
-    skin_weights: Float[Array, "V Jf"],
-    world_bind_pose: Float[Array, "B Jf 4 4"],
-    kinematic_fronts: list[Front],
-    parents_full_index: Int[Array, "Jf"],
-    pose_rot_full: Float[Array, "B Jf 3 3"],
-) -> tuple[Float[Array, "B V 3"], Float[Array, "B Jf 4 4"]]:
-    T_world = _pose_skeleton_from_oriented_pose(
-        xp=xp,
-        world_bind_pose=world_bind_pose,
-        kinematic_fronts=kinematic_fronts,
-        parents_full_index=parents_full_index,
-        pose_rot_full=pose_rot_full,
-    )
-    bone = T_world @ _invert_transforms(xp, world_bind_pose)
-    verts = linear_blend_skinning(xp, rest_shape, skin_weights, bone)
-    return verts, T_world
 
 
 def _pose_skeleton_from_oriented_pose(
@@ -1046,7 +1003,6 @@ def _apply_global_transform_transforms(
 
 @dataclass(frozen=True)
 class SomaOps:
-    forward_vertices: Any = forward_vertices
     forward_skeleton: Any = forward_skeleton
     prepare_identity_state: Any = prepare_identity_state
     prepare_identity_shape: Any = prepare_identity_shape
@@ -1054,6 +1010,51 @@ class SomaOps:
     resolve_identity_inputs: Any = resolve_identity_inputs
     apply_pose_correctives: Any = apply_pose_correctives
     linear_blend_skinning: Any = linear_blend_skinning
+
+    def forward_vertices(self, *args, **kwargs):
+        return _forward_vertices(self, *args, **kwargs)
+
+    def repose_to_bind_pose(
+        self,
+        xp,
+        rest_shape: Float[Array, "B V 3"],
+        skin_weights: Float[Array, "V J"],
+        world_bind_pose_fit: Float[Array, "B J 4 4"],
+        bind_pose_local: Float[Array, "J 4 4"],
+        kinematic_fronts: list[Front],
+        parents_full_index: Int[Array, "J"],
+    ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+        T_world = _repose_skeleton_to_bind_pose(
+            xp=xp,
+            world_bind_pose_fit=world_bind_pose_fit,
+            bind_pose_local=bind_pose_local,
+            kinematic_fronts=kinematic_fronts,
+            parents_full_index=parents_full_index,
+        )
+        bone = T_world @ _invert_transforms(xp, world_bind_pose_fit)
+        verts = self.linear_blend_skinning(xp, rest_shape, skin_weights, bone)
+        return verts, T_world
+
+    def pose_mesh_from_oriented_pose(
+        self,
+        xp,
+        rest_shape: Float[Array, "B V 3"],
+        skin_weights: Float[Array, "V Jf"],
+        world_bind_pose: Float[Array, "B Jf 4 4"],
+        kinematic_fronts: list[Front],
+        parents_full_index: Int[Array, "Jf"],
+        pose_rot_full: Float[Array, "B Jf 3 3"],
+    ) -> tuple[Float[Array, "B V 3"], Float[Array, "B Jf 4 4"]]:
+        T_world = _pose_skeleton_from_oriented_pose(
+            xp=xp,
+            world_bind_pose=world_bind_pose,
+            kinematic_fronts=kinematic_fronts,
+            parents_full_index=parents_full_index,
+            pose_rot_full=pose_rot_full,
+        )
+        bone = T_world @ _invert_transforms(xp, world_bind_pose)
+        verts = self.linear_blend_skinning(xp, rest_shape, skin_weights, bone)
+        return verts, T_world
 
 
 ops = SomaOps()
