@@ -27,10 +27,11 @@ from nanomanifold import SO3
 
 pytestmark = pytest.mark.fast
 
-ASSET_DIR = Path(__file__).parent / "assets" / "mhr"
+ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "mhr"
+REFERENCE_DIR = Path(__file__).parent / "assets" / "references" / "mhr"
 MODEL_PATH = ASSET_DIR
-INPUTS_DIR = ASSET_DIR / "reference" / "inputs"
-OUTPUTS_DIR = ASSET_DIR / "reference" / "outputs"
+INPUTS_DIR = REFERENCE_DIR / "inputs"
+OUTPUTS_DIR = REFERENCE_DIR / "outputs"
 NUM_CASES = 1
 GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 1e-4, 1e-4
