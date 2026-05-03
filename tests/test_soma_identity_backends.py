@@ -36,7 +36,7 @@ def upstream_data_root() -> Path:
         return Path(get_assets_dir())
 
 
-def _make_upstream_layer(model_type: str, upstream_data_root: Path):
+def _make_upstream_layer(model_type: str, upstream_data_root: Path, tmp_path: Path):
     pytest.importorskip("soma")
     if model_type == "anny":
         pytest.importorskip("anny")
@@ -45,7 +45,9 @@ def _make_upstream_layer(model_type: str, upstream_data_root: Path):
 
     identity_model_kwargs: dict[str, str] | None = None
     if model_type == "smplx":
-        identity_model_kwargs = {"model_path": str((ASSET_DIR / "smplx-neutral" / "model.npz").resolve())}
+        smplx_model_path = tmp_path / "SMPLX_NEUTRAL.npz"
+        smplx_model_path.symlink_to((ASSET_DIR / "smplx-neutral" / "model.npz").resolve())
+        identity_model_kwargs = {"model_path": str(smplx_model_path)}
 
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         layer = SOMALayer(
@@ -113,10 +115,11 @@ def test_torch_identity_backends_match_upstream(
     model_type: str,
     soma_model_path: Path,
     upstream_data_root: Path,
+    tmp_path: Path,
 ) -> None:
     from body_models.soma.torch import SOMA
 
-    upstream = _make_upstream_layer(model_type, upstream_data_root)
+    upstream = _make_upstream_layer(model_type, upstream_data_root, tmp_path)
     inputs = _sample_inputs(
         model_type,
         upstream.identity_model.num_identity_coeffs,
@@ -150,10 +153,11 @@ def test_torch_identity_backends_match_upstream(
 def test_torch_identity_backend_can_match_upstream_torch_rotation_fitter(
     soma_model_path: Path,
     upstream_data_root: Path,
+    tmp_path: Path,
 ) -> None:
     from body_models.soma.torch import SOMA
 
-    upstream = _make_upstream_layer("mhr", upstream_data_root)
+    upstream = _make_upstream_layer("mhr", upstream_data_root, tmp_path)
     upstream.skeleton_transfer.use_warp_for_rotations = False
     inputs = _sample_inputs(
         "mhr",
