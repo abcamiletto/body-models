@@ -9,7 +9,7 @@
 
 Clones the original MHR repo, downloads the release torchscript model, runs it
 directly to produce vertices and joints, and saves inputs/outputs under
-`tests/assets/mhr`.
+`tests/assets/references/mhr`.
 """
 
 import shutil
@@ -25,7 +25,7 @@ import torch
 torch.manual_seed(0)
 
 URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
-TEST_ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets" / "mhr"
+TEST_ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets" / "references" / "mhr"
 
 
 def _download_torchscript_model(target_dir: Path) -> Path:
@@ -58,10 +58,10 @@ def run():
         vertices, skeleton = scripted_model(id_coeffs, model_params, face_coeffs)
 
     for i in range(batch_size):
-        input_dir = TEST_ASSETS_DIR / "reference" / "inputs" / str(i)
+        input_dir = TEST_ASSETS_DIR / "inputs" / str(i)
         input_dir.mkdir(parents=True, exist_ok=True)
 
-        output_dir = TEST_ASSETS_DIR / "reference" / "outputs" / str(i)
+        output_dir = TEST_ASSETS_DIR / "outputs" / str(i)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         input_data = {

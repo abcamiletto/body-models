@@ -25,18 +25,22 @@ from accelerator_utils import get_accelerator_device
 from gradient_utils import prepare_params, sampled_gradcheck
 from nanomanifold import SO3
 
-pytestmark = pytest.mark.fast
-
-ASSET_DIR = Path(__file__).parent / "assets" / "mhr"
+ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "mhr"
+REFERENCE_DIR = Path(__file__).parent / "assets" / "references" / "mhr"
 MODEL_PATH = ASSET_DIR
-INPUTS_DIR = ASSET_DIR / "reference" / "inputs"
-OUTPUTS_DIR = ASSET_DIR / "reference" / "outputs"
+INPUTS_DIR = REFERENCE_DIR / "inputs"
+OUTPUTS_DIR = REFERENCE_DIR / "outputs"
 NUM_CASES = 1
 GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 1e-4, 1e-4
 
-if not MODEL_PATH.exists():
-    pytest.skip(f"MHR model not found at {MODEL_PATH}", allow_module_level=True)
+pytestmark = [
+    pytest.mark.fast,
+    pytest.mark.skipif(
+        not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists(),
+        reason=f"MHR reference assets not found at {REFERENCE_DIR}",
+    ),
+]
 
 
 # ============================================================================
