@@ -1,34 +1,25 @@
 """pytest configuration for body-models tests."""
 
-from pathlib import Path
-
 import pytest
 
 from body_models import config
 
-ASSET_DIR = Path(__file__).parent / "assets"
+import model_assets
 
 
 @pytest.fixture(autouse=True)
 def setup_model_paths(monkeypatch):
-    """Set up model paths to use test assets."""
+    """Use configured model paths, then test assets."""
+    get_config_model_path = config.get_model_path
 
-    # Create a mock config that returns test asset paths
-    def mock_get_model_path(model: str) -> Path | None:
-        if model.startswith("smpl-"):
-            return ASSET_DIR / "smpl" / "model" / "SMPL_NEUTRAL.npz"
-        if model.startswith("smplh-"):
-            return ASSET_DIR / "smplh" / "model" / "neutral" / "model.npz"
-        if model.startswith("mano-"):
-            return ASSET_DIR / "mano" / "model" / "right" / "MANO_RIGHT.pkl"
-        if model.startswith("smplx-"):
-            return ASSET_DIR / "smplx" / "model" / "SMPLX_NEUTRAL.npz"
-        if model == "flame":
-            return ASSET_DIR / "flame" / "model" / "FLAME_NEUTRAL.pkl"
+    def get_model_path(model: str):
+        model_path = get_config_model_path(model)
+        if model_path is not None:
+            return model_path
 
-        asset_path = ASSET_DIR / model / "model"
-        if asset_path.exists():
-            return asset_path
+        if model in model_assets.CONFIG_KEYS.values():
+            return model_assets.get_test_model_file_for_config_key(model)
+
         return None
 
-    monkeypatch.setattr(config, "get_model_path", mock_get_model_path)
+    monkeypatch.setattr(config, "get_model_path", get_model_path)

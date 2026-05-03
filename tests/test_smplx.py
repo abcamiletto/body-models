@@ -21,10 +21,10 @@ from gradient_utils import prepare_params, sampled_gradcheck
 
 pytestmark = pytest.mark.fast
 
-ASSET_DIR = Path(__file__).parent / "assets" / "smplx"
-MODEL_PATH = ASSET_DIR / "model" / "SMPLX_NEUTRAL.npz"
-INPUTS_DIR = ASSET_DIR / "inputs"
-OUTPUTS_DIR = ASSET_DIR / "outputs"
+ASSET_DIR = Path(__file__).parent / "assets" / "smplx-neutral"
+MODEL_PATH = ASSET_DIR / "model.npz"
+INPUTS_DIR = ASSET_DIR / "reference" / "inputs"
+OUTPUTS_DIR = ASSET_DIR / "reference" / "outputs"
 NUM_CASES = 1
 GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 1e-4, 1e-4

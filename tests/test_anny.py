@@ -24,16 +24,16 @@ from gradient_utils import prepare_params, sampled_gradcheck
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets" / "anny"
-MODEL_PATH = ASSET_DIR / "model"
-INPUTS_DIR = ASSET_DIR / "inputs"
-OUTPUTS_DIR = ASSET_DIR / "outputs"
+MODEL_PATH = ASSET_DIR
+INPUTS_DIR = ASSET_DIR / "reference" / "inputs"
+OUTPUTS_DIR = ASSET_DIR / "reference" / "outputs"
 NUM_CASES = 1
 GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 5e-4, 2e-4
 ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 
-if not MODEL_PATH.exists():
-    pytest.skip(f"ANNY model not found at {MODEL_PATH}", allow_module_level=True)
+if not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists():
+    pytest.skip(f"ANNY reference assets not found at {ASSET_DIR}", allow_module_level=True)
 
 
 # ============================================================================

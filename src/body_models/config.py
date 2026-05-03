@@ -19,7 +19,8 @@ MODELS = [
     "smplh-neutral",
     "mano-right",
     "mano-left",
-    "skel",
+    "skel-male",
+    "skel-female",
     "anny",
     "mhr",
     "flame",
@@ -34,6 +35,7 @@ SMPL_MODELS = {"smpl-male", "smpl-female", "smpl-neutral"}
 SMPLX_MODELS = {"smplx-male", "smplx-female", "smplx-neutral"}
 SMPLH_MODELS = {"smplh-male", "smplh-female", "smplh-neutral"}
 MANO_MODELS = {"mano-right", "mano-left"}
+SKEL_MODELS = {"skel-male", "skel-female"}
 
 
 def get_config() -> dict:
@@ -72,7 +74,7 @@ def validate_model_path(model: str, path: str | Path) -> Path:
         from .smplh.io import validate_path
     elif model in MANO_MODELS:
         from .mano.io import validate_path
-    elif model == "skel":
+    elif model in SKEL_MODELS:
         from .skel.io import validate_path
     elif model == "anny":
         from .anny.io import validate_path

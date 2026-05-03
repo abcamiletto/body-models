@@ -90,10 +90,10 @@ def run():
     print(f"Saved bone labels to {bone_labels_path}")
 
     for i in range(batch_size):
-        input_dir = TEST_ASSETS_DIR / "inputs"
+        input_dir = TEST_ASSETS_DIR / "reference" / "inputs"
         input_dir.mkdir(parents=True, exist_ok=True)
 
-        output_dir = TEST_ASSETS_DIR / "outputs" / str(i)
+        output_dir = TEST_ASSETS_DIR / "reference" / "outputs" / str(i)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save inputs as JSON
