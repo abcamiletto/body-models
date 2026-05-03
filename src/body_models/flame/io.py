@@ -44,16 +44,60 @@ def load_model_data(model_path: Path) -> dict:
     if model_path.suffix == ".npz":
         return dict(np.load(model_path, allow_pickle=True))
 
-    import pickle
-
-    with open(model_path, "rb") as f:
-        model_data = pickle.load(f, encoding="latin1")
+    model_data = _load_flame_pkl(model_path)
 
     # Handle scipy sparse matrices
     if hasattr(model_data.get("J_regressor"), "toarray"):
         model_data["J_regressor"] = model_data["J_regressor"].toarray()
 
     return model_data
+
+
+def _load_flame_pkl(model_path: Path) -> dict:
+    """Load FLAME pickles without requiring chumpy at runtime."""
+    import pickle
+
+    class _ChumpyPlaceholder:
+        def __setstate__(self, state):
+            if isinstance(state, dict) and "x" in state:
+                self.data = np.asarray(state["x"])
+                return
+            if isinstance(state, dict) and "a" in state and "idxs" in state:
+                source = state["a"]
+                source_data = source.data if isinstance(source, _ChumpyPlaceholder) else np.asarray(source)
+                data = np.asarray(source_data).reshape(-1)[np.asarray(state["idxs"], dtype=np.int64)]
+                if "preferred_shape" in state:
+                    data = data.reshape(tuple(state["preferred_shape"]))
+                self.data = data
+                return
+            if isinstance(state, dict):
+                for value in state.values():
+                    if isinstance(value, np.ndarray):
+                        self.data = value
+                        return
+            self.data = state
+
+    class _CompatUnpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if module == "scipy.sparse.csc" and name == "csc_matrix":
+                from scipy.sparse import csc_matrix
+
+                return csc_matrix
+            if module.startswith("chumpy"):
+                return _ChumpyPlaceholder
+            return super().find_class(module, name)
+
+    with open(model_path, "rb") as f:
+        data = _CompatUnpickler(f, encoding="latin1").load()
+
+    return {
+        key: value.data
+        if isinstance(value, _ChumpyPlaceholder)
+        else value.toarray()
+        if hasattr(value, "toarray")
+        else value
+        for key, value in data.items()
+    }
 
 
 def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:

@@ -13,18 +13,8 @@ import numpy as np
 import pytest
 import torch
 
-ASSET_DIR = Path(__file__).parent / "assets"
-MODEL_FILES = {
-    "smpl": "SMPL_NEUTRAL.npz",
-    "smplh": "neutral/model.npz",
-    "mano": "right/MANO_RIGHT.pkl",
-    "smplx": "SMPLX_NEUTRAL.npz",
-    "flame": "FLAME_NEUTRAL.pkl",
-    "skel": "skel_male.pkl",
-    "g1": None,
-}
-CLASS_NAMES = {name: ("FLAME" if name == "flame" else name.upper()) for name in (*MODEL_FILES, "anny", "mhr", "soma")}
-CLASS_NAMES["garment_measurements"] = "GarmentMeasurements"
+import model_assets
+
 MODEL_CASES = (
     pytest.param("smpl", {}, id="smpl", marks=pytest.mark.fast),
     pytest.param("smplh", {}, id="smplh", marks=pytest.mark.slow),
@@ -52,20 +42,7 @@ def get_compile_tolerances(model_name: str) -> tuple[float, float]:
 
 def get_model_file(model_name: str) -> Path:
     """Get the actual model file path for a given model."""
-    if model_name == "garment_measurements":
-        return ASSET_DIR / "garment_measurements" / "model" / "garment_measurements.npz"
-
-    if model_name == "soma":
-        from body_models.soma.io import get_model_path
-
-        return get_model_path()
-
-    model_dir = ASSET_DIR / model_name / "model"
-    if not model_dir.exists():
-        return model_dir  # Will trigger skip
-
-    filename = MODEL_FILES.get(model_name)
-    return model_dir if filename is None else model_dir / filename
+    return model_assets.get_model_file(model_name)
 
 
 def get_required_model_files(model_name: str, model_kwargs: dict[str, str]) -> list[Path]:
@@ -74,14 +51,14 @@ def get_required_model_files(model_name: str, model_kwargs: dict[str, str]) -> l
         return paths
 
     nested_model_type = model_kwargs.get("model_type")
-    if nested_model_type in MODEL_FILES:
-        paths.append(ASSET_DIR / nested_model_type / "model" / MODEL_FILES[nested_model_type])
+    if nested_model_type in model_assets.SOMA_NESTED_MODEL_TYPES:
+        paths.append(model_assets.get_model_file(nested_model_type))
     return paths
 
 
 def get_model(backend: str, model_name: str, model_path: Path, **kwargs: Any) -> Any:
     module = import_module(f"body_models.{model_name}.{backend}")
-    model_class = getattr(module, CLASS_NAMES[model_name])
+    model_class = getattr(module, model_assets.CLASS_NAMES[model_name])
     ctor_kwargs = {"model_path": model_path, **kwargs}
     if model_name == "skel":
         ctor_kwargs["gender"] = "male"

@@ -66,7 +66,7 @@ def run(model_path: Path):
         joints = output.joints[0].cpu().numpy()
 
         # Save inputs
-        input_dir = TEST_ASSETS_DIR / "inputs"
+        input_dir = TEST_ASSETS_DIR / "reference" / "inputs"
         input_dir.mkdir(parents=True, exist_ok=True)
 
         input_data = {
@@ -87,7 +87,7 @@ def run(model_path: Path):
             json.dump(input_data, f, indent=4)
 
         # Save outputs
-        output_dir = TEST_ASSETS_DIR / "outputs" / str(idx)
+        output_dir = TEST_ASSETS_DIR / "reference" / "outputs" / str(idx)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         np.save(output_dir / "vertices.npy", vertices)

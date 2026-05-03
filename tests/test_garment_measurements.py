@@ -13,7 +13,7 @@ from gradient_utils import prepare_params, sampled_gradcheck
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets" / "garment_measurements"
-MODEL_PATH = ASSET_DIR / "model"
+MODEL_PATH = ASSET_DIR
 MODEL_FILE = MODEL_PATH / "garment_measurements.npz"
 RTOL, ATOL = 1e-5, 1e-5
 
