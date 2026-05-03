@@ -12,9 +12,8 @@ def _touch(path: Path) -> Path:
 
 
 def _valid_model_paths(tmp_path: Path) -> dict[str, Path]:
-    skel_dir = tmp_path / "skel"
-    _touch(skel_dir / "skel_male.pkl")
-    _touch(skel_dir / "skel_female.pkl")
+    skel_male = _touch(tmp_path / "skel-male" / "model.pkl")
+    skel_female = _touch(tmp_path / "skel-female" / "model.pkl")
 
     anny_dir = tmp_path / "anny"
     (anny_dir / "data" / "mpfb2").mkdir(parents=True)
@@ -45,7 +44,8 @@ def _valid_model_paths(tmp_path: Path) -> dict[str, Path]:
         "smplh-female": _touch(tmp_path / "smplh" / "female" / "model.npz"),
         "mano-right": _touch(tmp_path / "mano" / "MANO_RIGHT.pkl"),
         "mano-left": _touch(tmp_path / "mano" / "MANO_LEFT.pkl"),
-        "skel": skel_dir,
+        "skel-male": skel_male,
+        "skel-female": skel_female,
         "anny": anny_dir,
         "mhr": mhr_dir,
         "flame": _touch(tmp_path / "FLAME_NEUTRAL.pkl"),
@@ -71,6 +71,9 @@ def test_set_model_path_validates_before_writing(tmp_path: Path, monkeypatch: py
 
     with pytest.raises(ValueError, match="Expected an MHR model directory"):
         config.set_model_path("mhr", str(_touch(tmp_path / "mhr_model.pt")))
+
+    with pytest.raises(ValueError, match="Expected a SKEL model file"):
+        config.set_model_path("skel-male", str(tmp_path))
 
 
 def test_gendered_file_models_use_gender_only_for_config_lookup(tmp_path: Path) -> None:

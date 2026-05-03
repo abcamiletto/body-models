@@ -22,17 +22,17 @@ from gradient_utils import prepare_params, sampled_gradcheck
 pytestmark = pytest.mark.fast
 
 ASSET_DIR = Path(__file__).parent / "assets" / "flame"
-MODEL_PATH = ASSET_DIR / "model" / "FLAME_NEUTRAL.pkl"
-INPUTS_DIR = ASSET_DIR / "inputs"
-OUTPUTS_DIR = ASSET_DIR / "outputs"
+MODEL_PATH = ASSET_DIR / "model.pkl"
+INPUTS_DIR = ASSET_DIR / "reference" / "inputs"
+OUTPUTS_DIR = ASSET_DIR / "reference" / "outputs"
 NUM_CASES = 1
 GRADCHECK_SAMPLES = 16
 RTOL, ATOL = 1e-4, 1e-4
 ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 
 requires_model = pytest.mark.skipif(
-    not MODEL_PATH.exists(),
-    reason=f"FLAME model not found at {MODEL_PATH}",
+    not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists(),
+    reason=f"FLAME reference assets not found at {ASSET_DIR}",
 )
 
 

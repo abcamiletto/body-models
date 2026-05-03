@@ -10,7 +10,7 @@ from body_models import myofullbody
 
 pytestmark = pytest.mark.fast
 
-ASSET_DIR = Path(__file__).parent / "assets" / "myofullbody" / "model"
+ASSET_DIR = Path(__file__).parent / "assets" / "myofullbody"
 MAIN_XML = ASSET_DIR / "body" / "myofullbody.xml"
 
 if not MAIN_XML.exists():
