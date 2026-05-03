@@ -49,7 +49,8 @@ def main() -> None:
         "smplh-neutral",
         "mano-right",
         "mano-left",
-        "skel",
+        "skel-male",
+        "skel-female",
         "anny",
         "mhr",
         "flame",
@@ -173,8 +174,13 @@ def main() -> None:
                 username = typer.prompt("Username (SKEL)")
                 password = typer.prompt("Password (SKEL)", hide_input=True)
             path = fetch.download_skel(username=username, password=password)
-            set_model_path("skel", str(path))
-            print(f"Set skel = {path}")
+            skel_paths = {
+                "skel-female": path / "skel_female.pkl",
+                "skel-male": path / "skel_male.pkl",
+            }
+            for key, model_path in sorted(skel_paths.items()):
+                set_model_path(key, str(model_path))
+                print(f"Set {key} = {model_path}")
 
         if model in ("anny", "all"):
             path = download_anny_model()

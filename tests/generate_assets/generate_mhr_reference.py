@@ -58,10 +58,10 @@ def run():
         vertices, skeleton = scripted_model(id_coeffs, model_params, face_coeffs)
 
     for i in range(batch_size):
-        input_dir = TEST_ASSETS_DIR / "inputs" / str(i)
+        input_dir = TEST_ASSETS_DIR / "reference" / "inputs" / str(i)
         input_dir.mkdir(parents=True, exist_ok=True)
 
-        output_dir = TEST_ASSETS_DIR / "outputs" / str(i)
+        output_dir = TEST_ASSETS_DIR / "reference" / "outputs" / str(i)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         input_data = {

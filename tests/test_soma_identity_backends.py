@@ -45,7 +45,7 @@ def _make_upstream_layer(model_type: str, upstream_data_root: Path):
 
     identity_model_kwargs: dict[str, str] | None = None
     if model_type == "smplx":
-        identity_model_kwargs = {"model_path": str((ASSET_DIR / "smplx" / "model" / "SMPLX_NEUTRAL.npz").resolve())}
+        identity_model_kwargs = {"model_path": str((ASSET_DIR / "smplx-neutral" / "model.npz").resolve())}
 
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         layer = SOMALayer(

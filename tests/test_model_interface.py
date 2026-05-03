@@ -1,16 +1,16 @@
 """Interface contract tests for all model classes/backends."""
 
 from importlib import import_module
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 from nanomanifold import SO3
 
+import model_assets
+
 pytestmark = pytest.mark.fast
 
-ASSET_DIR = Path(__file__).parent / "assets"
 MODELS = [
     "smpl",
     "smplh",
@@ -29,66 +29,22 @@ MODELS = [
 BACKENDS = ["torch", "numpy", "jax"]
 
 
-def _get_model_file(model_name: str) -> Path:
-    model_dir = ASSET_DIR / model_name / "model"
-    if not model_dir.exists():
-        return model_dir
-
-    if model_name == "smpl":
-        return model_dir / "SMPL_NEUTRAL.npz"
-    if model_name == "smplh":
-        return model_dir / "neutral" / "model.npz"
-    if model_name == "mano":
-        return model_dir / "right" / "MANO_RIGHT.pkl"
-    if model_name == "smplx":
-        return model_dir / "SMPLX_NEUTRAL.npz"
-    if model_name == "flame":
-        return model_dir / "FLAME_NEUTRAL.pkl"
-    if model_name == "skel":
-        return model_dir
-    if model_name == "garment_measurements":
-        return model_dir / "garment_measurements.npz"
-
-    return model_dir
-
-
-def _class_name(model_name: str) -> str:
-    if model_name == "garment_measurements":
-        return "GarmentMeasurements"
-    if model_name == "myofullbody":
-        return "MyoFullBody"
-    if model_name == "brainco":
-        return "BrainCoHand"
-    return model_name.upper() if model_name != "flame" else "FLAME"
-
-
 def _build_model(model_name: str, backend: str) -> Any:
     if backend == "jax":
         pytest.importorskip("jax")
         pytest.importorskip("flax")
 
     module = import_module(f"body_models.{model_name}.{backend}")
-    cls = getattr(module, _class_name(model_name))
-    model_path = _get_model_file(model_name)
+    cls = getattr(module, model_assets.CLASS_NAMES[model_name])
+    model_path = model_assets.get_model_file(model_name)
+    if not model_path.exists():
+        pytest.skip(f"Model assets not found: {model_path}")
 
-    kwargs: dict[str, Any] = {}
+    kwargs: dict[str, Any] = {"model_path": model_path}
     if model_name == "skel":
-        if not model_path.exists():
-            pytest.skip(f"Model assets not found: {model_path}")
         kwargs["gender"] = "male"
-        kwargs["model_path"] = model_path
-    elif model_name in {"smpl", "smplh", "mano", "smplx", "flame", "garment_measurements"}:
-        if not model_path.exists():
-            pytest.skip(f"Model assets not found: {model_path}")
-        kwargs["model_path"] = model_path
-    elif model_name in {"g1", "myofullbody"}:
-        if not model_path.exists():
-            pytest.skip(f"Model assets not found: {model_path}")
-        kwargs["model_path"] = model_path
-    elif model_name == "brainco":
+    if model_name == "brainco":
         kwargs["rotation_type"] = "hinge"
-    elif model_path.exists():
-        kwargs["model_path"] = model_path
 
     return cls(**kwargs)
 
