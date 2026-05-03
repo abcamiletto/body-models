@@ -6,10 +6,7 @@ from . import base
 
 
 class SomaTorchData(base.SomaData):
-    def apply_pose_correctives(self, pose_rot_full, use_tanh: bool, *, xp=None):
-        if xp is None:
-            xp = torch
-
+    def apply_pose_correctives(self, pose_rot_full, use_tanh: bool, *, xp):
         correctives = self.correctives
         batch_size = pose_rot_full.shape[0]
         x = correctives.corrective_bindpose.swapaxes(-2, -1)[None] @ pose_rot_full
@@ -30,24 +27,7 @@ class SomaTorchData(base.SomaData):
 
 
 def prepare_data(**data):
-    data["topology"] = base.SomaTopology(
-        parents_full=data.pop("parents_full"),
-        parents_full_index=data.pop("parents_full_index"),
-        joint_children_full=data.pop("joint_children_full"),
-        joint_children_indices_full=data.pop("joint_children_indices_full"),
-        skinned_vertex_indices_full=data.pop("skinned_vertex_indices_full"),
-        skinned_vertex_indices_full_index=data.pop("skinned_vertex_indices_full_index"),
-        kinematic_fronts_full=data.pop("kinematic_fronts_full"),
-    )
-    data["correctives"] = base.SomaCorrectives(
-        corrective_bindpose=data.pop("corrective_bindpose"),
-        corrective_W1=data.pop("corrective_W1"),
-        corrective_W2_rows=data.pop("corrective_W2_rows"),
-        corrective_W2_cols=data.pop("corrective_W2_cols"),
-        corrective_W2_values=data.pop("corrective_W2_values"),
-        corrective_W2=data.pop("corrective_W2"),
-    )
-    return SomaTorchData(**data)
+    return SomaTorchData.from_kernel_data(data)
 
 
 ops = base.SomaOps()

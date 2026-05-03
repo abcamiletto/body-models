@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -13,17 +14,21 @@ from . import base
 Array = Any
 
 
+@dataclass(frozen=True)
+class SomaScipyCorrectives(base.SomaCorrectives):
+    corrective_W2: Any
+
+
 class SomaScipyData(base.SomaData):
+    correctives: SomaScipyCorrectives
+
     def apply_pose_correctives(
         self,
         pose_rot_full: Float[Array, "B Jf 3 3"],
         use_tanh: bool,
         *,
-        xp: Any = None,
+        xp: Any,
     ) -> Float[Array, "B V 3"]:
-        if xp is None:
-            xp = np
-
         correctives = self.correctives
         batch_size = pose_rot_full.shape[0]
         x = correctives.corrective_bindpose.swapaxes(-2, -1)[None] @ pose_rot_full
@@ -57,30 +62,20 @@ class SomaScipyData(base.SomaData):
 
 
 def prepare_data(**data):
-    data["skin_weights_active"] = sparse.csr_matrix(data["skin_weights_active"])
-    data["topology"] = base.SomaTopology(
-        parents_full=data.pop("parents_full"),
-        parents_full_index=data.pop("parents_full_index"),
-        joint_children_full=data.pop("joint_children_full"),
-        joint_children_indices_full=data.pop("joint_children_indices_full"),
-        skinned_vertex_indices_full=data.pop("skinned_vertex_indices_full"),
-        skinned_vertex_indices_full_index=data.pop("skinned_vertex_indices_full_index"),
-        kinematic_fronts_full=data.pop("kinematic_fronts_full"),
-    )
     corrective_W2 = sparse.csr_matrix(
         (data["corrective_W2_values"], (data["corrective_W2_rows"], data["corrective_W2_cols"])),
         shape=(data["corrective_W1"].shape[1], data["mean_full"].shape[0] * 3),
     )
-    data["correctives"] = base.SomaCorrectives(
-        corrective_bindpose=data.pop("corrective_bindpose"),
-        corrective_W1=data.pop("corrective_W1"),
-        corrective_W2_rows=data.pop("corrective_W2_rows"),
-        corrective_W2_cols=data.pop("corrective_W2_cols"),
-        corrective_W2_values=data.pop("corrective_W2_values"),
+    correctives = SomaScipyCorrectives(
+        corrective_bindpose=data["corrective_bindpose"],
+        corrective_W1=data["corrective_W1"],
+        corrective_W2_rows=data["corrective_W2_rows"],
+        corrective_W2_cols=data["corrective_W2_cols"],
+        corrective_W2_values=data["corrective_W2_values"],
         corrective_W2=corrective_W2,
     )
-    data.pop("corrective_W2")
-    return SomaScipyData(**data)
+    data = data | {"skin_weights_active": sparse.csr_matrix(data["skin_weights_active"])}
+    return SomaScipyData.from_kernel_data_and_correctives(data, correctives)
 
 
 ops = base.SomaOps()

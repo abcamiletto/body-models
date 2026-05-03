@@ -240,6 +240,7 @@ class SOMA(BodyModel):
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
             match_warp=self.match_warp,
+            xp=np,
         )
 
     def forward_skeleton(
@@ -271,6 +272,7 @@ class SOMA(BodyModel):
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
             match_warp=self.match_warp,
+            xp=np,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
@@ -334,7 +336,6 @@ class SOMA(BodyModel):
             corrective_W2_rows=self.corrective_W2_rows,
             corrective_W2_cols=self.corrective_W2_cols,
             corrective_W2_values=self.corrective_W2_values,
-            corrective_W2=None,
             skin_weights_full=self._skin_weights_full,
             skin_weights_active=self._skin_weights_active,
             faces=self._faces,
