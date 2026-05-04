@@ -63,7 +63,6 @@ class SOMA(BodyModel, nnx.Module):
         self.match_warp = match_warp
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
-        self._weights = data
 
         mean_full = data.mean_full
         shapedirs_full = data.shapedirs_full
@@ -116,6 +115,32 @@ class SOMA(BodyModel, nnx.Module):
         )
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data.joint_names)
+        self.model_weights = core.prepare_data(
+            data,
+            mean_full=self.mean_full[...],
+            mean_active=self.mean_active[...],
+            shapedirs_full=self.shapedirs_full[...],
+            shapedirs_active=self.shapedirs_active[...],
+            eigenvalues=self.eigenvalues[...],
+            bind_shape_full=self.bind_shape_full[...],
+            bind_pose_world=self.bind_pose_world[...],
+            bind_pose_local=self.bind_pose_local[...],
+            t_pose_world=self.t_pose_world[...],
+            joint_regressor=self.joint_regressor[...],
+            skin_weights_full=self._skin_weights_full[...],
+            skin_weights_active=self._skin_weights_active[...],
+            faces=self._faces[...],
+            vertex_map=None if self._vertex_map is None else self._vertex_map[...],
+            parents_full=self._parents_full,
+            parents_full_index=self._parents_full_index[...],
+            joint_children_indices_full=self._joint_children_indices_full[...],
+            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index[...],
+            corrective_bindpose=self.corrective_bindpose[...],
+            corrective_W1=self.corrective_W1[...],
+            corrective_W2_rows=self.corrective_W2_rows[...],
+            corrective_W2_cols=self.corrective_W2_cols[...],
+            corrective_W2_values=self.corrective_W2_values[...],
+        )
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -193,7 +218,7 @@ class SOMA(BodyModel, nnx.Module):
             ref=pose,
         )
         return core.forward_vertices(
-            data=self._kernel_data(),
+            data=self.model_weights,
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
@@ -226,7 +251,7 @@ class SOMA(BodyModel, nnx.Module):
             ref=pose,
         )
         return core.forward_skeleton(
-            data=self._kernel_data(),
+            data=self.model_weights,
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
@@ -238,34 +263,6 @@ class SOMA(BodyModel, nnx.Module):
             rotation_type=self.rotation_type,
             match_warp=self.match_warp,
             xp=jnp,
-        )
-
-    def _kernel_data(self):
-        return core.prepare_data(
-            self._weights,
-            mean_full=self.mean_full[...],
-            mean_active=self.mean_active[...],
-            shapedirs_full=self.shapedirs_full[...],
-            shapedirs_active=self.shapedirs_active[...],
-            eigenvalues=self.eigenvalues[...],
-            bind_shape_full=self.bind_shape_full[...],
-            bind_pose_world=self.bind_pose_world[...],
-            bind_pose_local=self.bind_pose_local[...],
-            t_pose_world=self.t_pose_world[...],
-            joint_regressor=self.joint_regressor[...],
-            skin_weights_full=self._skin_weights_full[...],
-            skin_weights_active=self._skin_weights_active[...],
-            faces=self._faces[...],
-            vertex_map=None if self._vertex_map is None else self._vertex_map[...],
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index[...],
-            joint_children_indices_full=self._joint_children_indices_full[...],
-            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index[...],
-            corrective_bindpose=self.corrective_bindpose[...],
-            corrective_W1=self.corrective_W1[...],
-            corrective_W2_rows=self.corrective_W2_rows[...],
-            corrective_W2_cols=self.corrective_W2_cols[...],
-            corrective_W2_values=self.corrective_W2_values[...],
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
@@ -304,7 +301,7 @@ class SOMA(BodyModel, nnx.Module):
         Float[jax.Array, "B J 4 4"],
     ]:
         return core.prepare_identity(
-            data=self._kernel_data(),
+            data=self.model_weights,
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity=identity,

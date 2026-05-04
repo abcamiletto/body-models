@@ -79,7 +79,7 @@ class SOMA(BodyModel):
     _identity_source_to_soma_rotation: Float[np.ndarray, "3 3"]
     _identity_model: object | None
     _kernel: Any
-    _data: Any
+    model_weights: Any
 
     def __init__(
         self,
@@ -106,7 +106,6 @@ class SOMA(BodyModel):
         self._kernel = {"numpy": numpy_kernel, "scipy": scipy_kernel}[backend]
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
-        self._weights = data
 
         mean_full = data.mean_full
         shapedirs_full = data.shapedirs_full
@@ -157,7 +156,16 @@ class SOMA(BodyModel):
         self._skinned_vertex_indices_full_index = data.topology.skinned_vertex_indices_full_index
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data.joint_names)
-        self._data = self._prepare_kernel_data()
+        self.model_weights = self._kernel.prepare_data(
+            data,
+            mean_active=self.mean_active,
+            shapedirs_active=self.shapedirs_active,
+            skin_weights_active=self._skin_weights_active,
+            faces=self._faces,
+            vertex_map=self._vertex_map,
+            parents_full=self._parents_full,
+            parents_full_index=self._parents_full_index,
+        )
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -237,7 +245,7 @@ class SOMA(BodyModel):
             prepared_identity=prepared_identity,
         )
         return self._kernel.forward_vertices(
-            data=self._data,
+            data=self.model_weights,
             identity=None,
             pose=pose,
             rest_shape_full=identity_state.rest_shape_full,
@@ -272,7 +280,7 @@ class SOMA(BodyModel):
             prepared_identity=prepared_identity,
         )
         return self._kernel.forward_skeleton(
-            data=self._data,
+            data=self.model_weights,
             identity=None,
             pose=pose,
             rest_shape_full=identity_state.rest_shape_full,
@@ -321,7 +329,7 @@ class SOMA(BodyModel):
         ref = np.empty((1, 1), dtype=dtype)
         batch_size = 1 if identity is None else identity.shape[0]
         _identity, rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.prepare_identity(
-            data=self._data,
+            data=self.model_weights,
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity=identity,
@@ -348,18 +356,6 @@ class SOMA(BodyModel):
             xp=np,
         )
         return SOMAIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
-
-    def _prepare_kernel_data(self):
-        return self._kernel.prepare_data(
-            self._weights,
-            mean_active=self.mean_active,
-            shapedirs_active=self.shapedirs_active,
-            skin_weights_active=self._skin_weights_active,
-            faces=self._faces,
-            vertex_map=self._vertex_map,
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index,
-        )
 
     def _prepare_or_use_identity(
         self,
