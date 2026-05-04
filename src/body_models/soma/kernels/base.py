@@ -38,6 +38,20 @@ class SomaTopology:
 
 
 @dataclass(frozen=True)
+class AnnyIdentityData:
+    template_vertices: Any
+    blendshapes: Any
+    phenotype_mask: Any
+    anchors: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LinearIdentityData:
+    mean: Any
+    shapedirs: Any
+
+
+@dataclass(frozen=True)
 class SomaData:
     mean_full: Any
     mean_active: Any
@@ -338,10 +352,6 @@ def prepare_identity_state(
     )
 
 
-def _value(value):
-    return value[...] if hasattr(value, "__getitem__") else value
-
-
 def prepare_identity_shape(
     *,
     model_type: str,
@@ -375,50 +385,49 @@ def prepare_identity_shape(
             xp=xp,
         )
     elif model_type == "anny":
-        anny_model = identity_model
+        anny_model: AnnyIdentityData = identity_model
         rest_shape = anny_identity_shape(
-            template_vertices=_value(anny_model.template_vertices),
-            blendshapes=_value(anny_model.blendshapes),
-            phenotype_mask=_value(anny_model.phenotype_mask),
-            anchors=anny_model._anchors if hasattr(anny_model, "_anchors") else anny_model._get_anchors_dict(),
+            template_vertices=anny_model.template_vertices,
+            blendshapes=anny_model.blendshapes,
+            phenotype_mask=anny_model.phenotype_mask,
+            anchors=anny_model.anchors,
             identity=identity,
             xp=xp,
         )
     else:
-        linear_model = identity_model
+        linear_model: LinearIdentityData = identity_model
         rest_shape = linear_identity_shape(
-            mean=_value(linear_model.v_template_full),
-            shapedirs=_value(linear_model.shapedirs_full),
+            mean=linear_model.mean,
+            shapedirs=linear_model.shapedirs,
             identity=identity,
             xp=xp,
         )
 
     rest_shape = apply_rigid_transform(
         rest_shape,
-        rotation=_value(identity_internal_to_source_rotation),
-        translation=_value(identity_internal_to_source_translation),
+        rotation=identity_internal_to_source_rotation,
+        translation=identity_internal_to_source_translation,
         xp=xp,
     )
     rest_shape = rest_shape * identity_source_scale
     rest_shape = transfer_identity_rest_shape(
         source_shape=rest_shape,
-        source_tetrahedra=_value(identity_source_tetrahedra),
-        face_ids=_value(identity_face_ids),
-        bary_coords=_value(identity_bary_coords),
-        unknown_ids=_value(identity_unknown_ids),
-        anchor_ids=_value(identity_anchor_ids),
-        solve_matrix=_value(identity_solve_matrix),
-        anchor_matrix=_value(identity_anchor_matrix),
-        rhs_base=_value(identity_rhs_base),
+        source_tetrahedra=identity_source_tetrahedra,
+        face_ids=identity_face_ids,
+        bary_coords=identity_bary_coords,
+        unknown_ids=identity_unknown_ids,
+        anchor_ids=identity_anchor_ids,
+        solve_matrix=identity_solve_matrix,
+        anchor_matrix=identity_anchor_matrix,
+        rhs_base=identity_rhs_base,
         xp=xp,
     )
     rest_shape = apply_rigid_transform(
         rest_shape,
-        rotation=_value(identity_source_to_soma_rotation),
+        rotation=identity_source_to_soma_rotation,
         xp=xp,
     )
     rest_shape = rest_shape * identity_output_scale
-    vertex_map = None if vertex_map is None else _value(vertex_map)
     rest_shape_active = rest_shape if vertex_map is None else rest_shape[:, vertex_map]
     return rest_shape, rest_shape_active
 
@@ -898,7 +907,7 @@ def _align_vectors(
         return _rotation_between_vectors(xp, target[:, 0], source[:, 0])
 
     H = xp.einsum("bni,bnj->bij", target, source)
-    # SOMALayer's default warp path uses plain covariance; the PyTorch fallback adds a virtual normal.
+    # SOMALayer's default warp path uses plain covariance; the alternate path adds a virtual normal.
     if not match_warp:
         p0, p1 = target[:, 0], target[:, 1]
         q0, q1 = source[:, 0], source[:, 1]

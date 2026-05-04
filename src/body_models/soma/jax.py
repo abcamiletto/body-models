@@ -25,6 +25,7 @@ from .io import (
     load_pose_correctives_weights,
     simplify_mesh,
 )
+import body_models.soma.kernels.base as soma_base
 import body_models.soma.kernels.jax as core
 
 PathLike = Path | str
@@ -308,20 +309,20 @@ class SOMA(BodyModel, nnx.Module):
             identity=identity,
             scale_params=scale_params,
             num_scale_params=self.num_scale_params,
-            identity_internal_to_source_rotation=self._identity_internal_to_source_rotation,
-            identity_internal_to_source_translation=self._identity_internal_to_source_translation,
-            identity_source_to_soma_rotation=self._identity_source_to_soma_rotation,
+            identity_internal_to_source_rotation=self._identity_internal_to_source_rotation[...],
+            identity_internal_to_source_translation=self._identity_internal_to_source_translation[...],
+            identity_source_to_soma_rotation=self._identity_source_to_soma_rotation[...],
             identity_source_scale=self._identity_source_scale,
             identity_output_scale=self._identity_output_scale,
-            identity_source_tetrahedra=self._identity_source_tetrahedra,
-            identity_face_ids=self._identity_face_ids,
-            identity_bary_coords=self._identity_bary_coords,
-            identity_unknown_ids=self._identity_unknown_ids,
-            identity_anchor_ids=self._identity_anchor_ids,
-            identity_solve_matrix=self._identity_solve_matrix,
-            identity_anchor_matrix=self._identity_anchor_matrix,
-            identity_rhs_base=self._identity_rhs_base,
-            vertex_map=self._vertex_map,
+            identity_source_tetrahedra=self._identity_source_tetrahedra[...],
+            identity_face_ids=self._identity_face_ids[...],
+            identity_bary_coords=self._identity_bary_coords[...],
+            identity_unknown_ids=self._identity_unknown_ids[...],
+            identity_anchor_ids=self._identity_anchor_ids[...],
+            identity_solve_matrix=self._identity_solve_matrix[...],
+            identity_anchor_matrix=self._identity_anchor_matrix[...],
+            identity_rhs_base=self._identity_rhs_base[...],
+            vertex_map=None if self._vertex_map is None else self._vertex_map[...],
             xp=jnp,
         )
         return identity, rest_shape, rest_shape_active
@@ -346,13 +347,20 @@ class SOMA(BodyModel, nnx.Module):
         self._identity_source_to_soma_rotation = nnx.Variable(
             jnp.asarray([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
         )
-        return nnx.data(identity_model)
+        return soma_base.AnnyIdentityData(
+            template_vertices=identity_model.template_vertices[...],
+            blendshapes=identity_model.blendshapes[...],
+            phenotype_mask=identity_model.phenotype_mask[...],
+            anchors=identity_model._get_anchors_dict(),
+        )
 
     def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> object:
         linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
-        return nnx.data(
-            linear_model_cls(
-                model_path=get_identity_model_path(self.model_type),
-                simplify=1.0,
-            )
+        identity_model = linear_model_cls(
+            model_path=get_identity_model_path(self.model_type),
+            simplify=1.0,
+        )
+        return soma_base.LinearIdentityData(
+            mean=identity_model.v_template_full[...],
+            shapedirs=identity_model.shapedirs_full[...],
         )

@@ -78,5 +78,5 @@ def prepare_data(**data):
         corrective_W2_values=data["corrective_W2_values"],
         corrective_W2=corrective_W2,
     )
-    data = data | {"skin_weights_active": sparse.csr_matrix(data["skin_weights_active"])}
-    return SomaScipyData.from_kernel_data_and_correctives(data, correctives)
+    prepared_data = {**data, "skin_weights_active": sparse.csr_matrix(data["skin_weights_active"])}
+    return SomaScipyData.from_kernel_data_and_correctives(prepared_data, correctives)

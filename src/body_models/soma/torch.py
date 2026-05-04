@@ -25,6 +25,7 @@ from .io import (
     load_pose_correctives_weights,
     simplify_mesh,
 )
+import body_models.soma.kernels.base as soma_base
 import body_models.soma.kernels.torch as core
 
 PathLike = Path | str
@@ -69,7 +70,7 @@ class SOMA(BodyModel, nn.Module):
     _identity_internal_to_source_rotation: Float[Tensor, "3 3"]
     _identity_internal_to_source_translation: Float[Tensor, "3"]
     _identity_source_to_soma_rotation: Float[Tensor, "3 3"]
-    _identity_model: ANNY | MHR | SMPL | SMPLX
+    _identity_model: object
 
     def __init__(
         self,
@@ -371,7 +372,7 @@ class SOMA(BodyModel, nn.Module):
     def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> MHR:
         return MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
 
-    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> ANNY:
+    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> object:
         identity_model = ANNY(
             model_path=get_identity_model_path("anny"),
             all_phenotypes=False,
@@ -389,11 +390,20 @@ class SOMA(BodyModel, nn.Module):
             [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
             dtype=self.mean_full.dtype,
         )
-        return identity_model
+        return soma_base.AnnyIdentityData(
+            template_vertices=identity_model.template_vertices,
+            blendshapes=identity_model.blendshapes,
+            phenotype_mask=identity_model.phenotype_mask,
+            anchors=identity_model._get_anchors_dict(),
+        )
 
-    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> SMPL | SMPLX:
+    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> object:
         linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
-        return linear_model_cls(
+        identity_model = linear_model_cls(
             model_path=get_identity_model_path(self.model_type),
             simplify=1.0,
+        )
+        return soma_base.LinearIdentityData(
+            mean=identity_model.v_template_full,
+            shapedirs=identity_model.shapedirs_full,
         )
