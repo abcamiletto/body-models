@@ -7,11 +7,13 @@ from typing import Any, Protocol
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from ...anny import core as anny_core
 from ... import common
 from ...common import get_namespace
 from ...rotations import RotationType
-from ..identities.base import AnnyIdentityData, LinearIdentityData
+from ..identities import anny as anny_identity
+from ..identities import mhr as mhr_identity
+from ..identities import smpl as smpl_identity
+from ..identities import smplx as smplx_identity
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -332,28 +334,28 @@ def prepare_identity_shape(
 ) -> tuple[Float[Array, "B Vt 3"] | None, Float[Array, "B Va 3"] | None]:
     if model_type == "mhr":
         assert num_scale_params is not None
-        rest_shape = mhr_identity_shape(
-            model=identity_model,
+        rest_shape = mhr_identity.shape(
+            identity_model=identity_model,
             identity=identity,
             scale_params=scale_params,
             num_scale_params=num_scale_params,
             xp=xp,
         )
     elif model_type == "anny":
-        anny_model: AnnyIdentityData = identity_model
-        rest_shape = anny_identity_shape(
-            template_vertices=anny_model.template_vertices,
-            blendshapes=anny_model.blendshapes,
-            phenotype_mask=anny_model.phenotype_mask,
-            anchors=anny_model.anchors,
+        rest_shape = anny_identity.shape(
+            identity_model=identity_model,
+            identity=identity,
+            xp=xp,
+        )
+    elif model_type == "smpl":
+        rest_shape = smpl_identity.shape(
+            identity_model=identity_model,
             identity=identity,
             xp=xp,
         )
     else:
-        linear_model: LinearIdentityData = identity_model
-        rest_shape = linear_identity_shape(
-            mean=linear_model.mean,
-            shapedirs=linear_model.shapedirs,
+        rest_shape = smplx_identity.shape(
+            identity_model=identity_model,
             identity=identity,
             xp=xp,
         )
@@ -431,60 +433,6 @@ def transfer_identity_rest_shape(
     unknown_vertices = xp.linalg.solve(solve_matrix, rhs)
     unknown_vertices = xp.reshape(unknown_vertices, (num_unknown, B, 3)).swapaxes(0, 1)
     return common.set(target_shape, (slice(None), unknown_ids), unknown_vertices, xp=xp)
-
-
-def linear_identity_shape(
-    mean: Float[Array, "V 3"],
-    shapedirs: Float[Array, "V 3 S"] | Float[Array, "V 3 I"],
-    identity: Float[Array, "B I"],
-    *,
-    xp: Any = None,
-) -> Float[Array, "B V 3"]:
-    if xp is None:
-        xp = get_namespace(identity)
-    identity_dim = identity.shape[1]
-    return mean[None] + xp.einsum("bi,vci->bvc", identity, shapedirs[..., :identity_dim])
-
-
-def mhr_identity_shape(
-    model: Any,
-    identity: Float[Array, "B I"],
-    scale_params: Float[Array, "B K"] | None,
-    num_scale_params: int,
-    *,
-    xp: Any = None,
-) -> Float[Array, "B V 3"]:
-    if xp is None:
-        xp = get_namespace(identity)
-
-    batch_size = identity.shape[0]
-    if scale_params is None:
-        scale_params = common.zeros_as(identity, shape=(batch_size, num_scale_params), xp=xp)
-    zero_pose = common.zeros_as(identity, shape=(batch_size, model.pose_dim), xp=xp)
-    zero_pose = common.set(zero_pose, (slice(None), slice(-num_scale_params, None)), scale_params, xp=xp)
-    expression = common.zeros_as(identity, shape=(batch_size, model.EXPR_DIM), xp=xp)
-    return model.forward_vertices(shape=identity, pose=zero_pose, expression=expression)
-
-
-def anny_identity_shape(
-    template_vertices: Float[Array, "V 3"],
-    blendshapes: Float[Array, "S V 3"],
-    phenotype_mask: Float[Array, "S P"],
-    anchors: dict[str, Float[Array, "A"]],
-    identity: Float[Array, "B 6"],
-    *,
-    xp: Any = None,
-) -> Float[Array, "B V 3"]:
-    if xp is None:
-        xp = get_namespace(identity)
-    return anny_core.identity_shape(
-        template_vertices=template_vertices,
-        blendshapes=blendshapes,
-        phenotype_mask=phenotype_mask,
-        anchors=anchors,
-        identity=identity,
-        xp=xp,
-    )
 
 
 def fit_rigid_transform(

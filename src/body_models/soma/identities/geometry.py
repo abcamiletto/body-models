@@ -1,9 +1,13 @@
 """Geometry helpers for SOMA identity setup."""
 
 import numpy as np
+from jaxtyping import Float
 
 
-def fit_rigid_transform(source: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def fit_rigid_transform(
+    source: Float[np.ndarray, "V 3"],
+    target: Float[np.ndarray, "V 3"],
+) -> tuple[Float[np.ndarray, "3 3"], Float[np.ndarray, "3"]]:
     source_mean = source.mean(axis=0)
     target_mean = target.mean(axis=0)
     source_centered = source - source_mean

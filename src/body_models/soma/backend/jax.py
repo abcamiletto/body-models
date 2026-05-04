@@ -69,13 +69,15 @@ def prepare_identity_model(model_type: str, identity_model):
 
         return nnx.data(MHR(model_path=identity_model.model_path, simplify=1.0))
     if model_type == "anny":
-        return core.AnnyIdentityData(
+        return replace(
+            identity_model,
             template_vertices=jnp.asarray(identity_model.template_vertices),
             blendshapes=jnp.asarray(identity_model.blendshapes),
             phenotype_mask=jnp.asarray(identity_model.phenotype_mask),
             anchors={name: jnp.asarray(value) for name, value in identity_model.anchors.items()},
         )
-    return core.LinearIdentityData(
+    return replace(
+        identity_model,
         mean=jnp.asarray(identity_model.mean),
         shapedirs=jnp.asarray(identity_model.shapedirs),
     )

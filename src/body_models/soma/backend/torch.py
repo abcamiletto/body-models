@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+from dataclasses import replace
 from jaxtyping import Float, Int
 
 from ..io import SomaIdentityTransfer, SomaWeights
@@ -154,13 +155,15 @@ def prepare_identity_model(model_type: str, identity_model):
 
         return MHR(model_path=identity_model.model_path, simplify=1.0)
     if model_type == "anny":
-        return core.AnnyIdentityData(
+        return replace(
+            identity_model,
             template_vertices=torch.as_tensor(identity_model.template_vertices),
             blendshapes=torch.as_tensor(identity_model.blendshapes),
             phenotype_mask=torch.as_tensor(identity_model.phenotype_mask),
             anchors={name: torch.as_tensor(value) for name, value in identity_model.anchors.items()},
         )
-    return core.LinearIdentityData(
+    return replace(
+        identity_model,
         mean=torch.as_tensor(identity_model.mean),
         shapedirs=torch.as_tensor(identity_model.shapedirs),
     )
