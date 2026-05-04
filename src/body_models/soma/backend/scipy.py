@@ -13,6 +13,18 @@ from . import core
 
 Array = Any
 
+__all__ = [
+    "apply_pose_correctives",
+    "fit_rigid_transform",
+    "forward_skeleton",
+    "forward_vertices",
+    "linear_blend_skinning",
+    "prepare_data",
+    "prepare_identity_shape",
+    "prepare_identity_state",
+    "resolve_identity_inputs",
+]
+
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 prepare_identity_shape = core.prepare_identity_shape
