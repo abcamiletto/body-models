@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol, Self
+from typing import Any, Callable, Protocol
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -70,20 +70,44 @@ class SomaData:
     topology: SomaTopology
     correctives: SomaCorrectives
 
-    @classmethod
-    def from_kernel_data(cls, data: dict[str, Any]) -> Self:
-        correctives = SomaCorrectives(
+
+LinearBlendSkinning = Callable[[Any, Array, Array, Array], Array]
+
+
+class ApplyPoseCorrectives(Protocol):
+    def __call__(self, data: Any, pose_rot_full: Array, use_tanh: bool, *, xp: Any) -> Array: ...
+
+
+def prepare_data(**data) -> SomaData:
+    return prepare_data_with_correctives(
+        correctives=SomaCorrectives(
             corrective_bindpose=data["corrective_bindpose"],
             corrective_W1=data["corrective_W1"],
             corrective_W2_rows=data["corrective_W2_rows"],
             corrective_W2_cols=data["corrective_W2_cols"],
             corrective_W2_values=data["corrective_W2_values"],
-        )
-        return cls.from_kernel_data_and_correctives(data, correctives)
+        ),
+        **data,
+    )
 
-    @classmethod
-    def from_kernel_data_and_correctives(cls, data: dict[str, Any], correctives: SomaCorrectives) -> Self:
-        topology = SomaTopology(
+
+def prepare_data_with_correctives(*, correctives: SomaCorrectives, **data) -> SomaData:
+    return SomaData(
+        mean_full=data["mean_full"],
+        mean_active=data["mean_active"],
+        shapedirs_full=data["shapedirs_full"],
+        shapedirs_active=data["shapedirs_active"],
+        eigenvalues=data["eigenvalues"],
+        bind_shape_full=data["bind_shape_full"],
+        bind_pose_world=data["bind_pose_world"],
+        bind_pose_local=data["bind_pose_local"],
+        t_pose_world=data["t_pose_world"],
+        joint_regressor=data["joint_regressor"],
+        skin_weights_full=data["skin_weights_full"],
+        skin_weights_active=data["skin_weights_active"],
+        faces=data["faces"],
+        vertex_map=data["vertex_map"],
+        topology=SomaTopology(
             parents_full=data["parents_full"],
             parents_full_index=data["parents_full_index"],
             joint_children_full=data["joint_children_full"],
@@ -91,32 +115,9 @@ class SomaData:
             skinned_vertex_indices_full=data["skinned_vertex_indices_full"],
             skinned_vertex_indices_full_index=data["skinned_vertex_indices_full_index"],
             kinematic_fronts_full=data["kinematic_fronts_full"],
-        )
-        return cls(
-            mean_full=data["mean_full"],
-            mean_active=data["mean_active"],
-            shapedirs_full=data["shapedirs_full"],
-            shapedirs_active=data["shapedirs_active"],
-            eigenvalues=data["eigenvalues"],
-            bind_shape_full=data["bind_shape_full"],
-            bind_pose_world=data["bind_pose_world"],
-            bind_pose_local=data["bind_pose_local"],
-            t_pose_world=data["t_pose_world"],
-            joint_regressor=data["joint_regressor"],
-            skin_weights_full=data["skin_weights_full"],
-            skin_weights_active=data["skin_weights_active"],
-            faces=data["faces"],
-            vertex_map=data["vertex_map"],
-            topology=topology,
-            correctives=correctives,
-        )
-
-
-LinearBlendSkinning = Callable[[Any, Array, Array, Array], Array]
-
-
-class ApplyPoseCorrectives(Protocol):
-    def __call__(self, data: Any, pose_rot_full: Array, use_tanh: bool, *, xp: Any) -> Array: ...
+        ),
+        correctives=correctives,
+    )
 
 
 def forward_vertices(

@@ -25,10 +25,6 @@ class SomaScipyCorrectives(core.SomaCorrectives):
     corrective_W2: Any
 
 
-class SomaScipyData(core.SomaData):
-    correctives: SomaScipyCorrectives
-
-
 def forward_vertices(*args, **kwargs):
     return core._forward_vertices_with(
         *args,
@@ -39,7 +35,7 @@ def forward_vertices(*args, **kwargs):
 
 
 def apply_pose_correctives(
-    data: SomaScipyData,
+    data: Any,
     pose_rot_full: Float[Array, "B Jf 3 3"],
     use_tanh: bool,
     *,
@@ -91,4 +87,4 @@ def prepare_data(**data):
         corrective_W2=corrective_W2,
     )
     prepared_data = {**data, "skin_weights_active": sparse.csr_matrix(data["skin_weights_active"])}
-    return SomaScipyData.from_kernel_data_and_correctives(prepared_data, correctives)
+    return core.prepare_data_with_correctives(correctives=correctives, **prepared_data)

@@ -7,10 +7,7 @@ forward_skeleton = core.forward_skeleton
 prepare_identity_shape = core.prepare_identity_shape
 prepare_identity_state = core.prepare_identity_state
 resolve_identity_inputs = core.resolve_identity_inputs
-
-
-class SomaJaxData(core.SomaData):
-    pass
+SomaJaxData = core.SomaData
 
 
 def forward_vertices(*args, **kwargs):
@@ -42,4 +39,4 @@ def apply_pose_correctives(data, pose_rot_full, use_tanh: bool, *, xp):
 
 
 def prepare_data(**data):
-    return SomaJaxData.from_kernel_data(data)
+    return core.prepare_data(**data)
