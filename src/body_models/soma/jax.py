@@ -10,22 +10,21 @@ from flax import nnx
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from ..anny.jax import ANNY
 from ..base import BodyModel
-from ..mhr.jax import MHR
 from ..rotations import VALID_ROTATION_TYPES, RotationType
-from ..smpl.jax import SMPL
-from ..smplx.jax import SMPLX
 from .io import (
     MODEL_TYPE_SPECS,
-    get_identity_model_path,
+    SomaIdentityTransfer,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
     simplify_mesh,
 )
-import body_models.soma.backend.core as soma_base
 import body_models.soma.backend.jax as core
+import body_models.soma.identities.anny as anny_identity
+import body_models.soma.identities.mhr as mhr_identity
+import body_models.soma.identities.smpl as smpl_identity
+import body_models.soma.identities.smplx as smplx_identity
 
 PathLike = Path | str
 
@@ -39,6 +38,7 @@ class SOMA(BodyModel, nnx.Module):
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
     _identity_model: object
+    identity_transfer: SomaIdentityTransfer | None
 
     def __init__(
         self,
@@ -90,10 +90,6 @@ class SOMA(BodyModel, nnx.Module):
             vertex_map=vertex_map,
         )
         self.model_weights = core.prepare_data(weights)
-        dtype = self.model_weights.mean_full.dtype
-        self._identity_internal_to_source_rotation = nnx.Variable(jnp.eye(3, dtype=dtype))
-        self._identity_internal_to_source_translation = nnx.Variable(jnp.zeros(3, dtype=dtype))
-        self._identity_source_to_soma_rotation = nnx.Variable(jnp.eye(3, dtype=dtype))
 
         self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
         self._joint_names = data.joint_names_full[1:]
@@ -102,36 +98,21 @@ class SOMA(BodyModel, nnx.Module):
         self.identity_dim = spec.identity_dim
         self.num_scale_params = spec.num_scale_params
         self._default_identity_value = spec.default_identity_value
-        self._identity_source_scale = spec.source_scale
-        self._identity_output_scale = spec.output_scale
         self._identity_model = None
-        self._identity_source_tetrahedra = nnx.Variable(jnp.empty((0, 4), dtype=jnp.int32))
-        self._identity_face_ids = nnx.Variable(jnp.empty((0,), dtype=jnp.int32))
-        self._identity_bary_coords = nnx.Variable(jnp.empty((0, 4), dtype=dtype))
-        self._identity_unknown_ids = nnx.Variable(jnp.empty((0,), dtype=jnp.int32))
-        self._identity_anchor_ids = nnx.Variable(jnp.empty((0,), dtype=jnp.int32))
-        self._identity_solve_matrix = nnx.Variable(jnp.empty((0, 0), dtype=dtype))
-        self._identity_anchor_matrix = nnx.Variable(jnp.empty((0, 0), dtype=dtype))
-        self._identity_rhs_base = nnx.Variable(jnp.empty((0, 3), dtype=dtype))
+        self.identity_transfer = None
 
         if spec.asset_dir is None:
             return
 
         transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_source_tetrahedra = nnx.Variable(jnp.asarray(transfer_data["source_tetrahedra"]))
-        self._identity_face_ids = nnx.Variable(jnp.asarray(transfer_data["face_ids"]))
-        self._identity_bary_coords = nnx.Variable(jnp.asarray(transfer_data["bary_coords"]))
-        self._identity_unknown_ids = nnx.Variable(jnp.asarray(transfer_data["unknown_ids"]))
-        self._identity_anchor_ids = nnx.Variable(jnp.asarray(transfer_data["anchor_ids"]))
-        self._identity_solve_matrix = nnx.Variable(jnp.asarray(transfer_data["solve_matrix"]))
-        self._identity_anchor_matrix = nnx.Variable(jnp.asarray(transfer_data["anchor_matrix"]))
-        self._identity_rhs_base = nnx.Variable(jnp.asarray(transfer_data["rhs_base"]))
-        self._identity_model = {
-            "mhr": self._init_mhr_identity_backend,
-            "anny": self._init_anny_identity_backend,
-            "smpl": self._init_linear_identity_backend,
-            "smplx": self._init_linear_identity_backend,
-        }[self.model_type](transfer_data)
+        self._identity_model, transfer_data = {
+            "anny": anny_identity,
+            "mhr": mhr_identity,
+            "smpl": smpl_identity,
+            "smplx": smplx_identity,
+        }[self.model_type].prepare(transfer_data)
+        self._identity_model = core.prepare_identity_model(self.model_type, self._identity_model)
+        self.identity_transfer = core.prepare_identity_transfer(transfer_data)
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
@@ -265,58 +246,8 @@ class SOMA(BodyModel, nnx.Module):
             identity_dim=self.identity_dim,
             default_identity_value=self._default_identity_value,
             num_scale_params=self.num_scale_params,
-            identity_internal_to_source_rotation=self._identity_internal_to_source_rotation[...],
-            identity_internal_to_source_translation=self._identity_internal_to_source_translation[...],
-            identity_source_to_soma_rotation=self._identity_source_to_soma_rotation[...],
-            identity_source_scale=self._identity_source_scale,
-            identity_output_scale=self._identity_output_scale,
-            identity_source_tetrahedra=self._identity_source_tetrahedra[...],
-            identity_face_ids=self._identity_face_ids[...],
-            identity_bary_coords=self._identity_bary_coords[...],
-            identity_unknown_ids=self._identity_unknown_ids[...],
-            identity_anchor_ids=self._identity_anchor_ids[...],
-            identity_solve_matrix=self._identity_solve_matrix[...],
-            identity_anchor_matrix=self._identity_anchor_matrix[...],
-            identity_rhs_base=self._identity_rhs_base[...],
+            identity_transfer=self.identity_transfer,
             match_warp=self.match_warp,
             ref=ref,
             xp=jnp,
-        )
-
-    def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> object:
-        return nnx.data(MHR(model_path=get_identity_model_path("mhr"), simplify=1.0))
-
-    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> object:
-        identity_model = ANNY(
-            model_path=get_identity_model_path("anny"),
-            all_phenotypes=False,
-            simplify=1.0,
-        )
-        source_vertices = jnp.asarray(transfer_data["source_vertices"])
-        rotation, translation = core.fit_rigid_transform(
-            identity_model.template_vertices[...],
-            source_vertices,
-            xp=jnp,
-        )
-        self._identity_internal_to_source_rotation = nnx.Variable(rotation)
-        self._identity_internal_to_source_translation = nnx.Variable(translation)
-        self._identity_source_to_soma_rotation = nnx.Variable(
-            jnp.asarray([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
-        )
-        return soma_base.AnnyIdentityData(
-            template_vertices=identity_model.template_vertices[...],
-            blendshapes=identity_model.blendshapes[...],
-            phenotype_mask=identity_model.phenotype_mask[...],
-            anchors=identity_model._get_anchors_dict(),
-        )
-
-    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> object:
-        linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
-        identity_model = linear_model_cls(
-            model_path=get_identity_model_path(self.model_type),
-            simplify=1.0,
-        )
-        return soma_base.LinearIdentityData(
-            mean=identity_model.v_template_full[...],
-            shapedirs=identity_model.shapedirs_full[...],
         )

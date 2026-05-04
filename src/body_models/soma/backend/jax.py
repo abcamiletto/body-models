@@ -15,6 +15,8 @@ __all__ = [
     "linear_blend_skinning",
     "prepare_data",
     "prepare_identity",
+    "prepare_identity_model",
+    "prepare_identity_transfer",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
@@ -57,6 +59,43 @@ def prepare_data(weights: SomaWeights) -> SomaWeights:
         facial_inner_vertices=jnp.asarray(weights.facial_inner_vertices),
         topology=topology,
         correctives=correctives,
+    )
+
+
+def prepare_identity_model(model_type: str, identity_model):
+    if model_type == "mhr":
+        from flax import nnx
+        from ...mhr.jax import MHR
+
+        return nnx.data(MHR(model_path=identity_model.model_path, simplify=1.0))
+    if model_type == "anny":
+        return core.AnnyIdentityData(
+            template_vertices=jnp.asarray(identity_model.template_vertices),
+            blendshapes=jnp.asarray(identity_model.blendshapes),
+            phenotype_mask=jnp.asarray(identity_model.phenotype_mask),
+            anchors={name: jnp.asarray(value) for name, value in identity_model.anchors.items()},
+        )
+    return core.LinearIdentityData(
+        mean=jnp.asarray(identity_model.mean),
+        shapedirs=jnp.asarray(identity_model.shapedirs),
+    )
+
+
+def prepare_identity_transfer(identity_transfer):
+    return replace(
+        identity_transfer,
+        source_vertices=jnp.asarray(identity_transfer.source_vertices),
+        source_tetrahedra=jnp.asarray(identity_transfer.source_tetrahedra),
+        face_ids=jnp.asarray(identity_transfer.face_ids),
+        bary_coords=jnp.asarray(identity_transfer.bary_coords),
+        unknown_ids=jnp.asarray(identity_transfer.unknown_ids),
+        anchor_ids=jnp.asarray(identity_transfer.anchor_ids),
+        solve_matrix=jnp.asarray(identity_transfer.solve_matrix),
+        anchor_matrix=jnp.asarray(identity_transfer.anchor_matrix),
+        rhs_base=jnp.asarray(identity_transfer.rhs_base),
+        internal_to_source_rotation=jnp.asarray(identity_transfer.internal_to_source_rotation),
+        internal_to_source_translation=jnp.asarray(identity_transfer.internal_to_source_translation),
+        source_to_soma_rotation=jnp.asarray(identity_transfer.source_to_soma_rotation),
     )
 
 

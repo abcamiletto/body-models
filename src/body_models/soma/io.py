@@ -28,6 +28,7 @@ SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
 
 __all__ = [
+    "SomaIdentityTransfer",
     "SomaWeights",
     "get_model_path",
     "download_model",
@@ -87,6 +88,24 @@ class SomaWeights:
     topology: SomaTopology
     correctives: SomaCorrectives
     joint_names_full: list[str]
+
+
+@dataclass(frozen=True)
+class SomaIdentityTransfer:
+    source_vertices: Float[np.ndarray, "Vs 3"]
+    source_tetrahedra: Int[np.ndarray, "Fs 4"]
+    face_ids: Int[np.ndarray, "Vt"]
+    bary_coords: Float[np.ndarray, "Vt 4"]
+    unknown_ids: Int[np.ndarray, "U"]
+    anchor_ids: Int[np.ndarray, "A"]
+    solve_matrix: Float[np.ndarray, "U U"]
+    anchor_matrix: Float[np.ndarray, "U A"]
+    rhs_base: Float[np.ndarray, "U 3"]
+    internal_to_source_rotation: Float[np.ndarray, "3 3"]
+    internal_to_source_translation: Float[np.ndarray, "3"]
+    source_to_soma_rotation: Float[np.ndarray, "3 3"]
+    source_scale: float
+    output_scale: float
 
 
 @dataclass(frozen=True)
@@ -393,16 +412,16 @@ def _build_identity_laplacian_data(
     return unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base
 
 
-def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, np.ndarray]:
-    cache_file = _identity_transfer_cache_file(asset_dir, model_type)
-    if cache_file.exists():
-        with np.load(cache_file, allow_pickle=False) as data:
-            return {name: np.asarray(data[name]).copy() for name in data.files}
-
+def load_identity_transfer_data(asset_dir: Path, model_type: str) -> SomaIdentityTransfer:
     normalized = model_type.lower()
     spec = MODEL_TYPE_SPECS.get(normalized)
     if spec is None or spec.asset_dir is None or spec.source_mesh_name is None or spec.target_mesh_name is None:
         raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
+
+    cache_file = _identity_transfer_cache_file(asset_dir, model_type)
+    if cache_file.exists():
+        with np.load(cache_file, allow_pickle=False) as data:
+            return _identity_transfer_from_arrays({name: np.asarray(data[name]).copy() for name in data.files}, spec)
 
     ensure_identity_assets(asset_dir, normalized)
     mesh_dir = asset_dir / spec.asset_dir
@@ -440,17 +459,39 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
         anchor_matrix=anchor_matrix,
         rhs_base=rhs_base,
     )
-    return {
-        "source_vertices": source_vertices,
-        "source_tetrahedra": source_tetrahedra,
-        "face_ids": face_ids,
-        "bary_coords": bary_coords,
-        "unknown_ids": unknown_ids,
-        "anchor_ids": anchor_ids,
-        "solve_matrix": solve_matrix,
-        "anchor_matrix": anchor_matrix,
-        "rhs_base": rhs_base,
-    }
+    return _identity_transfer_from_arrays(
+        {
+            "source_vertices": source_vertices,
+            "source_tetrahedra": source_tetrahedra,
+            "face_ids": face_ids,
+            "bary_coords": bary_coords,
+            "unknown_ids": unknown_ids,
+            "anchor_ids": anchor_ids,
+            "solve_matrix": solve_matrix,
+            "anchor_matrix": anchor_matrix,
+            "rhs_base": rhs_base,
+        },
+        spec,
+    )
+
+
+def _identity_transfer_from_arrays(data: dict[str, np.ndarray], spec: _ModelTypeSpec) -> SomaIdentityTransfer:
+    return SomaIdentityTransfer(
+        source_vertices=np.asarray(data["source_vertices"], dtype=np.float32),
+        source_tetrahedra=np.asarray(data["source_tetrahedra"], dtype=np.int64),
+        face_ids=np.asarray(data["face_ids"], dtype=np.int64),
+        bary_coords=np.asarray(data["bary_coords"], dtype=np.float32),
+        unknown_ids=np.asarray(data["unknown_ids"], dtype=np.int64),
+        anchor_ids=np.asarray(data["anchor_ids"], dtype=np.int64),
+        solve_matrix=np.asarray(data["solve_matrix"], dtype=np.float32),
+        anchor_matrix=np.asarray(data["anchor_matrix"], dtype=np.float32),
+        rhs_base=np.asarray(data["rhs_base"], dtype=np.float32),
+        internal_to_source_rotation=np.eye(3, dtype=np.float32),
+        internal_to_source_translation=np.zeros(3, dtype=np.float32),
+        source_to_soma_rotation=np.eye(3, dtype=np.float32),
+        source_scale=spec.source_scale,
+        output_scale=spec.output_scale,
+    )
 
 
 def _correctives_cache_file(asset_dir: Path) -> Path:

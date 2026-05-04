@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
-from ..io import SomaWeights
+from ..io import SomaIdentityTransfer, SomaWeights
 from . import core
 
 __all__ = [
@@ -15,6 +15,8 @@ __all__ = [
     "linear_blend_skinning",
     "prepare_data",
     "prepare_identity",
+    "prepare_identity_model",
+    "prepare_identity_transfer",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
@@ -103,8 +105,69 @@ class SomaTorchWeights(nn.Module):
         )
 
 
+class SomaTorchIdentityTransfer(nn.Module):
+    source_vertices: Float[torch.Tensor, "Vs 3"]
+    source_tetrahedra: Int[torch.Tensor, "Fs 4"]
+    face_ids: Int[torch.Tensor, "Vt"]
+    bary_coords: Float[torch.Tensor, "Vt 4"]
+    unknown_ids: Int[torch.Tensor, "U"]
+    anchor_ids: Int[torch.Tensor, "A"]
+    solve_matrix: Float[torch.Tensor, "U U"]
+    anchor_matrix: Float[torch.Tensor, "U A"]
+    rhs_base: Float[torch.Tensor, "U 3"]
+    internal_to_source_rotation: Float[torch.Tensor, "3 3"]
+    internal_to_source_translation: Float[torch.Tensor, "3"]
+    source_to_soma_rotation: Float[torch.Tensor, "3 3"]
+
+    def __init__(self, identity_transfer: SomaIdentityTransfer):
+        super().__init__()
+        self.source_scale = identity_transfer.source_scale
+        self.output_scale = identity_transfer.output_scale
+        self.register_buffer("source_vertices", torch.as_tensor(identity_transfer.source_vertices))
+        self.register_buffer(
+            "source_tetrahedra", torch.as_tensor(identity_transfer.source_tetrahedra, dtype=torch.int64)
+        )
+        self.register_buffer("face_ids", torch.as_tensor(identity_transfer.face_ids, dtype=torch.int64))
+        self.register_buffer("bary_coords", torch.as_tensor(identity_transfer.bary_coords))
+        self.register_buffer("unknown_ids", torch.as_tensor(identity_transfer.unknown_ids, dtype=torch.int64))
+        self.register_buffer("anchor_ids", torch.as_tensor(identity_transfer.anchor_ids, dtype=torch.int64))
+        self.register_buffer("solve_matrix", torch.as_tensor(identity_transfer.solve_matrix))
+        self.register_buffer("anchor_matrix", torch.as_tensor(identity_transfer.anchor_matrix))
+        self.register_buffer("rhs_base", torch.as_tensor(identity_transfer.rhs_base))
+        self.register_buffer(
+            "internal_to_source_rotation", torch.as_tensor(identity_transfer.internal_to_source_rotation)
+        )
+        self.register_buffer(
+            "internal_to_source_translation",
+            torch.as_tensor(identity_transfer.internal_to_source_translation),
+        )
+        self.register_buffer("source_to_soma_rotation", torch.as_tensor(identity_transfer.source_to_soma_rotation))
+
+
 def prepare_data(weights: SomaWeights) -> SomaTorchWeights:
     return SomaTorchWeights(weights)
+
+
+def prepare_identity_model(model_type: str, identity_model):
+    if model_type == "mhr":
+        from ...mhr.torch import MHR
+
+        return MHR(model_path=identity_model.model_path, simplify=1.0)
+    if model_type == "anny":
+        return core.AnnyIdentityData(
+            template_vertices=torch.as_tensor(identity_model.template_vertices),
+            blendshapes=torch.as_tensor(identity_model.blendshapes),
+            phenotype_mask=torch.as_tensor(identity_model.phenotype_mask),
+            anchors={name: torch.as_tensor(value) for name, value in identity_model.anchors.items()},
+        )
+    return core.LinearIdentityData(
+        mean=torch.as_tensor(identity_model.mean),
+        shapedirs=torch.as_tensor(identity_model.shapedirs),
+    )
+
+
+def prepare_identity_transfer(identity_transfer: SomaIdentityTransfer) -> SomaTorchIdentityTransfer:
+    return SomaTorchIdentityTransfer(identity_transfer)
 
 
 def forward_vertices(*args, **kwargs):

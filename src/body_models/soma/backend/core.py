@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -12,27 +11,38 @@ from ...anny import core as anny_core
 from ... import common
 from ...common import get_namespace
 from ...rotations import RotationType
+from ..identities.base import AnnyIdentityData, LinearIdentityData
 
 Array = Any
 Front = tuple[list[int], list[int]]
 
 
-@dataclass(frozen=True)
-class AnnyIdentityData:
-    template_vertices: Any
-    blendshapes: Any
-    phenotype_mask: Any
-    anchors: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class LinearIdentityData:
-    mean: Any
-    shapedirs: Any
+class IdentityTransfer(Protocol):
+    source_tetrahedra: Int[Array, "Fs 4"]
+    face_ids: Int[Array, "Vt"]
+    bary_coords: Float[Array, "Vt 4"]
+    unknown_ids: Int[Array, "U"]
+    anchor_ids: Int[Array, "A"]
+    solve_matrix: Float[Array, "U U"]
+    anchor_matrix: Float[Array, "U A"]
+    rhs_base: Float[Array, "U 3"]
+    internal_to_source_rotation: Float[Array, "3 3"]
+    internal_to_source_translation: Float[Array, "3"]
+    source_to_soma_rotation: Float[Array, "3 3"]
+    source_scale: float
+    output_scale: float
 
 
 def prepare_data(soma_weights: Any) -> Any:
     return soma_weights
+
+
+def prepare_identity_model(model_type: str, identity_model: Any) -> Any:
+    return identity_model
+
+
+def prepare_identity_transfer(identity_transfer: IdentityTransfer) -> IdentityTransfer:
+    return identity_transfer
 
 
 def prepare_identity(
@@ -46,19 +56,7 @@ def prepare_identity(
     identity_dim: int,
     default_identity_value: float,
     num_scale_params: int | None,
-    identity_internal_to_source_rotation: Float[Array, "3 3"],
-    identity_internal_to_source_translation: Float[Array, "3"],
-    identity_source_to_soma_rotation: Float[Array, "3 3"],
-    identity_source_scale: float,
-    identity_output_scale: float,
-    identity_source_tetrahedra: Int[Array, "Fs 4"] | None,
-    identity_face_ids: Int[Array, "Vt"] | None,
-    identity_bary_coords: Float[Array, "Vt 4"] | None,
-    identity_unknown_ids: Int[Array, "U"] | None,
-    identity_anchor_ids: Int[Array, "A"] | None,
-    identity_solve_matrix: Float[Array, "U U"] | None,
-    identity_anchor_matrix: Float[Array, "U A"] | None,
-    identity_rhs_base: Float[Array, "U 3"] | None,
+    identity_transfer: IdentityTransfer | None,
     match_warp: bool,
     ref: Array,
     xp: Any,
@@ -82,33 +80,14 @@ def prepare_identity(
     rest_shape_full = None
     rest_shape_active = None
     if model_type != "soma":
-        assert identity_source_tetrahedra is not None
-        assert identity_face_ids is not None
-        assert identity_bary_coords is not None
-        assert identity_unknown_ids is not None
-        assert identity_anchor_ids is not None
-        assert identity_solve_matrix is not None
-        assert identity_anchor_matrix is not None
-        assert identity_rhs_base is not None
+        assert identity_transfer is not None
         rest_shape_full, rest_shape_active = prepare_identity_shape(
             model_type=model_type,
             identity_model=identity_model,
             identity=identity,
             scale_params=scale_params,
             num_scale_params=num_scale_params,
-            identity_internal_to_source_rotation=identity_internal_to_source_rotation,
-            identity_internal_to_source_translation=identity_internal_to_source_translation,
-            identity_source_to_soma_rotation=identity_source_to_soma_rotation,
-            identity_source_scale=identity_source_scale,
-            identity_output_scale=identity_output_scale,
-            identity_source_tetrahedra=identity_source_tetrahedra,
-            identity_face_ids=identity_face_ids,
-            identity_bary_coords=identity_bary_coords,
-            identity_unknown_ids=identity_unknown_ids,
-            identity_anchor_ids=identity_anchor_ids,
-            identity_solve_matrix=identity_solve_matrix,
-            identity_anchor_matrix=identity_anchor_matrix,
-            identity_rhs_base=identity_rhs_base,
+            identity_transfer=identity_transfer,
             vertex_map=data.vertex_map,
             xp=xp,
         )
@@ -347,19 +326,7 @@ def prepare_identity_shape(
     identity: Float[Array, "B I"],
     scale_params: Float[Array, "B K"] | None,
     num_scale_params: int | None,
-    identity_internal_to_source_rotation: Float[Array, "3 3"],
-    identity_internal_to_source_translation: Float[Array, "3"],
-    identity_source_to_soma_rotation: Float[Array, "3 3"],
-    identity_source_scale: float,
-    identity_output_scale: float,
-    identity_source_tetrahedra: Int[Array, "Fs 4"],
-    identity_face_ids: Int[Array, "Vt"],
-    identity_bary_coords: Float[Array, "Vt 4"],
-    identity_unknown_ids: Int[Array, "U"],
-    identity_anchor_ids: Int[Array, "A"],
-    identity_solve_matrix: Float[Array, "U U"],
-    identity_anchor_matrix: Float[Array, "U A"],
-    identity_rhs_base: Float[Array, "U 3"],
+    identity_transfer: IdentityTransfer,
     vertex_map: Int[Array, "Va"] | None,
     xp: Any,
 ) -> tuple[Float[Array, "B Vt 3"] | None, Float[Array, "B Va 3"] | None]:
@@ -393,29 +360,29 @@ def prepare_identity_shape(
 
     rest_shape = apply_rigid_transform(
         rest_shape,
-        rotation=identity_internal_to_source_rotation,
-        translation=identity_internal_to_source_translation,
+        rotation=identity_transfer.internal_to_source_rotation,
+        translation=identity_transfer.internal_to_source_translation,
         xp=xp,
     )
-    rest_shape = rest_shape * identity_source_scale
+    rest_shape = rest_shape * identity_transfer.source_scale
     rest_shape = transfer_identity_rest_shape(
         source_shape=rest_shape,
-        source_tetrahedra=identity_source_tetrahedra,
-        face_ids=identity_face_ids,
-        bary_coords=identity_bary_coords,
-        unknown_ids=identity_unknown_ids,
-        anchor_ids=identity_anchor_ids,
-        solve_matrix=identity_solve_matrix,
-        anchor_matrix=identity_anchor_matrix,
-        rhs_base=identity_rhs_base,
+        source_tetrahedra=identity_transfer.source_tetrahedra,
+        face_ids=identity_transfer.face_ids,
+        bary_coords=identity_transfer.bary_coords,
+        unknown_ids=identity_transfer.unknown_ids,
+        anchor_ids=identity_transfer.anchor_ids,
+        solve_matrix=identity_transfer.solve_matrix,
+        anchor_matrix=identity_transfer.anchor_matrix,
+        rhs_base=identity_transfer.rhs_base,
         xp=xp,
     )
     rest_shape = apply_rigid_transform(
         rest_shape,
-        rotation=identity_source_to_soma_rotation,
+        rotation=identity_transfer.source_to_soma_rotation,
         xp=xp,
     )
-    rest_shape = rest_shape * identity_output_scale
+    rest_shape = rest_shape * identity_transfer.output_scale
     rest_shape_active = rest_shape if vertex_map is None else rest_shape[:, vertex_map]
     return rest_shape, rest_shape_active
 

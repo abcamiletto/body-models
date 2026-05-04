@@ -8,23 +8,22 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from ..anny.numpy import ANNY
 from ..base import BodyModel
-from ..mhr.numpy import MHR
 from ..rotations import VALID_ROTATION_TYPES, RotationType
-from ..smpl.numpy import SMPL
-from ..smplx.numpy import SMPLX
 from .io import (
     MODEL_TYPE_SPECS,
-    get_identity_model_path,
+    SomaIdentityTransfer,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
     simplify_mesh,
 )
-import body_models.soma.backend.core as soma_base
 import body_models.soma.backend.numpy as numpy_kernel
 import body_models.soma.backend.scipy as scipy_kernel
+import body_models.soma.identities.anny as anny_identity
+import body_models.soma.identities.mhr as mhr_identity
+import body_models.soma.identities.smpl as smpl_identity
+import body_models.soma.identities.smplx as smplx_identity
 
 PathLike = Path | str
 KernelBackend = Literal["numpy", "scipy"]
@@ -46,20 +45,10 @@ class SOMA(BodyModel):
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
 
-    _identity_source_tetrahedra: Int[np.ndarray, "Fs 4"] | None
-    _identity_face_ids: Int[np.ndarray, "Vt"] | None
-    _identity_bary_coords: Float[np.ndarray, "Vt 4"] | None
-    _identity_unknown_ids: Int[np.ndarray, "U"] | None
-    _identity_anchor_ids: Int[np.ndarray, "A"] | None
-    _identity_solve_matrix: Float[np.ndarray, "U U"] | None
-    _identity_anchor_matrix: Float[np.ndarray, "U A"] | None
-    _identity_rhs_base: Float[np.ndarray, "U 3"] | None
-    _identity_internal_to_source_rotation: Float[np.ndarray, "3 3"]
-    _identity_internal_to_source_translation: Float[np.ndarray, "3"]
-    _identity_source_to_soma_rotation: Float[np.ndarray, "3 3"]
     _identity_model: object | None
     _kernel: Any
     model_weights: Any
+    identity_transfer: SomaIdentityTransfer | None
 
     def __init__(
         self,
@@ -104,10 +93,6 @@ class SOMA(BodyModel):
             skin_weights_active = skin_weights_full
             vertex_map = None
 
-        self._identity_internal_to_source_rotation = np.eye(3, dtype=np.float32)
-        self._identity_internal_to_source_translation = np.zeros(3, dtype=np.float32)
-        self._identity_source_to_soma_rotation = np.eye(3, dtype=np.float32)
-
         self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
         self._joint_names = data.joint_names_full[1:]
         weights = replace(
@@ -124,36 +109,21 @@ class SOMA(BodyModel):
         self.identity_dim = spec.identity_dim
         self.num_scale_params = spec.num_scale_params
         self._default_identity_value = spec.default_identity_value
-        self._identity_source_scale = spec.source_scale
-        self._identity_output_scale = spec.output_scale
         self._identity_model = None
-        self._identity_source_tetrahedra = None
-        self._identity_face_ids = None
-        self._identity_bary_coords = None
-        self._identity_unknown_ids = None
-        self._identity_anchor_ids = None
-        self._identity_solve_matrix = None
-        self._identity_anchor_matrix = None
-        self._identity_rhs_base = None
+        self.identity_transfer = None
 
         if spec.asset_dir is None:
             return
 
         transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_source_tetrahedra = np.asarray(transfer_data["source_tetrahedra"], dtype=np.int64)
-        self._identity_face_ids = np.asarray(transfer_data["face_ids"], dtype=np.int64)
-        self._identity_bary_coords = np.asarray(transfer_data["bary_coords"], dtype=np.float32)
-        self._identity_unknown_ids = np.asarray(transfer_data["unknown_ids"], dtype=np.int64)
-        self._identity_anchor_ids = np.asarray(transfer_data["anchor_ids"], dtype=np.int64)
-        self._identity_solve_matrix = np.asarray(transfer_data["solve_matrix"], dtype=np.float32)
-        self._identity_anchor_matrix = np.asarray(transfer_data["anchor_matrix"], dtype=np.float32)
-        self._identity_rhs_base = np.asarray(transfer_data["rhs_base"], dtype=np.float32)
-        self._identity_model = {
-            "mhr": self._init_mhr_identity_backend,
-            "anny": self._init_anny_identity_backend,
-            "smpl": self._init_linear_identity_backend,
-            "smplx": self._init_linear_identity_backend,
-        }[self.model_type](transfer_data)
+        self._identity_model, transfer_data = {
+            "anny": anny_identity,
+            "mhr": mhr_identity,
+            "smpl": smpl_identity,
+            "smplx": smplx_identity,
+        }[self.model_type].prepare(transfer_data)
+        self._identity_model = self._kernel.prepare_identity_model(self.model_type, self._identity_model)
+        self.identity_transfer = self._kernel.prepare_identity_transfer(transfer_data)
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
@@ -290,19 +260,7 @@ class SOMA(BodyModel):
             identity_dim=self.identity_dim,
             default_identity_value=self._default_identity_value,
             num_scale_params=self.num_scale_params,
-            identity_internal_to_source_rotation=self._identity_internal_to_source_rotation,
-            identity_internal_to_source_translation=self._identity_internal_to_source_translation,
-            identity_source_to_soma_rotation=self._identity_source_to_soma_rotation,
-            identity_source_scale=self._identity_source_scale,
-            identity_output_scale=self._identity_output_scale,
-            identity_source_tetrahedra=self._identity_source_tetrahedra,
-            identity_face_ids=self._identity_face_ids,
-            identity_bary_coords=self._identity_bary_coords,
-            identity_unknown_ids=self._identity_unknown_ids,
-            identity_anchor_ids=self._identity_anchor_ids,
-            identity_solve_matrix=self._identity_solve_matrix,
-            identity_anchor_matrix=self._identity_anchor_matrix,
-            identity_rhs_base=self._identity_rhs_base,
+            identity_transfer=self.identity_transfer,
             match_warp=self.match_warp,
             ref=ref,
             xp=np,
@@ -320,42 +278,3 @@ class SOMA(BodyModel):
         if prepared_identity is not None:
             return prepared_identity
         return self.prepare_identity(identity=identity, scale_params=scale_params, dtype=dtype)
-
-    def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> MHR:
-        return MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
-
-    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> object:
-        identity_model = ANNY(
-            model_path=get_identity_model_path("anny"),
-            all_phenotypes=False,
-            simplify=1.0,
-        )
-        source_vertices = np.asarray(transfer_data["source_vertices"], dtype=np.float32)
-        rotation, translation = self._kernel.fit_rigid_transform(
-            identity_model.template_vertices,
-            source_vertices,
-            xp=np,
-        )
-        self._identity_internal_to_source_rotation = rotation.astype(np.float32, copy=False)
-        self._identity_internal_to_source_translation = translation.astype(np.float32, copy=False)
-        self._identity_source_to_soma_rotation = np.asarray(
-            [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
-            dtype=np.float32,
-        )
-        return soma_base.AnnyIdentityData(
-            template_vertices=identity_model.template_vertices,
-            blendshapes=identity_model.blendshapes,
-            phenotype_mask=identity_model.phenotype_mask,
-            anchors=identity_model._anchors,
-        )
-
-    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> object:
-        linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
-        identity_model = linear_model_cls(
-            model_path=get_identity_model_path(self.model_type),
-            simplify=1.0,
-        )
-        return soma_base.LinearIdentityData(
-            mean=identity_model.v_template_full,
-            shapedirs=identity_model.shapedirs_full,
-        )
