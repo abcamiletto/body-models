@@ -21,10 +21,7 @@ from .io import (
     simplify_mesh,
 )
 import body_models.soma.backend.jax as core
-import body_models.soma.identities.anny as anny_identity
-import body_models.soma.identities.mhr as mhr_identity
-import body_models.soma.identities.smpl as smpl_identity
-import body_models.soma.identities.smplx as smplx_identity
+from body_models.soma.identities import prepare_backend as prepare_identity_backend
 
 PathLike = Path | str
 
@@ -56,7 +53,8 @@ class SOMA(BodyModel, nnx.Module):
             )
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
 
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
@@ -105,12 +103,7 @@ class SOMA(BodyModel, nnx.Module):
             return
 
         transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_model, transfer_data = {
-            "anny": anny_identity,
-            "mhr": mhr_identity,
-            "smpl": smpl_identity,
-            "smplx": smplx_identity,
-        }[self.model_type].prepare(transfer_data)
+        self._identity_model, transfer_data = prepare_identity_backend(self.model_type, transfer_data)
         self._identity_model = core.prepare_identity_model(self.model_type, self._identity_model)
         self.identity_transfer = core.prepare_identity_transfer(transfer_data)
 

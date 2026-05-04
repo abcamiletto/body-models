@@ -10,10 +10,7 @@ from nanomanifold import SO3
 from ... import common
 from ...common import get_namespace
 from ...rotations import RotationType
-from ..identities import anny as anny_identity
-from ..identities import mhr as mhr_identity
-from ..identities import smpl as smpl_identity
-from ..identities import smplx as smplx_identity
+from .. import identities
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -82,7 +79,8 @@ def prepare_identity(
     rest_shape_full = None
     rest_shape_active = None
     if model_type != "soma":
-        assert identity_transfer is not None
+        if identity_transfer is None:
+            raise ValueError(f"SOMA model_type='{model_type}' requires identity_transfer.")
         rest_shape_full, rest_shape_active = prepare_identity_shape(
             model_type=model_type,
             identity_model=identity_model,
@@ -332,33 +330,14 @@ def prepare_identity_shape(
     vertex_map: Int[Array, "Va"] | None,
     xp: Any,
 ) -> tuple[Float[Array, "B Vt 3"] | None, Float[Array, "B Va 3"] | None]:
-    if model_type == "mhr":
-        assert num_scale_params is not None
-        rest_shape = mhr_identity.shape(
-            identity_model=identity_model,
-            identity=identity,
-            scale_params=scale_params,
-            num_scale_params=num_scale_params,
-            xp=xp,
-        )
-    elif model_type == "anny":
-        rest_shape = anny_identity.shape(
-            identity_model=identity_model,
-            identity=identity,
-            xp=xp,
-        )
-    elif model_type == "smpl":
-        rest_shape = smpl_identity.shape(
-            identity_model=identity_model,
-            identity=identity,
-            xp=xp,
-        )
-    else:
-        rest_shape = smplx_identity.shape(
-            identity_model=identity_model,
-            identity=identity,
-            xp=xp,
-        )
+    rest_shape = identities.shape(
+        model_type=model_type,
+        identity_model=identity_model,
+        identity=identity,
+        scale_params=scale_params,
+        num_scale_params=num_scale_params,
+        xp=xp,
+    )
 
     rest_shape = apply_rigid_transform(
         rest_shape,

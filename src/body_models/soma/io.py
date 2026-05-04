@@ -563,7 +563,8 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     cache_file = _correctives_cache_file(asset_dir)
     if cache_file.exists():
         with np.load(cache_file, allow_pickle=False) as data:
-            assert not bool(data["use_tanh"][0])
+            if bool(data["use_tanh"][0]):
+                raise ValueError(f"Unsupported SOMA corrective cache with tanh activation: {cache_file}")
             return SomaCorrectives(
                 corrective_bindpose=np.asarray(data["bindpose"], dtype=np.float32).copy(),
                 corrective_W1=np.asarray(data["W1"], dtype=np.float32).copy(),
@@ -574,7 +575,8 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
 
     checkpoint_path = asset_dir / SOMA_CORRECTIVES_ASSET
     ckpt = _load_sparse_checkpoint_numpy(checkpoint_path)
-    assert not bool(ckpt["use_tanh"])
+    if bool(ckpt["use_tanh"]):
+        raise ValueError(f"Unsupported SOMA corrective checkpoint with tanh activation: {checkpoint_path}")
 
     W1_sparse = cast(_SparseCoo, ckpt["W1"])
     W2_sparse = cast(_SparseCoo, ckpt["W2"])

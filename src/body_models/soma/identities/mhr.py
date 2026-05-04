@@ -17,7 +17,8 @@ class MHRIdentity:
 
 def prepare(transfer: SomaIdentityTransfer) -> tuple[MHRIdentity, SomaIdentityTransfer]:
     model_path = get_identity_model_path("mhr")
-    assert model_path is not None
+    if model_path is None:
+        raise ValueError("SOMA model_type='mhr' requires a configured MHR model path.")
     return MHRIdentity(model_path=model_path), transfer
 
 
