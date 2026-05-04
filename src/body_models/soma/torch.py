@@ -97,8 +97,8 @@ class SOMA(BodyModel, nn.Module):
         data = load_model_data(resolved_path)
         self._weights = data
 
-        mean_full = data.mean
-        shapedirs_full = data.shapedirs
+        mean_full = data.mean_full
+        shapedirs_full = data.shapedirs_full
         faces = data.faces
         skin_weights_full = data.skin_weights_full
 
@@ -119,16 +119,20 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("shapedirs_full", torch.as_tensor(shapedirs_full))
         self.register_buffer("shapedirs_active", torch.as_tensor(shapedirs_active))
         self.register_buffer("eigenvalues", torch.as_tensor(data.eigenvalues))
-        self.register_buffer("bind_shape_full", torch.as_tensor(data.bind_shape))
+        self.register_buffer("bind_shape_full", torch.as_tensor(data.bind_shape_full))
         self.register_buffer("bind_pose_world", torch.as_tensor(data.bind_pose_world))
         self.register_buffer("bind_pose_local", torch.as_tensor(data.bind_pose_local))
         self.register_buffer("t_pose_world", torch.as_tensor(data.t_pose_world))
         self.register_buffer("joint_regressor", torch.as_tensor(data.joint_regressor))
-        self.register_buffer("corrective_bindpose", torch.as_tensor(data.corrective_bindpose))
-        self.register_buffer("corrective_W1", torch.as_tensor(data.corrective_W1))
-        self.register_buffer("corrective_W2_rows", torch.as_tensor(data.corrective_W2_rows, dtype=torch.int64))
-        self.register_buffer("corrective_W2_cols", torch.as_tensor(data.corrective_W2_cols, dtype=torch.int64))
-        self.register_buffer("corrective_W2_values", torch.as_tensor(data.corrective_W2_values))
+        self.register_buffer("corrective_bindpose", torch.as_tensor(data.correctives.corrective_bindpose))
+        self.register_buffer("corrective_W1", torch.as_tensor(data.correctives.corrective_W1))
+        self.register_buffer(
+            "corrective_W2_rows", torch.as_tensor(data.correctives.corrective_W2_rows, dtype=torch.int64)
+        )
+        self.register_buffer(
+            "corrective_W2_cols", torch.as_tensor(data.correctives.corrective_W2_cols, dtype=torch.int64)
+        )
+        self.register_buffer("corrective_W2_values", torch.as_tensor(data.correctives.corrective_W2_values))
         self.register_buffer("_skin_weights_full", torch.as_tensor(skin_weights_full))
         self.register_buffer("_skin_weights_active", torch.as_tensor(skin_weights_active))
         self.register_buffer("_faces", torch.as_tensor(np.asarray(faces, dtype=np.int64)))
@@ -138,14 +142,14 @@ class SOMA(BodyModel, nn.Module):
 
         self._corrective_use_tanh = data.corrective_use_tanh
         self.parents = list(data.parents)
-        self._parents_full = data.joint_parents_full.tolist()
-        self._joint_children_full = data.joint_children_full
-        self._skinned_vertex_indices_full = data.skinned_vertex_indices_full
+        self._parents_full = data.topology.parents_full
+        self._joint_children_full = data.topology.joint_children_full
+        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
         self.register_buffer("_parents_full_index", torch.as_tensor(self._parents_full, dtype=torch.int64))
-        self.register_buffer("_joint_children_indices_full", torch.as_tensor(data.joint_children_indices_full))
+        self.register_buffer("_joint_children_indices_full", torch.as_tensor(data.topology.joint_children_indices_full))
         self.register_buffer(
             "_skinned_vertex_indices_full_index",
-            torch.as_tensor(data.skinned_vertex_indices_full_index),
+            torch.as_tensor(data.topology.skinned_vertex_indices_full_index),
         )
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data.joint_names)
@@ -279,12 +283,12 @@ class SOMA(BodyModel, nn.Module):
     def _kernel_data(self):
         return core.prepare_data(
             self._weights,
-            mean=self.mean_full,
+            mean_full=self.mean_full,
             mean_active=self.mean_active,
-            shapedirs=self.shapedirs_full,
+            shapedirs_full=self.shapedirs_full,
             shapedirs_active=self.shapedirs_active,
             eigenvalues=self.eigenvalues,
-            bind_shape=self.bind_shape_full,
+            bind_shape_full=self.bind_shape_full,
             bind_pose_world=self.bind_pose_world,
             bind_pose_local=self.bind_pose_local,
             t_pose_world=self.t_pose_world,

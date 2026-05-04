@@ -9,6 +9,7 @@ import numpy as np
 from jaxtyping import Float
 from scipy import sparse
 
+from ..io import SomaCorrectives
 from . import core
 
 Array = Any
@@ -29,7 +30,7 @@ prepare_identity = core.prepare_identity
 
 
 @dataclass(frozen=True)
-class SomaScipyCorrectives(core.SomaCorrectives):
+class SomaScipyCorrectives(SomaCorrectives):
     corrective_W2: Any
 
 
@@ -84,17 +85,17 @@ def linear_blend_skinning(
 def prepare_data(weights, **kwargs):
     corrective_W2 = sparse.csr_matrix(
         (
-            weights.corrective_W2_values,
-            (weights.corrective_W2_rows, weights.corrective_W2_cols),
+            weights.correctives.corrective_W2_values,
+            (weights.correctives.corrective_W2_rows, weights.correctives.corrective_W2_cols),
         ),
-        shape=(weights.corrective_W1.shape[1], weights.mean.shape[0] * 3),
+        shape=(weights.correctives.corrective_W1.shape[1], weights.mean_full.shape[0] * 3),
     )
     correctives = SomaScipyCorrectives(
-        corrective_bindpose=weights.corrective_bindpose,
-        corrective_W1=weights.corrective_W1,
-        corrective_W2_rows=weights.corrective_W2_rows,
-        corrective_W2_cols=weights.corrective_W2_cols,
-        corrective_W2_values=weights.corrective_W2_values,
+        corrective_bindpose=weights.correctives.corrective_bindpose,
+        corrective_W1=weights.correctives.corrective_W1,
+        corrective_W2_rows=weights.correctives.corrective_W2_rows,
+        corrective_W2_cols=weights.correctives.corrective_W2_cols,
+        corrective_W2_values=weights.correctives.corrective_W2_values,
         corrective_W2=corrective_W2,
     )
     prepared = core.prepare_data(weights, **kwargs)

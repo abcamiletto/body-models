@@ -48,34 +48,49 @@ class _SparseCoo:
 
 
 @dataclass(frozen=True)
-class SomaWeights:
-    mean: Float[np.ndarray, "Vf 3"]
-    shapedirs: Float[np.ndarray, "S Vf 3"]
-    eigenvalues: Float[np.ndarray, "S"]
-    faces: Int[np.ndarray, "F 3"]
-    bind_shape: Float[np.ndarray, "Vf 3"]
-    bind_pose_world: Float[np.ndarray, "Jf 4 4"]
-    bind_pose_local: Float[np.ndarray, "Jf 4 4"]
-    t_pose_world: Float[np.ndarray, "Jf 4 4"]
-    t_pose_local: Float[np.ndarray, "Jf 4 4"]
-    joint_parents_full: Int[np.ndarray, "Jf"]
-    joint_names_full: list[str]
-    joint_regressor: Float[np.ndarray, "Jf Vf"]
-    skin_weights_full: Float[np.ndarray, "Vf Jf"]
-    facial_inner_vertices: Int[np.ndarray, "Va"]
-    skinned_vertex_indices_full: list[list[int]]
-    skinned_vertex_indices_full_index: Int[np.ndarray, "Jf K"]
-    joint_children_full: list[list[int]]
-    joint_children_indices_full: Int[np.ndarray, "Jf C"]
-    kinematic_fronts_full: list[Front]
-    joint_names: list[str]
-    parents: list[int]
+class SomaCorrectives:
     corrective_bindpose: Float[np.ndarray, "Jf 3 3"]
     corrective_W1: Float[np.ndarray, "D K"]
     corrective_W2_rows: Int[np.ndarray, "NNZ"]
     corrective_W2_cols: Int[np.ndarray, "NNZ"]
     corrective_W2_values: Float[np.ndarray, "NNZ"]
+
+
+@dataclass(frozen=True)
+class SomaTopology:
+    parents_full: list[int]
+    parents_full_index: Int[np.ndarray, "Jf"]
+    joint_children_full: list[list[int]]
+    joint_children_indices_full: Int[np.ndarray, "Jf C"]
+    skinned_vertex_indices_full: list[list[int]]
+    skinned_vertex_indices_full_index: Int[np.ndarray, "Jf K"]
+    kinematic_fronts_full: list[Front]
+
+
+@dataclass(frozen=True)
+class SomaWeights:
+    mean_full: Float[np.ndarray, "Vf 3"]
+    mean_active: Float[np.ndarray, "Va 3"]
+    shapedirs_full: Float[np.ndarray, "S Vf 3"]
+    shapedirs_active: Float[np.ndarray, "S Va 3"]
+    eigenvalues: Float[np.ndarray, "S"]
+    bind_shape_full: Float[np.ndarray, "Vf 3"]
+    bind_pose_world: Float[np.ndarray, "Jf 4 4"]
+    bind_pose_local: Float[np.ndarray, "Jf 4 4"]
+    t_pose_world: Float[np.ndarray, "Jf 4 4"]
+    t_pose_local: Float[np.ndarray, "Jf 4 4"]
+    joint_regressor: Float[np.ndarray, "Jf Vf"]
+    skin_weights_full: Float[np.ndarray, "Vf Jf"]
+    skin_weights_active: Float[np.ndarray, "Va Jf"]
+    faces: Int[np.ndarray, "F 3"]
+    vertex_map: Int[np.ndarray, "Va"] | None
+    facial_inner_vertices: Int[np.ndarray, "Va"]
+    topology: SomaTopology
+    correctives: SomaCorrectives
     corrective_use_tanh: bool
+    joint_names_full: list[str]
+    joint_names: list[str]
+    parents: list[int]
 
 
 @dataclass(frozen=True)
@@ -730,26 +745,34 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
         for joint_index in range(skin_weights.shape[1])
     ]
 
+    parents_full = joint_parents_full.astype(np.int64).tolist()
     return {
-        "mean": mean,
-        "shapedirs": shapedirs,
+        "mean_full": mean,
+        "mean_active": mean,
+        "shapedirs_full": shapedirs,
+        "shapedirs_active": shapedirs,
         "eigenvalues": eigenvalues,
         "faces": faces,
-        "bind_shape": bind_shape,
+        "bind_shape_full": bind_shape,
         "bind_pose_world": bind_pose_world,
         "bind_pose_local": bind_pose_local,
         "t_pose_world": t_pose_world,
         "t_pose_local": t_pose_local,
-        "joint_parents_full": joint_parents_full,
         "joint_names_full": joint_names_full,
         "joint_regressor": joint_regressor,
         "skin_weights_full": skin_weights,
+        "skin_weights_active": skin_weights,
+        "vertex_map": None,
         "facial_inner_vertices": facial_inner,
-        "skinned_vertex_indices_full": skinned_vertex_indices_full,
-        "skinned_vertex_indices_full_index": _pad_indices(skinned_vertex_indices_full),
-        "joint_children_full": joint_children_full,
-        "joint_children_indices_full": _pad_indices(joint_children_full),
-        "kinematic_fronts_full": compute_kinematic_fronts(joint_parents_full),
+        "topology": SomaTopology(
+            parents_full=parents_full,
+            parents_full_index=np.asarray(parents_full, dtype=np.int64),
+            joint_children_full=joint_children_full,
+            joint_children_indices_full=_pad_indices(joint_children_full),
+            skinned_vertex_indices_full=skinned_vertex_indices_full,
+            skinned_vertex_indices_full_index=_pad_indices(skinned_vertex_indices_full),
+            kinematic_fronts_full=compute_kinematic_fronts(joint_parents_full),
+        ),
         "joint_names": joint_names_full[1:],
         "parents": public_parents,
     }
@@ -768,10 +791,12 @@ def load_model_data(model_path: Path) -> SomaWeights:
     correctives = _load_pose_correctives_weights(model_path)
     return SomaWeights(
         **_load_model_data_cached(str(model_path)),
-        corrective_bindpose=correctives["bindpose"],
-        corrective_W1=correctives["W1"],
-        corrective_W2_rows=correctives["W2_rows"],
-        corrective_W2_cols=correctives["W2_cols"],
-        corrective_W2_values=correctives["W2_values"],
+        correctives=SomaCorrectives(
+            corrective_bindpose=correctives["bindpose"],
+            corrective_W1=correctives["W1"],
+            corrective_W2_rows=correctives["W2_rows"],
+            corrective_W2_cols=correctives["W2_cols"],
+            corrective_W2_values=correctives["W2_values"],
+        ),
         corrective_use_tanh=correctives["use_tanh"],
     )

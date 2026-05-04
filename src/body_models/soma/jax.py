@@ -65,8 +65,8 @@ class SOMA(BodyModel, nnx.Module):
         data = load_model_data(resolved_path)
         self._weights = data
 
-        mean_full = data.mean
-        shapedirs_full = data.shapedirs
+        mean_full = data.mean_full
+        shapedirs_full = data.shapedirs_full
         faces = data.faces
         skin_weights_full = data.skin_weights_full
 
@@ -87,16 +87,16 @@ class SOMA(BodyModel, nnx.Module):
         self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full))
         self.shapedirs_active = nnx.Variable(jnp.asarray(shapedirs_active))
         self.eigenvalues = nnx.Variable(jnp.asarray(data.eigenvalues))
-        self.bind_shape_full = nnx.Variable(jnp.asarray(data.bind_shape))
+        self.bind_shape_full = nnx.Variable(jnp.asarray(data.bind_shape_full))
         self.bind_pose_world = nnx.Variable(jnp.asarray(data.bind_pose_world))
         self.bind_pose_local = nnx.Variable(jnp.asarray(data.bind_pose_local))
         self.t_pose_world = nnx.Variable(jnp.asarray(data.t_pose_world))
         self.joint_regressor = nnx.Variable(jnp.asarray(data.joint_regressor))
-        self.corrective_bindpose = nnx.Variable(jnp.asarray(data.corrective_bindpose))
-        self.corrective_W1 = nnx.Variable(jnp.asarray(data.corrective_W1))
-        self.corrective_W2_rows = nnx.Variable(jnp.asarray(data.corrective_W2_rows))
-        self.corrective_W2_cols = nnx.Variable(jnp.asarray(data.corrective_W2_cols))
-        self.corrective_W2_values = nnx.Variable(jnp.asarray(data.corrective_W2_values))
+        self.corrective_bindpose = nnx.Variable(jnp.asarray(data.correctives.corrective_bindpose))
+        self.corrective_W1 = nnx.Variable(jnp.asarray(data.correctives.corrective_W1))
+        self.corrective_W2_rows = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_rows))
+        self.corrective_W2_cols = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_cols))
+        self.corrective_W2_values = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_values))
         self._corrective_use_tanh = data.corrective_use_tanh
         self._skin_weights_full = nnx.Variable(jnp.asarray(skin_weights_full))
         self._skin_weights_active = nnx.Variable(jnp.asarray(skin_weights_active))
@@ -106,12 +106,14 @@ class SOMA(BodyModel, nnx.Module):
         self._identity_source_to_soma_rotation = nnx.Variable(jnp.eye(3, dtype=self.mean_full[...].dtype))
 
         self.parents = list(data.parents)
-        self._parents_full = data.joint_parents_full.tolist()
-        self._joint_children_full = data.joint_children_full
-        self._skinned_vertex_indices_full = data.skinned_vertex_indices_full
+        self._parents_full = data.topology.parents_full
+        self._joint_children_full = data.topology.joint_children_full
+        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
         self._parents_full_index = nnx.Variable(jnp.asarray(self._parents_full))
-        self._joint_children_indices_full = nnx.Variable(jnp.asarray(data.joint_children_indices_full))
-        self._skinned_vertex_indices_full_index = nnx.Variable(jnp.asarray(data.skinned_vertex_indices_full_index))
+        self._joint_children_indices_full = nnx.Variable(jnp.asarray(data.topology.joint_children_indices_full))
+        self._skinned_vertex_indices_full_index = nnx.Variable(
+            jnp.asarray(data.topology.skinned_vertex_indices_full_index)
+        )
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data.joint_names)
 
@@ -241,12 +243,12 @@ class SOMA(BodyModel, nnx.Module):
     def _kernel_data(self):
         return core.prepare_data(
             self._weights,
-            mean=self.mean_full[...],
+            mean_full=self.mean_full[...],
             mean_active=self.mean_active[...],
-            shapedirs=self.shapedirs_full[...],
+            shapedirs_full=self.shapedirs_full[...],
             shapedirs_active=self.shapedirs_active[...],
             eigenvalues=self.eigenvalues[...],
-            bind_shape=self.bind_shape_full[...],
+            bind_shape_full=self.bind_shape_full[...],
             bind_pose_world=self.bind_pose_world[...],
             bind_pose_local=self.bind_pose_local[...],
             t_pose_world=self.t_pose_world[...],

@@ -108,8 +108,8 @@ class SOMA(BodyModel):
         data = load_model_data(resolved_path)
         self._weights = data
 
-        mean_full = data.mean
-        shapedirs_full = data.shapedirs
+        mean_full = data.mean_full
+        shapedirs_full = data.shapedirs_full
         faces = data.faces
         skin_weights_full = data.skin_weights_full
 
@@ -130,16 +130,16 @@ class SOMA(BodyModel):
         self.shapedirs_full = shapedirs_full
         self.shapedirs_active = np.asarray(shapedirs_active, dtype=np.float32)
         self.eigenvalues = data.eigenvalues
-        self.bind_shape_full = data.bind_shape
+        self.bind_shape_full = data.bind_shape_full
         self.bind_pose_world = data.bind_pose_world
         self.bind_pose_local = data.bind_pose_local
         self.t_pose_world = data.t_pose_world
         self.joint_regressor = data.joint_regressor
-        self.corrective_bindpose = np.asarray(data.corrective_bindpose, dtype=np.float32)
-        self.corrective_W1 = np.asarray(data.corrective_W1, dtype=np.float32)
-        self.corrective_W2_rows = np.asarray(data.corrective_W2_rows, dtype=np.int64)
-        self.corrective_W2_cols = np.asarray(data.corrective_W2_cols, dtype=np.int64)
-        self.corrective_W2_values = np.asarray(data.corrective_W2_values, dtype=np.float32)
+        self.corrective_bindpose = np.asarray(data.correctives.corrective_bindpose, dtype=np.float32)
+        self.corrective_W1 = np.asarray(data.correctives.corrective_W1, dtype=np.float32)
+        self.corrective_W2_rows = np.asarray(data.correctives.corrective_W2_rows, dtype=np.int64)
+        self.corrective_W2_cols = np.asarray(data.correctives.corrective_W2_cols, dtype=np.int64)
+        self.corrective_W2_values = np.asarray(data.correctives.corrective_W2_values, dtype=np.float32)
         self._corrective_use_tanh = data.corrective_use_tanh
         self._skin_weights_full = skin_weights_full
         self._skin_weights_active = np.asarray(skin_weights_active, dtype=np.float32)
@@ -149,12 +149,12 @@ class SOMA(BodyModel):
         self._identity_source_to_soma_rotation = np.eye(3, dtype=np.float32)
 
         self.parents = list(data.parents)
-        self._parents_full = data.joint_parents_full.tolist()
-        self._joint_children_full = data.joint_children_full
-        self._skinned_vertex_indices_full = data.skinned_vertex_indices_full
+        self._parents_full = data.topology.parents_full
+        self._joint_children_full = data.topology.joint_children_full
+        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
         self._parents_full_index = np.asarray(self._parents_full, dtype=np.int64)
-        self._joint_children_indices_full = data.joint_children_indices_full
-        self._skinned_vertex_indices_full_index = data.skinned_vertex_indices_full_index
+        self._joint_children_indices_full = data.topology.joint_children_indices_full
+        self._skinned_vertex_indices_full_index = data.topology.skinned_vertex_indices_full_index
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
         self._joint_names = list(data.joint_names)
         self._data = self._prepare_kernel_data()
