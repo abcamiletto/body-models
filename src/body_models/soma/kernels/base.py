@@ -1059,13 +1059,3 @@ def _apply_global_transform_transforms(
     if translation is not None:
         global_T = common.set(global_T, (slice(None), slice(None, 3), 3), translation, xp=xp)
     return xp.einsum("bij,bnjk->bnik", global_T, transforms)
-
-
-@dataclass(frozen=True)
-class SomaOps:
-    prepare_identity_shape: Any = prepare_identity_shape
-    fit_rigid_transform: Any = fit_rigid_transform
-    resolve_identity_inputs: Any = resolve_identity_inputs
-
-
-ops = SomaOps()

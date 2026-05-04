@@ -333,7 +333,7 @@ class SOMA(BodyModel, nn.Module):
             identity = torch.full(
                 (1, self.identity_dim), self._default_identity_value, device=ref.device, dtype=ref.dtype
             )
-        identity, scale_params = core.ops.resolve_identity_inputs(
+        identity, scale_params = core.resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
@@ -344,7 +344,7 @@ class SOMA(BodyModel, nn.Module):
         )
         if self.model_type == "soma":
             return identity, None, None
-        rest_shape, rest_shape_active = core.ops.prepare_identity_shape(
+        rest_shape, rest_shape_active = core.prepare_identity_shape(
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity=identity,
@@ -378,7 +378,7 @@ class SOMA(BodyModel, nn.Module):
             simplify=1.0,
         )
         source_vertices = torch.as_tensor(transfer_data["source_vertices"], dtype=self.mean_full.dtype)
-        rotation, translation = core.ops.fit_rigid_transform(
+        rotation, translation = core.fit_rigid_transform(
             identity_model.template_vertices,
             source_vertices,
             xp=torch,

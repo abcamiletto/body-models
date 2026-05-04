@@ -4,6 +4,10 @@ import torch
 
 from . import base
 
+fit_rigid_transform = base.fit_rigid_transform
+prepare_identity_shape = base.prepare_identity_shape
+resolve_identity_inputs = base.resolve_identity_inputs
+
 
 class SomaTorchData(base.SomaData):
     def apply_pose_correctives(self, pose_rot_full, use_tanh: bool, *, xp):
@@ -28,6 +32,3 @@ class SomaTorchData(base.SomaData):
 
 def prepare_data(**data):
     return SomaTorchData.from_kernel_data(data)
-
-
-ops = base.SomaOps()

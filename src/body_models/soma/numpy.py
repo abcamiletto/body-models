@@ -369,7 +369,7 @@ class SOMA(BodyModel):
     ) -> tuple[Float[np.ndarray, "B I"], Float[np.ndarray, "B K"] | None]:
         if identity is None:
             identity = np.full((1, self.identity_dim), self._default_identity_value, dtype=ref.dtype)
-        return self._kernel.ops.resolve_identity_inputs(
+        return self._kernel.resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
@@ -386,7 +386,7 @@ class SOMA(BodyModel):
     ) -> tuple[Float[np.ndarray, "B V 3"] | None, Float[np.ndarray, "B V 3"] | None]:
         if self.model_type == "soma":
             return None, None
-        return self._kernel.ops.prepare_identity_shape(
+        return self._kernel.prepare_identity_shape(
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity=identity,
@@ -419,7 +419,7 @@ class SOMA(BodyModel):
             simplify=1.0,
         )
         source_vertices = np.asarray(transfer_data["source_vertices"], dtype=np.float32)
-        rotation, translation = self._kernel.ops.fit_rigid_transform(
+        rotation, translation = self._kernel.fit_rigid_transform(
             identity_model.template_vertices,
             source_vertices,
             xp=np,

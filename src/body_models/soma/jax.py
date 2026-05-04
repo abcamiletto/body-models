@@ -291,7 +291,7 @@ class SOMA(BodyModel, nnx.Module):
     ]:
         if identity is None:
             identity = jnp.full((1, self.identity_dim), self._default_identity_value, dtype=ref.dtype)
-        identity, scale_params = core.ops.resolve_identity_inputs(
+        identity, scale_params = core.resolve_identity_inputs(
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
@@ -302,7 +302,7 @@ class SOMA(BodyModel, nnx.Module):
         )
         if self.model_type == "soma":
             return identity, None, None
-        rest_shape, rest_shape_active = core.ops.prepare_identity_shape(
+        rest_shape, rest_shape_active = core.prepare_identity_shape(
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity=identity,
@@ -336,7 +336,7 @@ class SOMA(BodyModel, nnx.Module):
             simplify=1.0,
         )
         source_vertices = jnp.asarray(transfer_data["source_vertices"])
-        rotation, translation = core.ops.fit_rigid_transform(
+        rotation, translation = core.fit_rigid_transform(
             identity_model.template_vertices[...],
             source_vertices,
             xp=jnp,

@@ -13,6 +13,10 @@ from . import base
 
 Array = Any
 
+fit_rigid_transform = base.fit_rigid_transform
+prepare_identity_shape = base.prepare_identity_shape
+resolve_identity_inputs = base.resolve_identity_inputs
+
 
 @dataclass(frozen=True)
 class SomaScipyCorrectives(base.SomaCorrectives):
@@ -76,6 +80,3 @@ def prepare_data(**data):
     )
     data = data | {"skin_weights_active": sparse.csr_matrix(data["skin_weights_active"])}
     return SomaScipyData.from_kernel_data_and_correctives(data, correctives)
-
-
-ops = base.SomaOps()
