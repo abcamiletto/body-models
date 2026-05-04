@@ -22,7 +22,6 @@ from .io import (
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
-    load_pose_correctives_weights,
     simplify_mesh,
 )
 import body_models.soma.backend.core as soma_base
@@ -96,7 +95,7 @@ class SOMA(BodyModel, nn.Module):
         self.match_warp = match_warp
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
-        corrective_weights = load_pose_correctives_weights(resolved_path)
+        self._weights = data
 
         mean_full = data.mean
         shapedirs_full = data.shapedirs
@@ -125,11 +124,11 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("bind_pose_local", torch.as_tensor(data.bind_pose_local))
         self.register_buffer("t_pose_world", torch.as_tensor(data.t_pose_world))
         self.register_buffer("joint_regressor", torch.as_tensor(data.joint_regressor))
-        self.register_buffer("corrective_bindpose", torch.as_tensor(corrective_weights["bindpose"]))
-        self.register_buffer("corrective_W1", torch.as_tensor(corrective_weights["W1"]))
-        self.register_buffer("corrective_W2_rows", torch.as_tensor(corrective_weights["W2_rows"], dtype=torch.int64))
-        self.register_buffer("corrective_W2_cols", torch.as_tensor(corrective_weights["W2_cols"], dtype=torch.int64))
-        self.register_buffer("corrective_W2_values", torch.as_tensor(corrective_weights["W2_values"]))
+        self.register_buffer("corrective_bindpose", torch.as_tensor(data.corrective_bindpose))
+        self.register_buffer("corrective_W1", torch.as_tensor(data.corrective_W1))
+        self.register_buffer("corrective_W2_rows", torch.as_tensor(data.corrective_W2_rows, dtype=torch.int64))
+        self.register_buffer("corrective_W2_cols", torch.as_tensor(data.corrective_W2_cols, dtype=torch.int64))
+        self.register_buffer("corrective_W2_values", torch.as_tensor(data.corrective_W2_values))
         self.register_buffer("_skin_weights_full", torch.as_tensor(skin_weights_full))
         self.register_buffer("_skin_weights_active", torch.as_tensor(skin_weights_active))
         self.register_buffer("_faces", torch.as_tensor(np.asarray(faces, dtype=np.int64)))
@@ -137,7 +136,7 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("_identity_internal_to_source_translation", torch.zeros(3, dtype=self.mean_full.dtype))
         self.register_buffer("_identity_source_to_soma_rotation", torch.eye(3, dtype=self.mean_full.dtype))
 
-        self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
+        self._corrective_use_tanh = data.corrective_use_tanh
         self.parents = list(data.parents)
         self._parents_full = data.joint_parents_full.tolist()
         self._joint_children_full = data.joint_children_full
@@ -279,32 +278,30 @@ class SOMA(BodyModel, nn.Module):
 
     def _kernel_data(self):
         return core.prepare_data(
-            mean_full=self.mean_full,
+            self._weights,
+            mean=self.mean_full,
             mean_active=self.mean_active,
-            shapedirs_full=self.shapedirs_full,
+            shapedirs=self.shapedirs_full,
             shapedirs_active=self.shapedirs_active,
             eigenvalues=self.eigenvalues,
-            bind_shape_full=self.bind_shape_full,
+            bind_shape=self.bind_shape_full,
             bind_pose_world=self.bind_pose_world,
             bind_pose_local=self.bind_pose_local,
             t_pose_world=self.t_pose_world,
             joint_regressor=self.joint_regressor,
-            corrective_bindpose=self.corrective_bindpose,
-            corrective_W1=self.corrective_W1,
-            corrective_W2_rows=self.corrective_W2_rows,
-            corrective_W2_cols=self.corrective_W2_cols,
-            corrective_W2_values=self.corrective_W2_values,
             skin_weights_full=self._skin_weights_full,
             skin_weights_active=self._skin_weights_active,
             faces=self._faces,
             vertex_map=self._vertex_map,
             parents_full=self._parents_full,
             parents_full_index=self._parents_full_index,
-            joint_children_full=self._joint_children_full,
             joint_children_indices_full=self._joint_children_indices_full,
-            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
             skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index,
-            kinematic_fronts_full=self._kinematic_fronts_full,
+            corrective_bindpose=self.corrective_bindpose,
+            corrective_W1=self.corrective_W1,
+            corrective_W2_rows=self.corrective_W2_rows,
+            corrective_W2_cols=self.corrective_W2_cols,
+            corrective_W2_values=self.corrective_W2_values,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:

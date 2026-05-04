@@ -12,6 +12,7 @@ from ...anny import core as anny_core
 from ... import common
 from ...common import get_namespace
 from ...rotations import RotationType
+from ..io import SomaWeights
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -52,7 +53,7 @@ class LinearIdentityData:
 
 
 @dataclass(frozen=True)
-class SomaData:
+class SomaNumpyWeights:
     mean_full: Any
     mean_active: Any
     shapedirs_full: Any
@@ -71,48 +72,74 @@ class SomaData:
     correctives: SomaCorrectives
 
 
-def prepare_data(**data) -> SomaData:
+def prepare_data(
+    weights: SomaWeights,
+    *,
+    mean: Any = None,
+    mean_active: Any,
+    shapedirs: Any = None,
+    shapedirs_active: Any,
+    eigenvalues: Any = None,
+    bind_shape: Any = None,
+    bind_pose_world: Any = None,
+    bind_pose_local: Any = None,
+    t_pose_world: Any = None,
+    joint_regressor: Any = None,
+    skin_weights_full: Any = None,
+    skin_weights_active: Any,
+    faces: Any,
+    vertex_map: Any,
+    parents_full: list[int] | None = None,
+    parents_full_index: Any,
+    joint_children_indices_full: Any = None,
+    skinned_vertex_indices_full_index: Any = None,
+    corrective_bindpose: Any = None,
+    corrective_W1: Any = None,
+    corrective_W2_rows: Any = None,
+    corrective_W2_cols: Any = None,
+    corrective_W2_values: Any = None,
+) -> SomaNumpyWeights:
     correctives = SomaCorrectives(
-        corrective_bindpose=data["corrective_bindpose"],
-        corrective_W1=data["corrective_W1"],
-        corrective_W2_rows=data["corrective_W2_rows"],
-        corrective_W2_cols=data["corrective_W2_cols"],
-        corrective_W2_values=data["corrective_W2_values"],
+        corrective_bindpose=weights.corrective_bindpose if corrective_bindpose is None else corrective_bindpose,
+        corrective_W1=weights.corrective_W1 if corrective_W1 is None else corrective_W1,
+        corrective_W2_rows=weights.corrective_W2_rows if corrective_W2_rows is None else corrective_W2_rows,
+        corrective_W2_cols=weights.corrective_W2_cols if corrective_W2_cols is None else corrective_W2_cols,
+        corrective_W2_values=weights.corrective_W2_values if corrective_W2_values is None else corrective_W2_values,
     )
-    return _prepare_data(data, correctives)
-
-
-def _prepare_data(data: dict[str, Any], correctives: SomaCorrectives) -> SomaData:
-    return SomaData(
-        mean_full=data["mean_full"],
-        mean_active=data["mean_active"],
-        shapedirs_full=data["shapedirs_full"],
-        shapedirs_active=data["shapedirs_active"],
-        eigenvalues=data["eigenvalues"],
-        bind_shape_full=data["bind_shape_full"],
-        bind_pose_world=data["bind_pose_world"],
-        bind_pose_local=data["bind_pose_local"],
-        t_pose_world=data["t_pose_world"],
-        joint_regressor=data["joint_regressor"],
-        skin_weights_full=data["skin_weights_full"],
-        skin_weights_active=data["skin_weights_active"],
-        faces=data["faces"],
-        vertex_map=data["vertex_map"],
+    return SomaNumpyWeights(
+        mean_full=weights.mean if mean is None else mean,
+        mean_active=mean_active,
+        shapedirs_full=weights.shapedirs if shapedirs is None else shapedirs,
+        shapedirs_active=shapedirs_active,
+        eigenvalues=weights.eigenvalues if eigenvalues is None else eigenvalues,
+        bind_shape_full=weights.bind_shape if bind_shape is None else bind_shape,
+        bind_pose_world=weights.bind_pose_world if bind_pose_world is None else bind_pose_world,
+        bind_pose_local=weights.bind_pose_local if bind_pose_local is None else bind_pose_local,
+        t_pose_world=weights.t_pose_world if t_pose_world is None else t_pose_world,
+        joint_regressor=weights.joint_regressor if joint_regressor is None else joint_regressor,
+        skin_weights_full=weights.skin_weights_full if skin_weights_full is None else skin_weights_full,
+        skin_weights_active=skin_weights_active,
+        faces=faces,
+        vertex_map=vertex_map,
         topology=SomaTopology(
-            parents_full=data["parents_full"],
-            parents_full_index=data["parents_full_index"],
-            joint_children_full=data["joint_children_full"],
-            joint_children_indices_full=data["joint_children_indices_full"],
-            skinned_vertex_indices_full=data["skinned_vertex_indices_full"],
-            skinned_vertex_indices_full_index=data["skinned_vertex_indices_full_index"],
-            kinematic_fronts_full=data["kinematic_fronts_full"],
+            parents_full=weights.joint_parents_full.tolist() if parents_full is None else parents_full,
+            parents_full_index=parents_full_index,
+            joint_children_full=weights.joint_children_full,
+            joint_children_indices_full=weights.joint_children_indices_full
+            if joint_children_indices_full is None
+            else joint_children_indices_full,
+            skinned_vertex_indices_full=weights.skinned_vertex_indices_full,
+            skinned_vertex_indices_full_index=weights.skinned_vertex_indices_full_index
+            if skinned_vertex_indices_full_index is None
+            else skinned_vertex_indices_full_index,
+            kinematic_fronts_full=weights.kinematic_fronts_full,
         ),
         correctives=correctives,
     )
 
 
 def prepare_identity(
-    data: SomaData,
+    data: SomaNumpyWeights,
     *,
     model_type: str,
     identity_model: Any,
@@ -200,7 +227,7 @@ def prepare_identity(
 
 
 def forward_vertices(
-    data: SomaData,
+    data: SomaNumpyWeights,
     identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
@@ -237,7 +264,7 @@ def forward_vertices(
 
 
 def _forward_vertices_with(
-    data: SomaData,
+    data: SomaNumpyWeights,
     identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
@@ -320,7 +347,7 @@ def _forward_vertices_with(
 
 
 def forward_skeleton(
-    data: SomaData,
+    data: SomaNumpyWeights,
     identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rest_shape_full: Float[Array, "B|1 V 3"] | None = None,
@@ -383,7 +410,7 @@ def forward_skeleton(
 
 
 def prepare_identity_state(
-    data: SomaData,
+    data: SomaNumpyWeights,
     identity: Float[Array, "B|1 S"] | None,
     rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
     rest_shape_active: Float[Array, "B|1 Va 3"] | None,
@@ -712,7 +739,7 @@ def pose_mesh_from_oriented_pose(
 
 
 def apply_pose_correctives(
-    data: SomaData,
+    data: SomaNumpyWeights,
     pose_rot_full: Float[Array, "B J 3 3"],
     use_tanh: bool,
     *,

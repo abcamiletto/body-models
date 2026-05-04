@@ -22,7 +22,6 @@ from .io import (
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
-    load_pose_correctives_weights,
     simplify_mesh,
 )
 import body_models.soma.backend.core as soma_base
@@ -64,7 +63,7 @@ class SOMA(BodyModel, nnx.Module):
         self.match_warp = match_warp
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
-        corrective_weights = load_pose_correctives_weights(resolved_path)
+        self._weights = data
 
         mean_full = data.mean
         shapedirs_full = data.shapedirs
@@ -93,12 +92,12 @@ class SOMA(BodyModel, nnx.Module):
         self.bind_pose_local = nnx.Variable(jnp.asarray(data.bind_pose_local))
         self.t_pose_world = nnx.Variable(jnp.asarray(data.t_pose_world))
         self.joint_regressor = nnx.Variable(jnp.asarray(data.joint_regressor))
-        self.corrective_bindpose = nnx.Variable(jnp.asarray(corrective_weights["bindpose"]))
-        self.corrective_W1 = nnx.Variable(jnp.asarray(corrective_weights["W1"]))
-        self.corrective_W2_rows = nnx.Variable(jnp.asarray(corrective_weights["W2_rows"]))
-        self.corrective_W2_cols = nnx.Variable(jnp.asarray(corrective_weights["W2_cols"]))
-        self.corrective_W2_values = nnx.Variable(jnp.asarray(corrective_weights["W2_values"]))
-        self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
+        self.corrective_bindpose = nnx.Variable(jnp.asarray(data.corrective_bindpose))
+        self.corrective_W1 = nnx.Variable(jnp.asarray(data.corrective_W1))
+        self.corrective_W2_rows = nnx.Variable(jnp.asarray(data.corrective_W2_rows))
+        self.corrective_W2_cols = nnx.Variable(jnp.asarray(data.corrective_W2_cols))
+        self.corrective_W2_values = nnx.Variable(jnp.asarray(data.corrective_W2_values))
+        self._corrective_use_tanh = data.corrective_use_tanh
         self._skin_weights_full = nnx.Variable(jnp.asarray(skin_weights_full))
         self._skin_weights_active = nnx.Variable(jnp.asarray(skin_weights_active))
         self._faces = nnx.Variable(jnp.asarray(np.asarray(faces, dtype=np.int64)))
@@ -241,32 +240,30 @@ class SOMA(BodyModel, nnx.Module):
 
     def _kernel_data(self):
         return core.prepare_data(
-            mean_full=self.mean_full[...],
+            self._weights,
+            mean=self.mean_full[...],
             mean_active=self.mean_active[...],
-            shapedirs_full=self.shapedirs_full[...],
+            shapedirs=self.shapedirs_full[...],
             shapedirs_active=self.shapedirs_active[...],
             eigenvalues=self.eigenvalues[...],
-            bind_shape_full=self.bind_shape_full[...],
+            bind_shape=self.bind_shape_full[...],
             bind_pose_world=self.bind_pose_world[...],
             bind_pose_local=self.bind_pose_local[...],
             t_pose_world=self.t_pose_world[...],
             joint_regressor=self.joint_regressor[...],
-            corrective_bindpose=self.corrective_bindpose[...],
-            corrective_W1=self.corrective_W1[...],
-            corrective_W2_rows=self.corrective_W2_rows[...],
-            corrective_W2_cols=self.corrective_W2_cols[...],
-            corrective_W2_values=self.corrective_W2_values[...],
             skin_weights_full=self._skin_weights_full[...],
             skin_weights_active=self._skin_weights_active[...],
             faces=self._faces[...],
             vertex_map=None if self._vertex_map is None else self._vertex_map[...],
             parents_full=self._parents_full,
             parents_full_index=self._parents_full_index[...],
-            joint_children_full=self._joint_children_full,
             joint_children_indices_full=self._joint_children_indices_full[...],
-            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
             skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index[...],
-            kinematic_fronts_full=self._kinematic_fronts_full,
+            corrective_bindpose=self.corrective_bindpose[...],
+            corrective_W1=self.corrective_W1[...],
+            corrective_W2_rows=self.corrective_W2_rows[...],
+            corrective_W2_cols=self.corrective_W2_cols[...],
+            corrective_W2_values=self.corrective_W2_values[...],
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:

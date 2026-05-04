@@ -28,13 +28,12 @@ SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
 
 __all__ = [
-    "SomaModelData",
+    "SomaWeights",
     "get_model_path",
     "download_model",
     "load_model_data",
     "get_identity_model_path",
     "load_identity_transfer_data",
-    "load_pose_correctives_weights",
     "compute_kinematic_fronts",
     "simplify_mesh",
 ]
@@ -49,7 +48,7 @@ class _SparseCoo:
 
 
 @dataclass(frozen=True)
-class SomaModelData:
+class SomaWeights:
     mean: Float[np.ndarray, "Vf 3"]
     shapedirs: Float[np.ndarray, "S Vf 3"]
     eigenvalues: Float[np.ndarray, "S"]
@@ -71,6 +70,12 @@ class SomaModelData:
     kinematic_fronts_full: list[Front]
     joint_names: list[str]
     parents: list[int]
+    corrective_bindpose: Float[np.ndarray, "Jf 3 3"]
+    corrective_W1: Float[np.ndarray, "D K"]
+    corrective_W2_rows: Int[np.ndarray, "NNZ"]
+    corrective_W2_cols: Int[np.ndarray, "NNZ"]
+    corrective_W2_values: Float[np.ndarray, "NNZ"]
+    corrective_use_tanh: bool
 
 
 @dataclass(frozen=True)
@@ -501,7 +506,7 @@ def _dense_from_sparse(sparse: _SparseCoo) -> np.ndarray:
     return dense
 
 
-def load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
+def _load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
     """Load SOMA pose-corrective weights in backend-agnostic form."""
     cache_file = _correctives_cache_file(asset_dir)
     if cache_file.exists():
@@ -757,6 +762,16 @@ def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
     return out
 
 
-def load_model_data(model_path: Path) -> SomaModelData:
+def load_model_data(model_path: Path) -> SomaWeights:
     """Load SOMA model data from disk."""
-    return SomaModelData(**_load_model_data_cached(str(Path(model_path).resolve())))
+    model_path = Path(model_path).resolve()
+    correctives = _load_pose_correctives_weights(model_path)
+    return SomaWeights(
+        **_load_model_data_cached(str(model_path)),
+        corrective_bindpose=correctives["bindpose"],
+        corrective_W1=correctives["W1"],
+        corrective_W2_rows=correctives["W2_rows"],
+        corrective_W2_cols=correctives["W2_cols"],
+        corrective_W2_values=correctives["W2_values"],
+        corrective_use_tanh=correctives["use_tanh"],
+    )

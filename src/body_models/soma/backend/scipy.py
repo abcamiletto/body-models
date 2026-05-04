@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -81,18 +81,25 @@ def linear_blend_skinning(
     return out
 
 
-def prepare_data(**data):
+def prepare_data(weights, **kwargs):
     corrective_W2 = sparse.csr_matrix(
-        (data["corrective_W2_values"], (data["corrective_W2_rows"], data["corrective_W2_cols"])),
-        shape=(data["corrective_W1"].shape[1], data["mean_full"].shape[0] * 3),
+        (
+            weights.corrective_W2_values,
+            (weights.corrective_W2_rows, weights.corrective_W2_cols),
+        ),
+        shape=(weights.corrective_W1.shape[1], weights.mean.shape[0] * 3),
     )
     correctives = SomaScipyCorrectives(
-        corrective_bindpose=data["corrective_bindpose"],
-        corrective_W1=data["corrective_W1"],
-        corrective_W2_rows=data["corrective_W2_rows"],
-        corrective_W2_cols=data["corrective_W2_cols"],
-        corrective_W2_values=data["corrective_W2_values"],
+        corrective_bindpose=weights.corrective_bindpose,
+        corrective_W1=weights.corrective_W1,
+        corrective_W2_rows=weights.corrective_W2_rows,
+        corrective_W2_cols=weights.corrective_W2_cols,
+        corrective_W2_values=weights.corrective_W2_values,
         corrective_W2=corrective_W2,
     )
-    prepared_data = {**data, "skin_weights_active": sparse.csr_matrix(data["skin_weights_active"])}
-    return core._prepare_data(prepared_data, correctives)
+    prepared = core.prepare_data(weights, **kwargs)
+    return replace(
+        prepared,
+        skin_weights_active=sparse.csr_matrix(kwargs["skin_weights_active"]),
+        correctives=correctives,
+    )
