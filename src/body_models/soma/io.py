@@ -689,8 +689,9 @@ def _load_or_build_joint_position_regressor(
 
 
 @lru_cache(maxsize=None)
-def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
+def _load_model_data_cached(model_dir: str) -> SomaWeights:
     asset_dir = Path(model_dir)
+    correctives = _load_pose_correctives_weights(asset_dir)
     with np.load(asset_dir / SOMA_CORE_ASSET, allow_pickle=False) as data:
         mean = np.asarray(data["mean"], dtype=np.float32)
         num_vertices = mean.shape[0]
@@ -737,25 +738,24 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
     ]
 
     parents_full = joint_parents_full.astype(np.int64).tolist()
-    return {
-        "mean_full": mean,
-        "mean_active": mean,
-        "shapedirs_full": shapedirs,
-        "shapedirs_active": shapedirs,
-        "eigenvalues": eigenvalues,
-        "faces": faces,
-        "bind_shape_full": bind_shape,
-        "bind_pose_world": bind_pose_world,
-        "bind_pose_local": bind_pose_local,
-        "t_pose_world": t_pose_world,
-        "t_pose_local": t_pose_local,
-        "joint_names_full": joint_names_full,
-        "joint_regressor": joint_regressor,
-        "skin_weights_full": skin_weights,
-        "skin_weights_active": skin_weights,
-        "vertex_map": None,
-        "facial_inner_vertices": facial_inner,
-        "topology": SomaTopology(
+    return SomaWeights(
+        mean_full=mean,
+        mean_active=mean,
+        shapedirs_full=shapedirs,
+        shapedirs_active=shapedirs,
+        eigenvalues=eigenvalues,
+        bind_shape_full=bind_shape,
+        bind_pose_world=bind_pose_world,
+        bind_pose_local=bind_pose_local,
+        t_pose_world=t_pose_world,
+        t_pose_local=t_pose_local,
+        joint_regressor=joint_regressor,
+        skin_weights_full=skin_weights,
+        skin_weights_active=skin_weights,
+        faces=faces,
+        vertex_map=None,
+        facial_inner_vertices=facial_inner,
+        topology=SomaTopology(
             parents_full=parents_full,
             joint_children_full=joint_children_full,
             joint_children_indices_full=_pad_indices(joint_children_full),
@@ -763,7 +763,9 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
             skinned_vertex_indices_full_index=_pad_indices(skinned_vertex_indices_full),
             kinematic_fronts_full=compute_kinematic_fronts(joint_parents_full),
         ),
-    }
+        correctives=correctives,
+        joint_names_full=joint_names_full,
+    )
 
 
 def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
@@ -776,8 +778,4 @@ def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
 def load_model_data(model_path: Path) -> SomaWeights:
     """Load SOMA model data from disk."""
     model_path = Path(model_path).resolve()
-    correctives = _load_pose_correctives_weights(model_path)
-    return SomaWeights(
-        **_load_model_data_cached(str(model_path)),
-        correctives=correctives,
-    )
+    return _load_model_data_cached(str(model_path))
