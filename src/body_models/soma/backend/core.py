@@ -111,6 +111,94 @@ def _prepare_data(data: dict[str, Any], correctives: SomaCorrectives) -> SomaDat
     )
 
 
+def prepare_identity(
+    data: SomaData,
+    *,
+    model_type: str,
+    identity_model: Any,
+    identity: Float[Array, "B|1 I"] | None,
+    scale_params: Float[Array, "B|1 K"] | None,
+    batch_size: int,
+    identity_dim: int,
+    default_identity_value: float,
+    num_scale_params: int | None,
+    identity_internal_to_source_rotation: Float[Array, "3 3"],
+    identity_internal_to_source_translation: Float[Array, "3"],
+    identity_source_to_soma_rotation: Float[Array, "3 3"],
+    identity_source_scale: float,
+    identity_output_scale: float,
+    identity_source_tetrahedra: Int[Array, "Fs 4"] | None,
+    identity_face_ids: Int[Array, "Vt"] | None,
+    identity_bary_coords: Float[Array, "Vt 4"] | None,
+    identity_unknown_ids: Int[Array, "U"] | None,
+    identity_anchor_ids: Int[Array, "A"] | None,
+    identity_solve_matrix: Float[Array, "U U"] | None,
+    identity_anchor_matrix: Float[Array, "U A"] | None,
+    identity_rhs_base: Float[Array, "U 3"] | None,
+    match_warp: bool,
+    ref: Array,
+    xp: Any,
+) -> tuple[
+    Float[Array, "B I"],
+    Float[Array, "B Vf 3"],
+    Float[Array, "B Va 3"],
+    Float[Array, "B Jf 4 4"],
+]:
+    if identity is None:
+        identity = common.zeros_as(ref, shape=(1, identity_dim), xp=xp) + default_identity_value
+    identity, scale_params = resolve_identity_inputs(
+        identity=identity,
+        scale_params=scale_params,
+        batch_size=batch_size,
+        identity_dim=identity_dim,
+        num_scale_params=num_scale_params,
+        ref=ref,
+        xp=xp,
+    )
+    rest_shape_full = None
+    rest_shape_active = None
+    if model_type != "soma":
+        assert identity_source_tetrahedra is not None
+        assert identity_face_ids is not None
+        assert identity_bary_coords is not None
+        assert identity_unknown_ids is not None
+        assert identity_anchor_ids is not None
+        assert identity_solve_matrix is not None
+        assert identity_anchor_matrix is not None
+        assert identity_rhs_base is not None
+        rest_shape_full, rest_shape_active = prepare_identity_shape(
+            model_type=model_type,
+            identity_model=identity_model,
+            identity=identity,
+            scale_params=scale_params,
+            num_scale_params=num_scale_params,
+            identity_internal_to_source_rotation=identity_internal_to_source_rotation,
+            identity_internal_to_source_translation=identity_internal_to_source_translation,
+            identity_source_to_soma_rotation=identity_source_to_soma_rotation,
+            identity_source_scale=identity_source_scale,
+            identity_output_scale=identity_output_scale,
+            identity_source_tetrahedra=identity_source_tetrahedra,
+            identity_face_ids=identity_face_ids,
+            identity_bary_coords=identity_bary_coords,
+            identity_unknown_ids=identity_unknown_ids,
+            identity_anchor_ids=identity_anchor_ids,
+            identity_solve_matrix=identity_solve_matrix,
+            identity_anchor_matrix=identity_anchor_matrix,
+            identity_rhs_base=identity_rhs_base,
+            vertex_map=data.vertex_map,
+            xp=xp,
+        )
+    rest_shape_full, rest_shape_active, world_bind_pose_fit = prepare_identity_state(
+        data=data,
+        identity=identity,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
+        match_warp=match_warp,
+        xp=xp,
+    )
+    return identity, rest_shape_full, rest_shape_active, world_bind_pose_fit
+
+
 def forward_vertices(
     data: SomaData,
     identity: Float[Array, "B|1 S"] | None,

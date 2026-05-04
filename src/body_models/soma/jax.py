@@ -122,6 +122,15 @@ class SOMA(BodyModel, nnx.Module):
         self._default_identity_value = spec.default_identity_value
         self._identity_source_scale = spec.source_scale
         self._identity_output_scale = spec.output_scale
+        self._identity_model = None
+        self._identity_source_tetrahedra = nnx.Variable(jnp.empty((0, 4), dtype=jnp.int32))
+        self._identity_face_ids = nnx.Variable(jnp.empty((0,), dtype=jnp.int32))
+        self._identity_bary_coords = nnx.Variable(jnp.empty((0, 4), dtype=self.mean_full[...].dtype))
+        self._identity_unknown_ids = nnx.Variable(jnp.empty((0,), dtype=jnp.int32))
+        self._identity_anchor_ids = nnx.Variable(jnp.empty((0,), dtype=jnp.int32))
+        self._identity_solve_matrix = nnx.Variable(jnp.empty((0, 0), dtype=self.mean_full[...].dtype))
+        self._identity_anchor_matrix = nnx.Variable(jnp.empty((0, 0), dtype=self.mean_full[...].dtype))
+        self._identity_rhs_base = nnx.Variable(jnp.empty((0, 3), dtype=self.mean_full[...].dtype))
 
         if spec.asset_dir is None:
             return
@@ -177,7 +186,7 @@ class SOMA(BodyModel, nnx.Module):
         vertex_indices=None,
         apply_correctives: bool = True,
     ) -> Float[jax.Array, "B V 3"]:
-        identity, rest_shape_full, rest_shape_active = self._get_rest_shape(
+        identity, rest_shape_full, rest_shape_active, world_bind_pose_fit = self._prepare_identity(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -188,6 +197,7 @@ class SOMA(BodyModel, nnx.Module):
             pose=pose,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
+            world_bind_pose_fit=world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
@@ -209,7 +219,7 @@ class SOMA(BodyModel, nnx.Module):
         joint_indices=None,
         apply_correctives: bool = True,
     ) -> Float[jax.Array, "B 77 4 4"]:
-        identity, rest_shape_full, _rest_shape_active = self._get_rest_shape(
+        identity, rest_shape_full, _rest_shape_active, world_bind_pose_fit = self._prepare_identity(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -219,6 +229,7 @@ class SOMA(BodyModel, nnx.Module):
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
+            world_bind_pose_fit=world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
@@ -281,7 +292,7 @@ class SOMA(BodyModel, nnx.Module):
             params["scale_params"] = jnp.zeros((1, self.num_scale_params), dtype=dtype)
         return params
 
-    def _get_rest_shape(
+    def _prepare_identity(
         self,
         *,
         identity: Float[jax.Array, "B|1 I"] | None,
@@ -289,27 +300,19 @@ class SOMA(BodyModel, nnx.Module):
         ref: Float[jax.Array, "B ..."],
     ) -> tuple[
         Float[jax.Array, "B|1 I"] | None,
-        Float[jax.Array, "B V 3"] | None,
-        Float[jax.Array, "B V 3"] | None,
+        Float[jax.Array, "B V 3"],
+        Float[jax.Array, "B V 3"],
+        Float[jax.Array, "B J 4 4"],
     ]:
-        if identity is None:
-            identity = jnp.full((1, self.identity_dim), self._default_identity_value, dtype=ref.dtype)
-        identity, scale_params = core.resolve_identity_inputs(
-            identity=identity,
-            scale_params=scale_params,
-            batch_size=ref.shape[0],
-            identity_dim=self.identity_dim,
-            num_scale_params=self.num_scale_params,
-            ref=ref,
-            xp=jnp,
-        )
-        if self.model_type == "soma":
-            return identity, None, None
-        rest_shape, rest_shape_active = core.prepare_identity_shape(
+        return core.prepare_identity(
+            data=self._kernel_data(),
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity=identity,
             scale_params=scale_params,
+            batch_size=ref.shape[0],
+            identity_dim=self.identity_dim,
+            default_identity_value=self._default_identity_value,
             num_scale_params=self.num_scale_params,
             identity_internal_to_source_rotation=self._identity_internal_to_source_rotation[...],
             identity_internal_to_source_translation=self._identity_internal_to_source_translation[...],
@@ -324,10 +327,10 @@ class SOMA(BodyModel, nnx.Module):
             identity_solve_matrix=self._identity_solve_matrix[...],
             identity_anchor_matrix=self._identity_anchor_matrix[...],
             identity_rhs_base=self._identity_rhs_base[...],
-            vertex_map=None if self._vertex_map is None else self._vertex_map[...],
+            match_warp=self.match_warp,
+            ref=ref,
             xp=jnp,
         )
-        return identity, rest_shape, rest_shape_active
 
     def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> object:
         return nnx.data(MHR(model_path=get_identity_model_path("mhr"), simplify=1.0))

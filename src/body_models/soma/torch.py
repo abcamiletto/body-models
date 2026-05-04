@@ -59,14 +59,14 @@ class SOMA(BodyModel, nn.Module):
     _skin_weights_active: Float[Tensor, "Va 78"]
     _faces: Int[Tensor, "F 3"]
     _vertex_map: Int[Tensor, "Va"] | None
-    _identity_source_tetrahedra: Int[Tensor, "Fs 4"]
-    _identity_face_ids: Int[Tensor, "Vt"]
-    _identity_bary_coords: Float[Tensor, "Vt 4"]
-    _identity_unknown_ids: Int[Tensor, "U"]
-    _identity_anchor_ids: Int[Tensor, "A"]
-    _identity_solve_matrix: Float[Tensor, "U U"]
-    _identity_anchor_matrix: Float[Tensor, "U A"]
-    _identity_rhs_base: Float[Tensor, "U 3"]
+    _identity_source_tetrahedra: Int[Tensor, "Fs 4"] | None
+    _identity_face_ids: Int[Tensor, "Vt"] | None
+    _identity_bary_coords: Float[Tensor, "Vt 4"] | None
+    _identity_unknown_ids: Int[Tensor, "U"] | None
+    _identity_anchor_ids: Int[Tensor, "A"] | None
+    _identity_solve_matrix: Float[Tensor, "U U"] | None
+    _identity_anchor_matrix: Float[Tensor, "U A"] | None
+    _identity_rhs_base: Float[Tensor, "U 3"] | None
     _identity_internal_to_source_rotation: Float[Tensor, "3 3"]
     _identity_internal_to_source_translation: Float[Tensor, "3"]
     _identity_source_to_soma_rotation: Float[Tensor, "3 3"]
@@ -157,6 +157,15 @@ class SOMA(BodyModel, nn.Module):
         self._default_identity_value = spec.default_identity_value
         self._identity_source_scale = spec.source_scale
         self._identity_output_scale = spec.output_scale
+        self._identity_model = None
+        self.register_buffer("_identity_source_tetrahedra", None)
+        self.register_buffer("_identity_face_ids", None)
+        self.register_buffer("_identity_bary_coords", None)
+        self.register_buffer("_identity_unknown_ids", None)
+        self.register_buffer("_identity_anchor_ids", None)
+        self.register_buffer("_identity_solve_matrix", None)
+        self.register_buffer("_identity_anchor_matrix", None)
+        self.register_buffer("_identity_rhs_base", None)
 
         if spec.asset_dir is None:
             return
@@ -215,7 +224,7 @@ class SOMA(BodyModel, nn.Module):
         vertex_indices=None,
         apply_correctives: bool = True,
     ) -> Float[Tensor, "B V 3"]:
-        identity, rest_shape_full, rest_shape_active = self._get_rest_shape(
+        identity, rest_shape_full, rest_shape_active, world_bind_pose_fit = self._prepare_identity(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -226,6 +235,7 @@ class SOMA(BodyModel, nn.Module):
             pose=pose,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
+            world_bind_pose_fit=world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
@@ -247,7 +257,7 @@ class SOMA(BodyModel, nn.Module):
         joint_indices=None,
         apply_correctives: bool = True,
     ) -> Float[Tensor, "B 77 4 4"]:
-        identity, rest_shape_full, _rest_shape_active = self._get_rest_shape(
+        identity, rest_shape_full, _rest_shape_active, world_bind_pose_fit = self._prepare_identity(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
@@ -257,6 +267,7 @@ class SOMA(BodyModel, nn.Module):
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
+            world_bind_pose_fit=world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
@@ -325,33 +336,27 @@ class SOMA(BodyModel, nn.Module):
             params["scale_params"] = torch.zeros((1, self.num_scale_params), device=device, dtype=dtype)
         return params
 
-    def _get_rest_shape(
+    def _prepare_identity(
         self,
         *,
         identity: Float[Tensor, "B|1 I"] | None,
         scale_params: Float[Tensor, "B|1 K"] | None,
         ref: Float[Tensor, "B ..."],
-    ) -> tuple[Float[Tensor, "B|1 I"] | None, Float[Tensor, "B V 3"] | None, Float[Tensor, "B V 3"] | None]:
-        if identity is None:
-            identity = torch.full(
-                (1, self.identity_dim), self._default_identity_value, device=ref.device, dtype=ref.dtype
-            )
-        identity, scale_params = core.resolve_identity_inputs(
-            identity=identity,
-            scale_params=scale_params,
-            batch_size=ref.shape[0],
-            identity_dim=self.identity_dim,
-            num_scale_params=self.num_scale_params,
-            ref=ref,
-            xp=torch,
-        )
-        if self.model_type == "soma":
-            return identity, None, None
-        rest_shape, rest_shape_active = core.prepare_identity_shape(
+    ) -> tuple[
+        Float[Tensor, "B I"],
+        Float[Tensor, "B V 3"],
+        Float[Tensor, "B V 3"],
+        Float[Tensor, "B J 4 4"],
+    ]:
+        return core.prepare_identity(
+            data=self._kernel_data(),
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity=identity,
             scale_params=scale_params,
+            batch_size=ref.shape[0],
+            identity_dim=self.identity_dim,
+            default_identity_value=self._default_identity_value,
             num_scale_params=self.num_scale_params,
             identity_internal_to_source_rotation=self._identity_internal_to_source_rotation,
             identity_internal_to_source_translation=self._identity_internal_to_source_translation,
@@ -366,10 +371,10 @@ class SOMA(BodyModel, nn.Module):
             identity_solve_matrix=self._identity_solve_matrix,
             identity_anchor_matrix=self._identity_anchor_matrix,
             identity_rhs_base=self._identity_rhs_base,
-            vertex_map=self._vertex_map,
+            match_warp=self.match_warp,
+            ref=ref,
             xp=torch,
         )
-        return identity, rest_shape, rest_shape_active
 
     def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> MHR:
         return MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
