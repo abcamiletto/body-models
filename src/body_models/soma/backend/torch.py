@@ -9,7 +9,7 @@ forward_skeleton = core.forward_skeleton
 prepare_identity_shape = core.prepare_identity_shape
 prepare_identity_state = core.prepare_identity_state
 resolve_identity_inputs = core.resolve_identity_inputs
-SomaTorchData = core.SomaData
+prepare_data = core.prepare_data
 
 
 def forward_vertices(*args, **kwargs):
@@ -39,7 +39,3 @@ def apply_pose_correctives(data, pose_rot_full, use_tanh: bool, *, xp):
     out = torch.zeros((batch_size, data.mean_full.shape[0] * 3), dtype=z.dtype, device=z.device)
     index = xp.broadcast_to(correctives.corrective_W2_cols[None], contrib.shape)
     return out.scatter_add(1, index, contrib).reshape(batch_size, data.mean_full.shape[0], 3)
-
-
-def prepare_data(**data):
-    return core.prepare_data(**data)

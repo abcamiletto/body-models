@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import Any
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -71,27 +71,18 @@ class SomaData:
     correctives: SomaCorrectives
 
 
-LinearBlendSkinning = Callable[[Any, Array, Array, Array], Array]
-
-
-class ApplyPoseCorrectives(Protocol):
-    def __call__(self, data: Any, pose_rot_full: Array, use_tanh: bool, *, xp: Any) -> Array: ...
-
-
 def prepare_data(**data) -> SomaData:
-    return prepare_data_with_correctives(
-        correctives=SomaCorrectives(
-            corrective_bindpose=data["corrective_bindpose"],
-            corrective_W1=data["corrective_W1"],
-            corrective_W2_rows=data["corrective_W2_rows"],
-            corrective_W2_cols=data["corrective_W2_cols"],
-            corrective_W2_values=data["corrective_W2_values"],
-        ),
-        **data,
+    correctives = SomaCorrectives(
+        corrective_bindpose=data["corrective_bindpose"],
+        corrective_W1=data["corrective_W1"],
+        corrective_W2_rows=data["corrective_W2_rows"],
+        corrective_W2_cols=data["corrective_W2_cols"],
+        corrective_W2_values=data["corrective_W2_values"],
     )
+    return _prepare_data(data, correctives)
 
 
-def prepare_data_with_correctives(*, correctives: SomaCorrectives, **data) -> SomaData:
+def _prepare_data(data: dict[str, Any], correctives: SomaCorrectives) -> SomaData:
     return SomaData(
         mean_full=data["mean_full"],
         mean_active=data["mean_active"],
@@ -173,8 +164,8 @@ def _forward_vertices_with(
     match_warp: bool = True,
     *,
     xp: Any,
-    apply_pose_correctives_fn: ApplyPoseCorrectives,
-    linear_blend_skinning_fn: LinearBlendSkinning,
+    apply_pose_correctives_fn: Any,
+    linear_blend_skinning_fn: Any,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
@@ -596,7 +587,7 @@ def repose_to_bind_pose(
     bind_pose_local: Float[Array, "J 4 4"],
     kinematic_fronts: list[Front],
     parents_full_index: Int[Array, "J"],
-    linear_blend_skinning_fn: LinearBlendSkinning,
+    linear_blend_skinning_fn: Any,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     T_world = _repose_skeleton_to_bind_pose(
         xp=xp,
@@ -618,7 +609,7 @@ def pose_mesh_from_oriented_pose(
     kinematic_fronts: list[Front],
     parents_full_index: Int[Array, "Jf"],
     pose_rot_full: Float[Array, "B Jf 3 3"],
-    linear_blend_skinning_fn: LinearBlendSkinning,
+    linear_blend_skinning_fn: Any,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B Jf 4 4"]]:
     T_world = _pose_skeleton_from_oriented_pose(
         xp=xp,

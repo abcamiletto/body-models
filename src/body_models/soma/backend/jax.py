@@ -7,7 +7,7 @@ forward_skeleton = core.forward_skeleton
 prepare_identity_shape = core.prepare_identity_shape
 prepare_identity_state = core.prepare_identity_state
 resolve_identity_inputs = core.resolve_identity_inputs
-SomaJaxData = core.SomaData
+prepare_data = core.prepare_data
 
 
 def forward_vertices(*args, **kwargs):
@@ -36,7 +36,3 @@ def apply_pose_correctives(data, pose_rot_full, use_tanh: bool, *, xp):
     out = xp.zeros((batch_size, data.mean_full.shape[0] * 3), dtype=z.dtype)
     out = out.at[:, correctives.corrective_W2_cols].add(contrib)
     return out.reshape(batch_size, data.mean_full.shape[0], 3)
-
-
-def prepare_data(**data):
-    return core.prepare_data(**data)

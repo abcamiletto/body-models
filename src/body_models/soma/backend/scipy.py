@@ -87,4 +87,4 @@ def prepare_data(**data):
         corrective_W2=corrective_W2,
     )
     prepared_data = {**data, "skin_weights_active": sparse.csr_matrix(data["skin_weights_active"])}
-    return core.prepare_data_with_correctives(correctives=correctives, **prepared_data)
+    return core._prepare_data(prepared_data, correctives)
