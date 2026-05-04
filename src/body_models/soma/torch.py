@@ -1,5 +1,6 @@
 """PyTorch backend for SOMA model."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,6 @@ from ..smpl.torch import SMPL
 from ..smplx.torch import SMPLX
 from .io import (
     MODEL_TYPE_SPECS,
-    compute_kinematic_fronts,
     get_identity_model_path,
     get_model_path,
     load_identity_transfer_data,
@@ -39,25 +39,7 @@ class SOMA(BodyModel, nn.Module):
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
 
-    mean_full: Float[Tensor, "Vf 3"]
-    mean_active: Float[Tensor, "Va 3"]
-    shapedirs_full: Float[Tensor, "128 Vf 3"]
-    shapedirs_active: Float[Tensor, "128 Va 3"]
-    eigenvalues: Float[Tensor, "128"]
-    bind_shape_full: Float[Tensor, "Vf 3"]
-    bind_pose_world: Float[Tensor, "78 4 4"]
-    bind_pose_local: Float[Tensor, "78 4 4"]
-    t_pose_world: Float[Tensor, "78 4 4"]
-    joint_regressor: Float[Tensor, "78 Vf"]
-    corrective_bindpose: Float[Tensor, "78 3 3"]
-    corrective_W1: Float[Tensor, "D K"]
-    corrective_W2_rows: Int[Tensor, "NNZ"]
-    corrective_W2_cols: Int[Tensor, "NNZ"]
-    corrective_W2_values: Float[Tensor, "NNZ"]
-    _skin_weights_full: Float[Tensor, "Vf 78"]
-    _skin_weights_active: Float[Tensor, "Va 78"]
-    _faces: Int[Tensor, "F 3"]
-    _vertex_map: Int[Tensor, "Va"] | None
+    model_weights: core.SomaTorchWeights
     _identity_source_tetrahedra: Int[Tensor, "Fs 4"] | None
     _identity_face_ids: Int[Tensor, "Vt"] | None
     _identity_bary_coords: Float[Tensor, "Vt 4"] | None
@@ -106,78 +88,29 @@ class SOMA(BodyModel, nn.Module):
             mean_active, faces, vertex_map = simplify_mesh(mean_full, faces.astype(int), target_faces)
             shapedirs_active = shapedirs_full[:, vertex_map]
             skin_weights_active = skin_weights_full[vertex_map]
-            self.register_buffer("_vertex_map", torch.as_tensor(np.asarray(vertex_map, dtype=np.int64)))
+            vertex_map = np.asarray(vertex_map, dtype=np.int64)
         else:
             mean_active = mean_full
             shapedirs_active = shapedirs_full
             skin_weights_active = skin_weights_full
-            self._vertex_map = None
+            vertex_map = None
 
-        self.register_buffer("mean_full", torch.as_tensor(mean_full))
-        self.register_buffer("mean_active", torch.as_tensor(mean_active))
-        self.register_buffer("shapedirs_full", torch.as_tensor(shapedirs_full))
-        self.register_buffer("shapedirs_active", torch.as_tensor(shapedirs_active))
-        self.register_buffer("eigenvalues", torch.as_tensor(data.eigenvalues))
-        self.register_buffer("bind_shape_full", torch.as_tensor(data.bind_shape_full))
-        self.register_buffer("bind_pose_world", torch.as_tensor(data.bind_pose_world))
-        self.register_buffer("bind_pose_local", torch.as_tensor(data.bind_pose_local))
-        self.register_buffer("t_pose_world", torch.as_tensor(data.t_pose_world))
-        self.register_buffer("joint_regressor", torch.as_tensor(data.joint_regressor))
-        self.register_buffer("corrective_bindpose", torch.as_tensor(data.correctives.corrective_bindpose))
-        self.register_buffer("corrective_W1", torch.as_tensor(data.correctives.corrective_W1))
-        self.register_buffer(
-            "corrective_W2_rows", torch.as_tensor(data.correctives.corrective_W2_rows, dtype=torch.int64)
-        )
-        self.register_buffer(
-            "corrective_W2_cols", torch.as_tensor(data.correctives.corrective_W2_cols, dtype=torch.int64)
-        )
-        self.register_buffer("corrective_W2_values", torch.as_tensor(data.correctives.corrective_W2_values))
-        self.register_buffer("_skin_weights_full", torch.as_tensor(skin_weights_full))
-        self.register_buffer("_skin_weights_active", torch.as_tensor(skin_weights_active))
-        self.register_buffer("_faces", torch.as_tensor(np.asarray(faces, dtype=np.int64)))
-        self.register_buffer("_identity_internal_to_source_rotation", torch.eye(3, dtype=self.mean_full.dtype))
-        self.register_buffer("_identity_internal_to_source_translation", torch.zeros(3, dtype=self.mean_full.dtype))
-        self.register_buffer("_identity_source_to_soma_rotation", torch.eye(3, dtype=self.mean_full.dtype))
-
-        self._corrective_use_tanh = data.corrective_use_tanh
-        self.parents = list(data.parents)
-        self._parents_full = data.topology.parents_full
-        self._joint_children_full = data.topology.joint_children_full
-        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
-        self.register_buffer("_parents_full_index", torch.as_tensor(self._parents_full, dtype=torch.int64))
-        self.register_buffer("_joint_children_indices_full", torch.as_tensor(data.topology.joint_children_indices_full))
-        self.register_buffer(
-            "_skinned_vertex_indices_full_index",
-            torch.as_tensor(data.topology.skinned_vertex_indices_full_index),
-        )
-        self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data.joint_names)
-        self.model_weights = core.prepare_data(
+        weights = replace(
             data,
-            mean_full=self.mean_full,
-            mean_active=self.mean_active,
-            shapedirs_full=self.shapedirs_full,
-            shapedirs_active=self.shapedirs_active,
-            eigenvalues=self.eigenvalues,
-            bind_shape_full=self.bind_shape_full,
-            bind_pose_world=self.bind_pose_world,
-            bind_pose_local=self.bind_pose_local,
-            t_pose_world=self.t_pose_world,
-            joint_regressor=self.joint_regressor,
-            skin_weights_full=self._skin_weights_full,
-            skin_weights_active=self._skin_weights_active,
-            faces=self._faces,
-            vertex_map=self._vertex_map,
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index,
-            joint_children_indices_full=self._joint_children_indices_full,
-            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index,
-            corrective_bindpose=self.corrective_bindpose,
-            corrective_W1=self.corrective_W1,
-            corrective_W2_rows=self.corrective_W2_rows,
-            corrective_W2_cols=self.corrective_W2_cols,
-            corrective_W2_values=self.corrective_W2_values,
+            mean_active=np.asarray(mean_active, dtype=np.float32),
+            shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
+            skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
+            faces=np.asarray(faces, dtype=np.int64),
+            vertex_map=vertex_map,
         )
+        self.model_weights = core.prepare_data(weights)
+        dtype = self.model_weights.mean_full.dtype
+        self.register_buffer("_identity_internal_to_source_rotation", torch.eye(3, dtype=dtype))
+        self.register_buffer("_identity_internal_to_source_translation", torch.zeros(3, dtype=dtype))
+        self.register_buffer("_identity_source_to_soma_rotation", torch.eye(3, dtype=dtype))
+        self._corrective_use_tanh = data.corrective_use_tanh
+        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
+        self._joint_names = data.joint_names_full[1:]
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -219,7 +152,11 @@ class SOMA(BodyModel, nn.Module):
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
-        return self._faces
+        return self.model_weights.faces
+
+    @property
+    def mean_active(self) -> Float[Tensor, "Va 3"]:
+        return self.model_weights.mean_active
 
     @property
     def num_joints(self) -> int:
@@ -231,15 +168,15 @@ class SOMA(BodyModel, nn.Module):
 
     @property
     def num_vertices(self) -> int:
-        return int(self.mean_active.shape[0])
+        return int(self.model_weights.mean_active.shape[0])
 
     @property
     def skin_weights(self) -> Float[Tensor, "V J"]:
-        return self._skin_weights_active[:, 1:]
+        return self.model_weights.skin_weights_active[:, 1:]
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.mean_active * 0.01
+        return self.model_weights.mean_active * 0.01
 
     def forward_vertices(
         self,
@@ -306,7 +243,7 @@ class SOMA(BodyModel, nn.Module):
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
-        device = self.mean_active.device
+        device = self.model_weights.mean_active.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
         rot_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         params = {
@@ -383,7 +320,7 @@ class SOMA(BodyModel, nn.Module):
             all_phenotypes=False,
             simplify=1.0,
         )
-        source_vertices = torch.as_tensor(transfer_data["source_vertices"], dtype=self.mean_full.dtype)
+        source_vertices = torch.as_tensor(transfer_data["source_vertices"], dtype=self.model_weights.mean_full.dtype)
         rotation, translation = core.fit_rigid_transform(
             identity_model.template_vertices,
             source_vertices,
@@ -393,7 +330,7 @@ class SOMA(BodyModel, nn.Module):
         self._identity_internal_to_source_translation = translation
         self._identity_source_to_soma_rotation = torch.as_tensor(
             [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
-            dtype=self.mean_full.dtype,
+            dtype=self.model_weights.mean_full.dtype,
         )
         return soma_base.AnnyIdentityData(
             template_vertices=identity_model.template_vertices,

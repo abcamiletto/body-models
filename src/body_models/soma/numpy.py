@@ -1,6 +1,6 @@
 """NumPy backend for SOMA model."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -16,7 +16,6 @@ from ..smpl.numpy import SMPL
 from ..smplx.numpy import SMPLX
 from .io import (
     MODEL_TYPE_SPECS,
-    compute_kinematic_fronts,
     get_identity_model_path,
     get_model_path,
     load_identity_transfer_data,
@@ -47,25 +46,6 @@ class SOMA(BodyModel):
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
 
-    mean_full: Float[np.ndarray, "Vf 3"]
-    mean_active: Float[np.ndarray, "Va 3"]
-    shapedirs_full: Float[np.ndarray, "128 Vf 3"]
-    shapedirs_active: Float[np.ndarray, "128 Va 3"]
-    eigenvalues: Float[np.ndarray, "128"]
-    bind_shape_full: Float[np.ndarray, "Vf 3"]
-    bind_pose_world: Float[np.ndarray, "78 4 4"]
-    bind_pose_local: Float[np.ndarray, "78 4 4"]
-    t_pose_world: Float[np.ndarray, "78 4 4"]
-    joint_regressor: Float[np.ndarray, "78 Vf"]
-    corrective_bindpose: Float[np.ndarray, "78 3 3"]
-    corrective_W1: Float[np.ndarray, "D K"]
-    corrective_W2_rows: Int[np.ndarray, "NNZ"]
-    corrective_W2_cols: Int[np.ndarray, "NNZ"]
-    corrective_W2_values: Float[np.ndarray, "NNZ"]
-    _skin_weights_full: Float[np.ndarray, "Vf 78"]
-    _skin_weights_active: Float[np.ndarray, "Va 78"]
-    _faces: Int[np.ndarray, "F 3"]
-    _vertex_map: Int[np.ndarray, "Va"] | None
     _identity_source_tetrahedra: Int[np.ndarray, "Fs 4"] | None
     _identity_face_ids: Int[np.ndarray, "Vt"] | None
     _identity_bary_coords: Float[np.ndarray, "Vt 4"] | None
@@ -117,55 +97,29 @@ class SOMA(BodyModel):
             mean_active, faces, vertex_map = simplify_mesh(mean_full, faces.astype(int), target_faces)
             shapedirs_active = shapedirs_full[:, vertex_map]
             skin_weights_active = skin_weights_full[vertex_map]
-            self._vertex_map = np.asarray(vertex_map, dtype=np.int64)
+            vertex_map = np.asarray(vertex_map, dtype=np.int64)
         else:
             mean_active = mean_full
             shapedirs_active = shapedirs_full
             skin_weights_active = skin_weights_full
-            self._vertex_map = None
+            vertex_map = None
 
-        self.mean_full = mean_full
-        self.mean_active = np.asarray(mean_active, dtype=np.float32)
-        self.shapedirs_full = shapedirs_full
-        self.shapedirs_active = np.asarray(shapedirs_active, dtype=np.float32)
-        self.eigenvalues = data.eigenvalues
-        self.bind_shape_full = data.bind_shape_full
-        self.bind_pose_world = data.bind_pose_world
-        self.bind_pose_local = data.bind_pose_local
-        self.t_pose_world = data.t_pose_world
-        self.joint_regressor = data.joint_regressor
-        self.corrective_bindpose = np.asarray(data.correctives.corrective_bindpose, dtype=np.float32)
-        self.corrective_W1 = np.asarray(data.correctives.corrective_W1, dtype=np.float32)
-        self.corrective_W2_rows = np.asarray(data.correctives.corrective_W2_rows, dtype=np.int64)
-        self.corrective_W2_cols = np.asarray(data.correctives.corrective_W2_cols, dtype=np.int64)
-        self.corrective_W2_values = np.asarray(data.correctives.corrective_W2_values, dtype=np.float32)
         self._corrective_use_tanh = data.corrective_use_tanh
-        self._skin_weights_full = skin_weights_full
-        self._skin_weights_active = np.asarray(skin_weights_active, dtype=np.float32)
-        self._faces = np.asarray(faces, dtype=np.int64)
         self._identity_internal_to_source_rotation = np.eye(3, dtype=np.float32)
         self._identity_internal_to_source_translation = np.zeros(3, dtype=np.float32)
         self._identity_source_to_soma_rotation = np.eye(3, dtype=np.float32)
 
-        self.parents = list(data.parents)
-        self._parents_full = data.topology.parents_full
-        self._joint_children_full = data.topology.joint_children_full
-        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
-        self._parents_full_index = np.asarray(self._parents_full, dtype=np.int64)
-        self._joint_children_indices_full = data.topology.joint_children_indices_full
-        self._skinned_vertex_indices_full_index = data.topology.skinned_vertex_indices_full_index
-        self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data.joint_names)
-        self.model_weights = self._kernel.prepare_data(
+        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
+        self._joint_names = data.joint_names_full[1:]
+        weights = replace(
             data,
-            mean_active=self.mean_active,
-            shapedirs_active=self.shapedirs_active,
-            skin_weights_active=self._skin_weights_active,
-            faces=self._faces,
-            vertex_map=self._vertex_map,
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index,
+            mean_active=np.asarray(mean_active, dtype=np.float32),
+            shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
+            skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
+            faces=np.asarray(faces, dtype=np.int64),
+            vertex_map=vertex_map,
         )
+        self.model_weights = self._kernel.prepare_data(weights)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -204,7 +158,7 @@ class SOMA(BodyModel):
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
-        return self._faces
+        return self.model_weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -216,15 +170,15 @@ class SOMA(BodyModel):
 
     @property
     def num_vertices(self) -> int:
-        return self.mean_active.shape[0]
+        return self.model_weights.mean_active.shape[0]
 
     @property
     def skin_weights(self) -> Float[np.ndarray, "V J"]:
-        return self._skin_weights_active[:, 1:]
+        return self.model_weights.skin_weights_active[:, 1:]
 
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
-        return self.mean_active * 0.01
+        return self.model_weights.mean_active * 0.01
 
     def forward_vertices(
         self,

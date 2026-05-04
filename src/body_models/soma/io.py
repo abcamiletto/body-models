@@ -59,7 +59,6 @@ class SomaCorrectives:
 @dataclass(frozen=True)
 class SomaTopology:
     parents_full: list[int]
-    parents_full_index: Int[np.ndarray, "Jf"]
     joint_children_full: list[list[int]]
     joint_children_indices_full: Int[np.ndarray, "Jf C"]
     skinned_vertex_indices_full: list[list[int]]
@@ -89,8 +88,6 @@ class SomaWeights:
     correctives: SomaCorrectives
     corrective_use_tanh: bool
     joint_names_full: list[str]
-    joint_names: list[str]
-    parents: list[int]
 
 
 @dataclass(frozen=True)
@@ -738,7 +735,6 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
         vertex_ids_to_exclude=facial_inner,
     )
 
-    public_parents = (joint_parents_full[1:] - 1).astype(np.int64).tolist()
     joint_children_full = _get_joint_children_ids(joint_parents_full)
     skinned_vertex_indices_full = [
         np.where(skin_weights[:, joint_index] > 0.01)[0].astype(np.int64).tolist()
@@ -766,15 +762,12 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
         "facial_inner_vertices": facial_inner,
         "topology": SomaTopology(
             parents_full=parents_full,
-            parents_full_index=np.asarray(parents_full, dtype=np.int64),
             joint_children_full=joint_children_full,
             joint_children_indices_full=_pad_indices(joint_children_full),
             skinned_vertex_indices_full=skinned_vertex_indices_full,
             skinned_vertex_indices_full_index=_pad_indices(skinned_vertex_indices_full),
             kinematic_fronts_full=compute_kinematic_fronts(joint_parents_full),
         ),
-        "joint_names": joint_names_full[1:],
-        "parents": public_parents,
     }
 
 

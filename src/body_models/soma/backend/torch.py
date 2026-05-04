@@ -1,7 +1,10 @@
 """PyTorch SOMA backend."""
 
 import torch
+import torch.nn as nn
+from jaxtyping import Float, Int
 
+from ..io import SomaWeights
 from . import core
 
 __all__ = [
@@ -17,8 +20,92 @@ __all__ = [
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 linear_blend_skinning = core.linear_blend_skinning
-prepare_data = core.prepare_data
 prepare_identity = core.prepare_identity
+
+
+class SomaTorchCorrectives(nn.Module):
+    corrective_bindpose: Float[torch.Tensor, "Jf 3 3"]
+    corrective_W1: Float[torch.Tensor, "D K"]
+    corrective_W2_rows: Int[torch.Tensor, "NNZ"]
+    corrective_W2_cols: Int[torch.Tensor, "NNZ"]
+    corrective_W2_values: Float[torch.Tensor, "NNZ"]
+
+    def __init__(self, correctives):
+        super().__init__()
+        self.register_buffer("corrective_bindpose", torch.as_tensor(correctives.corrective_bindpose))
+        self.register_buffer("corrective_W1", torch.as_tensor(correctives.corrective_W1))
+        self.register_buffer("corrective_W2_rows", torch.as_tensor(correctives.corrective_W2_rows, dtype=torch.int64))
+        self.register_buffer("corrective_W2_cols", torch.as_tensor(correctives.corrective_W2_cols, dtype=torch.int64))
+        self.register_buffer("corrective_W2_values", torch.as_tensor(correctives.corrective_W2_values))
+
+
+class SomaTorchTopology(nn.Module):
+    joint_children_indices_full: Int[torch.Tensor, "Jf C"]
+    skinned_vertex_indices_full_index: Int[torch.Tensor, "Jf K"]
+
+    def __init__(self, topology):
+        super().__init__()
+        self.parents_full = topology.parents_full
+        self.joint_children_full = topology.joint_children_full
+        self.skinned_vertex_indices_full = topology.skinned_vertex_indices_full
+        self.kinematic_fronts_full = topology.kinematic_fronts_full
+        self.register_buffer("joint_children_indices_full", torch.as_tensor(topology.joint_children_indices_full))
+        self.register_buffer(
+            "skinned_vertex_indices_full_index",
+            torch.as_tensor(topology.skinned_vertex_indices_full_index),
+        )
+
+
+class SomaTorchWeights(nn.Module):
+    mean_full: Float[torch.Tensor, "Vf 3"]
+    mean_active: Float[torch.Tensor, "Va 3"]
+    shapedirs_full: Float[torch.Tensor, "S Vf 3"]
+    shapedirs_active: Float[torch.Tensor, "S Va 3"]
+    eigenvalues: Float[torch.Tensor, "S"]
+    bind_shape_full: Float[torch.Tensor, "Vf 3"]
+    bind_pose_world: Float[torch.Tensor, "Jf 4 4"]
+    bind_pose_local: Float[torch.Tensor, "Jf 4 4"]
+    t_pose_world: Float[torch.Tensor, "Jf 4 4"]
+    t_pose_local: Float[torch.Tensor, "Jf 4 4"]
+    joint_regressor: Float[torch.Tensor, "Jf Vf"]
+    skin_weights_full: Float[torch.Tensor, "Vf Jf"]
+    skin_weights_active: Float[torch.Tensor, "Va Jf"]
+    faces: Int[torch.Tensor, "F 3"]
+    facial_inner_vertices: Int[torch.Tensor, "Va"]
+    vertex_map: Int[torch.Tensor, "Va"] | None
+    topology: SomaTorchTopology
+    correctives: SomaTorchCorrectives
+
+    def __init__(self, weights):
+        super().__init__()
+        self.topology = SomaTorchTopology(weights.topology)
+        self.correctives = SomaTorchCorrectives(weights.correctives)
+        self.corrective_use_tanh = weights.corrective_use_tanh
+        self.joint_names_full = weights.joint_names_full
+
+        self.register_buffer("mean_full", torch.as_tensor(weights.mean_full))
+        self.register_buffer("mean_active", torch.as_tensor(weights.mean_active))
+        self.register_buffer("shapedirs_full", torch.as_tensor(weights.shapedirs_full))
+        self.register_buffer("shapedirs_active", torch.as_tensor(weights.shapedirs_active))
+        self.register_buffer("eigenvalues", torch.as_tensor(weights.eigenvalues))
+        self.register_buffer("bind_shape_full", torch.as_tensor(weights.bind_shape_full))
+        self.register_buffer("bind_pose_world", torch.as_tensor(weights.bind_pose_world))
+        self.register_buffer("bind_pose_local", torch.as_tensor(weights.bind_pose_local))
+        self.register_buffer("t_pose_world", torch.as_tensor(weights.t_pose_world))
+        self.register_buffer("t_pose_local", torch.as_tensor(weights.t_pose_local))
+        self.register_buffer("joint_regressor", torch.as_tensor(weights.joint_regressor))
+        self.register_buffer("skin_weights_full", torch.as_tensor(weights.skin_weights_full))
+        self.register_buffer("skin_weights_active", torch.as_tensor(weights.skin_weights_active))
+        self.register_buffer("faces", torch.as_tensor(weights.faces, dtype=torch.int64))
+        self.register_buffer("facial_inner_vertices", torch.as_tensor(weights.facial_inner_vertices, dtype=torch.int64))
+        self.register_buffer(
+            "vertex_map",
+            None if weights.vertex_map is None else torch.as_tensor(weights.vertex_map, dtype=torch.int64),
+        )
+
+
+def prepare_data(weights: SomaWeights) -> SomaTorchWeights:
+    return SomaTorchWeights(weights)
 
 
 def forward_vertices(*args, **kwargs):

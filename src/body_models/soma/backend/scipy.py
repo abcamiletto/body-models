@@ -82,7 +82,7 @@ def linear_blend_skinning(
     return out
 
 
-def prepare_data(weights, **kwargs):
+def prepare_data(weights):
     corrective_W2 = sparse.csr_matrix(
         (
             weights.correctives.corrective_W2_values,
@@ -98,9 +98,9 @@ def prepare_data(weights, **kwargs):
         corrective_W2_values=weights.correctives.corrective_W2_values,
         corrective_W2=corrective_W2,
     )
-    prepared = core.prepare_data(weights, **kwargs)
+    prepared = core.prepare_data(weights)
     return replace(
         prepared,
-        skin_weights_active=sparse.csr_matrix(kwargs["skin_weights_active"]),
+        skin_weights_active=sparse.csr_matrix(weights.skin_weights_active),
         correctives=correctives,
     )
