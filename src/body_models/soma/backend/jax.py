@@ -69,7 +69,7 @@ def forward_vertices(*args, **kwargs):
     )
 
 
-def apply_pose_correctives(data, pose_rot_full, use_tanh: bool, *, xp):
+def apply_pose_correctives(data, pose_rot_full, *, xp):
     correctives = data.correctives
     batch_size = pose_rot_full.shape[0]
     x = correctives.corrective_bindpose.swapaxes(-2, -1)[None] @ pose_rot_full
@@ -79,8 +79,6 @@ def apply_pose_correctives(data, pose_rot_full, use_tanh: bool, *, xp):
 
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
-    if use_tanh:
-        z = xp.tanh(z)
 
     contrib = z[:, correctives.corrective_W2_rows] * correctives.corrective_W2_values[None]
     out = xp.zeros((batch_size, data.mean_full.shape[0] * 3), dtype=z.dtype)

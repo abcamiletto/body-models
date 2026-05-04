@@ -86,7 +86,6 @@ class SomaWeights:
     facial_inner_vertices: Int[np.ndarray, "Va"]
     topology: SomaTopology
     correctives: SomaCorrectives
-    corrective_use_tanh: bool
     joint_names_full: list[str]
 
 
@@ -518,22 +517,23 @@ def _dense_from_sparse(sparse: _SparseCoo) -> np.ndarray:
     return dense
 
 
-def _load_pose_correctives_weights(asset_dir: Path) -> tuple[SomaCorrectives, bool]:
+def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     """Load SOMA pose-corrective weights in backend-agnostic form."""
     cache_file = _correctives_cache_file(asset_dir)
     if cache_file.exists():
         with np.load(cache_file, allow_pickle=False) as data:
-            correctives = SomaCorrectives(
+            assert not bool(data["use_tanh"][0])
+            return SomaCorrectives(
                 corrective_bindpose=np.asarray(data["bindpose"], dtype=np.float32).copy(),
                 corrective_W1=np.asarray(data["W1"], dtype=np.float32).copy(),
                 corrective_W2_rows=np.asarray(data["W2_rows"], dtype=np.int64).copy(),
                 corrective_W2_cols=np.asarray(data["W2_cols"], dtype=np.int64).copy(),
                 corrective_W2_values=np.asarray(data["W2_values"], dtype=np.float32).copy(),
             )
-            return correctives, bool(data["use_tanh"][0])
 
     checkpoint_path = asset_dir / SOMA_CORRECTIVES_ASSET
     ckpt = _load_sparse_checkpoint_numpy(checkpoint_path)
+    assert not bool(ckpt["use_tanh"])
 
     W1_sparse = cast(_SparseCoo, ckpt["W1"])
     W2_sparse = cast(_SparseCoo, ckpt["W2"])
@@ -557,8 +557,6 @@ def _load_pose_correctives_weights(asset_dir: Path) -> tuple[SomaCorrectives, bo
         W2_values = W2_values[keep] * scale[keep]
 
     num_vertices = W2_sparse.size[1] // 3
-    use_tanh = bool(ckpt["use_tanh"])
-
     np.savez_compressed(
         cache_file,
         bindpose=bindpose,
@@ -567,17 +565,16 @@ def _load_pose_correctives_weights(asset_dir: Path) -> tuple[SomaCorrectives, bo
         W2_cols=W2_cols,
         W2_values=W2_values,
         num_vertices=np.array([num_vertices], dtype=np.int64),
-        use_tanh=np.array([use_tanh], dtype=np.bool_),
+        use_tanh=np.array([False], dtype=np.bool_),
     )
 
-    correctives = SomaCorrectives(
+    return SomaCorrectives(
         corrective_bindpose=bindpose.copy(),
         corrective_W1=W1.copy(),
         corrective_W2_rows=W2_rows.copy(),
         corrective_W2_cols=W2_cols.copy(),
         corrective_W2_values=W2_values.copy(),
     )
-    return correctives, use_tanh
 
 
 def _get_joint_children_ids(parents: np.ndarray) -> list[list[int]]:
@@ -779,9 +776,8 @@ def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
 def load_model_data(model_path: Path) -> SomaWeights:
     """Load SOMA model data from disk."""
     model_path = Path(model_path).resolve()
-    correctives, corrective_use_tanh = _load_pose_correctives_weights(model_path)
+    correctives = _load_pose_correctives_weights(model_path)
     return SomaWeights(
         **_load_model_data_cached(str(model_path)),
         correctives=correctives,
-        corrective_use_tanh=corrective_use_tanh,
     )

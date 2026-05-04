@@ -90,7 +90,6 @@ class SOMA(BodyModel, nnx.Module):
             vertex_map=vertex_map,
         )
         self.model_weights = core.prepare_data(weights)
-        self._corrective_use_tanh = data.corrective_use_tanh
         dtype = self.model_weights.mean_full.dtype
         self._identity_internal_to_source_rotation = nnx.Variable(jnp.eye(3, dtype=dtype))
         self._identity_internal_to_source_translation = nnx.Variable(jnp.zeros(3, dtype=dtype))
@@ -184,7 +183,6 @@ class SOMA(BodyModel, nnx.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            corrective_use_tanh=self._corrective_use_tanh,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
             match_warp=self.match_warp,

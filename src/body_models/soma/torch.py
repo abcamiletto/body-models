@@ -108,7 +108,6 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("_identity_internal_to_source_rotation", torch.eye(3, dtype=dtype))
         self.register_buffer("_identity_internal_to_source_translation", torch.zeros(3, dtype=dtype))
         self.register_buffer("_identity_source_to_soma_rotation", torch.eye(3, dtype=dtype))
-        self._corrective_use_tanh = data.corrective_use_tanh
         self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
         self._joint_names = data.joint_names_full[1:]
 
@@ -204,7 +203,6 @@ class SOMA(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            corrective_use_tanh=self._corrective_use_tanh,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
             match_warp=self.match_warp,

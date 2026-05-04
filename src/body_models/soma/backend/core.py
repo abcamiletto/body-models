@@ -133,7 +133,6 @@ def forward_vertices(
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    corrective_use_tanh: bool = True,
     apply_correctives: bool = True,
     rotation_type: RotationType = "axis_angle",
     match_warp: bool = True,
@@ -150,7 +149,6 @@ def forward_vertices(
         global_rotation=global_rotation,
         global_translation=global_translation,
         vertex_indices=vertex_indices,
-        corrective_use_tanh=corrective_use_tanh,
         apply_correctives=apply_correctives,
         rotation_type=rotation_type,
         match_warp=match_warp,
@@ -170,7 +168,6 @@ def _forward_vertices_with(
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    corrective_use_tanh: bool = True,
     apply_correctives: bool = True,
     rotation_type: RotationType = "axis_angle",
     match_warp: bool = True,
@@ -218,7 +215,7 @@ def _forward_vertices_with(
             parents_full=topology.parents_full,
             linear_blend_skinning_fn=linear_blend_skinning_fn,
         )
-        corrective_offsets = apply_pose_correctives_fn(data, pose_rot_full, corrective_use_tanh, xp=xp)
+        corrective_offsets = apply_pose_correctives_fn(data, pose_rot_full, xp=xp)
         if data.vertex_map is not None:
             corrective_offsets = corrective_offsets[:, data.vertex_map]
         rest_shape_active = rest_shape_active + corrective_offsets
@@ -638,7 +635,6 @@ def pose_mesh_from_oriented_pose(
 def apply_pose_correctives(
     data: Any,
     pose_rot_full: Float[Array, "B J 3 3"],
-    use_tanh: bool,
     *,
     xp: Any,
 ) -> Float[Array, "B V 3"]:
@@ -652,8 +648,6 @@ def apply_pose_correctives(
 
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
-    if use_tanh:
-        z = xp.tanh(z)
 
     contrib = z[:, correctives.corrective_W2_rows] * correctives.corrective_W2_values[None]
     out = common.zeros_as(z, shape=(B, data.mean_full.shape[0] * 3), xp=xp)

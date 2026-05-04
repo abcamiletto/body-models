@@ -80,7 +80,6 @@ class SomaTorchWeights(nn.Module):
         super().__init__()
         self.topology = SomaTorchTopology(weights.topology)
         self.correctives = SomaTorchCorrectives(weights.correctives)
-        self.corrective_use_tanh = weights.corrective_use_tanh
         self.joint_names_full = weights.joint_names_full
 
         self.register_buffer("mean_full", torch.as_tensor(weights.mean_full))
@@ -117,7 +116,7 @@ def forward_vertices(*args, **kwargs):
     )
 
 
-def apply_pose_correctives(data, pose_rot_full, use_tanh: bool, *, xp):
+def apply_pose_correctives(data, pose_rot_full, *, xp):
     correctives = data.correctives
     batch_size = pose_rot_full.shape[0]
     x = correctives.corrective_bindpose.swapaxes(-2, -1)[None] @ pose_rot_full
@@ -128,8 +127,6 @@ def apply_pose_correctives(data, pose_rot_full, use_tanh: bool, *, xp):
 
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype, device=feat.device))
-    if use_tanh:
-        z = xp.tanh(z)
 
     contrib = z[:, correctives.corrective_W2_rows] * correctives.corrective_W2_values[None]
     out = torch.zeros((batch_size, data.mean_full.shape[0] * 3), dtype=z.dtype, device=z.device)

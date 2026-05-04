@@ -104,7 +104,6 @@ class SOMA(BodyModel):
             skin_weights_active = skin_weights_full
             vertex_map = None
 
-        self._corrective_use_tanh = data.corrective_use_tanh
         self._identity_internal_to_source_rotation = np.eye(3, dtype=np.float32)
         self._identity_internal_to_source_translation = np.zeros(3, dtype=np.float32)
         self._identity_source_to_soma_rotation = np.eye(3, dtype=np.float32)
@@ -208,7 +207,6 @@ class SOMA(BodyModel):
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            corrective_use_tanh=self._corrective_use_tanh,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
             match_warp=self.match_warp,

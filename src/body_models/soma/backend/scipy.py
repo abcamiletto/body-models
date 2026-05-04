@@ -46,7 +46,6 @@ def forward_vertices(*args, **kwargs):
 def apply_pose_correctives(
     data: Any,
     pose_rot_full: Float[Array, "B Jf 3 3"],
-    use_tanh: bool,
     *,
     xp: Any,
 ) -> Float[Array, "B V 3"]:
@@ -60,8 +59,6 @@ def apply_pose_correctives(
 
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
-    if use_tanh:
-        z = xp.tanh(z)
 
     return xp.asarray(z @ correctives.corrective_W2).reshape(batch_size, data.mean_full.shape[0], 3)
 
