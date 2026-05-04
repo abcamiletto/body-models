@@ -1,2 +1,1 @@
 """SOMA backend kernels."""
-

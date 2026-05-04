@@ -28,6 +28,7 @@ SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
 
 __all__ = [
+    "SomaModelData",
     "get_model_path",
     "download_model",
     "load_model_data",
@@ -45,6 +46,31 @@ class _SparseCoo:
     values: Float[np.ndarray, "NNZ"]
     size: tuple[int, ...]
     is_coalesced: bool
+
+
+@dataclass(frozen=True)
+class SomaModelData:
+    mean: Float[np.ndarray, "Vf 3"]
+    shapedirs: Float[np.ndarray, "S Vf 3"]
+    eigenvalues: Float[np.ndarray, "S"]
+    faces: Int[np.ndarray, "F 3"]
+    bind_shape: Float[np.ndarray, "Vf 3"]
+    bind_pose_world: Float[np.ndarray, "Jf 4 4"]
+    bind_pose_local: Float[np.ndarray, "Jf 4 4"]
+    t_pose_world: Float[np.ndarray, "Jf 4 4"]
+    t_pose_local: Float[np.ndarray, "Jf 4 4"]
+    joint_parents_full: Int[np.ndarray, "Jf"]
+    joint_names_full: list[str]
+    joint_regressor: Float[np.ndarray, "Jf Vf"]
+    skin_weights_full: Float[np.ndarray, "Vf Jf"]
+    facial_inner_vertices: Int[np.ndarray, "Va"]
+    skinned_vertex_indices_full: list[list[int]]
+    skinned_vertex_indices_full_index: Int[np.ndarray, "Jf K"]
+    joint_children_full: list[list[int]]
+    joint_children_indices_full: Int[np.ndarray, "Jf C"]
+    kinematic_fronts_full: list[Front]
+    joint_names: list[str]
+    parents: list[int]
 
 
 @dataclass(frozen=True)
@@ -379,7 +405,7 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
         anchor_matrix = np.empty((0, 0), dtype=np.float32)
         rhs_base = np.empty((0, 3), dtype=np.float32)
     else:
-        facial_inner_vertices = load_model_data(asset_dir)["facial_inner_vertices"]
+        facial_inner_vertices = load_model_data(asset_dir).facial_inner_vertices
         unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base = _build_identity_laplacian_data(
             target_vertices=target_vertices,
             target_faces=target_faces,
@@ -731,6 +757,6 @@ def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
     return out
 
 
-def load_model_data(model_path: Path) -> dict[str, Any]:
+def load_model_data(model_path: Path) -> SomaModelData:
     """Load SOMA model data from disk."""
-    return _load_model_data_cached(str(Path(model_path).resolve()))
+    return SomaModelData(**_load_model_data_cached(str(Path(model_path).resolve())))

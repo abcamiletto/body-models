@@ -25,8 +25,8 @@ from .io import (
     load_pose_correctives_weights,
     simplify_mesh,
 )
-import body_models.soma.kernels.base as soma_base
-import body_models.soma.kernels.torch as core
+import body_models.soma.backend.core as soma_base
+import body_models.soma.backend.torch as core
 
 PathLike = Path | str
 
@@ -98,10 +98,10 @@ class SOMA(BodyModel, nn.Module):
         data = load_model_data(resolved_path)
         corrective_weights = load_pose_correctives_weights(resolved_path)
 
-        mean_full = data["mean"]
-        shapedirs_full = data["shapedirs"]
-        faces = data["faces"]
-        skin_weights_full = data["skin_weights_full"]
+        mean_full = data.mean
+        shapedirs_full = data.shapedirs
+        faces = data.faces
+        skin_weights_full = data.skin_weights_full
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -119,12 +119,12 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("mean_active", torch.as_tensor(mean_active))
         self.register_buffer("shapedirs_full", torch.as_tensor(shapedirs_full))
         self.register_buffer("shapedirs_active", torch.as_tensor(shapedirs_active))
-        self.register_buffer("eigenvalues", torch.as_tensor(data["eigenvalues"]))
-        self.register_buffer("bind_shape_full", torch.as_tensor(data["bind_shape"]))
-        self.register_buffer("bind_pose_world", torch.as_tensor(data["bind_pose_world"]))
-        self.register_buffer("bind_pose_local", torch.as_tensor(data["bind_pose_local"]))
-        self.register_buffer("t_pose_world", torch.as_tensor(data["t_pose_world"]))
-        self.register_buffer("joint_regressor", torch.as_tensor(data["joint_regressor"]))
+        self.register_buffer("eigenvalues", torch.as_tensor(data.eigenvalues))
+        self.register_buffer("bind_shape_full", torch.as_tensor(data.bind_shape))
+        self.register_buffer("bind_pose_world", torch.as_tensor(data.bind_pose_world))
+        self.register_buffer("bind_pose_local", torch.as_tensor(data.bind_pose_local))
+        self.register_buffer("t_pose_world", torch.as_tensor(data.t_pose_world))
+        self.register_buffer("joint_regressor", torch.as_tensor(data.joint_regressor))
         self.register_buffer("corrective_bindpose", torch.as_tensor(corrective_weights["bindpose"]))
         self.register_buffer("corrective_W1", torch.as_tensor(corrective_weights["W1"]))
         self.register_buffer("corrective_W2_rows", torch.as_tensor(corrective_weights["W2_rows"], dtype=torch.int64))
@@ -138,18 +138,18 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("_identity_source_to_soma_rotation", torch.eye(3, dtype=self.mean_full.dtype))
 
         self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
-        self.parents = list(data["parents"])
-        self._parents_full = data["joint_parents_full"].tolist()
-        self._joint_children_full = data["joint_children_full"]
-        self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
+        self.parents = list(data.parents)
+        self._parents_full = data.joint_parents_full.tolist()
+        self._joint_children_full = data.joint_children_full
+        self._skinned_vertex_indices_full = data.skinned_vertex_indices_full
         self.register_buffer("_parents_full_index", torch.as_tensor(self._parents_full, dtype=torch.int64))
-        self.register_buffer("_joint_children_indices_full", torch.as_tensor(data["joint_children_indices_full"]))
+        self.register_buffer("_joint_children_indices_full", torch.as_tensor(data.joint_children_indices_full))
         self.register_buffer(
             "_skinned_vertex_indices_full_index",
-            torch.as_tensor(data["skinned_vertex_indices_full_index"]),
+            torch.as_tensor(data.skinned_vertex_indices_full_index),
         )
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data["joint_names"])
+        self._joint_names = list(data.joint_names)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -220,7 +220,8 @@ class SOMA(BodyModel, nn.Module):
             scale_params=scale_params,
             ref=pose,
         )
-        return self._kernel_data().forward_vertices(
+        return core.forward_vertices(
+            data=self._kernel_data(),
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
@@ -251,7 +252,8 @@ class SOMA(BodyModel, nn.Module):
             scale_params=scale_params,
             ref=pose,
         )
-        return self._kernel_data().forward_skeleton(
+        return core.forward_skeleton(
+            data=self._kernel_data(),
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,

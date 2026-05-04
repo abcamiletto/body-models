@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Self
+from typing import Any, Callable, Protocol, Self
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -111,65 +111,15 @@ class SomaData:
             correctives=correctives,
         )
 
-    def forward_vertices(self, *args, **kwargs):
-        return _forward_vertices(self, *args, **kwargs)
 
-    def forward_skeleton(self, *args, **kwargs):
-        return forward_skeleton(self, *args, **kwargs)
-
-    def prepare_identity_state(self, *args, **kwargs):
-        return prepare_identity_state(self, *args, **kwargs)
-
-    def apply_pose_correctives(self, *args, **kwargs):
-        return apply_pose_correctives(self, *args, **kwargs)
-
-    def linear_blend_skinning(self, *args, **kwargs):
-        return linear_blend_skinning(*args, **kwargs)
-
-    def repose_to_bind_pose(
-        self,
-        xp,
-        rest_shape: Float[Array, "B V 3"],
-        skin_weights: Float[Array, "V J"],
-        world_bind_pose_fit: Float[Array, "B J 4 4"],
-        bind_pose_local: Float[Array, "J 4 4"],
-        kinematic_fronts: list[Front],
-        parents_full_index: Int[Array, "J"],
-    ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
-        T_world = _repose_skeleton_to_bind_pose(
-            xp=xp,
-            world_bind_pose_fit=world_bind_pose_fit,
-            bind_pose_local=bind_pose_local,
-            kinematic_fronts=kinematic_fronts,
-            parents_full_index=parents_full_index,
-        )
-        bone = T_world @ _invert_transforms(xp, world_bind_pose_fit)
-        verts = self.linear_blend_skinning(xp, rest_shape, skin_weights, bone)
-        return verts, T_world
-
-    def pose_mesh_from_oriented_pose(
-        self,
-        xp,
-        rest_shape: Float[Array, "B V 3"],
-        skin_weights: Float[Array, "V Jf"],
-        world_bind_pose: Float[Array, "B Jf 4 4"],
-        kinematic_fronts: list[Front],
-        parents_full_index: Int[Array, "Jf"],
-        pose_rot_full: Float[Array, "B Jf 3 3"],
-    ) -> tuple[Float[Array, "B V 3"], Float[Array, "B Jf 4 4"]]:
-        T_world = _pose_skeleton_from_oriented_pose(
-            xp=xp,
-            world_bind_pose=world_bind_pose,
-            kinematic_fronts=kinematic_fronts,
-            parents_full_index=parents_full_index,
-            pose_rot_full=pose_rot_full,
-        )
-        bone = T_world @ _invert_transforms(xp, world_bind_pose)
-        verts = self.linear_blend_skinning(xp, rest_shape, skin_weights, bone)
-        return verts, T_world
+LinearBlendSkinning = Callable[[Any, Array, Array, Array], Array]
 
 
-def _forward_vertices(
+class ApplyPoseCorrectives(Protocol):
+    def __call__(self, data: Any, pose_rot_full: Array, use_tanh: bool, *, xp: Any) -> Array: ...
+
+
+def forward_vertices(
     data: SomaData,
     identity: Float[Array, "B|1 S"] | None,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
@@ -185,6 +135,45 @@ def _forward_vertices(
     match_warp: bool = True,
     *,
     xp: Any,
+) -> Float[Array, "B V 3"]:
+    return _forward_vertices_with(
+        data=data,
+        identity=identity,
+        pose=pose,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
+        world_bind_pose_fit=world_bind_pose_fit,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+        vertex_indices=vertex_indices,
+        corrective_use_tanh=corrective_use_tanh,
+        apply_correctives=apply_correctives,
+        rotation_type=rotation_type,
+        match_warp=match_warp,
+        xp=xp,
+        apply_pose_correctives_fn=apply_pose_correctives,
+        linear_blend_skinning_fn=linear_blend_skinning,
+    )
+
+
+def _forward_vertices_with(
+    data: SomaData,
+    identity: Float[Array, "B|1 S"] | None,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
+    rest_shape_active: Float[Array, "B|1 Va 3"] | None = None,
+    world_bind_pose_fit: Float[Array, "B|1 Jf 4 4"] | None = None,
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_translation: Float[Array, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
+    corrective_use_tanh: bool = True,
+    apply_correctives: bool = True,
+    rotation_type: RotationType = "axis_angle",
+    match_warp: bool = True,
+    *,
+    xp: Any,
+    apply_pose_correctives_fn: ApplyPoseCorrectives,
+    linear_blend_skinning_fn: LinearBlendSkinning,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
@@ -215,7 +204,7 @@ def _forward_vertices(
     )
 
     if apply_correctives:
-        rest_shape_active, world_bind_pose = data.repose_to_bind_pose(
+        rest_shape_active, world_bind_pose = repose_to_bind_pose(
             xp=xp,
             rest_shape=rest_shape_active,
             skin_weights=data.skin_weights_active,
@@ -223,19 +212,16 @@ def _forward_vertices(
             bind_pose_local=data.bind_pose_local,
             kinematic_fronts=topology.kinematic_fronts_full,
             parents_full_index=topology.parents_full_index,
+            linear_blend_skinning_fn=linear_blend_skinning_fn,
         )
-        corrective_offsets = data.apply_pose_correctives(
-            pose_rot_full=pose_rot_full,
-            use_tanh=corrective_use_tanh,
-            xp=xp,
-        )
+        corrective_offsets = apply_pose_correctives_fn(data, pose_rot_full, corrective_use_tanh, xp=xp)
         if data.vertex_map is not None:
             corrective_offsets = corrective_offsets[:, data.vertex_map]
         rest_shape_active = rest_shape_active + corrective_offsets
     else:
         world_bind_pose = world_bind_pose_fit
 
-    verts_cm, _ = data.pose_mesh_from_oriented_pose(
+    verts_cm, _ = pose_mesh_from_oriented_pose(
         xp=xp,
         rest_shape=rest_shape_active,
         skin_weights=data.skin_weights_active,
@@ -243,6 +229,7 @@ def _forward_vertices(
         kinematic_fronts=topology.kinematic_fronts_full,
         parents_full_index=topology.parents_full_index,
         pose_rot_full=pose_rot_full,
+        linear_blend_skinning_fn=linear_blend_skinning_fn,
     )
 
     verts = verts_cm * 0.01
@@ -598,6 +585,50 @@ def resolve_identity_inputs(
     if scale_params.shape[0] == 1 and batch_size > 1:
         scale_params = xp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
     return identity, scale_params
+
+
+def repose_to_bind_pose(
+    xp,
+    rest_shape: Float[Array, "B V 3"],
+    skin_weights: Float[Array, "V J"],
+    world_bind_pose_fit: Float[Array, "B J 4 4"],
+    bind_pose_local: Float[Array, "J 4 4"],
+    kinematic_fronts: list[Front],
+    parents_full_index: Int[Array, "J"],
+    linear_blend_skinning_fn: LinearBlendSkinning,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    T_world = _repose_skeleton_to_bind_pose(
+        xp=xp,
+        world_bind_pose_fit=world_bind_pose_fit,
+        bind_pose_local=bind_pose_local,
+        kinematic_fronts=kinematic_fronts,
+        parents_full_index=parents_full_index,
+    )
+    bone = T_world @ _invert_transforms(xp, world_bind_pose_fit)
+    verts = linear_blend_skinning_fn(xp, rest_shape, skin_weights, bone)
+    return verts, T_world
+
+
+def pose_mesh_from_oriented_pose(
+    xp,
+    rest_shape: Float[Array, "B V 3"],
+    skin_weights: Float[Array, "V Jf"],
+    world_bind_pose: Float[Array, "B Jf 4 4"],
+    kinematic_fronts: list[Front],
+    parents_full_index: Int[Array, "Jf"],
+    pose_rot_full: Float[Array, "B Jf 3 3"],
+    linear_blend_skinning_fn: LinearBlendSkinning,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B Jf 4 4"]]:
+    T_world = _pose_skeleton_from_oriented_pose(
+        xp=xp,
+        world_bind_pose=world_bind_pose,
+        kinematic_fronts=kinematic_fronts,
+        parents_full_index=parents_full_index,
+        pose_rot_full=pose_rot_full,
+    )
+    bone = T_world @ _invert_transforms(xp, world_bind_pose)
+    verts = linear_blend_skinning_fn(xp, rest_shape, skin_weights, bone)
+    return verts, T_world
 
 
 def apply_pose_correctives(

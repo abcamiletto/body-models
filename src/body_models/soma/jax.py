@@ -25,8 +25,8 @@ from .io import (
     load_pose_correctives_weights,
     simplify_mesh,
 )
-import body_models.soma.kernels.base as soma_base
-import body_models.soma.kernels.jax as core
+import body_models.soma.backend.core as soma_base
+import body_models.soma.backend.jax as core
 
 PathLike = Path | str
 
@@ -66,10 +66,10 @@ class SOMA(BodyModel, nnx.Module):
         data = load_model_data(resolved_path)
         corrective_weights = load_pose_correctives_weights(resolved_path)
 
-        mean_full = data["mean"]
-        shapedirs_full = data["shapedirs"]
-        faces = data["faces"]
-        skin_weights_full = data["skin_weights_full"]
+        mean_full = data.mean
+        shapedirs_full = data.shapedirs
+        faces = data.faces
+        skin_weights_full = data.skin_weights_full
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -87,12 +87,12 @@ class SOMA(BodyModel, nnx.Module):
         self.mean_active = nnx.Variable(jnp.asarray(mean_active))
         self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full))
         self.shapedirs_active = nnx.Variable(jnp.asarray(shapedirs_active))
-        self.eigenvalues = nnx.Variable(jnp.asarray(data["eigenvalues"]))
-        self.bind_shape_full = nnx.Variable(jnp.asarray(data["bind_shape"]))
-        self.bind_pose_world = nnx.Variable(jnp.asarray(data["bind_pose_world"]))
-        self.bind_pose_local = nnx.Variable(jnp.asarray(data["bind_pose_local"]))
-        self.t_pose_world = nnx.Variable(jnp.asarray(data["t_pose_world"]))
-        self.joint_regressor = nnx.Variable(jnp.asarray(data["joint_regressor"]))
+        self.eigenvalues = nnx.Variable(jnp.asarray(data.eigenvalues))
+        self.bind_shape_full = nnx.Variable(jnp.asarray(data.bind_shape))
+        self.bind_pose_world = nnx.Variable(jnp.asarray(data.bind_pose_world))
+        self.bind_pose_local = nnx.Variable(jnp.asarray(data.bind_pose_local))
+        self.t_pose_world = nnx.Variable(jnp.asarray(data.t_pose_world))
+        self.joint_regressor = nnx.Variable(jnp.asarray(data.joint_regressor))
         self.corrective_bindpose = nnx.Variable(jnp.asarray(corrective_weights["bindpose"]))
         self.corrective_W1 = nnx.Variable(jnp.asarray(corrective_weights["W1"]))
         self.corrective_W2_rows = nnx.Variable(jnp.asarray(corrective_weights["W2_rows"]))
@@ -106,15 +106,15 @@ class SOMA(BodyModel, nnx.Module):
         self._identity_internal_to_source_translation = nnx.Variable(jnp.zeros(3, dtype=self.mean_full[...].dtype))
         self._identity_source_to_soma_rotation = nnx.Variable(jnp.eye(3, dtype=self.mean_full[...].dtype))
 
-        self.parents = list(data["parents"])
-        self._parents_full = data["joint_parents_full"].tolist()
-        self._joint_children_full = data["joint_children_full"]
-        self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
+        self.parents = list(data.parents)
+        self._parents_full = data.joint_parents_full.tolist()
+        self._joint_children_full = data.joint_children_full
+        self._skinned_vertex_indices_full = data.skinned_vertex_indices_full
         self._parents_full_index = nnx.Variable(jnp.asarray(self._parents_full))
-        self._joint_children_indices_full = nnx.Variable(jnp.asarray(data["joint_children_indices_full"]))
-        self._skinned_vertex_indices_full_index = nnx.Variable(jnp.asarray(data["skinned_vertex_indices_full_index"]))
+        self._joint_children_indices_full = nnx.Variable(jnp.asarray(data.joint_children_indices_full))
+        self._skinned_vertex_indices_full_index = nnx.Variable(jnp.asarray(data.skinned_vertex_indices_full_index))
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data["joint_names"])
+        self._joint_names = list(data.joint_names)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -182,7 +182,8 @@ class SOMA(BodyModel, nnx.Module):
             scale_params=scale_params,
             ref=pose,
         )
-        return self._kernel_data().forward_vertices(
+        return core.forward_vertices(
+            data=self._kernel_data(),
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,
@@ -213,7 +214,8 @@ class SOMA(BodyModel, nnx.Module):
             scale_params=scale_params,
             ref=pose,
         )
-        return self._kernel_data().forward_skeleton(
+        return core.forward_skeleton(
+            data=self._kernel_data(),
             identity=identity,
             pose=pose,
             rest_shape_full=rest_shape_full,

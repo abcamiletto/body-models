@@ -24,9 +24,9 @@ from .io import (
     load_pose_correctives_weights,
     simplify_mesh,
 )
-import body_models.soma.kernels.base as soma_base
-import body_models.soma.kernels.numpy as numpy_kernel
-import body_models.soma.kernels.scipy as scipy_kernel
+import body_models.soma.backend.core as soma_base
+import body_models.soma.backend.numpy as numpy_kernel
+import body_models.soma.backend.scipy as scipy_kernel
 
 PathLike = Path | str
 KernelBackend = Literal["numpy", "scipy"]
@@ -109,10 +109,10 @@ class SOMA(BodyModel):
         data = load_model_data(resolved_path)
         corrective_weights = load_pose_correctives_weights(resolved_path)
 
-        mean_full = data["mean"]
-        shapedirs_full = data["shapedirs"]
-        faces = data["faces"]
-        skin_weights_full = data["skin_weights_full"]
+        mean_full = data.mean
+        shapedirs_full = data.shapedirs
+        faces = data.faces
+        skin_weights_full = data.skin_weights_full
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -130,12 +130,12 @@ class SOMA(BodyModel):
         self.mean_active = np.asarray(mean_active, dtype=np.float32)
         self.shapedirs_full = shapedirs_full
         self.shapedirs_active = np.asarray(shapedirs_active, dtype=np.float32)
-        self.eigenvalues = data["eigenvalues"]
-        self.bind_shape_full = data["bind_shape"]
-        self.bind_pose_world = data["bind_pose_world"]
-        self.bind_pose_local = data["bind_pose_local"]
-        self.t_pose_world = data["t_pose_world"]
-        self.joint_regressor = data["joint_regressor"]
+        self.eigenvalues = data.eigenvalues
+        self.bind_shape_full = data.bind_shape
+        self.bind_pose_world = data.bind_pose_world
+        self.bind_pose_local = data.bind_pose_local
+        self.t_pose_world = data.t_pose_world
+        self.joint_regressor = data.joint_regressor
         self.corrective_bindpose = np.asarray(corrective_weights["bindpose"], dtype=np.float32)
         self.corrective_W1 = np.asarray(corrective_weights["W1"], dtype=np.float32)
         self.corrective_W2_rows = np.asarray(corrective_weights["W2_rows"], dtype=np.int64)
@@ -149,15 +149,15 @@ class SOMA(BodyModel):
         self._identity_internal_to_source_translation = np.zeros(3, dtype=np.float32)
         self._identity_source_to_soma_rotation = np.eye(3, dtype=np.float32)
 
-        self.parents = list(data["parents"])
-        self._parents_full = data["joint_parents_full"].tolist()
-        self._joint_children_full = data["joint_children_full"]
-        self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
+        self.parents = list(data.parents)
+        self._parents_full = data.joint_parents_full.tolist()
+        self._joint_children_full = data.joint_children_full
+        self._skinned_vertex_indices_full = data.skinned_vertex_indices_full
         self._parents_full_index = np.asarray(self._parents_full, dtype=np.int64)
-        self._joint_children_indices_full = data["joint_children_indices_full"]
-        self._skinned_vertex_indices_full_index = data["skinned_vertex_indices_full_index"]
+        self._joint_children_indices_full = data.joint_children_indices_full
+        self._skinned_vertex_indices_full_index = data.skinned_vertex_indices_full_index
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data["joint_names"])
+        self._joint_names = list(data.joint_names)
         self._data = self._prepare_kernel_data()
 
         spec = MODEL_TYPE_SPECS[self.model_type]
@@ -228,7 +228,8 @@ class SOMA(BodyModel):
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
-        return self._data.forward_vertices(
+        return self._kernel.forward_vertices(
+            data=self._data,
             identity=None,
             pose=pose,
             rest_shape_full=identity_state.rest_shape_full,
@@ -262,7 +263,8 @@ class SOMA(BodyModel):
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
-        return self._data.forward_skeleton(
+        return self._kernel.forward_skeleton(
+            data=self._data,
             identity=None,
             pose=pose,
             rest_shape_full=identity_state.rest_shape_full,
@@ -311,7 +313,8 @@ class SOMA(BodyModel):
         ref = np.empty((1, 1), dtype=dtype)
         identity, scale_params = self._resolve_identity_inputs(identity, scale_params, ref)
         rest_shape_full, rest_shape_active = self._get_rest_shape_from_identity(identity, scale_params)
-        rest_shape_full, rest_shape_active, world_bind_pose_fit = self._data.prepare_identity_state(
+        rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.prepare_identity_state(
+            data=self._data,
             identity=identity,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
