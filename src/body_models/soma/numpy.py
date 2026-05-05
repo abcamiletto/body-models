@@ -237,14 +237,21 @@ class SOMA(BodyModel):
             dtype = identity.dtype
         ref = np.empty((1, 1), dtype=dtype)
         batch_size = 1 if identity is None else identity.shape[0]
-        _identity, rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.prepare_identity(
-            data=self.model_weights,
-            identity_backend=self.identity_backend,
+        identity, rest_shape_full, rest_shape_active = identities.prepare(
+            backend=self.identity_backend,
             identity=identity,
             scale_params=scale_params,
             batch_size=batch_size,
-            match_warp=self.match_warp,
+            vertex_map=self.model_weights.vertex_map,
             ref=ref,
+            xp=np,
+        )
+        rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.prepare_identity(
+            data=self.model_weights,
+            identity=identity,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
+            match_warp=self.match_warp,
             xp=np,
         )
         return SOMAIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)

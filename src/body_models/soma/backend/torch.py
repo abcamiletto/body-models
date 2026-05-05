@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from dataclasses import replace
 from jaxtyping import Float, Int
-from typing import cast
 
 from .. import identities
 from ..io import SomaIdentityTransfer, SomaWeights
@@ -147,25 +146,21 @@ class SomaTorchIdentityTransfer(nn.Module):
 
 
 class SomaTorchIdentityBackend(nn.Module):
-    def __init__(self, identity_backend: identities.IdentityBackend):
+    def __init__(self, identity_backend: identities.TransferredIdentityBackend):
         super().__init__()
         self.model_type = identity_backend.model_type
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        if identity_backend.model_type == "soma":
-            self.model = None
-            self.transfer = None
-            return
         self.model = _prepare_identity_model(identity_backend)
-        self.transfer = SomaTorchIdentityTransfer(cast(SomaIdentityTransfer, identity_backend.transfer))
+        self.transfer = SomaTorchIdentityTransfer(identity_backend.transfer)
 
 
 def prepare_data(weights: SomaWeights) -> SomaTorchWeights:
     return SomaTorchWeights(weights)
 
 
-def _prepare_identity_model(identity_backend: identities.IdentityBackend):
+def _prepare_identity_model(identity_backend: identities.TransferredIdentityBackend):
     identity_model = identity_backend.model
     if identity_backend.model_type == "mhr":
         from ...mhr.torch import MHR
@@ -178,7 +173,9 @@ def _prepare_identity_model(identity_backend: identities.IdentityBackend):
     )
 
 
-def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaTorchIdentityBackend:
+def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend | SomaTorchIdentityBackend:
+    if not isinstance(identity_backend, identities.TransferredIdentityBackend):
+        return identity_backend
     return SomaTorchIdentityBackend(identity_backend)
 
 

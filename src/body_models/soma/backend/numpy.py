@@ -24,10 +24,12 @@ prepare_identity = core.prepare_identity
 
 
 def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend:
+    if not isinstance(identity_backend, identities.TransferredIdentityBackend):
+        return identity_backend
     if identity_backend.model_type != "mhr":
         return identity_backend
 
-    return identities.IdentityBackend(
+    return identities.TransferredIdentityBackend(
         model_type=identity_backend.model_type,
         identity_dim=identity_backend.identity_dim,
         num_scale_params=identity_backend.num_scale_params,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from jaxtyping import Float
 
@@ -18,7 +18,7 @@ IDENTITY_BACKENDS = {
     "smplx": smplx,
 }
 
-__all__ = ["IDENTITY_BACKENDS", "IdentityBackend", "load", "rest_shape"]
+__all__ = ["IDENTITY_BACKENDS", "IdentityBackend", "TransferredIdentityBackend", "load", "prepare"]
 
 
 @dataclass(frozen=True)
@@ -27,8 +27,12 @@ class IdentityBackend:
     identity_dim: int
     num_scale_params: int | None
     default_identity_value: float
-    model: Any = None
-    transfer: SomaIdentityTransfer | None = None
+
+
+@dataclass(frozen=True)
+class TransferredIdentityBackend(IdentityBackend):
+    model: Any
+    transfer: SomaIdentityTransfer
 
 
 def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = None) -> IdentityBackend:
@@ -42,7 +46,7 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
 
     backend = IDENTITY_BACKENDS[model_type]
     model, transfer = backend.prepare(transfer)
-    return IdentityBackend(
+    return TransferredIdentityBackend(
         model_type=model_type,
         identity_dim=spec.identity_dim,
         num_scale_params=spec.num_scale_params,
@@ -52,9 +56,70 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
     )
 
 
-def rest_shape(
+def prepare(
     *,
-    backend: IdentityBackend,
+    backend: Any,
+    identity: Float[Any, "B|1 I"] | None,
+    scale_params: Float[Any, "B|1 K"] | None,
+    batch_size: int,
+    vertex_map: Any,
+    ref: Any,
+    xp: Any,
+) -> tuple[
+    Float[Any, "B I"] | None,
+    Float[Any, "B Vt 3"] | None,
+    Float[Any, "B Va 3"] | None,
+]:
+    identity, scale_params = _resolve_inputs(
+        backend=backend,
+        identity=identity,
+        scale_params=scale_params,
+        batch_size=batch_size,
+        ref=ref,
+        xp=xp,
+    )
+    if backend.model_type != "soma":
+        rest_shape_full, rest_shape_active = _rest_shape(
+            backend=backend,
+            identity=identity,
+            scale_params=scale_params,
+            vertex_map=vertex_map,
+            xp=xp,
+        )
+        return None, rest_shape_full, rest_shape_active
+    return identity, None, None
+
+
+def _resolve_inputs(
+    *,
+    backend: Any,
+    identity: Float[Any, "B|1 I"] | None,
+    scale_params: Float[Any, "B|1 K"] | None,
+    batch_size: int,
+    ref: Any,
+    xp: Any,
+) -> tuple[Float[Any, "B I"], Float[Any, "B K"] | None]:
+    if identity is None:
+        identity = common.zeros_as(ref, shape=(1, backend.identity_dim), xp=xp)
+        identity = identity + backend.default_identity_value
+    if identity.shape[0] == 1 and batch_size > 1:
+        identity = xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
+
+    if backend.num_scale_params is None:
+        if scale_params is not None:
+            raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
+        return identity, None
+
+    if scale_params is None:
+        scale_params = common.zeros_as(ref, shape=(1, backend.num_scale_params), xp=xp)
+    if scale_params.shape[0] == 1 and batch_size > 1:
+        scale_params = xp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+    return identity, scale_params
+
+
+def _rest_shape(
+    *,
+    backend: Any,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
     vertex_map: Any,
@@ -69,7 +134,7 @@ def rest_shape(
         num_scale_params=backend.num_scale_params,
         xp=xp,
     )
-    rest_shape_full = _transfer_source_shape(source_shape, cast(SomaIdentityTransfer, backend.transfer), xp=xp)
+    rest_shape_full = _transfer_source_shape(source_shape, backend.transfer, xp=xp)
     rest_shape_active = rest_shape_full if vertex_map is None else rest_shape_full[:, vertex_map]
     return rest_shape_full, rest_shape_active
 

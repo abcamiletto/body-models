@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -10,26 +10,9 @@ from nanomanifold import SO3
 from ... import common
 from ...common import get_namespace
 from ...rotations import RotationType
-from .. import identities
 
 Array = Any
 Front = tuple[list[int], list[int]]
-
-
-class IdentityTransfer(Protocol):
-    source_tetrahedra: Int[Array, "Fs 4"]
-    face_ids: Int[Array, "Vt"]
-    bary_coords: Float[Array, "Vt 4"]
-    unknown_ids: Int[Array, "U"]
-    anchor_ids: Int[Array, "A"]
-    solve_matrix: Float[Array, "U U"]
-    anchor_matrix: Float[Array, "U A"]
-    rhs_base: Float[Array, "U 3"]
-    internal_to_source_rotation: Float[Array, "3 3"]
-    internal_to_source_translation: Float[Array, "3"]
-    source_to_soma_rotation: Float[Array, "3 3"]
-    source_scale: float
-    output_scale: float
 
 
 def prepare_data(soma_weights: Any) -> Any:
@@ -39,42 +22,17 @@ def prepare_data(soma_weights: Any) -> Any:
 def prepare_identity(
     data: Any,
     *,
-    identity_backend: Any,
-    identity: Float[Array, "B|1 I"] | None,
-    scale_params: Float[Array, "B|1 K"] | None,
-    batch_size: int,
+    identity: Float[Array, "B|1 S"] | None,
+    rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
+    rest_shape_active: Float[Array, "B|1 Va 3"] | None,
     match_warp: bool,
-    ref: Array,
     xp: Any,
 ) -> tuple[
-    Float[Array, "B I"],
     Float[Array, "B Vf 3"],
     Float[Array, "B Va 3"],
     Float[Array, "B Jf 4 4"],
 ]:
-    if identity is None:
-        identity = common.zeros_as(ref, shape=(1, identity_backend.identity_dim), xp=xp)
-        identity = identity + identity_backend.default_identity_value
-    identity, scale_params = resolve_identity_inputs(
-        identity=identity,
-        scale_params=scale_params,
-        batch_size=batch_size,
-        identity_dim=identity_backend.identity_dim,
-        num_scale_params=identity_backend.num_scale_params,
-        ref=ref,
-        xp=xp,
-    )
-    rest_shape_full = None
-    rest_shape_active = None
-    if identity_backend.model_type != "soma":
-        rest_shape_full, rest_shape_active = identities.rest_shape(
-            backend=identity_backend,
-            identity=identity,
-            scale_params=scale_params,
-            vertex_map=data.vertex_map,
-            xp=xp,
-        )
-    rest_shape_full, rest_shape_active, world_bind_pose_fit = prepare_identity_state(
+    return prepare_identity_state(
         data=data,
         identity=identity,
         rest_shape_full=rest_shape_full,
@@ -82,7 +40,6 @@ def prepare_identity(
         match_warp=match_warp,
         xp=xp,
     )
-    return identity, rest_shape_full, rest_shape_active, world_bind_pose_fit
 
 
 def forward_vertices(
@@ -323,36 +280,6 @@ def fit_rigid_transform(
     rotation = Vh.swapaxes(-2, -1) @ reflection @ U.swapaxes(-2, -1)
     translation = target_center - source_center @ rotation.swapaxes(-2, -1)
     return rotation, translation
-
-
-def resolve_identity_inputs(
-    identity: Float[Array, "B|1 I"] | None,
-    scale_params: Float[Array, "B|1 K"] | None,
-    *,
-    batch_size: int,
-    identity_dim: int,
-    num_scale_params: int | None,
-    ref: Array,
-    xp: Any = None,
-) -> tuple[Float[Array, "B I"], Float[Array, "B K"] | None]:
-    if xp is None:
-        xp = get_namespace(ref)
-
-    if identity is None:
-        identity = common.zeros_as(ref, shape=(1, identity_dim), xp=xp)
-    if identity.shape[0] == 1 and batch_size > 1:
-        identity = xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
-
-    if num_scale_params is None:
-        if scale_params is not None:
-            raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
-        return identity, None
-
-    if scale_params is None:
-        scale_params = common.zeros_as(ref, shape=(1, num_scale_params), xp=xp)
-    if scale_params.shape[0] == 1 and batch_size > 1:
-        scale_params = xp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
-    return identity, scale_params
 
 
 def repose_to_bind_pose(

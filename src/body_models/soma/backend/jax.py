@@ -64,20 +64,16 @@ def prepare_data(weights: SomaWeights) -> SomaWeights:
 
 
 class SomaJaxIdentityBackend(nnx.Module):
-    def __init__(self, identity_backend: identities.IdentityBackend) -> None:
+    def __init__(self, identity_backend: identities.TransferredIdentityBackend) -> None:
         self.model_type = identity_backend.model_type
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        if identity_backend.model_type == "soma":
-            self.model = None
-            self.transfer = None
-            return
         self.model = _prepare_identity_model(identity_backend)
         self.transfer = _prepare_identity_transfer(identity_backend.transfer)
 
 
-def _prepare_identity_model(identity_backend: identities.IdentityBackend):
+def _prepare_identity_model(identity_backend: identities.TransferredIdentityBackend):
     identity_model = identity_backend.model
     if identity_backend.model_type == "mhr":
         from ...mhr.jax import MHR
@@ -108,7 +104,9 @@ def _prepare_identity_transfer(identity_transfer):
     )
 
 
-def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaJaxIdentityBackend:
+def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend | SomaJaxIdentityBackend:
+    if not isinstance(identity_backend, identities.TransferredIdentityBackend):
+        return identity_backend
     return SomaJaxIdentityBackend(identity_backend)
 
 

@@ -35,7 +35,7 @@ class SOMA(BodyModel, nn.Module):
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
 
     model_weights: core.SomaTorchWeights
-    identity_backend: core.SomaTorchIdentityBackend
+    identity_backend: identities.IdentityBackend | core.SomaTorchIdentityBackend
 
     def __init__(
         self,
@@ -230,18 +230,26 @@ class SOMA(BodyModel, nn.Module):
         scale_params: Float[Tensor, "B|1 K"] | None,
         ref: Float[Tensor, "B ..."],
     ) -> tuple[
-        Float[Tensor, "B I"],
+        Float[Tensor, "B I"] | None,
         Float[Tensor, "B V 3"],
         Float[Tensor, "B V 3"],
         Float[Tensor, "B J 4 4"],
     ]:
-        return core.prepare_identity(
-            data=self.model_weights,
-            identity_backend=self.identity_backend,
+        identity, rest_shape_full, rest_shape_active = identities.prepare(
+            backend=self.identity_backend,
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
-            match_warp=self.match_warp,
+            vertex_map=self.model_weights.vertex_map,
             ref=ref,
             xp=torch,
         )
+        rest_shape_full, rest_shape_active, world_bind_pose_fit = core.prepare_identity(
+            data=self.model_weights,
+            identity=identity,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
+            match_warp=self.match_warp,
+            xp=torch,
+        )
+        return identity, rest_shape_full, rest_shape_active, world_bind_pose_fit
