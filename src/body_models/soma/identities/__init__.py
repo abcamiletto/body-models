@@ -14,7 +14,6 @@ from .. import core
 
 @dataclass(frozen=True)
 class IdentityTransfer:
-    source_vertices: Float[Any, "Vs 3"]
     source_tetrahedra: Int[Any, "Fs 4"]
     face_ids: Int[Any, "Vt"]
     bary_coords: Float[Any, "Vt 4"]
