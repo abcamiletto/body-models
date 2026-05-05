@@ -22,6 +22,23 @@ def prepare(transfer: SomaIdentityTransfer) -> tuple[MHRIdentity, SomaIdentityTr
     return MHRIdentity(model_path=model_path), transfer
 
 
+def prepare_backend_model(identity_model: MHRIdentity, backend: str) -> Any:
+    if backend == "numpy":
+        from ...mhr.numpy import MHR
+    elif backend == "torch":
+        from ...mhr.torch import MHR
+    elif backend == "jax":
+        from flax import nnx
+
+        from ...mhr.jax import MHR
+
+        return nnx.data(MHR(model_path=identity_model.model_path, simplify=1.0))
+    else:
+        raise ValueError(f"Unsupported MHR identity backend target: {backend}")
+
+    return MHR(model_path=identity_model.model_path, simplify=1.0)
+
+
 def shape(
     identity_model: Any,
     identity: Float[Any, "B I"],

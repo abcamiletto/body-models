@@ -69,21 +69,8 @@ class SomaJaxIdentityBackend(nnx.Module):
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        self.model = _prepare_identity_model(identity_backend)
+        self.model = identity_backend.model
         self.transfer = _prepare_identity_transfer(identity_backend.transfer)
-
-
-def _prepare_identity_model(identity_backend: identities.TransferredIdentityBackend):
-    identity_model = identity_backend.model
-    if identity_backend.model_type == "mhr":
-        from ...mhr.jax import MHR
-
-        return nnx.data(MHR(model_path=identity_model.model_path, simplify=1.0))
-    return replace(
-        identity_model,
-        mean=jnp.asarray(identity_model.mean),
-        shapedirs=jnp.asarray(identity_model.shapedirs),
-    )
 
 
 def _prepare_identity_transfer(identity_transfer):
@@ -105,9 +92,10 @@ def _prepare_identity_transfer(identity_transfer):
 
 
 def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend | SomaJaxIdentityBackend:
-    if not isinstance(identity_backend, identities.TransferredIdentityBackend):
-        return identity_backend
-    return SomaJaxIdentityBackend(identity_backend)
+    identity_backend = identities.prepare_backend(identity_backend, "jax")
+    if isinstance(identity_backend, identities.TransferredIdentityBackend):
+        return SomaJaxIdentityBackend(identity_backend)
+    return identity_backend
 
 
 def forward_vertices(*args, **kwargs):

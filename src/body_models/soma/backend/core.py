@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from jaxtyping import Float, Int
@@ -15,6 +16,20 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 
+@dataclass(frozen=True)
+class IdentityInput:
+    identity: Float[Array, "B|1 S"] | None
+    rest_shape_full: Float[Array, "B|1 Vf 3"] | None
+    rest_shape_active: Float[Array, "B|1 Va 3"] | None
+
+    @property
+    def batch_size(self) -> int:
+        source = self.identity if self.identity is not None else self.rest_shape_full
+        if source is None:
+            raise ValueError("SOMA identity input requires identity or rest_shape_full.")
+        return source.shape[0]
+
+
 def prepare_data(soma_weights: Any) -> Any:
     return soma_weights
 
@@ -22,9 +37,7 @@ def prepare_data(soma_weights: Any) -> Any:
 def prepare_identity(
     data: Any,
     *,
-    identity: Float[Array, "B|1 S"] | None,
-    rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
-    rest_shape_active: Float[Array, "B|1 Va 3"] | None,
+    identity_input: IdentityInput,
     match_warp: bool,
     xp: Any,
 ) -> tuple[
@@ -34,9 +47,7 @@ def prepare_identity(
 ]:
     return prepare_identity_state(
         data=data,
-        identity=identity,
-        rest_shape_full=rest_shape_full,
-        rest_shape_active=rest_shape_active,
+        identity_input=identity_input,
         match_warp=match_warp,
         xp=xp,
     )
@@ -224,20 +235,14 @@ def forward_skeleton(
 
 def prepare_identity_state(
     data: Any,
-    identity: Float[Array, "B|1 S"] | None,
-    rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
-    rest_shape_active: Float[Array, "B|1 Va 3"] | None,
+    identity_input: IdentityInput,
     match_warp: bool,
     *,
     xp: Any,
 ) -> tuple[Float[Array, "B Vf 3"], Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
-    identity_ref = identity if identity is not None else rest_shape_full
-    if identity_ref is None:
-        raise ValueError("SOMA identity preparation requires either identity or rest_shape_full.")
-
     return _prepare_rest_shapes(
         xp=xp,
-        batch_size=identity_ref.shape[0],
+        batch_size=identity_input.batch_size,
         mean_full=data.mean_full,
         mean_active=data.mean_active,
         shapedirs_full=data.shapedirs_full,
@@ -251,9 +256,9 @@ def prepare_identity_state(
         skinned_vertex_indices_full=data.topology.skinned_vertex_indices_full,
         skinned_vertex_indices_full_index=data.topology.skinned_vertex_indices_full_index,
         parents_full=data.topology.parents_full,
-        identity=identity,
-        rest_shape_full=rest_shape_full,
-        rest_shape_active=rest_shape_active,
+        identity=identity_input.identity,
+        rest_shape_full=identity_input.rest_shape_full,
+        rest_shape_active=identity_input.rest_shape_active,
         world_bind_pose_fit=None,
         match_warp=match_warp,
     )

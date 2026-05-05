@@ -24,22 +24,4 @@ prepare_identity = core.prepare_identity
 
 
 def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend:
-    if not isinstance(identity_backend, identities.TransferredIdentityBackend):
-        return identity_backend
-    if identity_backend.model_type != "mhr":
-        return identity_backend
-
-    return identities.TransferredIdentityBackend(
-        model_type=identity_backend.model_type,
-        identity_dim=identity_backend.identity_dim,
-        num_scale_params=identity_backend.num_scale_params,
-        default_identity_value=identity_backend.default_identity_value,
-        model=_load_mhr_model(identity_backend.model),
-        transfer=identity_backend.transfer,
-    )
-
-
-def _load_mhr_model(identity_model):
-    from ...mhr.numpy import MHR
-
-    return MHR(model_path=identity_model.model_path, simplify=1.0)
+    return identities.prepare_backend(identity_backend, "numpy")

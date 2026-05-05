@@ -10,6 +10,7 @@ from jaxtyping import Float
 from ... import common
 from ...common import get_namespace
 from . import mhr, smpl, smplx
+from ..backend import core
 from ..io import SomaIdentityTransfer
 
 IDENTITY_BACKENDS = {
@@ -18,7 +19,14 @@ IDENTITY_BACKENDS = {
     "smplx": smplx,
 }
 
-__all__ = ["IDENTITY_BACKENDS", "IdentityBackend", "TransferredIdentityBackend", "load", "prepare"]
+__all__ = [
+    "IDENTITY_BACKENDS",
+    "IdentityBackend",
+    "TransferredIdentityBackend",
+    "load",
+    "prepare",
+    "prepare_backend",
+]
 
 
 @dataclass(frozen=True)
@@ -56,6 +64,21 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
     )
 
 
+def prepare_backend(identity_backend: IdentityBackend, backend: str) -> IdentityBackend:
+    if not isinstance(identity_backend, TransferredIdentityBackend):
+        return identity_backend
+
+    model = IDENTITY_BACKENDS[identity_backend.model_type].prepare_backend_model(identity_backend.model, backend)
+    return TransferredIdentityBackend(
+        model_type=identity_backend.model_type,
+        identity_dim=identity_backend.identity_dim,
+        num_scale_params=identity_backend.num_scale_params,
+        default_identity_value=identity_backend.default_identity_value,
+        model=model,
+        transfer=identity_backend.transfer,
+    )
+
+
 def prepare(
     *,
     backend: Any,
@@ -65,11 +88,7 @@ def prepare(
     vertex_map: Any,
     ref: Any,
     xp: Any,
-) -> tuple[
-    Float[Any, "B I"] | None,
-    Float[Any, "B Vt 3"] | None,
-    Float[Any, "B Va 3"] | None,
-]:
+) -> core.IdentityInput:
     identity, scale_params = _resolve_inputs(
         backend=backend,
         identity=identity,
@@ -86,8 +105,8 @@ def prepare(
             vertex_map=vertex_map,
             xp=xp,
         )
-        return None, rest_shape_full, rest_shape_active
-    return identity, None, None
+        return core.IdentityInput(identity=None, rest_shape_full=rest_shape_full, rest_shape_active=rest_shape_active)
+    return core.IdentityInput(identity=identity, rest_shape_full=None, rest_shape_active=None)
 
 
 def _resolve_inputs(

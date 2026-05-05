@@ -224,7 +224,7 @@ class SOMA(BodyModel, nnx.Module):
         Float[jax.Array, "B V 3"],
         Float[jax.Array, "B J 4 4"],
     ]:
-        identity, rest_shape_full, rest_shape_active = identities.prepare(
+        identity_input = identities.prepare(
             backend=self.identity_backend,
             identity=identity,
             scale_params=scale_params,
@@ -235,10 +235,9 @@ class SOMA(BodyModel, nnx.Module):
         )
         rest_shape_full, rest_shape_active, world_bind_pose_fit = core.prepare_identity(
             data=self.model_weights,
-            identity=identity,
-            rest_shape_full=rest_shape_full,
-            rest_shape_active=rest_shape_active,
+            identity_input=identity_input,
             match_warp=self.match_warp,
             xp=jnp,
         )
+        identity = identity_input.identity
         return identity, rest_shape_full, rest_shape_active, world_bind_pose_fit

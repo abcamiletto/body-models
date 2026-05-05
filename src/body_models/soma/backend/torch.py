@@ -2,7 +2,6 @@
 
 import torch
 import torch.nn as nn
-from dataclasses import replace
 from jaxtyping import Float, Int
 
 from .. import identities
@@ -152,7 +151,7 @@ class SomaTorchIdentityBackend(nn.Module):
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        self.model = _prepare_identity_model(identity_backend)
+        self.model = identity_backend.model
         self.transfer = SomaTorchIdentityTransfer(identity_backend.transfer)
 
 
@@ -160,23 +159,11 @@ def prepare_data(weights: SomaWeights) -> SomaTorchWeights:
     return SomaTorchWeights(weights)
 
 
-def _prepare_identity_model(identity_backend: identities.TransferredIdentityBackend):
-    identity_model = identity_backend.model
-    if identity_backend.model_type == "mhr":
-        from ...mhr.torch import MHR
-
-        return MHR(model_path=identity_model.model_path, simplify=1.0)
-    return replace(
-        identity_model,
-        mean=torch.as_tensor(identity_model.mean),
-        shapedirs=torch.as_tensor(identity_model.shapedirs),
-    )
-
-
 def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend | SomaTorchIdentityBackend:
-    if not isinstance(identity_backend, identities.TransferredIdentityBackend):
-        return identity_backend
-    return SomaTorchIdentityBackend(identity_backend)
+    identity_backend = identities.prepare_backend(identity_backend, "torch")
+    if isinstance(identity_backend, identities.TransferredIdentityBackend):
+        return SomaTorchIdentityBackend(identity_backend)
+    return identity_backend
 
 
 def forward_vertices(*args, **kwargs):
