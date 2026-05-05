@@ -19,12 +19,12 @@ from ..smplx.torch import SMPLX
 from . import core
 from .io import (
     MODEL_TYPE_SPECS,
+    SomaIdentityTransfer,
     compute_kinematic_fronts,
     get_identity_model_path,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
-    load_pose_correctives_weights,
     simplify_mesh,
 )
 
@@ -98,12 +98,11 @@ class SOMA(BodyModel, nn.Module):
         self.match_warp = match_warp
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
-        corrective_weights = load_pose_correctives_weights(resolved_path)
 
-        mean_full = data["mean"]
-        shapedirs_full = data["shapedirs"]
-        faces = data["faces"]
-        skin_weights_full = data["skin_weights_full"]
+        mean_full = data.mean_full
+        shapedirs_full = data.shapedirs_full
+        faces = data.faces
+        skin_weights_full = data.skin_weights_full
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -121,17 +120,23 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("mean_active", torch.as_tensor(mean_active))
         self.register_buffer("shapedirs_full", torch.as_tensor(shapedirs_full))
         self.register_buffer("shapedirs_active", torch.as_tensor(shapedirs_active))
-        self.register_buffer("eigenvalues", torch.as_tensor(data["eigenvalues"]))
-        self.register_buffer("bind_shape_full", torch.as_tensor(data["bind_shape"]))
-        self.register_buffer("bind_pose_world", torch.as_tensor(data["bind_pose_world"]))
-        self.register_buffer("bind_pose_local", torch.as_tensor(data["bind_pose_local"]))
-        self.register_buffer("t_pose_world", torch.as_tensor(data["t_pose_world"]))
-        self.register_buffer("joint_regressor", torch.as_tensor(data["joint_regressor"]))
-        self.register_buffer("corrective_bindpose", torch.as_tensor(corrective_weights["bindpose"]))
-        self.register_buffer("corrective_W1", torch.as_tensor(corrective_weights["W1"]))
-        self.register_buffer("corrective_W2_rows", torch.as_tensor(corrective_weights["W2_rows"], dtype=torch.int64))
-        self.register_buffer("corrective_W2_cols", torch.as_tensor(corrective_weights["W2_cols"], dtype=torch.int64))
-        self.register_buffer("corrective_W2_values", torch.as_tensor(corrective_weights["W2_values"]))
+        self.register_buffer("eigenvalues", torch.as_tensor(data.eigenvalues))
+        self.register_buffer("bind_shape_full", torch.as_tensor(data.bind_shape_full))
+        self.register_buffer("bind_pose_world", torch.as_tensor(data.bind_pose_world))
+        self.register_buffer("bind_pose_local", torch.as_tensor(data.bind_pose_local))
+        self.register_buffer("t_pose_world", torch.as_tensor(data.t_pose_world))
+        self.register_buffer("joint_regressor", torch.as_tensor(data.joint_regressor))
+        self.register_buffer("corrective_bindpose", torch.as_tensor(data.correctives.corrective_bindpose))
+        self.register_buffer("corrective_W1", torch.as_tensor(data.correctives.corrective_W1))
+        self.register_buffer(
+            "corrective_W2_rows",
+            torch.as_tensor(data.correctives.corrective_W2_rows, dtype=torch.int64),
+        )
+        self.register_buffer(
+            "corrective_W2_cols",
+            torch.as_tensor(data.correctives.corrective_W2_cols, dtype=torch.int64),
+        )
+        self.register_buffer("corrective_W2_values", torch.as_tensor(data.correctives.corrective_W2_values))
         self.register_buffer("_skin_weights_full", torch.as_tensor(skin_weights_full))
         self.register_buffer("_skin_weights_active", torch.as_tensor(skin_weights_active))
         self.register_buffer("_faces", torch.as_tensor(np.asarray(faces, dtype=np.int64)))
@@ -139,19 +144,19 @@ class SOMA(BodyModel, nn.Module):
         self.register_buffer("_identity_internal_to_source_translation", torch.zeros(3, dtype=self.mean_full.dtype))
         self.register_buffer("_identity_source_to_soma_rotation", torch.eye(3, dtype=self.mean_full.dtype))
 
-        self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
-        self.parents = list(data["parents"])
-        self._parents_full = data["joint_parents_full"].tolist()
-        self._joint_children_full = data["joint_children_full"]
-        self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
+        self._corrective_use_tanh = False
+        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
+        self._parents_full = data.topology.parents_full
+        self._joint_children_full = data.topology.joint_children_full
+        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
         self.register_buffer("_parents_full_index", torch.as_tensor(self._parents_full, dtype=torch.int64))
-        self.register_buffer("_joint_children_indices_full", torch.as_tensor(data["joint_children_indices_full"]))
+        self.register_buffer("_joint_children_indices_full", torch.as_tensor(data.topology.joint_children_indices_full))
         self.register_buffer(
             "_skinned_vertex_indices_full_index",
-            torch.as_tensor(data["skinned_vertex_indices_full_index"]),
+            torch.as_tensor(data.topology.skinned_vertex_indices_full_index),
         )
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data["joint_names"])
+        self._joint_names = data.joint_names_full[1:]
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -166,15 +171,15 @@ class SOMA(BodyModel, nn.Module):
         transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
         self.register_buffer(
             "_identity_source_tetrahedra",
-            torch.as_tensor(transfer_data["source_tetrahedra"], dtype=torch.int64),
+            torch.as_tensor(transfer_data.source_tetrahedra, dtype=torch.int64),
         )
-        self.register_buffer("_identity_face_ids", torch.as_tensor(transfer_data["face_ids"], dtype=torch.int64))
-        self.register_buffer("_identity_bary_coords", torch.as_tensor(transfer_data["bary_coords"]))
-        self.register_buffer("_identity_unknown_ids", torch.as_tensor(transfer_data["unknown_ids"], dtype=torch.int64))
-        self.register_buffer("_identity_anchor_ids", torch.as_tensor(transfer_data["anchor_ids"], dtype=torch.int64))
-        self.register_buffer("_identity_solve_matrix", torch.as_tensor(transfer_data["solve_matrix"]))
-        self.register_buffer("_identity_anchor_matrix", torch.as_tensor(transfer_data["anchor_matrix"]))
-        self.register_buffer("_identity_rhs_base", torch.as_tensor(transfer_data["rhs_base"]))
+        self.register_buffer("_identity_face_ids", torch.as_tensor(transfer_data.face_ids, dtype=torch.int64))
+        self.register_buffer("_identity_bary_coords", torch.as_tensor(transfer_data.bary_coords))
+        self.register_buffer("_identity_unknown_ids", torch.as_tensor(transfer_data.unknown_ids, dtype=torch.int64))
+        self.register_buffer("_identity_anchor_ids", torch.as_tensor(transfer_data.anchor_ids, dtype=torch.int64))
+        self.register_buffer("_identity_solve_matrix", torch.as_tensor(transfer_data.solve_matrix))
+        self.register_buffer("_identity_anchor_matrix", torch.as_tensor(transfer_data.anchor_matrix))
+        self.register_buffer("_identity_rhs_base", torch.as_tensor(transfer_data.rhs_base))
         {
             "mhr": self._init_mhr_identity_backend,
             "anny": self._init_anny_identity_backend,
@@ -415,16 +420,16 @@ class SOMA(BodyModel, nn.Module):
         rest_shape_active = rest_shape if self._vertex_map is None else rest_shape[:, self._vertex_map]
         return None, rest_shape, rest_shape_active
 
-    def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_mhr_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
         self._identity_mhr_model = MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
 
-    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_anny_identity_backend(self, transfer_data: SomaIdentityTransfer) -> None:
         self._identity_anny_model = ANNY(
             model_path=get_identity_model_path("anny"),
             all_phenotypes=False,
             simplify=1.0,
         )
-        source_vertices = torch.as_tensor(transfer_data["source_vertices"], dtype=self.mean_full.dtype)
+        source_vertices = torch.as_tensor(transfer_data.source_vertices, dtype=self.mean_full.dtype)
         rotation, translation = core.fit_rigid_transform(
             self._identity_anny_model.template_vertices,
             source_vertices,
@@ -437,7 +442,7 @@ class SOMA(BodyModel, nn.Module):
             dtype=self.mean_full.dtype,
         )
 
-    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_linear_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
         linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
         self._identity_linear_model = linear_model_cls(
             model_path=get_identity_model_path(self.model_type),
