@@ -25,6 +25,8 @@ def prepare(transfer: SomaIdentityTransfer) -> tuple[SMPLIdentity, SomaIdentityT
 def shape(
     identity_model: SMPLIdentity,
     identity: Float[Any, "B I"],
+    scale_params: Float[Any, "B K"] | None = None,
+    num_scale_params: int | None = None,
     *,
     xp: Any,
 ) -> Float[Any, "B V 3"]:

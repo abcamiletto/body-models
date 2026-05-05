@@ -67,8 +67,8 @@ def prepare_identity(
     rest_shape_full = None
     rest_shape_active = None
     if identity_backend.model_type != "soma":
-        rest_shape_full, rest_shape_active = prepare_identity_shape(
-            identity_backend=identity_backend,
+        rest_shape_full, rest_shape_active = identities.rest_shape(
+            backend=identity_backend,
             identity=identity,
             scale_params=scale_params,
             vertex_map=data.vertex_map,
@@ -302,97 +302,6 @@ def prepare_identity_state(
     )
 
 
-def prepare_identity_shape(
-    *,
-    identity_backend: Any,
-    identity: Float[Array, "B I"],
-    scale_params: Float[Array, "B K"] | None,
-    vertex_map: Int[Array, "Va"] | None,
-    xp: Any,
-) -> tuple[Float[Array, "B Vt 3"] | None, Float[Array, "B Va 3"] | None]:
-    identity_transfer = identity_backend.transfer
-    rest_shape = identities.shape(
-        backend=identity_backend,
-        identity=identity,
-        scale_params=scale_params,
-        xp=xp,
-    )
-
-    rest_shape = apply_rigid_transform(
-        rest_shape,
-        rotation=identity_transfer.internal_to_source_rotation,
-        translation=identity_transfer.internal_to_source_translation,
-        xp=xp,
-    )
-    rest_shape = rest_shape * identity_transfer.source_scale
-    rest_shape = transfer_identity_rest_shape(
-        source_shape=rest_shape,
-        source_tetrahedra=identity_transfer.source_tetrahedra,
-        face_ids=identity_transfer.face_ids,
-        bary_coords=identity_transfer.bary_coords,
-        unknown_ids=identity_transfer.unknown_ids,
-        anchor_ids=identity_transfer.anchor_ids,
-        solve_matrix=identity_transfer.solve_matrix,
-        anchor_matrix=identity_transfer.anchor_matrix,
-        rhs_base=identity_transfer.rhs_base,
-        xp=xp,
-    )
-    rest_shape = apply_rigid_transform(
-        rest_shape,
-        rotation=identity_transfer.source_to_soma_rotation,
-        xp=xp,
-    )
-    rest_shape = rest_shape * identity_transfer.output_scale
-    rest_shape_active = rest_shape if vertex_map is None else rest_shape[:, vertex_map]
-    return rest_shape, rest_shape_active
-
-
-def transfer_identity_rest_shape(
-    source_shape: Float[Array, "B Vs 3"],
-    source_tetrahedra: Int[Array, "Fs 4"],
-    face_ids: Int[Array, "Vt"],
-    bary_coords: Float[Array, "Vt 4"],
-    unknown_ids: Int[Array, "U"],
-    anchor_ids: Int[Array, "A"],
-    solve_matrix: Float[Array, "U U"],
-    anchor_matrix: Float[Array, "U A"],
-    rhs_base: Float[Array, "U 3"],
-    *,
-    xp: Any = None,
-) -> Float[Array, "B Vt 3"]:
-    if xp is None:
-        xp = get_namespace(source_shape)
-
-    tetra_faces = source_tetrahedra[:, :3]
-    f0 = source_shape[:, tetra_faces[:, 0]]
-    f1 = source_shape[:, tetra_faces[:, 1]]
-    f2 = source_shape[:, tetra_faces[:, 2]]
-    fabricated = f0 + xp.linalg.cross(f1 - f0, f2 - f0)
-    source_shape_tet = xp.concat([source_shape, fabricated], axis=1)
-
-    tet_indices = source_tetrahedra[face_ids]
-    v0 = source_shape_tet[:, tet_indices[:, 0]]
-    v1 = source_shape_tet[:, tet_indices[:, 1]]
-    v2 = source_shape_tet[:, tet_indices[:, 2]]
-    v3 = source_shape_tet[:, tet_indices[:, 3]]
-    bc = bary_coords[None]
-    target_shape = v0 * bc[..., 0:1] + v1 * bc[..., 1:2] + v2 * bc[..., 2:3] + v3 * bc[..., 3:4]
-
-    if unknown_ids.shape[0] == 0:
-        return target_shape
-
-    B = target_shape.shape[0]
-    num_unknown = unknown_ids.shape[0]
-    num_anchor = anchor_ids.shape[0]
-    anchor_vertices = target_shape[:, anchor_ids]
-    anchor_vertices = xp.reshape(anchor_vertices.swapaxes(0, 1), (num_anchor, B * 3))
-    rhs = xp.broadcast_to(rhs_base[:, None, :], (num_unknown, B, 3)).reshape(num_unknown, B * 3)
-    rhs = rhs - anchor_matrix @ anchor_vertices
-    unknown_vertices = xp.linalg.solve(solve_matrix, rhs)
-    unknown_vertices = xp.reshape(unknown_vertices, (num_unknown, B, 3)).swapaxes(0, 1)
-    return common.set(target_shape, (slice(None), unknown_ids), unknown_vertices, xp=xp)
-
-
 def fit_rigid_transform(
     source_points: Float[Array, "V 3"],
     target_points: Float[Array, "V 3"],
@@ -414,21 +323,6 @@ def fit_rigid_transform(
     rotation = Vh.swapaxes(-2, -1) @ reflection @ U.swapaxes(-2, -1)
     translation = target_center - source_center @ rotation.swapaxes(-2, -1)
     return rotation, translation
-
-
-def apply_rigid_transform(
-    points: Float[Array, "B V 3"],
-    rotation: Float[Array, "3 3"],
-    translation: Float[Array, "3"] | None = None,
-    *,
-    xp: Any = None,
-) -> Float[Array, "B V 3"]:
-    if xp is None:
-        xp = get_namespace(points)
-    points = points @ rotation.swapaxes(-2, -1)
-    if translation is not None:
-        points = points + translation
-    return points
 
 
 def resolve_identity_inputs(
