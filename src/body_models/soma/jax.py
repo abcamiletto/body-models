@@ -317,15 +317,15 @@ class SOMA(BodyModel, nnx.Module):
 
         if self.model_type == "mhr":
             assert self.num_scale_params is not None
-            source_shape = identities.mhr_source_shape(
+            source_shape = core.mhr_identity_shape(
+                model=self._identity_mhr_model,
                 identity=identity,
                 scale_params=scale_params,
                 num_scale_params=self.num_scale_params,
-                model=self._identity_mhr_model,
                 xp=jnp,
             )
         elif self.model_type == "anny":
-            source_shape = identities.anny_source_shape(
+            source_shape = core.anny_identity_shape(
                 template_vertices=self._identity_anny_model.template_vertices[...],
                 blendshapes=self._identity_anny_model.blendshapes[...],
                 phenotype_mask=self._identity_anny_model.phenotype_mask[...],
@@ -334,7 +334,7 @@ class SOMA(BodyModel, nnx.Module):
                 xp=jnp,
             )
         else:
-            source_shape = identities.linear_source_shape(
+            source_shape = core.linear_identity_shape(
                 mean=self._identity_linear_model.v_template_full[...],
                 shapedirs=self._identity_linear_model.shapedirs_full[...],
                 identity=identity,

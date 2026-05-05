@@ -28,57 +28,6 @@ class IdentityTransfer:
     output_scale: float
 
 
-def mhr_source_shape(
-    *,
-    identity: Float[Any, "B I"],
-    scale_params: Float[Any, "B K"] | None,
-    num_scale_params: int,
-    model: Any,
-    xp: Any,
-) -> Float[Any, "B V 3"]:
-    return core.mhr_identity_shape(
-        model=model,
-        identity=identity,
-        scale_params=scale_params,
-        num_scale_params=num_scale_params,
-        xp=xp,
-    )
-
-
-def anny_source_shape(
-    *,
-    template_vertices: Float[Any, "V 3"],
-    blendshapes: Float[Any, "P V 3"],
-    phenotype_mask: Float[Any, "P"],
-    anchors: Any,
-    identity: Float[Any, "B I"],
-    xp: Any,
-) -> Float[Any, "B V 3"]:
-    return core.anny_identity_shape(
-        template_vertices=template_vertices,
-        blendshapes=blendshapes,
-        phenotype_mask=phenotype_mask,
-        anchors=anchors,
-        identity=identity,
-        xp=xp,
-    )
-
-
-def linear_source_shape(
-    *,
-    mean: Float[Any, "V 3"],
-    shapedirs: Float[Any, "I V 3"],
-    identity: Float[Any, "B I"],
-    xp: Any,
-) -> Float[Any, "B V 3"]:
-    return core.linear_identity_shape(
-        mean=mean,
-        shapedirs=shapedirs,
-        identity=identity,
-        xp=xp,
-    )
-
-
 def transfer_shape(
     source_shape: Float[Any, "B Vs 3"],
     transfer: IdentityTransfer,
