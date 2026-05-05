@@ -308,19 +308,6 @@ def transfer_identity_rest_shape(
     return common.set(target_shape, (slice(None), unknown_ids), unknown_vertices, xp=xp)
 
 
-def linear_identity_shape(
-    mean: Float[Array, "V 3"],
-    shapedirs: Float[Array, "V 3 S"] | Float[Array, "V 3 I"],
-    identity: Float[Array, "B I"],
-    *,
-    xp: Any = None,
-) -> Float[Array, "B V 3"]:
-    if xp is None:
-        xp = get_namespace(identity)
-    identity_dim = identity.shape[1]
-    return mean[None] + xp.einsum("bi,vci->bvc", identity, shapedirs[..., :identity_dim])
-
-
 def mhr_identity_shape(
     model: Any,
     identity: Float[Array, "B I"],
