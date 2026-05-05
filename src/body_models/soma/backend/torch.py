@@ -5,6 +5,7 @@ import torch.nn as nn
 from dataclasses import replace
 from jaxtyping import Float, Int
 
+from .. import identities
 from ..io import SomaIdentityTransfer, SomaWeights
 from . import core
 
@@ -16,6 +17,7 @@ __all__ = [
     "linear_blend_skinning",
     "prepare_data",
     "prepare_identity",
+    "prepare_identity_backend",
     "prepare_identity_model",
     "prepare_identity_transfer",
 ]
@@ -145,6 +147,23 @@ class SomaTorchIdentityTransfer(nn.Module):
         self.register_buffer("source_to_soma_rotation", torch.as_tensor(identity_transfer.source_to_soma_rotation))
 
 
+class SomaTorchIdentityBackend(nn.Module):
+    def __init__(self, identity_backend: identities.IdentityBackend):
+        super().__init__()
+        self.model_type = identity_backend.model_type
+        self.identity_dim = identity_backend.identity_dim
+        self.num_scale_params = identity_backend.num_scale_params
+        self.default_identity_value = identity_backend.default_identity_value
+        self.model = (
+            None
+            if identity_backend.model is None
+            else prepare_identity_model(identity_backend.model_type, identity_backend.model)
+        )
+        self.transfer = (
+            None if identity_backend.transfer is None else prepare_identity_transfer(identity_backend.transfer)
+        )
+
+
 def prepare_data(weights: SomaWeights) -> SomaTorchWeights:
     return SomaTorchWeights(weights)
 
@@ -154,14 +173,6 @@ def prepare_identity_model(model_type: str, identity_model):
         from ...mhr.torch import MHR
 
         return MHR(model_path=identity_model.model_path, simplify=1.0)
-    if model_type == "anny":
-        return replace(
-            identity_model,
-            template_vertices=torch.as_tensor(identity_model.template_vertices),
-            blendshapes=torch.as_tensor(identity_model.blendshapes),
-            phenotype_mask=torch.as_tensor(identity_model.phenotype_mask),
-            anchors={name: torch.as_tensor(value) for name, value in identity_model.anchors.items()},
-        )
     return replace(
         identity_model,
         mean=torch.as_tensor(identity_model.mean),
@@ -171,6 +182,10 @@ def prepare_identity_model(model_type: str, identity_model):
 
 def prepare_identity_transfer(identity_transfer: SomaIdentityTransfer) -> SomaTorchIdentityTransfer:
     return SomaTorchIdentityTransfer(identity_transfer)
+
+
+def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaTorchIdentityBackend:
+    return SomaTorchIdentityBackend(identity_backend)
 
 
 def forward_vertices(*args, **kwargs):

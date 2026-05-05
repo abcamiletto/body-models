@@ -3,7 +3,9 @@
 from dataclasses import replace
 
 import jax.numpy as jnp
+from flax import nnx
 
+from .. import identities
 from ..io import SomaWeights
 from . import core
 
@@ -15,6 +17,7 @@ __all__ = [
     "linear_blend_skinning",
     "prepare_data",
     "prepare_identity",
+    "prepare_identity_backend",
     "prepare_identity_model",
     "prepare_identity_transfer",
 ]
@@ -64,18 +67,9 @@ def prepare_data(weights: SomaWeights) -> SomaWeights:
 
 def prepare_identity_model(model_type: str, identity_model):
     if model_type == "mhr":
-        from flax import nnx
         from ...mhr.jax import MHR
 
         return nnx.data(MHR(model_path=identity_model.model_path, simplify=1.0))
-    if model_type == "anny":
-        return replace(
-            identity_model,
-            template_vertices=jnp.asarray(identity_model.template_vertices),
-            blendshapes=jnp.asarray(identity_model.blendshapes),
-            phenotype_mask=jnp.asarray(identity_model.phenotype_mask),
-            anchors={name: jnp.asarray(value) for name, value in identity_model.anchors.items()},
-        )
     return replace(
         identity_model,
         mean=jnp.asarray(identity_model.mean),
@@ -99,6 +93,26 @@ def prepare_identity_transfer(identity_transfer):
         internal_to_source_translation=jnp.asarray(identity_transfer.internal_to_source_translation),
         source_to_soma_rotation=jnp.asarray(identity_transfer.source_to_soma_rotation),
     )
+
+
+class SomaJaxIdentityBackend(nnx.Module):
+    def __init__(self, identity_backend: identities.IdentityBackend) -> None:
+        self.model_type = identity_backend.model_type
+        self.identity_dim = identity_backend.identity_dim
+        self.num_scale_params = identity_backend.num_scale_params
+        self.default_identity_value = identity_backend.default_identity_value
+        self.model = (
+            None
+            if identity_backend.model is None
+            else prepare_identity_model(identity_backend.model_type, identity_backend.model)
+        )
+        self.transfer = (
+            None if identity_backend.transfer is None else prepare_identity_transfer(identity_backend.transfer)
+        )
+
+
+def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaJaxIdentityBackend:
+    return SomaJaxIdentityBackend(identity_backend)
 
 
 def forward_vertices(*args, **kwargs):

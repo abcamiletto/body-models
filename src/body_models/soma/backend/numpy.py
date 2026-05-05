@@ -1,5 +1,6 @@
 """NumPy SOMA backend."""
 
+from .. import identities
 from . import core
 
 __all__ = [
@@ -10,6 +11,7 @@ __all__ = [
     "linear_blend_skinning",
     "prepare_data",
     "prepare_identity",
+    "prepare_identity_backend",
     "prepare_identity_model",
     "prepare_identity_transfer",
 ]
@@ -30,3 +32,13 @@ def prepare_identity_model(model_type: str, identity_model):
 
         return MHR(model_path=identity_model.model_path, simplify=1.0)
     return identity_model
+
+
+def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend:
+    if identity_backend.model is None:
+        return identity_backend
+    return identities.replace_data(
+        identity_backend,
+        model=prepare_identity_model(identity_backend.model_type, identity_backend.model),
+        transfer=identity_backend.transfer,
+    )

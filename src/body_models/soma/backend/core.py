@@ -44,18 +44,17 @@ def prepare_identity_transfer(identity_transfer: IdentityTransfer) -> IdentityTr
     return identity_transfer
 
 
+def prepare_identity_backend(identity_backend: Any) -> Any:
+    return identity_backend
+
+
 def prepare_identity(
     data: Any,
     *,
-    model_type: str,
-    identity_model: Any,
+    identity_backend: Any,
     identity: Float[Array, "B|1 I"] | None,
     scale_params: Float[Array, "B|1 K"] | None,
     batch_size: int,
-    identity_dim: int,
-    default_identity_value: float,
-    num_scale_params: int | None,
-    identity_transfer: IdentityTransfer | None,
     match_warp: bool,
     ref: Array,
     xp: Any,
@@ -66,28 +65,26 @@ def prepare_identity(
     Float[Array, "B Jf 4 4"],
 ]:
     if identity is None:
-        identity = common.zeros_as(ref, shape=(1, identity_dim), xp=xp) + default_identity_value
+        identity = common.zeros_as(ref, shape=(1, identity_backend.identity_dim), xp=xp)
+        identity = identity + identity_backend.default_identity_value
     identity, scale_params = resolve_identity_inputs(
         identity=identity,
         scale_params=scale_params,
         batch_size=batch_size,
-        identity_dim=identity_dim,
-        num_scale_params=num_scale_params,
+        identity_dim=identity_backend.identity_dim,
+        num_scale_params=identity_backend.num_scale_params,
         ref=ref,
         xp=xp,
     )
     rest_shape_full = None
     rest_shape_active = None
-    if model_type != "soma":
-        if identity_transfer is None:
-            raise ValueError(f"SOMA model_type='{model_type}' requires identity_transfer.")
+    if identity_backend.model_type != "soma":
+        if identity_backend.transfer is None:
+            raise ValueError(f"SOMA model_type='{identity_backend.model_type}' requires identity_transfer.")
         rest_shape_full, rest_shape_active = prepare_identity_shape(
-            model_type=model_type,
-            identity_model=identity_model,
+            identity_backend=identity_backend,
             identity=identity,
             scale_params=scale_params,
-            num_scale_params=num_scale_params,
-            identity_transfer=identity_transfer,
             vertex_map=data.vertex_map,
             xp=xp,
         )
@@ -321,21 +318,19 @@ def prepare_identity_state(
 
 def prepare_identity_shape(
     *,
-    model_type: str,
-    identity_model: Any,
+    identity_backend: Any,
     identity: Float[Array, "B I"],
     scale_params: Float[Array, "B K"] | None,
-    num_scale_params: int | None,
-    identity_transfer: IdentityTransfer,
     vertex_map: Int[Array, "Va"] | None,
     xp: Any,
 ) -> tuple[Float[Array, "B Vt 3"] | None, Float[Array, "B Va 3"] | None]:
+    identity_transfer = identity_backend.transfer
+    if identity_transfer is None:
+        raise ValueError(f"SOMA model_type='{identity_backend.model_type}' requires identity_transfer.")
     rest_shape = identities.shape(
-        model_type=model_type,
-        identity_model=identity_model,
+        backend=identity_backend,
         identity=identity,
         scale_params=scale_params,
-        num_scale_params=num_scale_params,
         xp=xp,
     )
 

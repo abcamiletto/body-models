@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -14,14 +15,13 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
-    SomaIdentityTransfer,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
     simplify_mesh,
 )
 import body_models.soma.backend.jax as core
-from body_models.soma.identities import prepare_backend as prepare_identity_backend
+from body_models.soma import identities
 
 PathLike = Path | str
 
@@ -34,8 +34,7 @@ class SOMA(BodyModel, nnx.Module):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
-    _identity_model: object
-    identity_transfer: SomaIdentityTransfer | None
+    identity_backend: Any
 
     def __init__(
         self,
@@ -93,19 +92,19 @@ class SOMA(BodyModel, nnx.Module):
         self._joint_names = data.joint_names_full[1:]
 
         spec = MODEL_TYPE_SPECS[self.model_type]
-        self.identity_dim = spec.identity_dim
-        self.num_scale_params = spec.num_scale_params
-        self._default_identity_value = spec.default_identity_value
-        self._identity_model = None
-        self.identity_transfer = None
+        transfer_data = None
+        if spec.asset_dir is not None:
+            transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
+        identity_backend = identities.load(self.model_type, spec, transfer_data)
+        self.identity_backend = core.prepare_identity_backend(identity_backend)
 
-        if spec.asset_dir is None:
-            return
+    @property
+    def identity_dim(self) -> int:
+        return self.identity_backend.identity_dim
 
-        transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_model, transfer_data = prepare_identity_backend(self.model_type, transfer_data)
-        self._identity_model = core.prepare_identity_model(self.model_type, self._identity_model)
-        self.identity_transfer = core.prepare_identity_transfer(transfer_data)
+    @property
+    def num_scale_params(self) -> int | None:
+        return self.identity_backend.num_scale_params
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
@@ -212,9 +211,13 @@ class SOMA(BodyModel, nnx.Module):
             ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
-        params["identity"] = jnp.full((1, self.identity_dim), self._default_identity_value, dtype=dtype)
-        if self.num_scale_params is not None:
-            params["scale_params"] = jnp.zeros((1, self.num_scale_params), dtype=dtype)
+        params["identity"] = jnp.full(
+            (1, self.identity_backend.identity_dim),
+            self.identity_backend.default_identity_value,
+            dtype=dtype,
+        )
+        if self.identity_backend.num_scale_params is not None:
+            params["scale_params"] = jnp.zeros((1, self.identity_backend.num_scale_params), dtype=dtype)
         return params
 
     def _prepare_identity(
@@ -231,15 +234,10 @@ class SOMA(BodyModel, nnx.Module):
     ]:
         return core.prepare_identity(
             data=self.model_weights,
-            model_type=self.model_type,
-            identity_model=self._identity_model,
+            identity_backend=self.identity_backend,
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
-            identity_dim=self.identity_dim,
-            default_identity_value=self._default_identity_value,
-            num_scale_params=self.num_scale_params,
-            identity_transfer=self.identity_transfer,
             match_warp=self.match_warp,
             ref=ref,
             xp=jnp,

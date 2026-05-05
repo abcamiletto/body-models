@@ -12,7 +12,6 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
-    SomaIdentityTransfer,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
@@ -20,7 +19,7 @@ from .io import (
 )
 import body_models.soma.backend.numpy as numpy_kernel
 import body_models.soma.backend.scipy as scipy_kernel
-from body_models.soma.identities import prepare_backend as prepare_identity_backend
+from body_models.soma import identities
 
 PathLike = Path | str
 KernelBackend = Literal["numpy", "scipy"]
@@ -42,10 +41,9 @@ class SOMA(BodyModel):
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
 
-    _identity_model: object | None
+    identity_backend: identities.IdentityBackend
     _kernel: Any
     model_weights: Any
-    identity_transfer: SomaIdentityTransfer | None
 
     def __init__(
         self,
@@ -107,19 +105,19 @@ class SOMA(BodyModel):
         self.model_weights = self._kernel.prepare_data(weights)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
-        self.identity_dim = spec.identity_dim
-        self.num_scale_params = spec.num_scale_params
-        self._default_identity_value = spec.default_identity_value
-        self._identity_model = None
-        self.identity_transfer = None
+        transfer_data = None
+        if spec.asset_dir is not None:
+            transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
+        identity_backend = identities.load(self.model_type, spec, transfer_data)
+        self.identity_backend = self._kernel.prepare_identity_backend(identity_backend)
 
-        if spec.asset_dir is None:
-            return
+    @property
+    def identity_dim(self) -> int:
+        return self.identity_backend.identity_dim
 
-        transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_model, transfer_data = prepare_identity_backend(self.model_type, transfer_data)
-        self._identity_model = self._kernel.prepare_identity_model(self.model_type, self._identity_model)
-        self.identity_transfer = self._kernel.prepare_identity_transfer(transfer_data)
+    @property
+    def num_scale_params(self) -> int | None:
+        return self.identity_backend.num_scale_params
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
@@ -230,9 +228,13 @@ class SOMA(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
-        params["identity"] = np.full((1, self.identity_dim), self._default_identity_value, dtype=dtype)
-        if self.num_scale_params is not None:
-            params["scale_params"] = np.zeros((1, self.num_scale_params), dtype=dtype)
+        params["identity"] = np.full(
+            (1, self.identity_backend.identity_dim),
+            self.identity_backend.default_identity_value,
+            dtype=dtype,
+        )
+        if self.identity_backend.num_scale_params is not None:
+            params["scale_params"] = np.zeros((1, self.identity_backend.num_scale_params), dtype=dtype)
         return params
 
     def prepare_identity(
@@ -248,15 +250,10 @@ class SOMA(BodyModel):
         batch_size = 1 if identity is None else identity.shape[0]
         _identity, rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.prepare_identity(
             data=self.model_weights,
-            model_type=self.model_type,
-            identity_model=self._identity_model,
+            identity_backend=self.identity_backend,
             identity=identity,
             scale_params=scale_params,
             batch_size=batch_size,
-            identity_dim=self.identity_dim,
-            default_identity_value=self._default_identity_value,
-            num_scale_params=self.num_scale_params,
-            identity_transfer=self.identity_transfer,
             match_warp=self.match_warp,
             ref=ref,
             xp=np,

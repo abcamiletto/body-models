@@ -22,6 +22,7 @@ __all__ = [
     "linear_blend_skinning",
     "prepare_data",
     "prepare_identity",
+    "prepare_identity_backend",
     "prepare_identity_model",
     "prepare_identity_transfer",
 ]
@@ -36,6 +37,12 @@ def prepare_identity_model(model_type: str, identity_model):
     from . import numpy as numpy_backend
 
     return numpy_backend.prepare_identity_model(model_type, identity_model)
+
+
+def prepare_identity_backend(identity_backend):
+    from . import numpy as numpy_backend
+
+    return numpy_backend.prepare_identity_backend(identity_backend)
 
 
 @dataclass(frozen=True)

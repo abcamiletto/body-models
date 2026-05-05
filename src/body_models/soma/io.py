@@ -135,16 +135,6 @@ MODEL_TYPE_SPECS = {
         source_mesh_name="base_body_lod1.obj",
         target_mesh_name="SOMA_wrap_lod1.obj",
     ),
-    "anny": _ModelTypeSpec(
-        identity_dim=6,
-        default_identity_value=0.5,
-        output_scale=100.0,
-        config_key="anny",
-        asset_dir="Anny",
-        source_mesh_name="base_body.obj",
-        target_mesh_name="SOMA_wrap.obj",
-        use_laplacian=False,
-    ),
     "smpl": _ModelTypeSpec(
         identity_dim=10,
         output_scale=100.0,
