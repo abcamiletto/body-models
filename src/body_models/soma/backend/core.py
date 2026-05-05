@@ -34,9 +34,18 @@ def prepare_identity(
     match_warp: bool,
     xp: Any,
 ) -> PreparedIdentity:
-    return _prepare_soma_identity(
+    rest_shape_full = _identity_to_rest_vertices(xp, data.mean_full, data.shapedirs_full, data.eigenvalues, identity)
+    rest_shape_active = _identity_to_rest_vertices(
+        xp,
+        data.mean_active,
+        data.shapedirs_active,
+        data.eigenvalues,
+        identity,
+    )
+    return prepare_identity_from_rest_shape(
         data=data,
-        identity=identity,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
         match_warp=match_warp,
         xp=xp,
     )
@@ -50,13 +59,20 @@ def prepare_identity_from_rest_shape(
     match_warp: bool,
     xp: Any,
 ) -> PreparedIdentity:
-    return _prepare_rest_shape_identity(
-        data=data,
-        rest_shape_full=rest_shape_full,
-        rest_shape_active=rest_shape_active,
-        match_warp=match_warp,
+    rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
         xp=xp,
+        bind_shape=data.bind_shape_full,
+        bind_pose_world=data.bind_pose_world,
+        joint_regressor=data.joint_regressor,
+        joint_children_full=data.topology.joint_children_full,
+        joint_children_indices_full=data.topology.joint_children_indices_full,
+        skinned_vertex_indices_full=data.topology.skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=data.topology.skinned_vertex_indices_full_index,
+        parents_full=data.topology.parents_full,
+        rest_shape=rest_shape_full,
+        match_warp=match_warp,
     )
+    return PreparedIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
 
 
 def forward_vertices(
@@ -184,54 +200,6 @@ def forward_skeleton(
     if joint_indices is not None:
         public = public[:, xp.asarray(joint_indices)]
     return public
-
-
-def _prepare_soma_identity(
-    data: Any,
-    identity: Float[Array, "B S"],
-    match_warp: bool,
-    *,
-    xp: Any,
-) -> PreparedIdentity:
-    rest_shape_full = _identity_to_rest_vertices(xp, data.mean_full, data.shapedirs_full, data.eigenvalues, identity)
-    rest_shape_active = _identity_to_rest_vertices(
-        xp,
-        data.mean_active,
-        data.shapedirs_active,
-        data.eigenvalues,
-        identity,
-    )
-    return _prepare_rest_shape_identity(
-        data=data,
-        rest_shape_full=rest_shape_full,
-        rest_shape_active=rest_shape_active,
-        match_warp=match_warp,
-        xp=xp,
-    )
-
-
-def _prepare_rest_shape_identity(
-    data: Any,
-    rest_shape_full: Float[Array, "B Vf 3"],
-    rest_shape_active: Float[Array, "B Va 3"],
-    match_warp: bool,
-    *,
-    xp: Any,
-) -> PreparedIdentity:
-    rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
-        xp=xp,
-        bind_shape=data.bind_shape_full,
-        bind_pose_world=data.bind_pose_world,
-        joint_regressor=data.joint_regressor,
-        joint_children_full=data.topology.joint_children_full,
-        joint_children_indices_full=data.topology.joint_children_indices_full,
-        skinned_vertex_indices_full=data.topology.skinned_vertex_indices_full,
-        skinned_vertex_indices_full_index=data.topology.skinned_vertex_indices_full_index,
-        parents_full=data.topology.parents_full,
-        rest_shape=rest_shape_full,
-        match_warp=match_warp,
-    )
-    return PreparedIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
 
 
 def fit_rigid_transform(

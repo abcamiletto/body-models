@@ -40,33 +40,21 @@ class IdentityBackend:
 
 def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = None) -> IdentityBackend:
     if model_type == "soma":
-        return _identity_backend(
+        def prepare_for_backend(_backend: str) -> IdentityBackend:
+            return load(model_type, spec)
+
+        return IdentityBackend(
             model_type=model_type,
-            spec=spec,
+            identity_dim=spec.identity_dim,
+            num_scale_params=spec.num_scale_params,
+            default_identity_value=spec.default_identity_value,
             prepare_identity=_prepare_soma_identity,
-            prepare_for_backend=lambda _backend: load(model_type, spec),
+            prepare_for_backend=prepare_for_backend,
         )
 
     module = IDENTITY_BACKENDS[model_type]
     model, transfer = module.prepare(transfer)
     return _transferred_identity_backend(model_type, spec, module, model, transfer)
-
-
-def _identity_backend(
-    *,
-    model_type: str,
-    spec: Any,
-    prepare_identity: Any,
-    prepare_for_backend: Any,
-) -> IdentityBackend:
-    return IdentityBackend(
-        model_type=model_type,
-        identity_dim=spec.identity_dim,
-        num_scale_params=spec.num_scale_params,
-        default_identity_value=spec.default_identity_value,
-        prepare_identity=prepare_identity,
-        prepare_for_backend=prepare_for_backend,
-    )
 
 
 def prepare_backend(identity_backend: IdentityBackend, backend: str) -> IdentityBackend:
@@ -154,9 +142,11 @@ def _transferred_identity_backend(
         backend_transfer = _prepare_transfer(transfer, backend)
         return _transferred_identity_backend(model_type, spec, module, backend_model, backend_transfer)
 
-    return _identity_backend(
+    return IdentityBackend(
         model_type=model_type,
-        spec=spec,
+        identity_dim=spec.identity_dim,
+        num_scale_params=spec.num_scale_params,
+        default_identity_value=spec.default_identity_value,
         prepare_identity=prepare_identity,
         prepare_for_backend=prepare_for_backend,
     )
