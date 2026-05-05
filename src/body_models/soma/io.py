@@ -28,6 +28,8 @@ SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
 
 __all__ = [
+    "SomaIdentityTransfer",
+    "SomaWeights",
     "get_model_path",
     "download_model",
     "load_model_data",
@@ -45,6 +47,66 @@ class _SparseCoo:
     values: Float[np.ndarray, "NNZ"]
     size: tuple[int, ...]
     is_coalesced: bool
+
+
+@dataclass(frozen=True)
+class SomaCorrectives:
+    corrective_bindpose: Float[np.ndarray, "Jf 3 3"]
+    corrective_W1: Float[np.ndarray, "D K"]
+    corrective_W2_rows: Int[np.ndarray, "NNZ"]
+    corrective_W2_cols: Int[np.ndarray, "NNZ"]
+    corrective_W2_values: Float[np.ndarray, "NNZ"]
+
+
+@dataclass(frozen=True)
+class SomaTopology:
+    parents_full: list[int]
+    joint_children_full: list[list[int]]
+    joint_children_indices_full: Int[np.ndarray, "Jf C"]
+    skinned_vertex_indices_full: list[list[int]]
+    skinned_vertex_indices_full_index: Int[np.ndarray, "Jf K"]
+    kinematic_fronts_full: list[Front]
+
+
+@dataclass(frozen=True)
+class SomaWeights:
+    mean_full: Float[np.ndarray, "Vf 3"]
+    mean_active: Float[np.ndarray, "Va 3"]
+    shapedirs_full: Float[np.ndarray, "S Vf 3"]
+    shapedirs_active: Float[np.ndarray, "S Va 3"]
+    eigenvalues: Float[np.ndarray, "S"]
+    bind_shape_full: Float[np.ndarray, "Vf 3"]
+    bind_pose_world: Float[np.ndarray, "Jf 4 4"]
+    bind_pose_local: Float[np.ndarray, "Jf 4 4"]
+    t_pose_world: Float[np.ndarray, "Jf 4 4"]
+    t_pose_local: Float[np.ndarray, "Jf 4 4"]
+    joint_regressor: Float[np.ndarray, "Jf Vf"]
+    skin_weights_full: Float[np.ndarray, "Vf Jf"]
+    skin_weights_active: Float[np.ndarray, "Va Jf"]
+    faces: Int[np.ndarray, "F 3"]
+    vertex_map: Int[np.ndarray, "Va"] | None
+    facial_inner_vertices: Int[np.ndarray, "Va"]
+    topology: SomaTopology
+    correctives: SomaCorrectives
+    joint_names_full: list[str]
+
+
+@dataclass(frozen=True)
+class SomaIdentityTransfer:
+    source_vertices: Float[np.ndarray, "Vs 3"]
+    source_tetrahedra: Int[np.ndarray, "Fs 4"]
+    face_ids: Int[np.ndarray, "Vt"]
+    bary_coords: Float[np.ndarray, "Vt 4"]
+    unknown_ids: Int[np.ndarray, "U"]
+    anchor_ids: Int[np.ndarray, "A"]
+    solve_matrix: Float[np.ndarray, "U U"]
+    anchor_matrix: Float[np.ndarray, "U A"]
+    rhs_base: Float[np.ndarray, "U 3"]
+    internal_to_source_rotation: Float[np.ndarray, "3 3"]
+    internal_to_source_translation: Float[np.ndarray, "3"]
+    source_to_soma_rotation: Float[np.ndarray, "3 3"]
+    source_scale: float
+    output_scale: float
 
 
 @dataclass(frozen=True)
@@ -351,16 +413,32 @@ def _build_identity_laplacian_data(
     return unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base
 
 
-def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, np.ndarray]:
-    cache_file = _identity_transfer_cache_file(asset_dir, model_type)
-    if cache_file.exists():
-        with np.load(cache_file, allow_pickle=False) as data:
-            return {name: np.asarray(data[name]).copy() for name in data.files}
-
+@lru_cache(maxsize=None)
+def load_identity_transfer_data(asset_dir: Path, model_type: str) -> SomaIdentityTransfer:
     normalized = model_type.lower()
     spec = MODEL_TYPE_SPECS.get(normalized)
     if spec is None or spec.asset_dir is None or spec.source_mesh_name is None or spec.target_mesh_name is None:
         raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
+
+    cache_file = _identity_transfer_cache_file(asset_dir, model_type)
+    if cache_file.exists():
+        with np.load(cache_file, allow_pickle=False) as data:
+            return SomaIdentityTransfer(
+                source_vertices=np.asarray(data["source_vertices"], dtype=np.float32).copy(),
+                source_tetrahedra=np.asarray(data["source_tetrahedra"], dtype=np.int64).copy(),
+                face_ids=np.asarray(data["face_ids"], dtype=np.int64).copy(),
+                bary_coords=np.asarray(data["bary_coords"], dtype=np.float32).copy(),
+                unknown_ids=np.asarray(data["unknown_ids"], dtype=np.int64).copy(),
+                anchor_ids=np.asarray(data["anchor_ids"], dtype=np.int64).copy(),
+                solve_matrix=np.asarray(data["solve_matrix"], dtype=np.float32).copy(),
+                anchor_matrix=np.asarray(data["anchor_matrix"], dtype=np.float32).copy(),
+                rhs_base=np.asarray(data["rhs_base"], dtype=np.float32).copy(),
+                internal_to_source_rotation=np.eye(3, dtype=np.float32),
+                internal_to_source_translation=np.zeros(3, dtype=np.float32),
+                source_to_soma_rotation=np.eye(3, dtype=np.float32),
+                source_scale=spec.source_scale,
+                output_scale=spec.output_scale,
+            )
 
     ensure_identity_assets(asset_dir, normalized)
     mesh_dir = asset_dir / spec.asset_dir
@@ -379,7 +457,7 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
         anchor_matrix = np.empty((0, 0), dtype=np.float32)
         rhs_base = np.empty((0, 3), dtype=np.float32)
     else:
-        facial_inner_vertices = load_model_data(asset_dir)["facial_inner_vertices"]
+        facial_inner_vertices = load_model_data(asset_dir).facial_inner_vertices
         unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base = _build_identity_laplacian_data(
             target_vertices=target_vertices,
             target_faces=target_faces,
@@ -398,17 +476,23 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> dict[str, n
         anchor_matrix=anchor_matrix,
         rhs_base=rhs_base,
     )
-    return {
-        "source_vertices": source_vertices,
-        "source_tetrahedra": source_tetrahedra,
-        "face_ids": face_ids,
-        "bary_coords": bary_coords,
-        "unknown_ids": unknown_ids,
-        "anchor_ids": anchor_ids,
-        "solve_matrix": solve_matrix,
-        "anchor_matrix": anchor_matrix,
-        "rhs_base": rhs_base,
-    }
+
+    return SomaIdentityTransfer(
+        source_vertices=source_vertices,
+        source_tetrahedra=source_tetrahedra,
+        face_ids=face_ids,
+        bary_coords=bary_coords,
+        unknown_ids=unknown_ids,
+        anchor_ids=anchor_ids,
+        solve_matrix=solve_matrix,
+        anchor_matrix=anchor_matrix,
+        rhs_base=rhs_base,
+        internal_to_source_rotation=np.eye(3, dtype=np.float32),
+        internal_to_source_translation=np.zeros(3, dtype=np.float32),
+        source_to_soma_rotation=np.eye(3, dtype=np.float32),
+        source_scale=spec.source_scale,
+        output_scale=spec.output_scale,
+    )
 
 
 def _correctives_cache_file(asset_dir: Path) -> Path:
@@ -475,23 +559,25 @@ def _dense_from_sparse(sparse: _SparseCoo) -> np.ndarray:
     return dense
 
 
-def load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
+def load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     """Load SOMA pose-corrective weights in backend-agnostic form."""
     cache_file = _correctives_cache_file(asset_dir)
     if cache_file.exists():
         with np.load(cache_file, allow_pickle=False) as data:
-            return {
-                "bindpose": np.asarray(data["bindpose"], dtype=np.float32).copy(),
-                "W1": np.asarray(data["W1"], dtype=np.float32).copy(),
-                "W2_rows": np.asarray(data["W2_rows"], dtype=np.int64).copy(),
-                "W2_cols": np.asarray(data["W2_cols"], dtype=np.int64).copy(),
-                "W2_values": np.asarray(data["W2_values"], dtype=np.float32).copy(),
-                "num_vertices": int(data["num_vertices"][0]),
-                "use_tanh": bool(data["use_tanh"][0]),
-            }
+            if bool(data["use_tanh"][0]):
+                raise ValueError(f"Unsupported SOMA corrective cache with tanh activation: {cache_file}")
+            return SomaCorrectives(
+                corrective_bindpose=np.asarray(data["bindpose"], dtype=np.float32).copy(),
+                corrective_W1=np.asarray(data["W1"], dtype=np.float32).copy(),
+                corrective_W2_rows=np.asarray(data["W2_rows"], dtype=np.int64).copy(),
+                corrective_W2_cols=np.asarray(data["W2_cols"], dtype=np.int64).copy(),
+                corrective_W2_values=np.asarray(data["W2_values"], dtype=np.float32).copy(),
+            )
 
     checkpoint_path = asset_dir / SOMA_CORRECTIVES_ASSET
     ckpt = _load_sparse_checkpoint_numpy(checkpoint_path)
+    if bool(ckpt["use_tanh"]):
+        raise ValueError(f"Unsupported SOMA corrective checkpoint with tanh activation: {checkpoint_path}")
 
     W1_sparse = cast(_SparseCoo, ckpt["W1"])
     W2_sparse = cast(_SparseCoo, ckpt["W2"])
@@ -515,8 +601,6 @@ def load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
         W2_values = W2_values[keep] * scale[keep]
 
     num_vertices = W2_sparse.size[1] // 3
-    use_tanh = bool(ckpt["use_tanh"])
-
     np.savez_compressed(
         cache_file,
         bindpose=bindpose,
@@ -525,18 +609,16 @@ def load_pose_correctives_weights(asset_dir: Path) -> dict[str, Any]:
         W2_cols=W2_cols,
         W2_values=W2_values,
         num_vertices=np.array([num_vertices], dtype=np.int64),
-        use_tanh=np.array([use_tanh], dtype=np.bool_),
+        use_tanh=np.array([False], dtype=np.bool_),
     )
 
-    return {
-        "bindpose": bindpose.copy(),
-        "W1": W1.copy(),
-        "W2_rows": W2_rows.copy(),
-        "W2_cols": W2_cols.copy(),
-        "W2_values": W2_values.copy(),
-        "num_vertices": num_vertices,
-        "use_tanh": use_tanh,
-    }
+    return SomaCorrectives(
+        corrective_bindpose=bindpose.copy(),
+        corrective_W1=W1.copy(),
+        corrective_W2_rows=W2_rows.copy(),
+        corrective_W2_cols=W2_cols.copy(),
+        corrective_W2_values=W2_values.copy(),
+    )
 
 
 def _get_joint_children_ids(parents: np.ndarray) -> list[list[int]]:
@@ -651,8 +733,9 @@ def _load_or_build_joint_position_regressor(
 
 
 @lru_cache(maxsize=None)
-def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
+def _load_model_data_cached(model_dir: str) -> SomaWeights:
     asset_dir = Path(model_dir)
+    correctives = load_pose_correctives_weights(asset_dir)
     with np.load(asset_dir / SOMA_CORE_ASSET, allow_pickle=False) as data:
         mean = np.asarray(data["mean"], dtype=np.float32)
         num_vertices = mean.shape[0]
@@ -692,36 +775,41 @@ def _load_model_data_cached(model_dir: str) -> dict[str, Any]:
         vertex_ids_to_exclude=facial_inner,
     )
 
-    public_parents = (joint_parents_full[1:] - 1).astype(np.int64).tolist()
     joint_children_full = _get_joint_children_ids(joint_parents_full)
     skinned_vertex_indices_full = [
         np.where(skin_weights[:, joint_index] > 0.01)[0].astype(np.int64).tolist()
         for joint_index in range(skin_weights.shape[1])
     ]
 
-    return {
-        "mean": mean,
-        "shapedirs": shapedirs,
-        "eigenvalues": eigenvalues,
-        "faces": faces,
-        "bind_shape": bind_shape,
-        "bind_pose_world": bind_pose_world,
-        "bind_pose_local": bind_pose_local,
-        "t_pose_world": t_pose_world,
-        "t_pose_local": t_pose_local,
-        "joint_parents_full": joint_parents_full,
-        "joint_names_full": joint_names_full,
-        "joint_regressor": joint_regressor,
-        "skin_weights_full": skin_weights,
-        "facial_inner_vertices": facial_inner,
-        "skinned_vertex_indices_full": skinned_vertex_indices_full,
-        "skinned_vertex_indices_full_index": _pad_indices(skinned_vertex_indices_full),
-        "joint_children_full": joint_children_full,
-        "joint_children_indices_full": _pad_indices(joint_children_full),
-        "kinematic_fronts_full": compute_kinematic_fronts(joint_parents_full),
-        "joint_names": joint_names_full[1:],
-        "parents": public_parents,
-    }
+    parents_full = joint_parents_full.astype(np.int64).tolist()
+    return SomaWeights(
+        mean_full=mean,
+        mean_active=mean,
+        shapedirs_full=shapedirs,
+        shapedirs_active=shapedirs,
+        eigenvalues=eigenvalues,
+        bind_shape_full=bind_shape,
+        bind_pose_world=bind_pose_world,
+        bind_pose_local=bind_pose_local,
+        t_pose_world=t_pose_world,
+        t_pose_local=t_pose_local,
+        joint_regressor=joint_regressor,
+        skin_weights_full=skin_weights,
+        skin_weights_active=skin_weights,
+        faces=faces,
+        vertex_map=None,
+        facial_inner_vertices=facial_inner,
+        topology=SomaTopology(
+            parents_full=parents_full,
+            joint_children_full=joint_children_full,
+            joint_children_indices_full=_pad_indices(joint_children_full),
+            skinned_vertex_indices_full=skinned_vertex_indices_full,
+            skinned_vertex_indices_full_index=_pad_indices(skinned_vertex_indices_full),
+            kinematic_fronts_full=compute_kinematic_fronts(joint_parents_full),
+        ),
+        correctives=correctives,
+        joint_names_full=joint_names_full,
+    )
 
 
 def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
@@ -731,6 +819,7 @@ def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
     return out
 
 
-def load_model_data(model_path: Path) -> dict[str, Any]:
+def load_model_data(model_path: Path) -> SomaWeights:
     """Load SOMA model data from disk."""
-    return _load_model_data_cached(str(Path(model_path).resolve()))
+    model_path = Path(model_path).resolve()
+    return _load_model_data_cached(str(model_path))
