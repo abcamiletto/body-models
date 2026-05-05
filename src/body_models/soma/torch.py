@@ -35,7 +35,7 @@ class SOMA(BodyModel, nn.Module):
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
 
     model_weights: core.SomaTorchWeights
-    identity_backend: identities.IdentityBackend | core.SomaTorchIdentityBackend
+    identity_backend: core.SomaTorchIdentityBackend
 
     def __init__(
         self,

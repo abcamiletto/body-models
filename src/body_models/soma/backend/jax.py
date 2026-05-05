@@ -64,13 +64,13 @@ def prepare_data(weights: SomaWeights) -> SomaWeights:
 
 
 class SomaJaxIdentityBackend(nnx.Module):
-    def __init__(self, identity_backend: identities.TransferredIdentityBackend) -> None:
+    def __init__(self, identity_backend: identities.IdentityBackend) -> None:
         self.model_type = identity_backend.model_type
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
         self.model = identity_backend.model
-        self.transfer = _prepare_identity_transfer(identity_backend.transfer)
+        self.transfer = None if identity_backend.transfer is None else _prepare_identity_transfer(identity_backend.transfer)
 
 
 def _prepare_identity_transfer(identity_transfer):
@@ -91,11 +91,9 @@ def _prepare_identity_transfer(identity_transfer):
     )
 
 
-def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend | SomaJaxIdentityBackend:
+def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaJaxIdentityBackend:
     identity_backend = identities.prepare_backend(identity_backend, "jax")
-    if isinstance(identity_backend, identities.TransferredIdentityBackend):
-        return SomaJaxIdentityBackend(identity_backend)
-    return identity_backend
+    return SomaJaxIdentityBackend(identity_backend)
 
 
 def forward_vertices(*args, **kwargs):

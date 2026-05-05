@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from jaxtyping import Float
@@ -22,7 +22,6 @@ IDENTITY_BACKENDS = {
 __all__ = [
     "IDENTITY_BACKENDS",
     "IdentityBackend",
-    "TransferredIdentityBackend",
     "load",
     "prepare",
     "prepare_backend",
@@ -35,12 +34,8 @@ class IdentityBackend:
     identity_dim: int
     num_scale_params: int | None
     default_identity_value: float
-
-
-@dataclass(frozen=True)
-class TransferredIdentityBackend(IdentityBackend):
-    model: Any
-    transfer: SomaIdentityTransfer
+    model: Any = None
+    transfer: SomaIdentityTransfer | None = None
 
 
 def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = None) -> IdentityBackend:
@@ -54,7 +49,7 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
 
     backend = IDENTITY_BACKENDS[model_type]
     model, transfer = backend.prepare(transfer)
-    return TransferredIdentityBackend(
+    return IdentityBackend(
         model_type=model_type,
         identity_dim=spec.identity_dim,
         num_scale_params=spec.num_scale_params,
@@ -65,18 +60,10 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
 
 
 def prepare_backend(identity_backend: IdentityBackend, backend: str) -> IdentityBackend:
-    if not isinstance(identity_backend, TransferredIdentityBackend):
+    if identity_backend.model_type == "soma":
         return identity_backend
-
     model = IDENTITY_BACKENDS[identity_backend.model_type].prepare_backend_model(identity_backend.model, backend)
-    return TransferredIdentityBackend(
-        model_type=identity_backend.model_type,
-        identity_dim=identity_backend.identity_dim,
-        num_scale_params=identity_backend.num_scale_params,
-        default_identity_value=identity_backend.default_identity_value,
-        model=model,
-        transfer=identity_backend.transfer,
-    )
+    return replace(identity_backend, model=model)
 
 
 def prepare(

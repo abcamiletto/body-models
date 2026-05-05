@@ -145,25 +145,23 @@ class SomaTorchIdentityTransfer(nn.Module):
 
 
 class SomaTorchIdentityBackend(nn.Module):
-    def __init__(self, identity_backend: identities.TransferredIdentityBackend):
+    def __init__(self, identity_backend: identities.IdentityBackend):
         super().__init__()
         self.model_type = identity_backend.model_type
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
         self.model = identity_backend.model
-        self.transfer = SomaTorchIdentityTransfer(identity_backend.transfer)
+        self.transfer = None if identity_backend.transfer is None else SomaTorchIdentityTransfer(identity_backend.transfer)
 
 
 def prepare_data(weights: SomaWeights) -> SomaTorchWeights:
     return SomaTorchWeights(weights)
 
 
-def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> identities.IdentityBackend | SomaTorchIdentityBackend:
+def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaTorchIdentityBackend:
     identity_backend = identities.prepare_backend(identity_backend, "torch")
-    if isinstance(identity_backend, identities.TransferredIdentityBackend):
-        return SomaTorchIdentityBackend(identity_backend)
-    return identity_backend
+    return SomaTorchIdentityBackend(identity_backend)
 
 
 def forward_vertices(*args, **kwargs):
