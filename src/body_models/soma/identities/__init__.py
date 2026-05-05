@@ -28,66 +28,52 @@ class IdentityTransfer:
     output_scale: float
 
 
-def transfer_from_data(transfer: Any) -> IdentityTransfer:
-    return IdentityTransfer(**transfer.__dict__)
-
-
-def with_transforms(
-    transfer: IdentityTransfer,
-    *,
-    internal_to_source_rotation: Any,
-    internal_to_source_translation: Any,
-    source_to_soma_rotation: Any,
-) -> IdentityTransfer:
-    return IdentityTransfer(
-        source_vertices=transfer.source_vertices,
-        source_tetrahedra=transfer.source_tetrahedra,
-        face_ids=transfer.face_ids,
-        bary_coords=transfer.bary_coords,
-        unknown_ids=transfer.unknown_ids,
-        anchor_ids=transfer.anchor_ids,
-        solve_matrix=transfer.solve_matrix,
-        anchor_matrix=transfer.anchor_matrix,
-        rhs_base=transfer.rhs_base,
-        internal_to_source_rotation=internal_to_source_rotation,
-        internal_to_source_translation=internal_to_source_translation,
-        source_to_soma_rotation=source_to_soma_rotation,
-        source_scale=transfer.source_scale,
-        output_scale=transfer.output_scale,
-    )
-
-
-def source_shape(
-    model_type: str,
+def mhr_source_shape(
     *,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
-    num_scale_params: int | None,
-    mhr_model: Any = None,
-    anny_model: Any = None,
-    linear_model: Any = None,
+    num_scale_params: int,
+    model: Any,
     xp: Any,
 ) -> Float[Any, "B V 3"]:
-    if model_type == "mhr":
-        return core.mhr_identity_shape(
-            model=mhr_model,
-            identity=identity,
-            scale_params=scale_params,
-            num_scale_params=_require_scale_params(num_scale_params),
-            xp=xp,
-        )
-    if model_type == "anny":
-        return core.anny_identity_shape(
-            template_vertices=_array(anny_model.template_vertices),
-            blendshapes=_array(anny_model.blendshapes),
-            phenotype_mask=_array(anny_model.phenotype_mask),
-            anchors=_anny_anchors(anny_model),
-            identity=identity,
-            xp=xp,
-        )
+    return core.mhr_identity_shape(
+        model=model,
+        identity=identity,
+        scale_params=scale_params,
+        num_scale_params=num_scale_params,
+        xp=xp,
+    )
+
+
+def anny_source_shape(
+    *,
+    template_vertices: Any,
+    blendshapes: Any,
+    phenotype_mask: Any,
+    anchors: Any,
+    identity: Float[Any, "B I"],
+    xp: Any,
+) -> Float[Any, "B V 3"]:
+    return core.anny_identity_shape(
+        template_vertices=template_vertices,
+        blendshapes=blendshapes,
+        phenotype_mask=phenotype_mask,
+        anchors=anchors,
+        identity=identity,
+        xp=xp,
+    )
+
+
+def linear_source_shape(
+    *,
+    mean: Any,
+    shapedirs: Any,
+    identity: Float[Any, "B I"],
+    xp: Any,
+) -> Float[Any, "B V 3"]:
     return core.linear_identity_shape(
-        mean=_array(linear_model.v_template_full),
-        shapedirs=_array(linear_model.shapedirs_full),
+        mean=mean,
+        shapedirs=shapedirs,
         identity=identity,
         xp=xp,
     )
@@ -128,18 +114,3 @@ def transfer_shape(
     rest_shape_active = rest_shape if vertex_map is None else rest_shape[:, vertex_map]
     return rest_shape, rest_shape_active
 
-
-def _require_scale_params(num_scale_params: int | None) -> int:
-    if num_scale_params is None:
-        raise ValueError("SOMA model_type='mhr' requires scale parameters.")
-    return num_scale_params
-
-
-def _array(value: Any) -> Any:
-    return value[...] if hasattr(value, "__getitem__") else value
-
-
-def _anny_anchors(model: Any) -> Any:
-    if hasattr(model, "_get_anchors_dict"):
-        return model._get_anchors_dict()
-    return model._anchors
