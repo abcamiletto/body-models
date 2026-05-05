@@ -19,13 +19,13 @@ from .io import (
 )
 import body_models.soma.backend.numpy as numpy_kernel
 import body_models.soma.backend.scipy as scipy_kernel
-from body_models.soma.backend.core import PreparedIdentity
+from body_models.soma.backend.core import PreparedSomaIdentity
 from body_models.soma import identities
 
 PathLike = Path | str
 KernelBackend = Literal["numpy", "scipy"]
 
-__all__ = ["SOMA", "PreparedIdentity"]
+__all__ = ["SOMA", "PreparedSomaIdentity"]
 
 
 class SOMA(BodyModel):
@@ -136,7 +136,7 @@ class SOMA(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
-        prepared_identity: PreparedIdentity | None = None,
+        prepared_identity: PreparedSomaIdentity | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
         identity_state = self._prepare_or_use_identity(
             identity=identity,
@@ -167,7 +167,7 @@ class SOMA(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
-        prepared_identity: PreparedIdentity | None = None,
+        prepared_identity: PreparedSomaIdentity | None = None,
     ) -> Float[np.ndarray, "B 77 4 4"]:
         identity_state = self._prepare_or_use_identity(
             identity=identity,
@@ -222,18 +222,21 @@ class SOMA(BodyModel):
         scale_params: Float[np.ndarray, "B|1 K"] | None = None,
         batch_size: int = 1,
         dtype=np.float32,
-    ) -> PreparedIdentity:
+    ) -> PreparedSomaIdentity:
         if identity is not None:
             dtype = identity.dtype
-        ref = np.empty((1, 1), dtype=dtype)
+        identity, scale_params = self._identity_inputs(
+            identity=identity,
+            scale_params=scale_params,
+            batch_size=batch_size,
+            dtype=dtype,
+        )
         return identities.prepare(
             backend=self.identity_backend,
             data=self.model_weights,
             identity=identity,
             scale_params=scale_params,
-            batch_size=batch_size,
             vertex_map=self.model_weights.vertex_map,
-            ref=ref,
             match_warp=self.match_warp,
             xp=np,
         )
@@ -244,9 +247,37 @@ class SOMA(BodyModel):
         identity: Float[np.ndarray, "B|1 I"] | None,
         scale_params: Float[np.ndarray, "B|1 K"] | None,
         batch_size: int,
-        dtype: np.dtype,
-        prepared_identity: PreparedIdentity | None,
-    ) -> PreparedIdentity:
+        dtype: Any,
+        prepared_identity: PreparedSomaIdentity | None,
+    ) -> PreparedSomaIdentity:
         if prepared_identity is not None:
             return prepared_identity
         return self.prepare_identity(identity=identity, scale_params=scale_params, batch_size=batch_size, dtype=dtype)
+
+    def _identity_inputs(
+        self,
+        *,
+        identity: Float[np.ndarray, "B|1 I"] | None,
+        scale_params: Float[np.ndarray, "B|1 K"] | None,
+        batch_size: int,
+        dtype: Any,
+    ) -> tuple[Float[np.ndarray, "B I"], Float[np.ndarray, "B K"] | None]:
+        if identity is None:
+            identity = np.full(
+                (batch_size, self.identity_backend.identity_dim),
+                self.identity_backend.default_identity_value,
+                dtype=dtype,
+            )
+        elif identity.shape[0] == 1 and batch_size > 1:
+            identity = np.broadcast_to(identity, (batch_size, identity.shape[-1]))
+
+        if self.identity_backend.num_scale_params is None:
+            if scale_params is not None:
+                raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
+            return identity, None
+
+        if scale_params is None:
+            scale_params = np.zeros((batch_size, self.identity_backend.num_scale_params), dtype=dtype)
+        elif scale_params.shape[0] == 1 and batch_size > 1:
+            scale_params = np.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+        return identity, scale_params

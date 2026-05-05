@@ -137,7 +137,7 @@ class SOMA(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
-        prepared_identity: core.PreparedIdentity | None = None,
+        prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[Tensor, "B V 3"]:
         identity_state = self._prepare_or_use_identity(
             identity=identity,
@@ -167,7 +167,7 @@ class SOMA(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
-        prepared_identity: core.PreparedIdentity | None = None,
+        prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[Tensor, "B 77 4 4"]:
         identity_state = self._prepare_or_use_identity(
             identity=identity,
@@ -226,15 +226,14 @@ class SOMA(BodyModel, nn.Module):
         identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
         ref: Float[Tensor, "B ..."],
-    ) -> core.PreparedIdentity:
+    ) -> core.PreparedSomaIdentity:
+        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, ref=ref)
         return identities.prepare(
             backend=self.identity_backend,
             data=self.model_weights,
             identity=identity,
             scale_params=scale_params,
-            batch_size=ref.shape[0],
             vertex_map=self.model_weights.vertex_map,
-            ref=ref,
             match_warp=self.match_warp,
             xp=torch,
         )
@@ -245,8 +244,41 @@ class SOMA(BodyModel, nn.Module):
         identity: Float[Tensor, "B|1 I"] | None,
         scale_params: Float[Tensor, "B|1 K"] | None,
         ref: Float[Tensor, "B ..."],
-        prepared_identity: core.PreparedIdentity | None,
-    ) -> core.PreparedIdentity:
+        prepared_identity: core.PreparedSomaIdentity | None,
+    ) -> core.PreparedSomaIdentity:
         if prepared_identity is not None:
             return prepared_identity
         return self.prepare_identity(identity=identity, scale_params=scale_params, ref=ref)
+
+    def _identity_inputs(
+        self,
+        *,
+        identity: Float[Tensor, "B|1 I"] | None,
+        scale_params: Float[Tensor, "B|1 K"] | None,
+        ref: Float[Tensor, "B ..."],
+    ) -> tuple[Float[Tensor, "B I"], Float[Tensor, "B K"] | None]:
+        batch_size = ref.shape[0]
+        if identity is None:
+            identity = torch.full(
+                (batch_size, self.identity_backend.identity_dim),
+                self.identity_backend.default_identity_value,
+                device=ref.device,
+                dtype=ref.dtype,
+            )
+        elif identity.shape[0] == 1 and batch_size > 1:
+            identity = torch.broadcast_to(identity, (batch_size, identity.shape[-1]))
+
+        if self.identity_backend.num_scale_params is None:
+            if scale_params is not None:
+                raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
+            return identity, None
+
+        if scale_params is None:
+            scale_params = torch.zeros(
+                (batch_size, self.identity_backend.num_scale_params),
+                device=identity.device,
+                dtype=identity.dtype,
+            )
+        elif scale_params.shape[0] == 1 and batch_size > 1:
+            scale_params = torch.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+        return identity, scale_params

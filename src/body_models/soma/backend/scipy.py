@@ -20,16 +20,14 @@ __all__ = [
     "forward_skeleton",
     "forward_vertices",
     "linear_blend_skinning",
-    "PreparedIdentity",
+    "PreparedSomaIdentity",
     "prepare_data",
-    "prepare_identity",
     "prepare_identity_backend",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
-PreparedIdentity = core.PreparedIdentity
-prepare_identity = core.prepare_identity
+PreparedSomaIdentity = core.PreparedSomaIdentity
 
 
 def prepare_identity_backend(identity_backend):

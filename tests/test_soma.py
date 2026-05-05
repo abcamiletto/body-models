@@ -110,7 +110,7 @@ def test_numpy_prepare_identity_matches_forward(model_path: Path) -> None:
 
     model = SOMA(model_path=model_path)
     params = model.get_rest_pose(batch_size=4)
-    prepared_identity = model.prepare_identity(identity=params["identity"])
+    prepared_identity = model.prepare_identity(identity=params["identity"], batch_size=4)
 
     vertices = model.forward_vertices(
         pose=params["pose"],

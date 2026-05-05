@@ -17,7 +17,7 @@ Front = tuple[list[int], list[int]]
 
 
 @dataclass(frozen=True)
-class PreparedIdentity:
+class PreparedSomaIdentity:
     rest_shape_full: Float[Array, "B Vf 3"]
     rest_shape_active: Float[Array, "B Va 3"]
     world_bind_pose_fit: Float[Array, "B Jf 4 4"]
@@ -27,30 +27,6 @@ def prepare_data(soma_weights: Any) -> Any:
     return soma_weights
 
 
-def prepare_identity(
-    data: Any,
-    *,
-    identity: Float[Array, "B S"],
-    match_warp: bool,
-    xp: Any,
-) -> PreparedIdentity:
-    rest_shape_full = _identity_to_rest_vertices(xp, data.mean_full, data.shapedirs_full, data.eigenvalues, identity)
-    rest_shape_active = _identity_to_rest_vertices(
-        xp,
-        data.mean_active,
-        data.shapedirs_active,
-        data.eigenvalues,
-        identity,
-    )
-    return prepare_identity_from_rest_shape(
-        data=data,
-        rest_shape_full=rest_shape_full,
-        rest_shape_active=rest_shape_active,
-        match_warp=match_warp,
-        xp=xp,
-    )
-
-
 def prepare_identity_from_rest_shape(
     data: Any,
     *,
@@ -58,7 +34,7 @@ def prepare_identity_from_rest_shape(
     rest_shape_active: Float[Array, "B Va 3"],
     match_warp: bool,
     xp: Any,
-) -> PreparedIdentity:
+) -> PreparedSomaIdentity:
     rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
         xp=xp,
         bind_shape=data.bind_shape_full,
@@ -72,12 +48,12 @@ def prepare_identity_from_rest_shape(
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
-    return PreparedIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
+    return PreparedSomaIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
 
 
 def forward_vertices(
     data: Any,
-    prepared_identity: PreparedIdentity,
+    prepared_identity: PreparedSomaIdentity,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
@@ -104,7 +80,7 @@ def forward_vertices(
 
 def _forward_vertices_with(
     data: Any,
-    prepared_identity: PreparedIdentity,
+    prepared_identity: PreparedSomaIdentity,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
@@ -118,7 +94,6 @@ def _forward_vertices_with(
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    prepared_identity = _broadcast_prepared_identity(prepared_identity, batch_size=pose_rot.shape[0], xp=xp)
     topology = data.topology
     pose_rot_full = _orient_pose_rot_full(xp, pose_rot, data.t_pose_world, topology.parents_full)
     rest_shape_active = prepared_identity.rest_shape_active
@@ -162,7 +137,7 @@ def _forward_vertices_with(
 
 def forward_skeleton(
     data: Any,
-    prepared_identity: PreparedIdentity,
+    prepared_identity: PreparedSomaIdentity,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
@@ -174,7 +149,6 @@ def forward_skeleton(
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    prepared_identity = _broadcast_prepared_identity(prepared_identity, batch_size=pose_rot.shape[0], xp=xp)
     topology = data.topology
     world_bind_pose = prepared_identity.world_bind_pose_fit
     if apply_correctives:
@@ -294,7 +268,7 @@ def apply_pose_correctives(
     return out.reshape(B, data.mean_full.shape[0], 3)
 
 
-def _identity_to_rest_vertices(
+def identity_to_rest_vertices(
     xp,
     mean: Float[Array, "V 3"],
     shapedirs: Float[Array, "S V 3"],
@@ -303,26 +277,6 @@ def _identity_to_rest_vertices(
 ) -> Float[Array, "B V 3"]:
     coeffs = identity * xp.sqrt(eigenvalues)[None]
     return mean[None] + xp.einsum("bs,svc->bvc", coeffs, shapedirs)
-
-
-def _broadcast_prepared_identity(
-    prepared_identity: PreparedIdentity,
-    *,
-    batch_size: int,
-    xp: Any,
-) -> PreparedIdentity:
-    if prepared_identity.rest_shape_full.shape[0] != 1 or batch_size == 1:
-        return prepared_identity
-    rest_shape_full = xp.broadcast_to(prepared_identity.rest_shape_full, (batch_size, *prepared_identity.rest_shape_full.shape[1:]))
-    rest_shape_active = xp.broadcast_to(
-        prepared_identity.rest_shape_active,
-        (batch_size, *prepared_identity.rest_shape_active.shape[1:]),
-    )
-    world_bind_pose_fit = xp.broadcast_to(
-        prepared_identity.world_bind_pose_fit,
-        (batch_size, *prepared_identity.world_bind_pose_fit.shape[1:]),
-    )
-    return PreparedIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
 
 
 def _fit_rest_shape_to_bind_pose(

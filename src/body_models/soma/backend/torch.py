@@ -14,17 +14,15 @@ __all__ = [
     "forward_skeleton",
     "forward_vertices",
     "linear_blend_skinning",
-    "PreparedIdentity",
+    "PreparedSomaIdentity",
     "prepare_data",
-    "prepare_identity",
     "prepare_identity_backend",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 linear_blend_skinning = core.linear_blend_skinning
-PreparedIdentity = core.PreparedIdentity
-prepare_identity = core.prepare_identity
+PreparedSomaIdentity = core.PreparedSomaIdentity
 
 
 class SomaTorchCorrectives(nn.Module):
@@ -114,7 +112,7 @@ class SomaTorchIdentityBackend(nn.Module):
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        self.prepare_identity = identity_backend.prepare_identity
+        self.prepare_rest_shape = identity_backend.prepare_rest_shape
         self.prepare_for_backend = identity_backend.prepare_for_backend
 
 

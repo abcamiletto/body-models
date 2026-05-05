@@ -34,7 +34,7 @@ class IdentityBackend:
     identity_dim: int
     num_scale_params: int | None
     default_identity_value: float
-    prepare_identity: Any
+    prepare_rest_shape: Any
     prepare_for_backend: Any
 
 
@@ -43,14 +43,7 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
         def prepare_for_backend(_backend: str) -> IdentityBackend:
             return load(model_type, spec)
 
-        return IdentityBackend(
-            model_type=model_type,
-            identity_dim=spec.identity_dim,
-            num_scale_params=spec.num_scale_params,
-            default_identity_value=spec.default_identity_value,
-            prepare_identity=_prepare_soma_identity,
-            prepare_for_backend=prepare_for_backend,
-        )
+        return _identity_backend(model_type, spec, _soma_rest_shape, prepare_for_backend)
 
     module = IDENTITY_BACKENDS[model_type]
     model, transfer = module.prepare(transfer)
@@ -65,42 +58,45 @@ def prepare(
     *,
     backend: Any,
     data: Any,
-    identity: Float[Any, "B|1 I"] | None,
-    scale_params: Float[Any, "B|1 K"] | None,
-    batch_size: int,
-    vertex_map: Any,
-    ref: Any,
-    match_warp: bool,
-    xp: Any,
-) -> core.PreparedIdentity:
-    identity, scale_params = _resolve_inputs(
-        backend=backend,
-        identity=identity,
-        scale_params=scale_params,
-        batch_size=batch_size,
-        ref=ref,
-        xp=xp,
-    )
-    return backend.prepare_identity(
-        data=data,
-        identity=identity,
-        scale_params=scale_params,
-        vertex_map=vertex_map,
-        match_warp=match_warp,
-        xp=xp,
-    )
-
-
-def _prepare_soma_identity(
-    *,
-    data: Any,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
     vertex_map: Any,
     match_warp: bool,
     xp: Any,
-) -> core.PreparedIdentity:
-    return core.prepare_identity(data=data, identity=identity, match_warp=match_warp, xp=xp)
+) -> core.PreparedSomaIdentity:
+    rest_shape_full, rest_shape_active = backend.prepare_rest_shape(
+        data=data,
+        identity=identity,
+        scale_params=scale_params,
+        vertex_map=vertex_map,
+        xp=xp,
+    )
+    return core.prepare_identity_from_rest_shape(
+        data=data,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
+        match_warp=match_warp,
+        xp=xp,
+    )
+
+
+def _soma_rest_shape(
+    *,
+    data: Any,
+    identity: Float[Any, "B I"],
+    scale_params: Float[Any, "B K"] | None,
+    vertex_map: Any,
+    xp: Any,
+) -> tuple[Float[Any, "B Vf 3"], Float[Any, "B Va 3"]]:
+    rest_shape_full = core.identity_to_rest_vertices(xp, data.mean_full, data.shapedirs_full, data.eigenvalues, identity)
+    rest_shape_active = core.identity_to_rest_vertices(
+        xp,
+        data.mean_active,
+        data.shapedirs_active,
+        data.eigenvalues,
+        identity,
+    )
+    return rest_shape_full, rest_shape_active
 
 
 def _transferred_identity_backend(
@@ -110,16 +106,15 @@ def _transferred_identity_backend(
     model: Any,
     transfer: SomaIdentityTransfer,
 ) -> IdentityBackend:
-    def prepare_identity(
+    def prepare_rest_shape(
         *,
         data: Any,
         identity: Float[Any, "B I"],
         scale_params: Float[Any, "B K"] | None,
         vertex_map: Any,
-        match_warp: bool,
         xp: Any,
-    ) -> core.PreparedIdentity:
-        rest_shape_full, rest_shape_active = _rest_shape(
+    ) -> tuple[Float[Any, "B Vt 3"], Float[Any, "B Va 3"]]:
+        return _transferred_rest_shape(
             module=module,
             model=model,
             transfer=transfer,
@@ -129,25 +124,27 @@ def _transferred_identity_backend(
             vertex_map=vertex_map,
             xp=xp,
         )
-        return core.prepare_identity_from_rest_shape(
-            data=data,
-            rest_shape_full=rest_shape_full,
-            rest_shape_active=rest_shape_active,
-            match_warp=match_warp,
-            xp=xp,
-        )
 
     def prepare_for_backend(backend: str) -> IdentityBackend:
         backend_model = module.prepare_backend_model(model, backend)
         backend_transfer = _prepare_transfer(transfer, backend)
         return _transferred_identity_backend(model_type, spec, module, backend_model, backend_transfer)
 
+    return _identity_backend(model_type, spec, prepare_rest_shape, prepare_for_backend)
+
+
+def _identity_backend(
+    model_type: str,
+    spec: Any,
+    prepare_rest_shape: Any,
+    prepare_for_backend: Any,
+) -> IdentityBackend:
     return IdentityBackend(
         model_type=model_type,
         identity_dim=spec.identity_dim,
         num_scale_params=spec.num_scale_params,
         default_identity_value=spec.default_identity_value,
-        prepare_identity=prepare_identity,
+        prepare_rest_shape=prepare_rest_shape,
         prepare_for_backend=prepare_for_backend,
     )
 
@@ -187,34 +184,7 @@ def _prepare_transfer(transfer: SomaIdentityTransfer, backend: str) -> SomaIdent
     )
 
 
-def _resolve_inputs(
-    *,
-    backend: Any,
-    identity: Float[Any, "B|1 I"] | None,
-    scale_params: Float[Any, "B|1 K"] | None,
-    batch_size: int,
-    ref: Any,
-    xp: Any,
-) -> tuple[Float[Any, "B I"], Float[Any, "B K"] | None]:
-    if identity is None:
-        identity = common.zeros_as(ref, shape=(1, backend.identity_dim), xp=xp)
-        identity = identity + backend.default_identity_value
-    if identity.shape[0] == 1 and batch_size > 1:
-        identity = xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
-
-    if backend.num_scale_params is None:
-        if scale_params is not None:
-            raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
-        return identity, None
-
-    if scale_params is None:
-        scale_params = common.zeros_as(ref, shape=(1, backend.num_scale_params), xp=xp)
-    if scale_params.shape[0] == 1 and batch_size > 1:
-        scale_params = xp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
-    return identity, scale_params
-
-
-def _rest_shape(
+def _transferred_rest_shape(
     *,
     module: Any,
     model: Any,
