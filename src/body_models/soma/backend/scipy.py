@@ -20,6 +20,7 @@ __all__ = [
     "forward_skeleton",
     "forward_vertices",
     "linear_blend_skinning",
+    "PreparedIdentity",
     "prepare_data",
     "prepare_identity",
     "prepare_identity_backend",
@@ -27,6 +28,7 @@ __all__ = [
 
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
+PreparedIdentity = core.PreparedIdentity
 prepare_identity = core.prepare_identity
 
 

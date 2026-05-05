@@ -28,11 +28,9 @@ def prepare_backend_model(identity_model: MHRIdentity, backend: str) -> Any:
     elif backend == "torch":
         from ...mhr.torch import MHR
     elif backend == "jax":
-        from flax import nnx
-
         from ...mhr.jax import MHR
 
-        return nnx.data(MHR(model_path=identity_model.model_path, simplify=1.0))
+        return MHR(model_path=identity_model.model_path, simplify=1.0)
     else:
         raise ValueError(f"Unsupported MHR identity backend target: {backend}")
 

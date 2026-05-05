@@ -5,7 +5,7 @@ import torch.nn as nn
 from jaxtyping import Float, Int
 
 from .. import identities
-from ..io import SomaIdentityTransfer, SomaWeights
+from ..io import SomaWeights
 from . import core
 
 __all__ = [
@@ -14,6 +14,7 @@ __all__ = [
     "forward_skeleton",
     "forward_vertices",
     "linear_blend_skinning",
+    "PreparedIdentity",
     "prepare_data",
     "prepare_identity",
     "prepare_identity_backend",
@@ -22,6 +23,7 @@ __all__ = [
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 linear_blend_skinning = core.linear_blend_skinning
+PreparedIdentity = core.PreparedIdentity
 prepare_identity = core.prepare_identity
 
 
@@ -105,45 +107,6 @@ class SomaTorchWeights(nn.Module):
         )
 
 
-class SomaTorchIdentityTransfer(nn.Module):
-    source_vertices: Float[torch.Tensor, "Vs 3"]
-    source_tetrahedra: Int[torch.Tensor, "Fs 4"]
-    face_ids: Int[torch.Tensor, "Vt"]
-    bary_coords: Float[torch.Tensor, "Vt 4"]
-    unknown_ids: Int[torch.Tensor, "U"]
-    anchor_ids: Int[torch.Tensor, "A"]
-    solve_matrix: Float[torch.Tensor, "U U"]
-    anchor_matrix: Float[torch.Tensor, "U A"]
-    rhs_base: Float[torch.Tensor, "U 3"]
-    internal_to_source_rotation: Float[torch.Tensor, "3 3"]
-    internal_to_source_translation: Float[torch.Tensor, "3"]
-    source_to_soma_rotation: Float[torch.Tensor, "3 3"]
-
-    def __init__(self, identity_transfer: SomaIdentityTransfer):
-        super().__init__()
-        self.source_scale = identity_transfer.source_scale
-        self.output_scale = identity_transfer.output_scale
-        self.register_buffer("source_vertices", torch.as_tensor(identity_transfer.source_vertices))
-        self.register_buffer(
-            "source_tetrahedra", torch.as_tensor(identity_transfer.source_tetrahedra, dtype=torch.int64)
-        )
-        self.register_buffer("face_ids", torch.as_tensor(identity_transfer.face_ids, dtype=torch.int64))
-        self.register_buffer("bary_coords", torch.as_tensor(identity_transfer.bary_coords))
-        self.register_buffer("unknown_ids", torch.as_tensor(identity_transfer.unknown_ids, dtype=torch.int64))
-        self.register_buffer("anchor_ids", torch.as_tensor(identity_transfer.anchor_ids, dtype=torch.int64))
-        self.register_buffer("solve_matrix", torch.as_tensor(identity_transfer.solve_matrix))
-        self.register_buffer("anchor_matrix", torch.as_tensor(identity_transfer.anchor_matrix))
-        self.register_buffer("rhs_base", torch.as_tensor(identity_transfer.rhs_base))
-        self.register_buffer(
-            "internal_to_source_rotation", torch.as_tensor(identity_transfer.internal_to_source_rotation)
-        )
-        self.register_buffer(
-            "internal_to_source_translation",
-            torch.as_tensor(identity_transfer.internal_to_source_translation),
-        )
-        self.register_buffer("source_to_soma_rotation", torch.as_tensor(identity_transfer.source_to_soma_rotation))
-
-
 class SomaTorchIdentityBackend(nn.Module):
     def __init__(self, identity_backend: identities.IdentityBackend):
         super().__init__()
@@ -151,8 +114,8 @@ class SomaTorchIdentityBackend(nn.Module):
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        self.model = identity_backend.model
-        self.transfer = None if identity_backend.transfer is None else SomaTorchIdentityTransfer(identity_backend.transfer)
+        self.prepare_identity = identity_backend.prepare_identity
+        self.prepare_for_backend = identity_backend.prepare_for_backend
 
 
 def prepare_data(weights: SomaWeights) -> SomaTorchWeights:

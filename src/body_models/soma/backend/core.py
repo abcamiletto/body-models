@@ -17,17 +17,10 @@ Front = tuple[list[int], list[int]]
 
 
 @dataclass(frozen=True)
-class IdentityInput:
-    identity: Float[Array, "B|1 S"] | None
-    rest_shape_full: Float[Array, "B|1 Vf 3"] | None
-    rest_shape_active: Float[Array, "B|1 Va 3"] | None
-
-    @property
-    def batch_size(self) -> int:
-        source = self.identity if self.identity is not None else self.rest_shape_full
-        if source is None:
-            raise ValueError("SOMA identity input requires identity or rest_shape_full.")
-        return source.shape[0]
+class PreparedIdentity:
+    rest_shape_full: Float[Array, "B Vf 3"]
+    rest_shape_active: Float[Array, "B Va 3"]
+    world_bind_pose_fit: Float[Array, "B Jf 4 4"]
 
 
 def prepare_data(soma_weights: Any) -> Any:
@@ -37,17 +30,30 @@ def prepare_data(soma_weights: Any) -> Any:
 def prepare_identity(
     data: Any,
     *,
-    identity_input: IdentityInput,
+    identity: Float[Array, "B S"],
     match_warp: bool,
     xp: Any,
-) -> tuple[
-    Float[Array, "B Vf 3"],
-    Float[Array, "B Va 3"],
-    Float[Array, "B Jf 4 4"],
-]:
-    return prepare_identity_state(
+) -> PreparedIdentity:
+    return _prepare_soma_identity(
         data=data,
-        identity_input=identity_input,
+        identity=identity,
+        match_warp=match_warp,
+        xp=xp,
+    )
+
+
+def prepare_identity_from_rest_shape(
+    data: Any,
+    *,
+    rest_shape_full: Float[Array, "B Vf 3"],
+    rest_shape_active: Float[Array, "B Va 3"],
+    match_warp: bool,
+    xp: Any,
+) -> PreparedIdentity:
+    return _prepare_rest_shape_identity(
+        data=data,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
         match_warp=match_warp,
         xp=xp,
     )
@@ -55,33 +61,25 @@ def prepare_identity(
 
 def forward_vertices(
     data: Any,
-    identity: Float[Array, "B|1 S"] | None,
+    prepared_identity: PreparedIdentity,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
-    rest_shape_active: Float[Array, "B|1 Va 3"] | None = None,
-    world_bind_pose_fit: Float[Array, "B|1 Jf 4 4"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     apply_correctives: bool = True,
     rotation_type: RotationType = "axis_angle",
-    match_warp: bool = True,
     *,
     xp: Any,
 ) -> Float[Array, "B V 3"]:
     return _forward_vertices_with(
         data=data,
-        identity=identity,
+        prepared_identity=prepared_identity,
         pose=pose,
-        rest_shape_full=rest_shape_full,
-        rest_shape_active=rest_shape_active,
-        world_bind_pose_fit=world_bind_pose_fit,
         global_rotation=global_rotation,
         global_translation=global_translation,
         vertex_indices=vertex_indices,
         apply_correctives=apply_correctives,
         rotation_type=rotation_type,
-        match_warp=match_warp,
         xp=xp,
         apply_pose_correctives_fn=apply_pose_correctives,
         linear_blend_skinning_fn=linear_blend_skinning,
@@ -90,17 +88,13 @@ def forward_vertices(
 
 def _forward_vertices_with(
     data: Any,
-    identity: Float[Array, "B|1 S"] | None,
+    prepared_identity: PreparedIdentity,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    rest_shape_full: Float[Array, "B|1 Vf 3"] | None = None,
-    rest_shape_active: Float[Array, "B|1 Va 3"] | None = None,
-    world_bind_pose_fit: Float[Array, "B|1 Jf 4 4"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     apply_correctives: bool = True,
     rotation_type: RotationType = "axis_angle",
-    match_warp: bool = True,
     *,
     xp: Any,
     apply_pose_correctives_fn: Any,
@@ -108,31 +102,11 @@ def _forward_vertices_with(
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    B = pose_rot.shape[0]
+    prepared_identity = _broadcast_prepared_identity(prepared_identity, batch_size=pose_rot.shape[0], xp=xp)
     topology = data.topology
     pose_rot_full = _orient_pose_rot_full(xp, pose_rot, data.t_pose_world, topology.parents_full)
-    rest_shape_full, rest_shape_active, world_bind_pose_fit = _prepare_rest_shapes(
-        xp=xp,
-        batch_size=B,
-        mean_full=data.mean_full,
-        mean_active=data.mean_active,
-        shapedirs_full=data.shapedirs_full,
-        shapedirs_active=data.shapedirs_active,
-        eigenvalues=data.eigenvalues,
-        bind_shape=data.bind_shape_full,
-        bind_pose_world=data.bind_pose_world,
-        joint_regressor=data.joint_regressor,
-        joint_children_full=topology.joint_children_full,
-        joint_children_indices_full=topology.joint_children_indices_full,
-        skinned_vertex_indices_full=topology.skinned_vertex_indices_full,
-        skinned_vertex_indices_full_index=topology.skinned_vertex_indices_full_index,
-        parents_full=topology.parents_full,
-        identity=identity,
-        rest_shape_full=rest_shape_full,
-        rest_shape_active=rest_shape_active,
-        world_bind_pose_fit=world_bind_pose_fit,
-        match_warp=match_warp,
-    )
+    rest_shape_active = prepared_identity.rest_shape_active
+    world_bind_pose_fit = prepared_identity.world_bind_pose_fit
 
     if apply_correctives:
         rest_shape_active, world_bind_pose = repose_to_bind_pose(
@@ -172,42 +146,21 @@ def _forward_vertices_with(
 
 def forward_skeleton(
     data: Any,
-    identity: Float[Array, "B|1 S"] | None,
+    prepared_identity: PreparedIdentity,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    rest_shape_full: Float[Array, "B|1 V 3"] | None = None,
-    world_bind_pose_fit: Float[Array, "B|1 J 4 4"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     apply_correctives: bool = True,
     rotation_type: RotationType = "axis_angle",
-    match_warp: bool = True,
     *,
     xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    B = pose_rot.shape[0]
+    prepared_identity = _broadcast_prepared_identity(prepared_identity, batch_size=pose_rot.shape[0], xp=xp)
     topology = data.topology
-    rest_shape_full, world_bind_pose = _prepare_identity_from_inputs(
-        xp=xp,
-        batch_size=B,
-        mean=data.mean_full,
-        shapedirs=data.shapedirs_full,
-        eigenvalues=data.eigenvalues,
-        bind_shape=data.bind_shape_full,
-        bind_pose_world=data.bind_pose_world,
-        joint_regressor=data.joint_regressor,
-        joint_children_full=topology.joint_children_full,
-        joint_children_indices_full=topology.joint_children_indices_full,
-        skinned_vertex_indices_full=topology.skinned_vertex_indices_full,
-        skinned_vertex_indices_full_index=topology.skinned_vertex_indices_full_index,
-        parents_full=topology.parents_full,
-        identity=identity,
-        rest_shape=rest_shape_full,
-        world_bind_pose_fit=world_bind_pose_fit,
-        match_warp=match_warp,
-    )
+    world_bind_pose = prepared_identity.world_bind_pose_fit
     if apply_correctives:
         world_bind_pose = _repose_skeleton_to_bind_pose(
             xp=xp,
@@ -233,21 +186,40 @@ def forward_skeleton(
     return public
 
 
-def prepare_identity_state(
+def _prepare_soma_identity(
     data: Any,
-    identity_input: IdentityInput,
+    identity: Float[Array, "B S"],
     match_warp: bool,
     *,
     xp: Any,
-) -> tuple[Float[Array, "B Vf 3"], Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
-    return _prepare_rest_shapes(
+) -> PreparedIdentity:
+    rest_shape_full = _identity_to_rest_vertices(xp, data.mean_full, data.shapedirs_full, data.eigenvalues, identity)
+    rest_shape_active = _identity_to_rest_vertices(
+        xp,
+        data.mean_active,
+        data.shapedirs_active,
+        data.eigenvalues,
+        identity,
+    )
+    return _prepare_rest_shape_identity(
+        data=data,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
+        match_warp=match_warp,
         xp=xp,
-        batch_size=identity_input.batch_size,
-        mean_full=data.mean_full,
-        mean_active=data.mean_active,
-        shapedirs_full=data.shapedirs_full,
-        shapedirs_active=data.shapedirs_active,
-        eigenvalues=data.eigenvalues,
+    )
+
+
+def _prepare_rest_shape_identity(
+    data: Any,
+    rest_shape_full: Float[Array, "B Vf 3"],
+    rest_shape_active: Float[Array, "B Va 3"],
+    match_warp: bool,
+    *,
+    xp: Any,
+) -> PreparedIdentity:
+    rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
+        xp=xp,
         bind_shape=data.bind_shape_full,
         bind_pose_world=data.bind_pose_world,
         joint_regressor=data.joint_regressor,
@@ -256,12 +228,10 @@ def prepare_identity_state(
         skinned_vertex_indices_full=data.topology.skinned_vertex_indices_full,
         skinned_vertex_indices_full_index=data.topology.skinned_vertex_indices_full_index,
         parents_full=data.topology.parents_full,
-        identity=identity_input.identity,
-        rest_shape_full=identity_input.rest_shape_full,
-        rest_shape_active=identity_input.rest_shape_active,
-        world_bind_pose_fit=None,
+        rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
+    return PreparedIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
 
 
 def fit_rigid_transform(
@@ -356,18 +326,6 @@ def apply_pose_correctives(
     return out.reshape(B, data.mean_full.shape[0], 3)
 
 
-def _broadcast_identity(identity: Array, *, batch_size: int, xp: Any) -> Array:
-    if identity.shape[0] == 1 and batch_size > 1:
-        return xp.broadcast_to(identity, (batch_size, identity.shape[-1]))
-    return identity
-
-
-def _broadcast_rest_shape(rest_shape: Array, *, batch_size: int, xp: Any) -> Array:
-    if rest_shape.shape[0] == 1 and batch_size > 1:
-        return xp.broadcast_to(rest_shape, (batch_size, *rest_shape.shape[1:]))
-    return rest_shape
-
-
 def _identity_to_rest_vertices(
     xp,
     mean: Float[Array, "V 3"],
@@ -377,6 +335,26 @@ def _identity_to_rest_vertices(
 ) -> Float[Array, "B V 3"]:
     coeffs = identity * xp.sqrt(eigenvalues)[None]
     return mean[None] + xp.einsum("bs,svc->bvc", coeffs, shapedirs)
+
+
+def _broadcast_prepared_identity(
+    prepared_identity: PreparedIdentity,
+    *,
+    batch_size: int,
+    xp: Any,
+) -> PreparedIdentity:
+    if prepared_identity.rest_shape_full.shape[0] != 1 or batch_size == 1:
+        return prepared_identity
+    rest_shape_full = xp.broadcast_to(prepared_identity.rest_shape_full, (batch_size, *prepared_identity.rest_shape_full.shape[1:]))
+    rest_shape_active = xp.broadcast_to(
+        prepared_identity.rest_shape_active,
+        (batch_size, *prepared_identity.rest_shape_active.shape[1:]),
+    )
+    world_bind_pose_fit = xp.broadcast_to(
+        prepared_identity.world_bind_pose_fit,
+        (batch_size, *prepared_identity.world_bind_pose_fit.shape[1:]),
+    )
+    return PreparedIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
 
 
 def _fit_rest_shape_to_bind_pose(
@@ -407,105 +385,6 @@ def _fit_rest_shape_to_bind_pose(
         match_warp=match_warp,
     )
     return rest_shape, world_bind_pose
-
-
-def _prepare_identity_from_inputs(
-    xp,
-    batch_size: int,
-    mean: Float[Array, "V 3"],
-    shapedirs: Float[Array, "S V 3"],
-    eigenvalues: Float[Array, "S"],
-    bind_shape: Float[Array, "V 3"],
-    bind_pose_world: Float[Array, "J 4 4"],
-    joint_regressor: Float[Array, "J V"],
-    joint_children_full: list[list[int]],
-    joint_children_indices_full: Int[Array, "J C"],
-    skinned_vertex_indices_full: list[list[int]],
-    skinned_vertex_indices_full_index: Int[Array, "J K"],
-    parents_full: list[int],
-    identity: Float[Array, "B|1 S"] | None,
-    rest_shape: Float[Array, "B|1 V 3"] | None,
-    world_bind_pose_fit: Float[Array, "B|1 J 4 4"] | None,
-    match_warp: bool,
-) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
-    if rest_shape is not None and world_bind_pose_fit is not None:
-        return (
-            _broadcast_rest_shape(rest_shape, batch_size=batch_size, xp=xp),
-            _broadcast_rest_shape(world_bind_pose_fit, batch_size=batch_size, xp=xp),
-        )
-
-    if rest_shape is not None:
-        rest_shape = _broadcast_rest_shape(rest_shape, batch_size=batch_size, xp=xp)
-    else:
-        if identity is None:
-            raise ValueError("SOMA forward pass requires either identity or a precomputed rest_shape.")
-        identity = _broadcast_identity(identity, batch_size=batch_size, xp=xp)
-        rest_shape = _identity_to_rest_vertices(xp, mean, shapedirs, eigenvalues, identity)
-    return _fit_rest_shape_to_bind_pose(
-        xp=xp,
-        bind_shape=bind_shape,
-        bind_pose_world=bind_pose_world,
-        joint_regressor=joint_regressor,
-        joint_children_full=joint_children_full,
-        joint_children_indices_full=joint_children_indices_full,
-        skinned_vertex_indices_full=skinned_vertex_indices_full,
-        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
-        parents_full=parents_full,
-        rest_shape=rest_shape,
-        match_warp=match_warp,
-    )
-
-
-def _prepare_rest_shapes(
-    xp,
-    batch_size: int,
-    mean_full: Float[Array, "Vf 3"],
-    mean_active: Float[Array, "Va 3"],
-    shapedirs_full: Float[Array, "S Vf 3"],
-    shapedirs_active: Float[Array, "S Va 3"],
-    eigenvalues: Float[Array, "S"],
-    bind_shape: Float[Array, "Vf 3"],
-    bind_pose_world: Float[Array, "Jf 4 4"],
-    joint_regressor: Float[Array, "Jf Vf"],
-    joint_children_full: list[list[int]],
-    joint_children_indices_full: Int[Array, "Jf C"],
-    skinned_vertex_indices_full: list[list[int]],
-    skinned_vertex_indices_full_index: Int[Array, "Jf K"],
-    parents_full: list[int],
-    identity: Float[Array, "B|1 S"] | None,
-    rest_shape_full: Float[Array, "B|1 Vf 3"] | None,
-    rest_shape_active: Float[Array, "B|1 Va 3"] | None,
-    world_bind_pose_fit: Float[Array, "B|1 Jf 4 4"] | None,
-    match_warp: bool,
-) -> tuple[Float[Array, "B Vf 3"], Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
-    full_shape, world_bind_pose = _prepare_identity_from_inputs(
-        xp=xp,
-        batch_size=batch_size,
-        mean=mean_full,
-        shapedirs=shapedirs_full,
-        eigenvalues=eigenvalues,
-        bind_shape=bind_shape,
-        bind_pose_world=bind_pose_world,
-        joint_regressor=joint_regressor,
-        joint_children_full=joint_children_full,
-        joint_children_indices_full=joint_children_indices_full,
-        skinned_vertex_indices_full=skinned_vertex_indices_full,
-        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
-        parents_full=parents_full,
-        identity=identity,
-        rest_shape=rest_shape_full,
-        world_bind_pose_fit=world_bind_pose_fit,
-        match_warp=match_warp,
-    )
-    if rest_shape_active is not None:
-        active_shape = _broadcast_rest_shape(rest_shape_active, batch_size=batch_size, xp=xp)
-    else:
-        if identity is None:
-            active_shape = full_shape
-        else:
-            identity = _broadcast_identity(identity, batch_size=batch_size, xp=xp)
-            active_shape = _identity_to_rest_vertices(xp, mean_active, shapedirs_active, eigenvalues, identity)
-    return full_shape, active_shape, world_bind_pose
 
 
 def _repose_skeleton_to_bind_pose(

@@ -34,48 +34,57 @@ class IdentityBackend:
     identity_dim: int
     num_scale_params: int | None
     default_identity_value: float
-    model: Any = None
-    transfer: SomaIdentityTransfer | None = None
+    prepare_identity: Any
+    prepare_for_backend: Any
 
 
 def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = None) -> IdentityBackend:
     if model_type == "soma":
-        return IdentityBackend(
+        return _identity_backend(
             model_type=model_type,
-            identity_dim=spec.identity_dim,
-            num_scale_params=spec.num_scale_params,
-            default_identity_value=spec.default_identity_value,
+            spec=spec,
+            prepare_identity=_prepare_soma_identity,
+            prepare_for_backend=lambda _backend: load(model_type, spec),
         )
 
-    backend = IDENTITY_BACKENDS[model_type]
-    model, transfer = backend.prepare(transfer)
+    module = IDENTITY_BACKENDS[model_type]
+    model, transfer = module.prepare(transfer)
+    return _transferred_identity_backend(model_type, spec, module, model, transfer)
+
+
+def _identity_backend(
+    *,
+    model_type: str,
+    spec: Any,
+    prepare_identity: Any,
+    prepare_for_backend: Any,
+) -> IdentityBackend:
     return IdentityBackend(
         model_type=model_type,
         identity_dim=spec.identity_dim,
         num_scale_params=spec.num_scale_params,
         default_identity_value=spec.default_identity_value,
-        model=model,
-        transfer=transfer,
+        prepare_identity=prepare_identity,
+        prepare_for_backend=prepare_for_backend,
     )
 
 
 def prepare_backend(identity_backend: IdentityBackend, backend: str) -> IdentityBackend:
-    if identity_backend.model_type == "soma":
-        return identity_backend
-    model = IDENTITY_BACKENDS[identity_backend.model_type].prepare_backend_model(identity_backend.model, backend)
-    return replace(identity_backend, model=model)
+    return identity_backend.prepare_for_backend(backend)
 
 
 def prepare(
     *,
     backend: Any,
+    data: Any,
     identity: Float[Any, "B|1 I"] | None,
     scale_params: Float[Any, "B|1 K"] | None,
     batch_size: int,
     vertex_map: Any,
     ref: Any,
+    match_warp: bool,
     xp: Any,
-) -> core.IdentityInput:
+) -> core.PreparedIdentity:
     identity, scale_params = _resolve_inputs(
         backend=backend,
         identity=identity,
@@ -84,16 +93,108 @@ def prepare(
         ref=ref,
         xp=xp,
     )
-    if backend.model_type != "soma":
+    return backend.prepare_identity(
+        data=data,
+        identity=identity,
+        scale_params=scale_params,
+        vertex_map=vertex_map,
+        match_warp=match_warp,
+        xp=xp,
+    )
+
+
+def _prepare_soma_identity(
+    *,
+    data: Any,
+    identity: Float[Any, "B I"],
+    scale_params: Float[Any, "B K"] | None,
+    vertex_map: Any,
+    match_warp: bool,
+    xp: Any,
+) -> core.PreparedIdentity:
+    return core.prepare_identity(data=data, identity=identity, match_warp=match_warp, xp=xp)
+
+
+def _transferred_identity_backend(
+    model_type: str,
+    spec: Any,
+    module: Any,
+    model: Any,
+    transfer: SomaIdentityTransfer,
+) -> IdentityBackend:
+    def prepare_identity(
+        *,
+        data: Any,
+        identity: Float[Any, "B I"],
+        scale_params: Float[Any, "B K"] | None,
+        vertex_map: Any,
+        match_warp: bool,
+        xp: Any,
+    ) -> core.PreparedIdentity:
         rest_shape_full, rest_shape_active = _rest_shape(
-            backend=backend,
+            module=module,
+            model=model,
+            transfer=transfer,
             identity=identity,
             scale_params=scale_params,
+            num_scale_params=spec.num_scale_params,
             vertex_map=vertex_map,
             xp=xp,
         )
-        return core.IdentityInput(identity=None, rest_shape_full=rest_shape_full, rest_shape_active=rest_shape_active)
-    return core.IdentityInput(identity=identity, rest_shape_full=None, rest_shape_active=None)
+        return core.prepare_identity_from_rest_shape(
+            data=data,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
+            match_warp=match_warp,
+            xp=xp,
+        )
+
+    def prepare_for_backend(backend: str) -> IdentityBackend:
+        backend_model = module.prepare_backend_model(model, backend)
+        backend_transfer = _prepare_transfer(transfer, backend)
+        return _transferred_identity_backend(model_type, spec, module, backend_model, backend_transfer)
+
+    return _identity_backend(
+        model_type=model_type,
+        spec=spec,
+        prepare_identity=prepare_identity,
+        prepare_for_backend=prepare_for_backend,
+    )
+
+
+def _prepare_transfer(transfer: SomaIdentityTransfer, backend: str) -> SomaIdentityTransfer:
+    if backend == "numpy":
+        return transfer
+    if backend == "torch":
+        import torch
+
+        array = torch.as_tensor
+
+        def index(value):
+            return torch.as_tensor(value, dtype=torch.int64)
+    elif backend == "jax":
+        import jax.numpy as jnp
+
+        array = jnp.asarray
+        index = jnp.asarray
+    else:
+        raise ValueError(f"Unsupported SOMA backend: {backend}")
+
+    return replace(
+        transfer,
+        source_vertices=array(transfer.source_vertices),
+        source_tetrahedra=index(transfer.source_tetrahedra),
+        face_ids=index(transfer.face_ids),
+        bary_coords=array(transfer.bary_coords),
+        unknown_ids=index(transfer.unknown_ids),
+        anchor_ids=index(transfer.anchor_ids),
+        solve_matrix=array(transfer.solve_matrix),
+        anchor_matrix=array(transfer.anchor_matrix),
+        rhs_base=array(transfer.rhs_base),
+        internal_to_source_rotation=array(transfer.internal_to_source_rotation),
+        internal_to_source_translation=array(transfer.internal_to_source_translation),
+        source_to_soma_rotation=array(transfer.source_to_soma_rotation),
+    )
 
 
 def _resolve_inputs(
@@ -125,22 +226,23 @@ def _resolve_inputs(
 
 def _rest_shape(
     *,
-    backend: Any,
+    module: Any,
+    model: Any,
+    transfer: SomaIdentityTransfer,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
+    num_scale_params: int | None,
     vertex_map: Any,
     xp: Any,
 ) -> tuple[Float[Any, "B Vt 3"], Float[Any, "B Va 3"]]:
-    model_type = backend.model_type
-    module = IDENTITY_BACKENDS[model_type]
     source_shape = module.shape(
-        identity_model=backend.model,
+        identity_model=model,
         identity=identity,
         scale_params=scale_params,
-        num_scale_params=backend.num_scale_params,
+        num_scale_params=num_scale_params,
         xp=xp,
     )
-    rest_shape_full = _transfer_source_shape(source_shape, backend.transfer, xp=xp)
+    rest_shape_full = _transfer_source_shape(source_shape, transfer, xp=xp)
     rest_shape_active = rest_shape_full if vertex_map is None else rest_shape_full[:, vertex_map]
     return rest_shape_full, rest_shape_active
 

@@ -1,6 +1,6 @@
 """NumPy backend for SOMA model."""
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -19,19 +19,13 @@ from .io import (
 )
 import body_models.soma.backend.numpy as numpy_kernel
 import body_models.soma.backend.scipy as scipy_kernel
+from body_models.soma.backend.core import PreparedIdentity
 from body_models.soma import identities
 
 PathLike = Path | str
 KernelBackend = Literal["numpy", "scipy"]
 
-__all__ = ["SOMA", "SOMAIdentity"]
-
-
-@dataclass
-class SOMAIdentity:
-    rest_shape_full: Float[np.ndarray, "1 Vf 3"]
-    rest_shape_active: Float[np.ndarray, "1 Va 3"]
-    world_bind_pose_fit: Float[np.ndarray, "1 Jf 4 4"]
+__all__ = ["SOMA", "PreparedIdentity"]
 
 
 class SOMA(BodyModel):
@@ -142,27 +136,24 @@ class SOMA(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
-        prepared_identity: SOMAIdentity | None = None,
+        prepared_identity: PreparedIdentity | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
         identity_state = self._prepare_or_use_identity(
             identity=identity,
             scale_params=scale_params,
+            batch_size=pose.shape[0],
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
         return self._kernel.forward_vertices(
             data=self.model_weights,
-            identity=None,
+            prepared_identity=identity_state,
             pose=pose,
-            rest_shape_full=identity_state.rest_shape_full,
-            rest_shape_active=identity_state.rest_shape_active,
-            world_bind_pose_fit=identity_state.world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            match_warp=self.match_warp,
             xp=np,
         )
 
@@ -176,26 +167,24 @@ class SOMA(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
-        prepared_identity: SOMAIdentity | None = None,
+        prepared_identity: PreparedIdentity | None = None,
     ) -> Float[np.ndarray, "B 77 4 4"]:
         identity_state = self._prepare_or_use_identity(
             identity=identity,
             scale_params=scale_params,
+            batch_size=pose.shape[0],
             dtype=pose.dtype,
             prepared_identity=prepared_identity,
         )
         return self._kernel.forward_skeleton(
             data=self.model_weights,
-            identity=None,
+            prepared_identity=identity_state,
             pose=pose,
-            rest_shape_full=identity_state.rest_shape_full,
-            world_bind_pose_fit=identity_state.world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            match_warp=self.match_warp,
             xp=np,
         )
 
@@ -231,37 +220,33 @@ class SOMA(BodyModel):
         *,
         identity: Float[np.ndarray, "B|1 I"] | None = None,
         scale_params: Float[np.ndarray, "B|1 K"] | None = None,
+        batch_size: int = 1,
         dtype=np.float32,
-    ) -> SOMAIdentity:
+    ) -> PreparedIdentity:
         if identity is not None:
             dtype = identity.dtype
         ref = np.empty((1, 1), dtype=dtype)
-        batch_size = 1 if identity is None else identity.shape[0]
-        identity_input = identities.prepare(
+        return identities.prepare(
             backend=self.identity_backend,
+            data=self.model_weights,
             identity=identity,
             scale_params=scale_params,
             batch_size=batch_size,
             vertex_map=self.model_weights.vertex_map,
             ref=ref,
-            xp=np,
-        )
-        rest_shape_full, rest_shape_active, world_bind_pose_fit = self._kernel.prepare_identity(
-            data=self.model_weights,
-            identity_input=identity_input,
             match_warp=self.match_warp,
             xp=np,
         )
-        return SOMAIdentity(rest_shape_full, rest_shape_active, world_bind_pose_fit)
 
     def _prepare_or_use_identity(
         self,
         *,
         identity: Float[np.ndarray, "B|1 I"] | None,
         scale_params: Float[np.ndarray, "B|1 K"] | None,
+        batch_size: int,
         dtype: np.dtype,
-        prepared_identity: SOMAIdentity | None,
-    ) -> SOMAIdentity:
+        prepared_identity: PreparedIdentity | None,
+    ) -> PreparedIdentity:
         if prepared_identity is not None:
             return prepared_identity
-        return self.prepare_identity(identity=identity, scale_params=scale_params, dtype=dtype)
+        return self.prepare_identity(identity=identity, scale_params=scale_params, batch_size=batch_size, dtype=dtype)

@@ -132,25 +132,23 @@ class SOMA(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
+        prepared_identity: core.PreparedIdentity | None = None,
     ) -> Float[jax.Array, "B V 3"]:
-        identity, rest_shape_full, rest_shape_active, world_bind_pose_fit = self._prepare_identity(
+        identity_state = self._prepare_or_use_identity(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
+            prepared_identity=prepared_identity,
         )
         return core.forward_vertices(
             data=self.model_weights,
-            identity=identity,
+            prepared_identity=identity_state,
             pose=pose,
-            rest_shape_full=rest_shape_full,
-            rest_shape_active=rest_shape_active,
-            world_bind_pose_fit=world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            match_warp=self.match_warp,
             xp=jnp,
         )
 
@@ -164,24 +162,23 @@ class SOMA(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
+        prepared_identity: core.PreparedIdentity | None = None,
     ) -> Float[jax.Array, "B 77 4 4"]:
-        identity, rest_shape_full, _rest_shape_active, world_bind_pose_fit = self._prepare_identity(
+        identity_state = self._prepare_or_use_identity(
             identity=identity,
             scale_params=scale_params,
             ref=pose,
+            prepared_identity=prepared_identity,
         )
         return core.forward_skeleton(
             data=self.model_weights,
-            identity=identity,
+            prepared_identity=identity_state,
             pose=pose,
-            rest_shape_full=rest_shape_full,
-            world_bind_pose_fit=world_bind_pose_fit,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            match_warp=self.match_warp,
             xp=jnp,
         )
 
@@ -212,32 +209,33 @@ class SOMA(BodyModel, nnx.Module):
             params["scale_params"] = jnp.zeros((1, self.identity_backend.num_scale_params), dtype=dtype)
         return params
 
-    def _prepare_identity(
+    def prepare_identity(
         self,
         *,
-        identity: Float[jax.Array, "B|1 I"] | None,
-        scale_params: Float[jax.Array, "B|1 K"] | None,
+        identity: Float[jax.Array, "B|1 I"] | None = None,
+        scale_params: Float[jax.Array, "B|1 K"] | None = None,
         ref: Float[jax.Array, "B ..."],
-    ) -> tuple[
-        Float[jax.Array, "B|1 I"] | None,
-        Float[jax.Array, "B V 3"],
-        Float[jax.Array, "B V 3"],
-        Float[jax.Array, "B J 4 4"],
-    ]:
-        identity_input = identities.prepare(
+    ) -> core.PreparedIdentity:
+        return identities.prepare(
             backend=self.identity_backend,
+            data=self.model_weights,
             identity=identity,
             scale_params=scale_params,
             batch_size=ref.shape[0],
             vertex_map=self.model_weights.vertex_map,
             ref=ref,
-            xp=jnp,
-        )
-        rest_shape_full, rest_shape_active, world_bind_pose_fit = core.prepare_identity(
-            data=self.model_weights,
-            identity_input=identity_input,
             match_warp=self.match_warp,
             xp=jnp,
         )
-        identity = identity_input.identity
-        return identity, rest_shape_full, rest_shape_active, world_bind_pose_fit
+
+    def _prepare_or_use_identity(
+        self,
+        *,
+        identity: Float[jax.Array, "B|1 I"] | None,
+        scale_params: Float[jax.Array, "B|1 K"] | None,
+        ref: Float[jax.Array, "B ..."],
+        prepared_identity: core.PreparedIdentity | None,
+    ) -> core.PreparedIdentity:
+        if prepared_identity is not None:
+            return prepared_identity
+        return self.prepare_identity(identity=identity, scale_params=scale_params, ref=ref)

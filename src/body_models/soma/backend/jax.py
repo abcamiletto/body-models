@@ -15,6 +15,7 @@ __all__ = [
     "forward_skeleton",
     "forward_vertices",
     "linear_blend_skinning",
+    "PreparedIdentity",
     "prepare_data",
     "prepare_identity",
     "prepare_identity_backend",
@@ -23,6 +24,7 @@ __all__ = [
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 linear_blend_skinning = core.linear_blend_skinning
+PreparedIdentity = core.PreparedIdentity
 prepare_identity = core.prepare_identity
 
 
@@ -69,26 +71,8 @@ class SomaJaxIdentityBackend(nnx.Module):
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        self.model = identity_backend.model
-        self.transfer = None if identity_backend.transfer is None else _prepare_identity_transfer(identity_backend.transfer)
-
-
-def _prepare_identity_transfer(identity_transfer):
-    return replace(
-        identity_transfer,
-        source_vertices=jnp.asarray(identity_transfer.source_vertices),
-        source_tetrahedra=jnp.asarray(identity_transfer.source_tetrahedra),
-        face_ids=jnp.asarray(identity_transfer.face_ids),
-        bary_coords=jnp.asarray(identity_transfer.bary_coords),
-        unknown_ids=jnp.asarray(identity_transfer.unknown_ids),
-        anchor_ids=jnp.asarray(identity_transfer.anchor_ids),
-        solve_matrix=jnp.asarray(identity_transfer.solve_matrix),
-        anchor_matrix=jnp.asarray(identity_transfer.anchor_matrix),
-        rhs_base=jnp.asarray(identity_transfer.rhs_base),
-        internal_to_source_rotation=jnp.asarray(identity_transfer.internal_to_source_rotation),
-        internal_to_source_translation=jnp.asarray(identity_transfer.internal_to_source_translation),
-        source_to_soma_rotation=jnp.asarray(identity_transfer.source_to_soma_rotation),
-    )
+        self.prepare_identity = identity_backend.prepare_identity
+        self.prepare_for_backend = identity_backend.prepare_for_backend
 
 
 def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaJaxIdentityBackend:
