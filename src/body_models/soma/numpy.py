@@ -68,10 +68,7 @@ class SOMA(BodyModel):
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
         self.match_warp = match_warp
-        try:
-            self._kernel = {"numpy": numpy_kernel, "scipy": scipy_kernel}[backend]
-        except KeyError as exc:
-            raise ValueError(f"Invalid backend: {backend}. Supported SOMA NumPy kernels are numpy, scipy.") from exc
+        self._kernel = {"numpy": numpy_kernel, "scipy": scipy_kernel}[backend]
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 
@@ -110,14 +107,6 @@ class SOMA(BodyModel):
             transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
         identity_backend = identities.load(self.model_type, spec, transfer_data)
         self.identity_backend = self._kernel.prepare_identity_backend(identity_backend)
-
-    @property
-    def identity_dim(self) -> int:
-        return self.identity_backend.identity_dim
-
-    @property
-    def num_scale_params(self) -> int | None:
-        return self.identity_backend.num_scale_params
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from jaxtyping import Float
@@ -15,30 +16,21 @@ IDENTITY_BACKENDS = {
     "smplx": smplx,
 }
 
-__all__ = ["IDENTITY_BACKENDS", "IdentityBackend", "load", "replace_data", "shape"]
+__all__ = ["IDENTITY_BACKENDS", "IdentityBackend", "load", "shape"]
 
 
+@dataclass(frozen=True)
 class IdentityBackend:
-    def __init__(
-        self,
-        *,
-        model_type: str,
-        identity_dim: int,
-        num_scale_params: int | None,
-        default_identity_value: float,
-        model: Any = None,
-        transfer: SomaIdentityTransfer | None = None,
-    ) -> None:
-        self.model_type = model_type
-        self.identity_dim = identity_dim
-        self.num_scale_params = num_scale_params
-        self.default_identity_value = default_identity_value
-        self.model = model
-        self.transfer = transfer
+    model_type: str
+    identity_dim: int
+    num_scale_params: int | None
+    default_identity_value: float
+    model: Any = None
+    transfer: SomaIdentityTransfer | None = None
 
 
 def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = None) -> IdentityBackend:
-    if transfer is None:
+    if model_type == "soma":
         return IdentityBackend(
             model_type=model_type,
             identity_dim=spec.identity_dim,
@@ -46,10 +38,7 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
             default_identity_value=spec.default_identity_value,
         )
 
-    try:
-        backend = IDENTITY_BACKENDS[model_type]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported SOMA identity backend: {model_type}") from exc
+    backend = IDENTITY_BACKENDS[model_type]
     model, transfer = backend.prepare(transfer)
     return IdentityBackend(
         model_type=model_type,
@@ -61,22 +50,6 @@ def load(model_type: str, spec: Any, transfer: SomaIdentityTransfer | None = Non
     )
 
 
-def replace_data(
-    backend: IdentityBackend,
-    *,
-    model: Any | None = None,
-    transfer: SomaIdentityTransfer | None = None,
-) -> IdentityBackend:
-    return IdentityBackend(
-        model_type=backend.model_type,
-        identity_dim=backend.identity_dim,
-        num_scale_params=backend.num_scale_params,
-        default_identity_value=backend.default_identity_value,
-        model=backend.model if model is None else model,
-        transfer=backend.transfer if transfer is None else transfer,
-    )
-
-
 def shape(
     *,
     backend: IdentityBackend,
@@ -85,14 +58,9 @@ def shape(
     xp: Any,
 ) -> Float[Any, "B V 3"]:
     model_type = backend.model_type
-    try:
-        module = IDENTITY_BACKENDS[model_type]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported SOMA identity backend: {model_type}") from exc
+    module = IDENTITY_BACKENDS[model_type]
 
     if model_type == "mhr":
-        if backend.num_scale_params is None:
-            raise ValueError("SOMA model_type='mhr' requires num_scale_params.")
         return module.shape(
             identity_model=backend.model,
             identity=identity,

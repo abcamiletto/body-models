@@ -36,18 +36,6 @@ def prepare_data(soma_weights: Any) -> Any:
     return soma_weights
 
 
-def prepare_identity_model(model_type: str, identity_model: Any) -> Any:
-    return identity_model
-
-
-def prepare_identity_transfer(identity_transfer: IdentityTransfer) -> IdentityTransfer:
-    return identity_transfer
-
-
-def prepare_identity_backend(identity_backend: Any) -> Any:
-    return identity_backend
-
-
 def prepare_identity(
     data: Any,
     *,
@@ -79,8 +67,6 @@ def prepare_identity(
     rest_shape_full = None
     rest_shape_active = None
     if identity_backend.model_type != "soma":
-        if identity_backend.transfer is None:
-            raise ValueError(f"SOMA model_type='{identity_backend.model_type}' requires identity_transfer.")
         rest_shape_full, rest_shape_active = prepare_identity_shape(
             identity_backend=identity_backend,
             identity=identity,
@@ -325,8 +311,6 @@ def prepare_identity_shape(
     xp: Any,
 ) -> tuple[Float[Array, "B Vt 3"] | None, Float[Array, "B Va 3"] | None]:
     identity_transfer = identity_backend.transfer
-    if identity_transfer is None:
-        raise ValueError(f"SOMA model_type='{identity_backend.model_type}' requires identity_transfer.")
     rest_shape = identities.shape(
         backend=identity_backend,
         identity=identity,

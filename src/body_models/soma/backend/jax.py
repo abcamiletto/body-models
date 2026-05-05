@@ -18,8 +18,6 @@ __all__ = [
     "prepare_data",
     "prepare_identity",
     "prepare_identity_backend",
-    "prepare_identity_model",
-    "prepare_identity_transfer",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
@@ -65,8 +63,23 @@ def prepare_data(weights: SomaWeights) -> SomaWeights:
     )
 
 
-def prepare_identity_model(model_type: str, identity_model):
-    if model_type == "mhr":
+class SomaJaxIdentityBackend(nnx.Module):
+    def __init__(self, identity_backend: identities.IdentityBackend) -> None:
+        self.model_type = identity_backend.model_type
+        self.identity_dim = identity_backend.identity_dim
+        self.num_scale_params = identity_backend.num_scale_params
+        self.default_identity_value = identity_backend.default_identity_value
+        if identity_backend.model_type == "soma":
+            self.model = None
+            self.transfer = None
+            return
+        self.model = _prepare_identity_model(identity_backend)
+        self.transfer = _prepare_identity_transfer(identity_backend.transfer)
+
+
+def _prepare_identity_model(identity_backend: identities.IdentityBackend):
+    identity_model = identity_backend.model
+    if identity_backend.model_type == "mhr":
         from ...mhr.jax import MHR
 
         return nnx.data(MHR(model_path=identity_model.model_path, simplify=1.0))
@@ -77,7 +90,7 @@ def prepare_identity_model(model_type: str, identity_model):
     )
 
 
-def prepare_identity_transfer(identity_transfer):
+def _prepare_identity_transfer(identity_transfer):
     return replace(
         identity_transfer,
         source_vertices=jnp.asarray(identity_transfer.source_vertices),
@@ -93,22 +106,6 @@ def prepare_identity_transfer(identity_transfer):
         internal_to_source_translation=jnp.asarray(identity_transfer.internal_to_source_translation),
         source_to_soma_rotation=jnp.asarray(identity_transfer.source_to_soma_rotation),
     )
-
-
-class SomaJaxIdentityBackend(nnx.Module):
-    def __init__(self, identity_backend: identities.IdentityBackend) -> None:
-        self.model_type = identity_backend.model_type
-        self.identity_dim = identity_backend.identity_dim
-        self.num_scale_params = identity_backend.num_scale_params
-        self.default_identity_value = identity_backend.default_identity_value
-        self.model = (
-            None
-            if identity_backend.model is None
-            else prepare_identity_model(identity_backend.model_type, identity_backend.model)
-        )
-        self.transfer = (
-            None if identity_backend.transfer is None else prepare_identity_transfer(identity_backend.transfer)
-        )
 
 
 def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaJaxIdentityBackend:

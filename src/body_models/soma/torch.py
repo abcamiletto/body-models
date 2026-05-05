@@ -100,14 +100,6 @@ class SOMA(BodyModel, nn.Module):
         self.identity_backend = core.prepare_identity_backend(identity_backend)
 
     @property
-    def identity_dim(self) -> int:
-        return self.identity_backend.identity_dim
-
-    @property
-    def num_scale_params(self) -> int | None:
-        return self.identity_backend.num_scale_params
-
-    @property
     def faces(self) -> Int[Tensor, "F 3"]:
         return self.model_weights.faces
 

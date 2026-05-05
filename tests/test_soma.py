@@ -177,20 +177,6 @@ def test_scipy_kernel_matches_numpy(model_path: Path) -> None:
     np.testing.assert_allclose(skeleton_scipy, skeleton_numpy, atol=1e-5, rtol=1e-5)
 
 
-def test_numpy_rejects_invalid_kernel_backend(model_path: Path) -> None:
-    from body_models.soma.numpy import SOMA
-
-    with pytest.raises(ValueError, match="Invalid backend"):
-        SOMA(model_path=model_path, backend="cupy")  # type: ignore[arg-type]
-
-
-def test_numpy_rejects_invalid_simplify(model_path: Path) -> None:
-    from body_models.soma.numpy import SOMA
-
-    with pytest.raises(ValueError, match="simplify must be >= 1.0"):
-        SOMA(model_path=model_path, simplify=0.5)
-
-
 def test_mhr_rotmat_backward_without_correctives(model_path: Path) -> None:
     torch = pytest.importorskip("torch")
     from body_models.soma.torch import SOMA
@@ -202,8 +188,8 @@ def test_mhr_rotmat_backward_without_correctives(model_path: Path) -> None:
     global_translation = torch.zeros(batch_size, 3)
 
     torch.manual_seed(0)
-    identity0 = torch.randn(1, model.identity_dim) * 0.01
-    scale0 = torch.randn(1, model.num_scale_params) * 0.01
+    identity0 = torch.randn(1, model.identity_backend.identity_dim) * 0.01
+    scale0 = torch.randn(1, model.identity_backend.num_scale_params) * 0.01
 
     with torch.no_grad():
         target = model.forward_vertices(

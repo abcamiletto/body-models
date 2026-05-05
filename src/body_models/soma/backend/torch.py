@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from dataclasses import replace
 from jaxtyping import Float, Int
+from typing import cast
 
 from .. import identities
 from ..io import SomaIdentityTransfer, SomaWeights
@@ -18,8 +19,6 @@ __all__ = [
     "prepare_data",
     "prepare_identity",
     "prepare_identity_backend",
-    "prepare_identity_model",
-    "prepare_identity_transfer",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
@@ -154,22 +153,21 @@ class SomaTorchIdentityBackend(nn.Module):
         self.identity_dim = identity_backend.identity_dim
         self.num_scale_params = identity_backend.num_scale_params
         self.default_identity_value = identity_backend.default_identity_value
-        self.model = (
-            None
-            if identity_backend.model is None
-            else prepare_identity_model(identity_backend.model_type, identity_backend.model)
-        )
-        self.transfer = (
-            None if identity_backend.transfer is None else prepare_identity_transfer(identity_backend.transfer)
-        )
+        if identity_backend.model_type == "soma":
+            self.model = None
+            self.transfer = None
+            return
+        self.model = _prepare_identity_model(identity_backend)
+        self.transfer = SomaTorchIdentityTransfer(cast(SomaIdentityTransfer, identity_backend.transfer))
 
 
 def prepare_data(weights: SomaWeights) -> SomaTorchWeights:
     return SomaTorchWeights(weights)
 
 
-def prepare_identity_model(model_type: str, identity_model):
-    if model_type == "mhr":
+def _prepare_identity_model(identity_backend: identities.IdentityBackend):
+    identity_model = identity_backend.model
+    if identity_backend.model_type == "mhr":
         from ...mhr.torch import MHR
 
         return MHR(model_path=identity_model.model_path, simplify=1.0)
@@ -178,10 +176,6 @@ def prepare_identity_model(model_type: str, identity_model):
         mean=torch.as_tensor(identity_model.mean),
         shapedirs=torch.as_tensor(identity_model.shapedirs),
     )
-
-
-def prepare_identity_transfer(identity_transfer: SomaIdentityTransfer) -> SomaTorchIdentityTransfer:
-    return SomaTorchIdentityTransfer(identity_transfer)
 
 
 def prepare_identity_backend(identity_backend: identities.IdentityBackend) -> SomaTorchIdentityBackend:

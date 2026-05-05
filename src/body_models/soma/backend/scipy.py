@@ -23,20 +23,11 @@ __all__ = [
     "prepare_data",
     "prepare_identity",
     "prepare_identity_backend",
-    "prepare_identity_model",
-    "prepare_identity_transfer",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 prepare_identity = core.prepare_identity
-prepare_identity_transfer = core.prepare_identity_transfer
-
-
-def prepare_identity_model(model_type: str, identity_model):
-    from . import numpy as numpy_backend
-
-    return numpy_backend.prepare_identity_model(model_type, identity_model)
 
 
 def prepare_identity_backend(identity_backend):
