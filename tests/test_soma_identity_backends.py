@@ -194,3 +194,17 @@ def test_torch_identity_backend_can_match_upstream_torch_rotation_fitter(
         rtol=MODEL_RTOL["mhr"],
         atol=MODEL_ATOL["mhr"],
     )
+
+
+def test_torch_identity_backend_follows_module_dtype(soma_model_path: Path) -> None:
+    from body_models.soma.torch import SOMA
+
+    model = SOMA(model_path=soma_model_path, model_type="mhr").to(torch.float64)
+    params = model.get_rest_pose(dtype=torch.float64)
+
+    with torch.no_grad():
+        verts = model.forward_vertices(**params)
+        transforms = model.forward_skeleton(**params)
+
+    assert verts.dtype == torch.float64
+    assert transforms.dtype == torch.float64

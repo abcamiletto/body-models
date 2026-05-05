@@ -63,10 +63,20 @@ class SOMA(BodyModel):
     _skin_weights_active: Float[np.ndarray, "Va 78"]
     _faces: Int[np.ndarray, "F 3"]
     _vertex_map: Int[np.ndarray, "Va"] | None
+    _identity_source_vertices: Float[np.ndarray, "Vs 3"]
+    _identity_source_tetrahedra: Int[np.ndarray, "Fs 4"]
+    _identity_face_ids: Int[np.ndarray, "Vt"]
+    _identity_bary_coords: Float[np.ndarray, "Vt 4"]
+    _identity_unknown_ids: Int[np.ndarray, "U"]
+    _identity_anchor_ids: Int[np.ndarray, "A"]
+    _identity_solve_matrix: Float[np.ndarray, "U U"]
+    _identity_anchor_matrix: Float[np.ndarray, "U A"]
+    _identity_rhs_base: Float[np.ndarray, "U 3"]
     _identity_internal_to_source_rotation: Float[np.ndarray, "3 3"]
     _identity_internal_to_source_translation: Float[np.ndarray, "3"]
     _identity_source_to_soma_rotation: Float[np.ndarray, "3 3"]
-    _identity_transfer: identities.IdentityTransfer
+    _identity_source_scale: float
+    _identity_output_scale: float
     _identity_anny_model: ANNY
     _identity_mhr_model: MHR
     _identity_linear_model: SMPL | SMPLX
@@ -149,12 +159,22 @@ class SOMA(BodyModel):
         self.identity_dim = spec.identity_dim
         self.num_scale_params = spec.num_scale_params
         self._default_identity_value = spec.default_identity_value
+        self._identity_source_scale = spec.source_scale
+        self._identity_output_scale = spec.output_scale
 
         if spec.asset_dir is None:
             return
 
         transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_transfer = identities.transfer_from_data(transfer_data)
+        self._identity_source_vertices = transfer_data.source_vertices
+        self._identity_source_tetrahedra = transfer_data.source_tetrahedra
+        self._identity_face_ids = transfer_data.face_ids
+        self._identity_bary_coords = transfer_data.bary_coords
+        self._identity_unknown_ids = transfer_data.unknown_ids
+        self._identity_anchor_ids = transfer_data.anchor_ids
+        self._identity_solve_matrix = transfer_data.solve_matrix
+        self._identity_anchor_matrix = transfer_data.anchor_matrix
+        self._identity_rhs_base = transfer_data.rhs_base
         {
             "mhr": self._init_mhr_identity_backend,
             "anny": self._init_anny_identity_backend,
@@ -385,21 +405,54 @@ class SOMA(BodyModel):
         if self.model_type == "soma":
             return None, None
 
-        source_shape = identities.source_shape(
-            self.model_type,
-            identity=identity,
-            scale_params=scale_params,
-            num_scale_params=self.num_scale_params,
-            mhr_model=getattr(self, "_identity_mhr_model", None),
-            anny_model=getattr(self, "_identity_anny_model", None),
-            linear_model=getattr(self, "_identity_linear_model", None),
-            xp=np,
-        )
+        if self.model_type == "mhr":
+            assert self.num_scale_params is not None
+            source_shape = identities.mhr_source_shape(
+                identity=identity,
+                scale_params=scale_params,
+                num_scale_params=self.num_scale_params,
+                model=self._identity_mhr_model,
+                xp=np,
+            )
+        elif self.model_type == "anny":
+            source_shape = identities.anny_source_shape(
+                template_vertices=self._identity_anny_model.template_vertices,
+                blendshapes=self._identity_anny_model.blendshapes,
+                phenotype_mask=self._identity_anny_model.phenotype_mask,
+                anchors=self._identity_anny_model._anchors,
+                identity=identity,
+                xp=np,
+            )
+        else:
+            source_shape = identities.linear_source_shape(
+                mean=self._identity_linear_model.v_template_full,
+                shapedirs=self._identity_linear_model.shapedirs_full,
+                identity=identity,
+                xp=np,
+            )
         return identities.transfer_shape(
             source_shape,
-            transfer=self._identity_transfer,
+            transfer=self._current_identity_transfer(),
             vertex_map=self._vertex_map,
             xp=np,
+        )
+
+    def _current_identity_transfer(self) -> identities.IdentityTransfer:
+        return identities.IdentityTransfer(
+            source_vertices=self._identity_source_vertices,
+            source_tetrahedra=self._identity_source_tetrahedra,
+            face_ids=self._identity_face_ids,
+            bary_coords=self._identity_bary_coords,
+            unknown_ids=self._identity_unknown_ids,
+            anchor_ids=self._identity_anchor_ids,
+            solve_matrix=self._identity_solve_matrix,
+            anchor_matrix=self._identity_anchor_matrix,
+            rhs_base=self._identity_rhs_base,
+            internal_to_source_rotation=self._identity_internal_to_source_rotation,
+            internal_to_source_translation=self._identity_internal_to_source_translation,
+            source_to_soma_rotation=self._identity_source_to_soma_rotation,
+            source_scale=self._identity_source_scale,
+            output_scale=self._identity_output_scale,
         )
 
     def _init_mhr_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
@@ -422,12 +475,6 @@ class SOMA(BodyModel):
         self._identity_source_to_soma_rotation = np.asarray(
             [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
             dtype=np.float32,
-        )
-        self._identity_transfer = identities.with_transforms(
-            self._identity_transfer,
-            internal_to_source_rotation=self._identity_internal_to_source_rotation,
-            internal_to_source_translation=self._identity_internal_to_source_translation,
-            source_to_soma_rotation=self._identity_source_to_soma_rotation,
         )
 
     def _init_linear_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
