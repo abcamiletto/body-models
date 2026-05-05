@@ -5,25 +5,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from jaxtyping import Float
+from jaxtyping import Float, Int
 
 from .. import core
 
 
 @dataclass(frozen=True)
 class IdentityTransfer:
-    source_vertices: Any
-    source_tetrahedra: Any
-    face_ids: Any
-    bary_coords: Any
-    unknown_ids: Any
-    anchor_ids: Any
-    solve_matrix: Any
-    anchor_matrix: Any
-    rhs_base: Any
-    internal_to_source_rotation: Any
-    internal_to_source_translation: Any
-    source_to_soma_rotation: Any
+    source_vertices: Float[Any, "Vs 3"]
+    source_tetrahedra: Int[Any, "Fs 4"]
+    face_ids: Int[Any, "Vt"]
+    bary_coords: Float[Any, "Vt 4"]
+    unknown_ids: Int[Any, "U"]
+    anchor_ids: Int[Any, "A"]
+    solve_matrix: Float[Any, "U U"]
+    anchor_matrix: Float[Any, "U A"]
+    rhs_base: Float[Any, "U 3"]
+    internal_to_source_rotation: Float[Any, "3 3"]
+    internal_to_source_translation: Float[Any, "3"]
+    source_to_soma_rotation: Float[Any, "3 3"]
     source_scale: float
     output_scale: float
 
@@ -47,9 +47,9 @@ def mhr_source_shape(
 
 def anny_source_shape(
     *,
-    template_vertices: Any,
-    blendshapes: Any,
-    phenotype_mask: Any,
+    template_vertices: Float[Any, "V 3"],
+    blendshapes: Float[Any, "P V 3"],
+    phenotype_mask: Float[Any, "P"],
     anchors: Any,
     identity: Float[Any, "B I"],
     xp: Any,
@@ -66,8 +66,8 @@ def anny_source_shape(
 
 def linear_source_shape(
     *,
-    mean: Any,
-    shapedirs: Any,
+    mean: Float[Any, "V 3"],
+    shapedirs: Float[Any, "I V 3"],
     identity: Float[Any, "B I"],
     xp: Any,
 ) -> Float[Any, "B V 3"]:
@@ -113,4 +113,3 @@ def transfer_shape(
     rest_shape = rest_shape * transfer.output_scale
     rest_shape_active = rest_shape if vertex_map is None else rest_shape[:, vertex_map]
     return rest_shape, rest_shape_active
-
