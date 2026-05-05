@@ -11,7 +11,7 @@ from ...anny.numpy import ANNY
 from ...mhr.numpy import MHR
 from ...smpl.numpy import SMPL
 from ...smplx.numpy import SMPLX
-from .. import core
+from ..backend import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
 from . import IdentityTransfer, anny_identity_shape, linear_identity_shape, mhr_identity_shape
 

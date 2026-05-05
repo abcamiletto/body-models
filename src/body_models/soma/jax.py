@@ -1,5 +1,6 @@
 """JAX backend for SOMA model using Flax NNX."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import jax
@@ -10,17 +11,18 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES
-from . import core, identities
-from .identities import jax as identity_sources
+from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
-    compute_kinematic_fronts,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
     simplify_mesh,
 )
+import body_models.soma.backend.jax as core
+from body_models.soma.backend import core as backend_core
+from body_models.soma import identities
+from body_models.soma.identities import jax as identity_sources
 
 PathLike = Path | str
 
@@ -33,7 +35,6 @@ class SOMA(BodyModel, nnx.Module):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
-    _identity_source: identity_sources.IdentitySource
 
     def __init__(
         self,
@@ -41,7 +42,7 @@ class SOMA(BodyModel, nnx.Module):
         *,
         model_type: str = "soma",
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
     ) -> None:
         normalized_model_type = model_type.lower()
@@ -51,7 +52,8 @@ class SOMA(BodyModel, nnx.Module):
             )
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
 
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
@@ -69,58 +71,38 @@ class SOMA(BodyModel, nnx.Module):
             mean_active, faces, vertex_map = simplify_mesh(mean_full, faces.astype(int), target_faces)
             shapedirs_active = shapedirs_full[:, vertex_map]
             skin_weights_active = skin_weights_full[vertex_map]
-            self._vertex_map = nnx.Variable(jnp.asarray(np.asarray(vertex_map, dtype=np.int64)))
+            vertex_map = np.asarray(vertex_map, dtype=np.int64)
         else:
             mean_active = mean_full
             shapedirs_active = shapedirs_full
             skin_weights_active = skin_weights_full
-            self._vertex_map = None
+            vertex_map = None
 
-        self.mean_full = nnx.Variable(jnp.asarray(mean_full))
-        self.mean_active = nnx.Variable(jnp.asarray(mean_active))
-        self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full))
-        self.shapedirs_active = nnx.Variable(jnp.asarray(shapedirs_active))
-        self.eigenvalues = nnx.Variable(jnp.asarray(data.eigenvalues))
-        self.bind_shape_full = nnx.Variable(jnp.asarray(data.bind_shape_full))
-        self.bind_pose_world = nnx.Variable(jnp.asarray(data.bind_pose_world))
-        self.bind_pose_local = nnx.Variable(jnp.asarray(data.bind_pose_local))
-        self.t_pose_world = nnx.Variable(jnp.asarray(data.t_pose_world))
-        self.joint_regressor = nnx.Variable(jnp.asarray(data.joint_regressor))
-        self.corrective_bindpose = nnx.Variable(jnp.asarray(data.correctives.corrective_bindpose))
-        self.corrective_W1 = nnx.Variable(jnp.asarray(data.correctives.corrective_W1))
-        self.corrective_W2_rows = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_rows))
-        self.corrective_W2_cols = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_cols))
-        self.corrective_W2_values = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_values))
-        self._corrective_use_tanh = False
-        self._skin_weights_full = nnx.Variable(jnp.asarray(skin_weights_full))
-        self._skin_weights_active = nnx.Variable(jnp.asarray(skin_weights_active))
-        self._faces = nnx.Variable(jnp.asarray(np.asarray(faces, dtype=np.int64)))
-        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
-        self._parents_full = data.topology.parents_full
-        self._joint_children_full = data.topology.joint_children_full
-        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
-        self._parents_full_index = nnx.Variable(jnp.asarray(self._parents_full))
-        self._joint_children_indices_full = nnx.Variable(jnp.asarray(data.topology.joint_children_indices_full))
-        self._skinned_vertex_indices_full_index = nnx.Variable(
-            jnp.asarray(data.topology.skinned_vertex_indices_full_index)
+        weights = replace(
+            data,
+            mean_active=np.asarray(mean_active, dtype=np.float32),
+            shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
+            skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
+            faces=np.asarray(faces, dtype=np.int64),
+            vertex_map=vertex_map,
         )
-        self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
+        self.model_weights = core.prepare_data(weights)
+
+        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
         self._joint_names = data.joint_names_full[1:]
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
         self.num_scale_params = spec.num_scale_params
         self._default_identity_value = spec.default_identity_value
-
-        if spec.asset_dir is None:
-            return
-
-        transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_source = identity_sources.create_identity_source(self.model_type, transfer_data)
+        self._identity_source = nnx.data(None)
+        if spec.asset_dir is not None:
+            transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
+            self._identity_source = identity_sources.create_identity_source(self.model_type, transfer_data)
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
-        return self._faces[...]
+        return jnp.asarray(self.model_weights.faces)
 
     @property
     def num_joints(self) -> int:
@@ -132,15 +114,15 @@ class SOMA(BodyModel, nnx.Module):
 
     @property
     def num_vertices(self) -> int:
-        return self.mean_active[...].shape[0]
+        return self.model_weights.mean_active.shape[0]
 
     @property
     def skin_weights(self) -> Float[jax.Array, "V J"]:
-        return self._skin_weights_active[...][:, 1:]
+        return jnp.asarray(self.model_weights.skin_weights_active[:, 1:])
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.mean_active[...] * 0.01
+        return self.model_weights.mean_active * 0.01
 
     def forward_vertices(
         self,
@@ -152,48 +134,21 @@ class SOMA(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
+        prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[jax.Array, "B V 3"]:
-        identity, rest_shape_full, rest_shape_active = self._get_rest_shape(
-            identity=identity,
-            scale_params=scale_params,
-            ref=pose,
-        )
+        identity_state = prepared_identity
+        if identity_state is None:
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
         return core.forward_vertices(
-            mean_full=self.mean_full[...],
-            mean_active=self.mean_active[...],
-            shapedirs_full=self.shapedirs_full[...],
-            shapedirs_active=self.shapedirs_active[...],
-            eigenvalues=self.eigenvalues[...],
-            bind_shape_full=self.bind_shape_full[...],
-            skin_weights_active=self._skin_weights_active[...],
-            bind_pose_world=self.bind_pose_world[...],
-            bind_pose_local=self.bind_pose_local[...],
-            t_pose_world=self.t_pose_world[...],
-            joint_regressor=self.joint_regressor[...],
-            joint_children_full=self._joint_children_full,
-            joint_children_indices_full=self._joint_children_indices_full[...],
-            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
-            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index[...],
-            kinematic_fronts_full=self._kinematic_fronts_full,
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index[...],
-            identity=identity,
+            data=self.model_weights,
+            prepared_identity=identity_state,
             pose=pose,
-            rest_shape_full=rest_shape_full,
-            rest_shape_active=rest_shape_active,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            vertex_map=None if self._vertex_map is None else self._vertex_map[...],
-            corrective_bindpose=self.corrective_bindpose[...],
-            corrective_W1=self.corrective_W1[...],
-            corrective_W2_rows=self.corrective_W2_rows[...],
-            corrective_W2_cols=self.corrective_W2_cols[...],
-            corrective_W2_values=self.corrective_W2_values[...],
-            corrective_use_tanh=self._corrective_use_tanh,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            match_warp=self.match_warp,
+            xp=jnp,
         )
 
     def forward_skeleton(
@@ -206,38 +161,21 @@ class SOMA(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
+        prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[jax.Array, "B 77 4 4"]:
-        identity, rest_shape_full, _rest_shape_active = self._get_rest_shape(
-            identity=identity,
-            scale_params=scale_params,
-            ref=pose,
-        )
+        identity_state = prepared_identity
+        if identity_state is None:
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
         return core.forward_skeleton(
-            mean_full=self.mean_full[...],
-            shapedirs_full=self.shapedirs_full[...],
-            eigenvalues=self.eigenvalues[...],
-            bind_shape_full=self.bind_shape_full[...],
-            skin_weights_full=self._skin_weights_full[...],
-            bind_pose_world=self.bind_pose_world[...],
-            bind_pose_local=self.bind_pose_local[...],
-            t_pose_world=self.t_pose_world[...],
-            joint_regressor=self.joint_regressor[...],
-            joint_children_full=self._joint_children_full,
-            joint_children_indices_full=self._joint_children_indices_full[...],
-            skinned_vertex_indices_full=self._skinned_vertex_indices_full,
-            skinned_vertex_indices_full_index=self._skinned_vertex_indices_full_index[...],
-            kinematic_fronts_full=self._kinematic_fronts_full,
-            parents_full=self._parents_full,
-            parents_full_index=self._parents_full_index[...],
-            identity=identity,
+            data=self.model_weights,
+            prepared_identity=identity_state,
             pose=pose,
-            rest_shape_full=rest_shape_full,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            match_warp=self.match_warp,
+            xp=jnp,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
@@ -258,41 +196,69 @@ class SOMA(BodyModel, nnx.Module):
             ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
-        params["identity"] = jnp.full((1, self.identity_dim), self._default_identity_value, dtype=dtype)
+        params["identity"] = jnp.full(
+            (1, self.identity_dim),
+            self._default_identity_value,
+            dtype=dtype,
+        )
         if self.num_scale_params is not None:
             params["scale_params"] = jnp.zeros((1, self.num_scale_params), dtype=dtype)
         return params
 
-    def _get_rest_shape(
+    def prepare_identity(
+        self,
+        *,
+        identity: Float[jax.Array, "B|1 I"] | None = None,
+        scale_params: Float[jax.Array, "B|1 K"] | None = None,
+        ref: Float[jax.Array, "B ..."],
+    ) -> core.PreparedSomaIdentity:
+        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, ref=ref)
+        return self._prepare_identity_from_inputs(identity, scale_params)
+
+    def _identity_inputs(
         self,
         *,
         identity: Float[jax.Array, "B|1 I"] | None,
         scale_params: Float[jax.Array, "B|1 K"] | None,
         ref: Float[jax.Array, "B ..."],
-    ) -> tuple[
-        Float[jax.Array, "B|1 I"] | None,
-        Float[jax.Array, "B V 3"] | None,
-        Float[jax.Array, "B V 3"] | None,
-    ]:
+    ) -> tuple[Float[jax.Array, "B I"], Float[jax.Array, "B K"] | None]:
+        batch_size = ref.shape[0]
         if identity is None:
-            identity = jnp.full((1, self.identity_dim), self._default_identity_value, dtype=ref.dtype)
-        identity, scale_params = core.resolve_identity_inputs(
+            identity = jnp.full(
+                (batch_size, self.identity_dim),
+                self._default_identity_value,
+                dtype=ref.dtype,
+            )
+        elif identity.shape[0] == 1 and batch_size > 1:
+            identity = jnp.broadcast_to(identity, (batch_size, identity.shape[-1]))
+
+        if self.num_scale_params is None:
+            if scale_params is not None:
+                raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
+            return identity, None
+
+        if scale_params is None:
+            scale_params = jnp.zeros((batch_size, self.num_scale_params), dtype=identity.dtype)
+        elif scale_params.shape[0] == 1 and batch_size > 1:
+            scale_params = jnp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+        return identity, scale_params
+
+    def _prepare_identity_from_inputs(
+        self,
+        identity: Float[jax.Array, "B I"],
+        scale_params: Float[jax.Array, "B K"] | None,
+    ) -> core.PreparedSomaIdentity:
+        rest_shape_full, rest_shape_active = identities.rest_shapes(
+            data=self.model_weights,
+            identity_source=self._identity_source,
             identity=identity,
             scale_params=scale_params,
-            batch_size=ref.shape[0],
-            identity_dim=self.identity_dim,
-            num_scale_params=self.num_scale_params,
-            ref=ref,
             xp=jnp,
         )
-        if self.model_type == "soma":
-            return identity, None, None
-
-        source_shape = self._identity_source.source_shape(identity, scale_params)
-        rest_shape, rest_shape_active = identities.transfer_shape(
-            source_shape,
-            transfer=self._identity_source.transfer,
-            vertex_map=None if self._vertex_map is None else self._vertex_map[...],
+        return backend_core.prepare_identity_from_rest_shape(
+            data=self.model_weights,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
+            match_warp=self.match_warp,
             xp=jnp,
         )
-        return None, rest_shape, rest_shape_active
