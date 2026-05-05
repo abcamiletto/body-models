@@ -17,12 +17,12 @@ from ..smplx.numpy import SMPLX
 from . import core
 from .io import (
     MODEL_TYPE_SPECS,
+    SomaIdentityTransfer,
     compute_kinematic_fronts,
     get_identity_model_path,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
-    load_pose_correctives_weights,
     simplify_mesh,
 )
 
@@ -102,12 +102,11 @@ class SOMA(BodyModel):
         self.match_warp = match_warp
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
-        corrective_weights = load_pose_correctives_weights(resolved_path)
 
-        mean_full = data["mean"]
-        shapedirs_full = data["shapedirs"]
-        faces = data["faces"]
-        skin_weights_full = data["skin_weights_full"]
+        mean_full = data.mean_full
+        shapedirs_full = data.shapedirs_full
+        faces = data.faces
+        skin_weights_full = data.skin_weights_full
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -125,18 +124,18 @@ class SOMA(BodyModel):
         self.mean_active = np.asarray(mean_active, dtype=np.float32)
         self.shapedirs_full = shapedirs_full
         self.shapedirs_active = np.asarray(shapedirs_active, dtype=np.float32)
-        self.eigenvalues = data["eigenvalues"]
-        self.bind_shape_full = data["bind_shape"]
-        self.bind_pose_world = data["bind_pose_world"]
-        self.bind_pose_local = data["bind_pose_local"]
-        self.t_pose_world = data["t_pose_world"]
-        self.joint_regressor = data["joint_regressor"]
-        self.corrective_bindpose = np.asarray(corrective_weights["bindpose"], dtype=np.float32)
-        self.corrective_W1 = np.asarray(corrective_weights["W1"], dtype=np.float32)
-        self.corrective_W2_rows = np.asarray(corrective_weights["W2_rows"], dtype=np.int64)
-        self.corrective_W2_cols = np.asarray(corrective_weights["W2_cols"], dtype=np.int64)
-        self.corrective_W2_values = np.asarray(corrective_weights["W2_values"], dtype=np.float32)
-        self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
+        self.eigenvalues = data.eigenvalues
+        self.bind_shape_full = data.bind_shape_full
+        self.bind_pose_world = data.bind_pose_world
+        self.bind_pose_local = data.bind_pose_local
+        self.t_pose_world = data.t_pose_world
+        self.joint_regressor = data.joint_regressor
+        self.corrective_bindpose = data.correctives.corrective_bindpose
+        self.corrective_W1 = data.correctives.corrective_W1
+        self.corrective_W2_rows = data.correctives.corrective_W2_rows
+        self.corrective_W2_cols = data.correctives.corrective_W2_cols
+        self.corrective_W2_values = data.correctives.corrective_W2_values
+        self._corrective_use_tanh = False
         self._skin_weights_full = skin_weights_full
         self._skin_weights_active = np.asarray(skin_weights_active, dtype=np.float32)
         self._faces = np.asarray(faces, dtype=np.int64)
@@ -144,15 +143,15 @@ class SOMA(BodyModel):
         self._identity_internal_to_source_translation = np.zeros(3, dtype=np.float32)
         self._identity_source_to_soma_rotation = np.eye(3, dtype=np.float32)
 
-        self.parents = list(data["parents"])
-        self._parents_full = data["joint_parents_full"].tolist()
-        self._joint_children_full = data["joint_children_full"]
-        self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
+        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
+        self._parents_full = data.topology.parents_full
+        self._joint_children_full = data.topology.joint_children_full
+        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
         self._parents_full_index = np.asarray(self._parents_full, dtype=np.int64)
-        self._joint_children_indices_full = data["joint_children_indices_full"]
-        self._skinned_vertex_indices_full_index = data["skinned_vertex_indices_full_index"]
+        self._joint_children_indices_full = data.topology.joint_children_indices_full
+        self._skinned_vertex_indices_full_index = data.topology.skinned_vertex_indices_full_index
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data["joint_names"])
+        self._joint_names = data.joint_names_full[1:]
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -165,14 +164,14 @@ class SOMA(BodyModel):
             return
 
         transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_source_tetrahedra = np.asarray(transfer_data["source_tetrahedra"], dtype=np.int64)
-        self._identity_face_ids = np.asarray(transfer_data["face_ids"], dtype=np.int64)
-        self._identity_bary_coords = np.asarray(transfer_data["bary_coords"], dtype=np.float32)
-        self._identity_unknown_ids = np.asarray(transfer_data["unknown_ids"], dtype=np.int64)
-        self._identity_anchor_ids = np.asarray(transfer_data["anchor_ids"], dtype=np.int64)
-        self._identity_solve_matrix = np.asarray(transfer_data["solve_matrix"], dtype=np.float32)
-        self._identity_anchor_matrix = np.asarray(transfer_data["anchor_matrix"], dtype=np.float32)
-        self._identity_rhs_base = np.asarray(transfer_data["rhs_base"], dtype=np.float32)
+        self._identity_source_tetrahedra = transfer_data.source_tetrahedra
+        self._identity_face_ids = transfer_data.face_ids
+        self._identity_bary_coords = transfer_data.bary_coords
+        self._identity_unknown_ids = transfer_data.unknown_ids
+        self._identity_anchor_ids = transfer_data.anchor_ids
+        self._identity_solve_matrix = transfer_data.solve_matrix
+        self._identity_anchor_matrix = transfer_data.anchor_matrix
+        self._identity_rhs_base = transfer_data.rhs_base
         {
             "mhr": self._init_mhr_identity_backend,
             "anny": self._init_anny_identity_backend,
@@ -460,16 +459,16 @@ class SOMA(BodyModel):
         rest_shape_active = rest_shape if self._vertex_map is None else rest_shape[:, self._vertex_map]
         return rest_shape, rest_shape_active
 
-    def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_mhr_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
         self._identity_mhr_model = MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
 
-    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_anny_identity_backend(self, transfer_data: SomaIdentityTransfer) -> None:
         self._identity_anny_model = ANNY(
             model_path=get_identity_model_path("anny"),
             all_phenotypes=False,
             simplify=1.0,
         )
-        source_vertices = np.asarray(transfer_data["source_vertices"], dtype=np.float32)
+        source_vertices = transfer_data.source_vertices
         rotation, translation = core.fit_rigid_transform(
             self._identity_anny_model.template_vertices,
             source_vertices,
@@ -482,7 +481,7 @@ class SOMA(BodyModel):
             dtype=np.float32,
         )
 
-    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_linear_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
         linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
         self._identity_linear_model = linear_model_cls(
             model_path=get_identity_model_path(self.model_type),

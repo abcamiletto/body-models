@@ -19,12 +19,12 @@ from ..smplx.jax import SMPLX
 from . import core
 from .io import (
     MODEL_TYPE_SPECS,
+    SomaIdentityTransfer,
     compute_kinematic_fronts,
     get_identity_model_path,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
-    load_pose_correctives_weights,
     simplify_mesh,
 )
 
@@ -66,12 +66,11 @@ class SOMA(BodyModel, nnx.Module):
         self.match_warp = match_warp
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
-        corrective_weights = load_pose_correctives_weights(resolved_path)
 
-        mean_full = data["mean"]
-        shapedirs_full = data["shapedirs"]
-        faces = data["faces"]
-        skin_weights_full = data["skin_weights_full"]
+        mean_full = data.mean_full
+        shapedirs_full = data.shapedirs_full
+        faces = data.faces
+        skin_weights_full = data.skin_weights_full
 
         if simplify > 1.0:
             target_faces = int(len(faces) / simplify)
@@ -89,18 +88,18 @@ class SOMA(BodyModel, nnx.Module):
         self.mean_active = nnx.Variable(jnp.asarray(mean_active))
         self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full))
         self.shapedirs_active = nnx.Variable(jnp.asarray(shapedirs_active))
-        self.eigenvalues = nnx.Variable(jnp.asarray(data["eigenvalues"]))
-        self.bind_shape_full = nnx.Variable(jnp.asarray(data["bind_shape"]))
-        self.bind_pose_world = nnx.Variable(jnp.asarray(data["bind_pose_world"]))
-        self.bind_pose_local = nnx.Variable(jnp.asarray(data["bind_pose_local"]))
-        self.t_pose_world = nnx.Variable(jnp.asarray(data["t_pose_world"]))
-        self.joint_regressor = nnx.Variable(jnp.asarray(data["joint_regressor"]))
-        self.corrective_bindpose = nnx.Variable(jnp.asarray(corrective_weights["bindpose"]))
-        self.corrective_W1 = nnx.Variable(jnp.asarray(corrective_weights["W1"]))
-        self.corrective_W2_rows = nnx.Variable(jnp.asarray(corrective_weights["W2_rows"]))
-        self.corrective_W2_cols = nnx.Variable(jnp.asarray(corrective_weights["W2_cols"]))
-        self.corrective_W2_values = nnx.Variable(jnp.asarray(corrective_weights["W2_values"]))
-        self._corrective_use_tanh = bool(corrective_weights["use_tanh"])
+        self.eigenvalues = nnx.Variable(jnp.asarray(data.eigenvalues))
+        self.bind_shape_full = nnx.Variable(jnp.asarray(data.bind_shape_full))
+        self.bind_pose_world = nnx.Variable(jnp.asarray(data.bind_pose_world))
+        self.bind_pose_local = nnx.Variable(jnp.asarray(data.bind_pose_local))
+        self.t_pose_world = nnx.Variable(jnp.asarray(data.t_pose_world))
+        self.joint_regressor = nnx.Variable(jnp.asarray(data.joint_regressor))
+        self.corrective_bindpose = nnx.Variable(jnp.asarray(data.correctives.corrective_bindpose))
+        self.corrective_W1 = nnx.Variable(jnp.asarray(data.correctives.corrective_W1))
+        self.corrective_W2_rows = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_rows))
+        self.corrective_W2_cols = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_cols))
+        self.corrective_W2_values = nnx.Variable(jnp.asarray(data.correctives.corrective_W2_values))
+        self._corrective_use_tanh = False
         self._skin_weights_full = nnx.Variable(jnp.asarray(skin_weights_full))
         self._skin_weights_active = nnx.Variable(jnp.asarray(skin_weights_active))
         self._faces = nnx.Variable(jnp.asarray(np.asarray(faces, dtype=np.int64)))
@@ -108,15 +107,17 @@ class SOMA(BodyModel, nnx.Module):
         self._identity_internal_to_source_translation = nnx.Variable(jnp.zeros(3, dtype=self.mean_full[...].dtype))
         self._identity_source_to_soma_rotation = nnx.Variable(jnp.eye(3, dtype=self.mean_full[...].dtype))
 
-        self.parents = list(data["parents"])
-        self._parents_full = data["joint_parents_full"].tolist()
-        self._joint_children_full = data["joint_children_full"]
-        self._skinned_vertex_indices_full = data["skinned_vertex_indices_full"]
+        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
+        self._parents_full = data.topology.parents_full
+        self._joint_children_full = data.topology.joint_children_full
+        self._skinned_vertex_indices_full = data.topology.skinned_vertex_indices_full
         self._parents_full_index = nnx.Variable(jnp.asarray(self._parents_full))
-        self._joint_children_indices_full = nnx.Variable(jnp.asarray(data["joint_children_indices_full"]))
-        self._skinned_vertex_indices_full_index = nnx.Variable(jnp.asarray(data["skinned_vertex_indices_full_index"]))
+        self._joint_children_indices_full = nnx.Variable(jnp.asarray(data.topology.joint_children_indices_full))
+        self._skinned_vertex_indices_full_index = nnx.Variable(
+            jnp.asarray(data.topology.skinned_vertex_indices_full_index)
+        )
         self._kinematic_fronts_full = compute_kinematic_fronts(self._parents_full)
-        self._joint_names = list(data["joint_names"])
+        self._joint_names = data.joint_names_full[1:]
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -129,14 +130,14 @@ class SOMA(BodyModel, nnx.Module):
             return
 
         transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
-        self._identity_source_tetrahedra = nnx.Variable(jnp.asarray(transfer_data["source_tetrahedra"]))
-        self._identity_face_ids = nnx.Variable(jnp.asarray(transfer_data["face_ids"]))
-        self._identity_bary_coords = nnx.Variable(jnp.asarray(transfer_data["bary_coords"]))
-        self._identity_unknown_ids = nnx.Variable(jnp.asarray(transfer_data["unknown_ids"]))
-        self._identity_anchor_ids = nnx.Variable(jnp.asarray(transfer_data["anchor_ids"]))
-        self._identity_solve_matrix = nnx.Variable(jnp.asarray(transfer_data["solve_matrix"]))
-        self._identity_anchor_matrix = nnx.Variable(jnp.asarray(transfer_data["anchor_matrix"]))
-        self._identity_rhs_base = nnx.Variable(jnp.asarray(transfer_data["rhs_base"]))
+        self._identity_source_tetrahedra = nnx.Variable(jnp.asarray(transfer_data.source_tetrahedra))
+        self._identity_face_ids = nnx.Variable(jnp.asarray(transfer_data.face_ids))
+        self._identity_bary_coords = nnx.Variable(jnp.asarray(transfer_data.bary_coords))
+        self._identity_unknown_ids = nnx.Variable(jnp.asarray(transfer_data.unknown_ids))
+        self._identity_anchor_ids = nnx.Variable(jnp.asarray(transfer_data.anchor_ids))
+        self._identity_solve_matrix = nnx.Variable(jnp.asarray(transfer_data.solve_matrix))
+        self._identity_anchor_matrix = nnx.Variable(jnp.asarray(transfer_data.anchor_matrix))
+        self._identity_rhs_base = nnx.Variable(jnp.asarray(transfer_data.rhs_base))
         {
             "mhr": self._init_mhr_identity_backend,
             "anny": self._init_anny_identity_backend,
@@ -371,10 +372,10 @@ class SOMA(BodyModel, nnx.Module):
         rest_shape_active = rest_shape if self._vertex_map is None else rest_shape[:, self._vertex_map[...]]
         return None, rest_shape, rest_shape_active
 
-    def _init_mhr_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_mhr_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
         self._identity_mhr_model = nnx.data(MHR(model_path=get_identity_model_path("mhr"), simplify=1.0))
 
-    def _init_anny_identity_backend(self, transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_anny_identity_backend(self, transfer_data: SomaIdentityTransfer) -> None:
         self._identity_anny_model = nnx.data(
             ANNY(
                 model_path=get_identity_model_path("anny"),
@@ -382,7 +383,7 @@ class SOMA(BodyModel, nnx.Module):
                 simplify=1.0,
             )
         )
-        source_vertices = jnp.asarray(transfer_data["source_vertices"])
+        source_vertices = jnp.asarray(transfer_data.source_vertices)
         rotation, translation = core.fit_rigid_transform(
             self._identity_anny_model.template_vertices[...],
             source_vertices,
@@ -394,7 +395,7 @@ class SOMA(BodyModel, nnx.Module):
             jnp.asarray([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
         )
 
-    def _init_linear_identity_backend(self, _transfer_data: dict[str, np.ndarray]) -> None:
+    def _init_linear_identity_backend(self, _transfer_data: SomaIdentityTransfer) -> None:
         linear_model_cls = {"smpl": SMPL, "smplx": SMPLX}[self.model_type]
         self._identity_linear_model = nnx.data(
             linear_model_cls(
