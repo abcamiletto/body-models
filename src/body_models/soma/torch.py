@@ -383,7 +383,7 @@ class SOMA(BodyModel, nn.Module):
                 xp=torch,
             )
         else:
-            source_shape = core.linear_identity_shape(
+            source_shape = identities.linear_identity_shape(
                 mean=self._identity_linear_model.v_template_full,
                 shapedirs=self._identity_linear_model.shapedirs_full,
                 identity=identity,

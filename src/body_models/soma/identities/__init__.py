@@ -8,6 +8,7 @@ from typing import Any
 from jaxtyping import Float, Int
 
 from .. import core
+from ...common import get_namespace
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,19 @@ class IdentityTransfer:
     source_to_soma_rotation: Float[Any, "3 3"]
     source_scale: float
     output_scale: float
+
+
+def linear_identity_shape(
+    mean: Float[Any, "V 3"],
+    shapedirs: Float[Any, "V 3 I"],
+    identity: Float[Any, "B I"],
+    *,
+    xp: Any = None,
+) -> Float[Any, "B V 3"]:
+    if xp is None:
+        xp = get_namespace(identity)
+    identity_dim = identity.shape[1]
+    return mean[None] + xp.einsum("bi,vci->bvc", identity, shapedirs[..., :identity_dim])
 
 
 def transfer_shape(
