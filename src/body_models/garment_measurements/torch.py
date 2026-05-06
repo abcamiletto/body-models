@@ -38,11 +38,14 @@ class GarmentMeasurements(BodyModel, nn.Module):
         super().__init__()
 
         data = load_model_data(model_path=model_path, dtype="float32")
-        for key in ["mean_vertices", "components", "eigenvalues", "bind_quats", "mvc_weights"]:
-            self.register_buffer(key, torch.as_tensor(data[key], dtype=torch.float32), persistent=False)
+        self.mean_vertices = nn.Buffer(torch.as_tensor(data["mean_vertices"], dtype=torch.float32), persistent=False)
+        self.components = nn.Buffer(torch.as_tensor(data["components"], dtype=torch.float32), persistent=False)
+        self.eigenvalues = nn.Buffer(torch.as_tensor(data["eigenvalues"], dtype=torch.float32), persistent=False)
+        self.bind_quats = nn.Buffer(torch.as_tensor(data["bind_quats"], dtype=torch.float32), persistent=False)
+        self.mvc_weights = nn.Buffer(torch.as_tensor(data["mvc_weights"], dtype=torch.float32), persistent=False)
 
         skin_weights = torch.as_tensor(data["skin_weights"], dtype=torch.float32)
-        self.register_buffer("_skin_weights", skin_weights, persistent=False)
+        self._skin_weights = nn.Buffer(skin_weights, persistent=False)
         self._faces = torch.as_tensor(data["faces"], dtype=torch.int64)
         self.parents = data["parents"].astype(int).tolist()
         self._kinematic_fronts = compute_kinematic_fronts(self.parents)

@@ -21,19 +21,17 @@ class IdentitySource(nn.Module):
         super().__init__()
         self.source_scale = transfer_data.source_scale
         self.output_scale = transfer_data.output_scale
-        self.register_buffer("source_tetrahedra", torch.as_tensor(transfer_data.source_tetrahedra, dtype=torch.int64))
-        self.register_buffer("face_ids", torch.as_tensor(transfer_data.face_ids, dtype=torch.int64))
-        self.register_buffer("bary_coords", torch.as_tensor(transfer_data.bary_coords))
-        self.register_buffer("unknown_ids", torch.as_tensor(transfer_data.unknown_ids, dtype=torch.int64))
-        self.register_buffer("anchor_ids", torch.as_tensor(transfer_data.anchor_ids, dtype=torch.int64))
-        self.register_buffer("solve_matrix", torch.as_tensor(transfer_data.solve_matrix))
-        self.register_buffer("anchor_matrix", torch.as_tensor(transfer_data.anchor_matrix))
-        self.register_buffer("rhs_base", torch.as_tensor(transfer_data.rhs_base))
-        self.register_buffer("internal_to_source_rotation", torch.as_tensor(transfer_data.internal_to_source_rotation))
-        self.register_buffer(
-            "internal_to_source_translation", torch.as_tensor(transfer_data.internal_to_source_translation)
-        )
-        self.register_buffer("source_to_soma_rotation", torch.as_tensor(transfer_data.source_to_soma_rotation))
+        self.source_tetrahedra = nn.Buffer(torch.as_tensor(transfer_data.source_tetrahedra, dtype=torch.int64))
+        self.face_ids = nn.Buffer(torch.as_tensor(transfer_data.face_ids, dtype=torch.int64))
+        self.bary_coords = nn.Buffer(torch.as_tensor(transfer_data.bary_coords))
+        self.unknown_ids = nn.Buffer(torch.as_tensor(transfer_data.unknown_ids, dtype=torch.int64))
+        self.anchor_ids = nn.Buffer(torch.as_tensor(transfer_data.anchor_ids, dtype=torch.int64))
+        self.solve_matrix = nn.Buffer(torch.as_tensor(transfer_data.solve_matrix))
+        self.anchor_matrix = nn.Buffer(torch.as_tensor(transfer_data.anchor_matrix))
+        self.rhs_base = nn.Buffer(torch.as_tensor(transfer_data.rhs_base))
+        self.internal_to_source_rotation = nn.Buffer(torch.as_tensor(transfer_data.internal_to_source_rotation))
+        self.internal_to_source_translation = nn.Buffer(torch.as_tensor(transfer_data.internal_to_source_translation))
+        self.source_to_soma_rotation = nn.Buffer(torch.as_tensor(transfer_data.source_to_soma_rotation))
 
     @property
     def transfer(self) -> IdentityTransfer:
