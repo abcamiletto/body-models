@@ -16,7 +16,7 @@ import numpy as np
 from nanomanifold import SO3
 
 from .. import config
-from ..utils import download_and_extract, get_cache_dir
+from ..cache import download_and_extract, get_cache_dir
 
 # MUJOCO_TO_KIMODO maps MuJoCo's Z-up world to body-models Y-up. MyoFullBody's
 # OpenSim-derived bodies still come out with their lateral axis on Z, so an

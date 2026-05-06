@@ -1,42 +1,32 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
-from jaxtyping import Int
+from jaxtyping import Float, Int
 
-from .. import config
-from ..common import simplify_mesh
+from body_models import config
+from body_models.common import simplify_mesh
 
 PathLike = Path | str
+Array = Any
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
-SMPL_JOINT_NAMES = [
-    "pelvis",
-    "left_hip",
-    "right_hip",
-    "spine1",
-    "left_knee",
-    "right_knee",
-    "spine2",
-    "left_ankle",
-    "right_ankle",
-    "spine3",
-    "left_foot",
-    "right_foot",
-    "neck",
-    "left_collar",
-    "right_collar",
-    "head",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "left_hand",
-    "right_hand",
-]
+__all__ = ["load_model_data"]
+
+
+@dataclass(frozen=True)
+class SmplWeights:
+    v_template: Float[Array, "V 3"]
+    faces: Int[Array, "F 3"]
+    lbs_weights: Float[Array, "V 24"]
+    shapedirs: Float[Array, "V 3 S"]
+    posedirs: Float[Array, "P V*3"]
+    j_template: Float[Array, "24 3"]
+    j_shapedirs: Float[Array, "24 3 S"]
+    parents: list[int]
+    kinematic_fronts: list[Front]
 
 
 def validate_path(model_path: PathLike) -> Path:
@@ -71,8 +61,9 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
     return validate_path(resolved_path)
 
 
-def load_model_data(model_path: Path) -> dict:
+def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplWeights:
     """Load SMPL model data from a .pkl or .npz file."""
+    assert simplify >= 1.0
     model_data = (
         dict(np.load(model_path, allow_pickle=True)) if model_path.suffix == ".npz" else _load_smpl_pkl(model_path)
     )
@@ -80,7 +71,37 @@ def load_model_data(model_path: Path) -> dict:
     if hasattr(model_data["J_regressor"], "toarray"):
         model_data["J_regressor"] = model_data["J_regressor"].toarray()
 
-    return model_data
+    parents = np.asarray(model_data["kintree_table"][0], dtype=np.int64)
+    parents[0] = -1
+    parent_list = parents.tolist()
+
+    v_template = np.asarray(model_data["v_template"], dtype=np.float32)
+    faces = np.asarray(model_data["f"], dtype=np.int32)
+    lbs_weights = np.asarray(model_data["weights"], dtype=np.float32)
+    shapedirs = np.asarray(model_data["shapedirs"], dtype=np.float32)
+    posedirs = np.asarray(model_data["posedirs"], dtype=np.float32)
+    J_regressor = np.asarray(model_data["J_regressor"], dtype=np.float32)
+    j_template = J_regressor @ v_template
+    j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs)
+
+    if simplify > 1.0:
+        target_faces = int(len(faces) / simplify)
+        v_template, faces, vertex_map = simplify_mesh(v_template, faces, target_faces)
+        lbs_weights = lbs_weights[vertex_map]
+        shapedirs = shapedirs[vertex_map]
+        posedirs = posedirs[vertex_map]
+
+    return SmplWeights(
+        v_template=v_template,
+        faces=faces,
+        lbs_weights=lbs_weights,
+        shapedirs=shapedirs,
+        posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        parents=parent_list,
+        kinematic_fronts=compute_kinematic_fronts(parents),
+    )
 
 
 def _load_smpl_pkl(model_path: Path) -> dict:
@@ -155,6 +176,3 @@ def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
         fronts.append((joints, parent_indices))
 
     return fronts
-
-
-__all__ = ["SMPL_JOINT_NAMES", "get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
