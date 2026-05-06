@@ -16,7 +16,7 @@ from jaxtyping import Float, Int
 
 from .. import config
 from ..common import simplify_mesh
-from ..utils import get_cache_dir
+from ..cache import get_cache_dir
 
 PathLike = Path | str
 

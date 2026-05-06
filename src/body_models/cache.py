@@ -2,10 +2,17 @@ from pathlib import Path
 
 from platformdirs import user_cache_dir
 
+__all__ = ["get_cache_dir", "get_cached_path", "download_and_extract"]
+
 
 def get_cache_dir() -> Path:
     """Get the body-models cache directory."""
     return Path(user_cache_dir("body-models"))
+
+
+def get_cached_path(key: str) -> Path | None:
+    """Return the cached path matching key, if present."""
+    return next(get_cache_dir().rglob(key), None)
 
 
 def download_and_extract(

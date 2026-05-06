@@ -13,7 +13,7 @@ from typing import Literal
 import numpy as np
 
 from .. import config
-from ..utils import get_cache_dir
+from ..cache import get_cache_dir
 
 PathLike = Path | str
 Side = Literal["left", "right"]

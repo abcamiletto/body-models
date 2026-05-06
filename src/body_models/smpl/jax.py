@@ -1,27 +1,72 @@
-"""JAX backend for SMPL model using Flax NNX."""
+"""JAX backend for SMPL model."""
 
 from pathlib import Path
 from typing import Literal
 
 import jax
 import jax.numpy as jnp
-import numpy as np
-from flax import nnx
 from jaxtyping import Float, Int
 
-from ..base import BodyModel
+from body_models import common
+from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import SMPL_JOINT_NAMES, compute_kinematic_fronts, get_model_path, load_model_data, simplify_mesh
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
+from body_models.smpl.backends import jax as backend
+from body_models.smpl.constants import SMPL_JOINT_NAMES
+from body_models.smpl.io import SmplWeights, get_model_path, load_model_data
 
 
 __all__ = ["SMPL"]
 
 
-class SMPL(BodyModel, nnx.Module):
-    """SMPL body model with JAX/Flax NNX backend."""
+def _flatten_smpl_weights(weights: SmplWeights):
+    children = (
+        weights.v_template,
+        weights.faces,
+        weights.lbs_weights,
+        weights.shapedirs,
+        weights.posedirs,
+        weights.j_template,
+        weights.j_shapedirs,
+    )
+    aux_data = (
+        tuple(weights.parents),
+        tuple((tuple(joints), tuple(parents)) for joints, parents in weights.kinematic_fronts),
+    )
+    return children, aux_data
+
+
+def _unflatten_smpl_weights(aux_data, children):
+    (
+        v_template,
+        faces,
+        lbs_weights,
+        shapedirs,
+        posedirs,
+        j_template,
+        j_shapedirs,
+    ) = children
+    parents, kinematic_fronts = aux_data
+    return SmplWeights(
+        v_template=v_template,
+        faces=faces,
+        lbs_weights=lbs_weights,
+        shapedirs=shapedirs,
+        posedirs=posedirs,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        parents=list(parents),
+        kinematic_fronts=[(list(joints), list(parents)) for joints, parents in kinematic_fronts],
+    )
+
+
+jax.tree_util.register_pytree_node(SmplWeights, _flatten_smpl_weights, _unflatten_smpl_weights)
+
+
+@jax.tree_util.register_pytree_node_class
+class SMPL(BodyModel):
+    """SMPL body model with JAX backend."""
 
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
@@ -31,7 +76,7 @@ class SMPL(BodyModel, nnx.Module):
         model_path: Path | str | None = None,
         gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
@@ -44,49 +89,30 @@ class SMPL(BodyModel, nnx.Module):
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)
-        data = load_model_data(resolved_path)
+        data = load_model_data(resolved_path, simplify=simplify)
 
-        v_template_full = np.asarray(data["v_template"], dtype=np.float32)
-        faces = np.asarray(data["f"], dtype=np.int32)
-        lbs_weights = np.asarray(data["weights"], dtype=np.float32)
-        shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
-        shapedirs = shapedirs_full
-        posedirs = np.asarray(data["posedirs"], dtype=np.float32)
-        J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
-        parents[0] = -1
+        self.weights = common.jaxify(data)
 
-        if simplify > 1.0:
-            target_faces = int(len(faces) / simplify)
-            v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
-            lbs_weights = lbs_weights[vertex_map]
-            shapedirs = shapedirs_full[vertex_map]
-            posedirs = posedirs[vertex_map]
-        else:
-            v_template = v_template_full
+    def tree_flatten(self):
+        children = (self.weights,)
+        aux_data = (
+            self.gender,
+            self.rotation_type,
+        )
+        return children, aux_data
 
-        # Store as nnx.Variable for proper pytree handling
-        self.v_template = nnx.Variable(jnp.asarray(v_template))
-        self.v_template_full = nnx.Variable(jnp.asarray(v_template_full))
-        self.shapedirs = nnx.Variable(jnp.asarray(shapedirs))
-        self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full))
-        self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
-        self.lbs_weights = nnx.Variable(jnp.asarray(lbs_weights))
-        self.J_regressor = nnx.Variable(jnp.asarray(J_regressor))
-        self._faces = nnx.Variable(jnp.asarray(faces))
-        self.parents = parents.tolist()
-        self._kinematic_fronts = compute_kinematic_fronts(parents)
-        self._joint_names = list(SMPL_JOINT_NAMES)
-
-        # Precomputed joint regression matrices
-        _j_template = J_regressor @ v_template_full
-        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full)
-        self._j_template = nnx.Variable(jnp.asarray(_j_template))
-        self._j_shapedirs = nnx.Variable(jnp.asarray(_j_shapedirs))
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        obj = cls.__new__(cls)
+        (obj.weights,) = children
+        gender, rotation_type = aux_data
+        obj.gender = gender
+        obj.rotation_type = rotation_type
+        return obj
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
-        return self._faces[...]
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -94,19 +120,35 @@ class SMPL(BodyModel, nnx.Module):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return list(SMPL_JOINT_NAMES)
 
     @property
     def num_vertices(self) -> int:
-        return self.v_template[...].shape[0]
+        return self.weights.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[jax.Array, "V 24"]:
-        return self.lbs_weights[...]
+        return self.weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.v_template[...]
+        return self.weights.v_template
+
+    @property
+    def shapedirs(self) -> Float[jax.Array, "V 3 S"]:
+        return self.weights.shapedirs
+
+    @property
+    def posedirs(self) -> Float[jax.Array, "P V*3"]:
+        return self.weights.posedirs
+
+    @property
+    def lbs_weights(self) -> Float[jax.Array, "V 24"]:
+        return self.weights.lbs_weights
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
@@ -117,15 +159,8 @@ class SMPL(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
-        return core.forward_vertices(
-            v_template=self.v_template[...],
-            shapedirs=self.shapedirs[...],
-            posedirs=self.posedirs[...],
-            lbs_weights=self.lbs_weights[...],
-            j_template=self._j_template[...],
-            j_shapedirs=self._j_shapedirs[...],
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
+        return backend.forward_vertices(
+            weights=self.weights,
             shape=shape,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
@@ -144,11 +179,8 @@ class SMPL(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B 24 4 4"]:
-        return core.forward_skeleton(
-            j_template=self._j_template[...],
-            j_shapedirs=self._j_shapedirs[...],
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
+        return backend.forward_skeleton(
+            weights=self.weights,
             shape=shape,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
