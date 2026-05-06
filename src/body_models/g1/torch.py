@@ -53,17 +53,14 @@ class G1(BodyModel, nn.Module):
         self.link_face_starts = data["link_face_starts"]
         self.link_face_counts = data["link_face_counts"]
         self.qpos_joint_indices = data["qpos_joint_indices"]
-        for key in [
-            "local_offsets",
-            "rest_local_rotations",
-            "link_geom_positions",
-            "link_geom_rotations",
-            "qpos_joint_axes",
-            "qpos_joint_limits",
-        ]:
-            self.register_buffer(key, torch.as_tensor(data[key], dtype=torch.float32))
-        self.register_buffer("_vertices", torch.as_tensor(data["vertices"], dtype=torch.float32))
-        self.register_buffer("_faces", torch.as_tensor(data["faces"], dtype=torch.int64))
+        self.local_offsets = nn.Buffer(torch.as_tensor(data["local_offsets"], dtype=torch.float32))
+        self.rest_local_rotations = nn.Buffer(torch.as_tensor(data["rest_local_rotations"], dtype=torch.float32))
+        self.link_geom_positions = nn.Buffer(torch.as_tensor(data["link_geom_positions"], dtype=torch.float32))
+        self.link_geom_rotations = nn.Buffer(torch.as_tensor(data["link_geom_rotations"], dtype=torch.float32))
+        self.qpos_joint_axes = nn.Buffer(torch.as_tensor(data["qpos_joint_axes"], dtype=torch.float32))
+        self.qpos_joint_limits = nn.Buffer(torch.as_tensor(data["qpos_joint_limits"], dtype=torch.float32))
+        self._vertices = nn.Buffer(torch.as_tensor(data["vertices"], dtype=torch.float32))
+        self._faces = nn.Buffer(torch.as_tensor(data["faces"], dtype=torch.int64))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
