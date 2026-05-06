@@ -114,8 +114,8 @@ class LinearIdentitySource(IdentitySource):
     ) -> Float[Tensor, "B V 3"]:
         del scale_params
         return linear_identity_shape(
-            mean=self.model.v_template_full,
-            shapedirs=self.model.shapedirs_full,
+            mean=self.model.rest_vertices,
+            shapedirs=self.model.shapedirs,
             identity=identity,
             xp=torch,
         )

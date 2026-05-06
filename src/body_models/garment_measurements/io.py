@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 
 from .. import config
-from ..utils import download_and_extract, get_cache_dir
+from ..cache import download_and_extract, get_cache_dir
 
 PathLike = Path | str
 

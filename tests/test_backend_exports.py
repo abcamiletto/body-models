@@ -54,7 +54,8 @@ def test_backend_modules_define_expected_exports(module_name: str, expected_name
         pytest.importorskip("torch")
     if module_name.endswith(".jax"):
         pytest.importorskip("jax")
-        pytest.importorskip("flax")
+        if module_name != "body_models.smpl.jax":
+            pytest.importorskip("flax")
 
     module = import_module(module_name)
     assert sorted(module.__all__) == expected_names

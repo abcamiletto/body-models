@@ -19,7 +19,7 @@ from torch import Tensor
 
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES
-from ..utils import get_cache_dir
+from ..cache import get_cache_dir
 from . import core
 from .io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, PHENOTYPE_VARIATIONS, get_model_path
 

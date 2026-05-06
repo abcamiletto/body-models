@@ -4,11 +4,11 @@ from typing import Any
 
 from jaxtyping import Float
 
-from .. import common
-from ..common import get_namespace
+from body_models import common
+from body_models.common import get_namespace
 from nanomanifold import SO3
 
-from ..rotations import RotationType
+from body_models.rotations import RotationType
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
