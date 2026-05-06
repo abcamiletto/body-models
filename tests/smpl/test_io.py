@@ -33,6 +33,8 @@ def test_load_model_data_returns_same_weights_for_pkl_and_npz(tmp_path) -> None:
     np.testing.assert_array_equal(pkl_weights.v_template, npz_weights.v_template)
     np.testing.assert_array_equal(pkl_weights.faces, npz_weights.faces)
     np.testing.assert_array_equal(pkl_weights.lbs_weights, npz_weights.lbs_weights)
+    np.testing.assert_array_equal(pkl_weights.lbs_joint_indices, npz_weights.lbs_joint_indices)
+    np.testing.assert_array_equal(pkl_weights.lbs_joint_weights, npz_weights.lbs_joint_weights)
     np.testing.assert_array_equal(pkl_weights.shapedirs, npz_weights.shapedirs)
     np.testing.assert_array_equal(pkl_weights.posedirs, npz_weights.posedirs)
     np.testing.assert_array_equal(pkl_weights.j_template, npz_weights.j_template)

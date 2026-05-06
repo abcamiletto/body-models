@@ -41,12 +41,62 @@ def forward_vertices(
 
     if xp is None:
         xp = get_namespace(shape)
+    v_shaped, j_t, T_world = forward_unskinned_vertices(
+        xp=xp,
+        v_template=v_template,
+        shapedirs=shapedirs,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        parents=parents,
+        kinematic_fronts=kinematic_fronts,
+        shape=shape,
+        body_pose=body_pose,
+        pelvis_rotation=pelvis_rotation,
+        posedirs=posedirs,
+        vertex_indices=vertex_indices,
+        rotation_type=rotation_type,
+    )
+    if vertex_indices is not None:
+        vertex_indices = xp.asarray(vertex_indices)
+        lbs_weights = lbs_weights[vertex_indices]
+
+    R_world = T_world[..., :3, :3]
+    t_world = T_world[..., :3, 3]
+    W_R = xp.einsum("vj,bjkl->bvkl", lbs_weights, R_world)
+    W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t_world - xp.squeeze(R_world @ j_t[..., None], axis=-1))
+    v_posed = xp.squeeze(W_R @ v_shaped[..., None], axis=-1) + W_t
+
+    # Apply global transform
+    v_posed = apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
+
+    return v_posed
+
+
+def forward_unskinned_vertices(
+    # Model data
+    v_template: Float[Array, "V 3"],
+    shapedirs: Float[Array, "V D 10"],
+    posedirs: Float[Array, "P V*3"],
+    j_template: Float[Array, "24 3"],
+    j_shapedirs: Float[Array, "24 3 S"],
+    parents: list[int],
+    kinematic_fronts: list[Front],
+    # Inputs
+    shape: Float[Array, "B 10"],
+    body_pose: Float[Array, "B 23 N"] | Float[Array, "B 23 3 3"],
+    pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    vertex_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
+    *,
+    xp: Any = None,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B 24 3"], Float[Array, "B 24 4 4"]]:
+    if xp is None:
+        xp = get_namespace(shape)
     B = body_pose.shape[0]
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
         v_template = v_template[vertex_indices]
         shapedirs = shapedirs[vertex_indices]
-        lbs_weights = lbs_weights[vertex_indices]
         posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, vertex_indices].reshape(posedirs.shape[0], -1)
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
@@ -64,22 +114,10 @@ def forward_vertices(
         rotation_type=rotation_type,
     )
 
-    # Pose blend shapes
     eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1), xp=xp)
     pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
     v_shaped = v_t + (pose_delta @ posedirs).reshape(B, -1, 3)
-
-    # Linear blend skinning
-    R_world = T_world[..., :3, :3]
-    t_world = T_world[..., :3, 3]
-    W_R = xp.einsum("vj,bjkl->bvkl", lbs_weights, R_world)
-    W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t_world - xp.squeeze(R_world @ j_t[..., None], axis=-1))
-    v_posed = xp.squeeze(W_R @ v_shaped[..., None], axis=-1) + W_t
-
-    # Apply global transform
-    v_posed = _apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
-
-    return v_posed
+    return v_shaped, j_t, T_world
 
 
 def forward_skeleton(
@@ -140,23 +178,26 @@ def forward_skeleton(
         rotation_type=rotation_type,
     )
 
-    # Extract R and t from T_world
+    if global_rotation is None and global_translation is None:
+        return T_world
+
+    if global_rotation is None:
+        t = T_world[..., :3, 3] + global_translation[:, None]
+        return common.set(T_world, (..., slice(None, 3), 3), t, xp=xp)
+
     R_world = T_world[..., :3, :3]
     t_world = T_world[..., :3, 3]
 
-    # Apply global transform
-    if global_rotation is not None or global_translation is not None:
-        R_world, t_world = _apply_global_transform_to_rt(
-            xp,
-            R_world,
-            t_world,
-            global_rotation,
-            global_translation,
-            rotation_type,
-        )
+    R_world, t_world = apply_global_transform_to_rt(
+        xp,
+        R_world,
+        t_world,
+        global_rotation,
+        global_translation,
+        rotation_type,
+    )
 
-    # Reconstruct T from R and t
-    return _build_transform_matrix(xp, R_world, t_world)
+    return build_transform_matrix(xp, R_world, t_world)
 
 
 def _forward_core(
@@ -240,7 +281,7 @@ def _batched_forward_kinematics(
     _, J = R.shape[:2]
 
     # Build all local 4x4 transforms up front
-    T_local = _build_transform_matrix(xp, R, t)
+    T_local = build_transform_matrix(xp, R, t)
 
     T_world: list[Float[Array, "B 4 4"] | None] = [None] * J
 
@@ -260,7 +301,7 @@ def _batched_forward_kinematics(
     return xp.stack([T_world[j] for j in joint_indices], axis=1)
 
 
-def _build_transform_matrix(
+def build_transform_matrix(
     xp,
     R: Float[Array, "B J 3 3"],
     t: Float[Array, "B J 3"],
@@ -278,7 +319,7 @@ def _build_transform_matrix(
     return T
 
 
-def _apply_global_transform(
+def apply_global_transform(
     xp,
     points: Float[Array, "B N 3"],
     rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
@@ -294,7 +335,7 @@ def _apply_global_transform(
     return points
 
 
-def _apply_global_transform_to_rt(
+def apply_global_transform_to_rt(
     xp,
     R: Float[Array, "B J 3 3"],
     t: Float[Array, "B J 3"],

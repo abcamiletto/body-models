@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from nanomanifold import SO3
@@ -24,6 +24,7 @@ class BodyModel(ABC):
     # True for models that expose MJCF-style muscle via-points and tendons
     # (currently MyoFullBody only). Renderers branch on this to draw muscles.
     has_tendons: bool = False
+    flavors: ClassVar[tuple[str, ...]] = ("numpy",)
 
     @property
     @abstractmethod

@@ -136,6 +136,20 @@ def test_forward_vertices_numpy(idx: int) -> None:
     np.testing.assert_allclose(verts[0], ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
+@pytest.mark.parametrize("backend", ["scipy", "numba"])
+def test_forward_vertices_numpy_specialized_backends(backend: str) -> None:
+    from body_models.smpl.numpy import SMPL
+
+    model = SMPL(model_path=MODEL_PATH, backend=backend)
+    reference_model = SMPL(model_path=MODEL_PATH)
+    params = reference_model.get_rest_pose(batch_size=2)
+
+    verts = model.forward_vertices(**params)
+    reference = reference_model.forward_vertices(**params)
+
+    np.testing.assert_allclose(verts, reference, rtol=RTOL, atol=ATOL)
+
+
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_jax(idx: int) -> None:
     """Test JAX forward_vertices matches reference."""
