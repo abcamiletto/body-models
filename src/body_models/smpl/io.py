@@ -6,7 +6,9 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
+from body_models.cache import get_cached_path
 from body_models.common import simplify_mesh
+from body_models.smpl.download import SMPL_FILES
 
 PathLike = Path | str
 Array = Any
@@ -51,6 +53,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
     config_key = f"smpl-{gender}"
     resolved_path = config.get_model_path(config_key)
+    if resolved_path is None:
+        resolved_path = get_cached_path(SMPL_FILES[config_key])
 
     if resolved_path is None:
         raise FileNotFoundError(

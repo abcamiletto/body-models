@@ -19,15 +19,13 @@ __all__ = ["download_smpl", "download_model", "download_zip"]
 
 
 def download_smpl(
-    cache_dir: Path | None = None,
-    username: str | None = None,
-    password: str | None = None,
+    username: str,
+    password: str,
 ) -> dict[str, Path]:
     return download_model(
         url=SMPL_URL,
         files=SMPL_FILES,
-        cache_dir=Path(cache_dir) if cache_dir else get_cache_dir() / "smpl",
-        archive_name="smpl.zip",
+        output_file=get_cache_dir() / "smpl" / "smpl.zip",
         name="SMPL",
         username=username,
         password=password,
@@ -37,42 +35,38 @@ def download_smpl(
 def download_model(
     url: str,
     files: dict[str, str],
-    cache_dir: Path,
-    username: str | None = None,
-    password: str | None = None,
-    archive_name: str = "model.zip",
+    output_file: Path,
+    username: str,
+    password: str,
     name: str = "model",
 ) -> dict[str, Path]:
-    paths = {model: next(cache_dir.rglob(file_name), None) for model, file_name in files.items()}
-    if None not in paths.values():
-        return {model: path for model, path in paths.items() if path is not None}
+    output_file = Path(output_file)
+    output_dir = output_file.parent
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    if username is None or password is None:
-        raise ValueError(f"{name} credentials are required to download the model.")
+    download_zip(url, output_file, username, password)
+    with zipfile.ZipFile(output_file) as zf:
+        zf.extractall(output_dir)
+    output_file.unlink(missing_ok=True)
 
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    output_paths = {}
+    for model, file_name in files.items():
+        output_path = next(output_dir.rglob(file_name), None)
+        if output_path is None:
+            raise FileNotFoundError(f"Expected {name} file {file_name!r} was not found in {output_dir}")
+        output_paths[model] = output_path
 
-    archive_path = cache_dir / archive_name
-    download_zip(url, archive_path, username, password)
-    with zipfile.ZipFile(archive_path) as zf:
-        zf.extractall(cache_dir)
-    archive_path.unlink(missing_ok=True)
-
-    paths = {model: next(cache_dir.rglob(file_name), None) for model, file_name in files.items()}
-    if None in paths.values():
-        raise FileNotFoundError(f"Expected {name} model files were not found in {cache_dir}")
-
-    return {model: path for model, path in paths.items() if path is not None}
+    return output_paths
 
 
-def download_zip(url: str, archive_path: Path, username: str, password: str) -> None:
+def download_zip(url: str, output_file: Path, username: str, password: str) -> None:
     post_data = urllib.parse.urlencode({"username": username, "password": password}).encode()
     request = urllib.request.Request(url, data=post_data)
 
     try:
-        with urllib.request.urlopen(request) as response, archive_path.open("wb") as f:
+        with urllib.request.urlopen(request) as response, output_file.open("wb") as f:
             shutil.copyfileobj(response, f)
     except HTTPError as exc:
         snippet = exc.read(200).decode(errors="ignore").strip()
@@ -81,10 +75,10 @@ def download_zip(url: str, archive_path: Path, username: str, password: str) -> 
             + (f" Response started with: {snippet!r}" if snippet else "")
         ) from exc
 
-    if zipfile.is_zipfile(archive_path):
+    if zipfile.is_zipfile(output_file):
         return
 
-    snippet = archive_path.read_text(errors="ignore")[:200].strip()
+    snippet = output_file.read_text(errors="ignore")[:200].strip()
     raise RuntimeError(
         "Download failed. Check your credentials and confirm you accepted the model license."
         + (f" Response started with: {snippet!r}" if snippet else "")
