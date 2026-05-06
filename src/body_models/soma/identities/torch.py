@@ -30,9 +30,7 @@ class IdentitySource(nn.Module):
         self.anchor_matrix = nn.Buffer(torch.as_tensor(transfer_data.anchor_matrix))
         self.rhs_base = nn.Buffer(torch.as_tensor(transfer_data.rhs_base))
         self.internal_to_source_rotation = nn.Buffer(torch.as_tensor(transfer_data.internal_to_source_rotation))
-        self.internal_to_source_translation = nn.Buffer(
-            torch.as_tensor(transfer_data.internal_to_source_translation)
-        )
+        self.internal_to_source_translation = nn.Buffer(torch.as_tensor(transfer_data.internal_to_source_translation))
         self.source_to_soma_rotation = nn.Buffer(torch.as_tensor(transfer_data.source_to_soma_rotation))
 
     @property
