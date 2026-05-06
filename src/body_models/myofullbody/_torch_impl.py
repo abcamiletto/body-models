@@ -50,22 +50,18 @@ class MyoFullBody(BodyModel, nn.Module):
         self.link_face_starts = data["link_face_starts"]
         self.link_face_counts = data["link_face_counts"]
 
-        buffer_map = {
-            "local_offsets": data["local_offsets"],
-            "rest_local_rotations": data["rest_local_rotations"],
-            "qpos_axes": data["qpos_joint_axes"],
-            "qpos_anchors": data["qpos_joint_anchors"],
-            "qpos_limits": data["qpos_joint_limits"],
-            "hinge_mask": data["hinge_mask"],
-            "slide_mask": data["slide_mask"],
-            "link_geom_positions": data["link_geom_positions"],
-            "link_geom_rotations": data["link_geom_rotations"],
-            "site_positions": data["site_positions"],
-        }
-        for name, value in buffer_map.items():
-            self.register_buffer(name, torch.as_tensor(value, dtype=torch.float32))
-        self.register_buffer("_vertices", torch.as_tensor(data["vertices"], dtype=torch.float32))
-        self.register_buffer("_faces", torch.as_tensor(data["faces"], dtype=torch.int64))
+        self.local_offsets = nn.Buffer(torch.as_tensor(data["local_offsets"], dtype=torch.float32))
+        self.rest_local_rotations = nn.Buffer(torch.as_tensor(data["rest_local_rotations"], dtype=torch.float32))
+        self.qpos_axes = nn.Buffer(torch.as_tensor(data["qpos_joint_axes"], dtype=torch.float32))
+        self.qpos_anchors = nn.Buffer(torch.as_tensor(data["qpos_joint_anchors"], dtype=torch.float32))
+        self.qpos_limits = nn.Buffer(torch.as_tensor(data["qpos_joint_limits"], dtype=torch.float32))
+        self.hinge_mask = nn.Buffer(torch.as_tensor(data["hinge_mask"], dtype=torch.float32))
+        self.slide_mask = nn.Buffer(torch.as_tensor(data["slide_mask"], dtype=torch.float32))
+        self.link_geom_positions = nn.Buffer(torch.as_tensor(data["link_geom_positions"], dtype=torch.float32))
+        self.link_geom_rotations = nn.Buffer(torch.as_tensor(data["link_geom_rotations"], dtype=torch.float32))
+        self.site_positions = nn.Buffer(torch.as_tensor(data["site_positions"], dtype=torch.float32))
+        self._vertices = nn.Buffer(torch.as_tensor(data["vertices"], dtype=torch.float32))
+        self._faces = nn.Buffer(torch.as_tensor(data["faces"], dtype=torch.int64))
         self.site_names = data["site_names"]
         self.site_body_indices = data["site_body_indices"]
         self.tendons = data["tendons"]

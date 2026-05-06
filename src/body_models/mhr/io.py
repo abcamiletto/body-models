@@ -229,10 +229,10 @@ def load_pose_correctives(asset_dir: Path, lod: int) -> Any:
         def __init__(self, in_features: int, out_features: int, sparse_mask: np.ndarray) -> None:
             super().__init__()
             idx = torch.from_numpy(sparse_mask).nonzero().T
-            self.register_buffer("_sparse_indices", idx, persistent=False)
+            self._sparse_indices = nn.Buffer(idx, persistent=False)
             self.sparse_indices = nn.Parameter(idx, requires_grad=False)
             self.sparse_weight = nn.Parameter(torch.zeros(idx.shape[1]), requires_grad=False)
-            self.register_buffer("dense_weight", torch.zeros(out_features, in_features), persistent=False)
+            self.dense_weight = nn.Buffer(torch.zeros(out_features, in_features), persistent=False)
             self._weight_initialized = False
 
         def _ensure_dense_weight(self) -> None:

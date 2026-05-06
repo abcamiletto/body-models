@@ -83,42 +83,40 @@ class MHR(BodyModel, nn.Module):
             faces_np = faces.numpy().astype(int)
             new_vertices, new_faces, vertex_map = simplify_mesh(vertices_np, faces_np, target_faces)
 
-            self.register_buffer("base_vertices", torch.as_tensor(new_vertices, dtype=base_vertices_full.dtype))
-            self.register_buffer("blendshape_dirs", blendshape_dirs_full[:, vertex_map].clone())
-            self.register_buffer("_skin_weights", skin_weights_full[vertex_map].clone())
-            self.register_buffer("_skin_indices", skin_indices_full[vertex_map].clone())
-            self.register_buffer("_faces", torch.as_tensor(new_faces, dtype=torch.int64))
-            self.register_buffer("_vertex_map", torch.as_tensor(vertex_map, dtype=torch.int64))
+            self.base_vertices = nn.Buffer(torch.as_tensor(new_vertices, dtype=base_vertices_full.dtype))
+            self.blendshape_dirs = nn.Buffer(blendshape_dirs_full[:, vertex_map].clone())
+            self._skin_weights = nn.Buffer(skin_weights_full[vertex_map].clone())
+            self._skin_indices = nn.Buffer(skin_indices_full[vertex_map].clone())
+            self._faces = nn.Buffer(torch.as_tensor(new_faces, dtype=torch.int64))
+            self._vertex_map = nn.Buffer(torch.as_tensor(vertex_map, dtype=torch.int64))
         else:
-            self.register_buffer("base_vertices", base_vertices_full)
-            self.register_buffer("blendshape_dirs", blendshape_dirs_full)
-            self.register_buffer("_skin_weights", skin_weights_full)
-            self.register_buffer("_skin_indices", skin_indices_full)
-            self.register_buffer("_faces", faces)
+            self.base_vertices = nn.Buffer(base_vertices_full)
+            self.blendshape_dirs = nn.Buffer(blendshape_dirs_full)
+            self._skin_weights = nn.Buffer(skin_weights_full)
+            self._skin_indices = nn.Buffer(skin_indices_full)
+            self._faces = nn.Buffer(faces)
             self._vertex_map = None
 
         # Full-resolution buffers for pose correctives (always needed)
-        self.register_buffer("base_vertices_full", base_vertices_full)
-        self.register_buffer("blendshape_dirs_full", blendshape_dirs_full)
-        self.register_buffer("_skin_weights_full", skin_weights_full)
-        self.register_buffer("_skin_indices_full", skin_indices_full)
+        self.base_vertices_full = nn.Buffer(base_vertices_full)
+        self.blendshape_dirs_full = nn.Buffer(blendshape_dirs_full)
+        self._skin_weights_full = nn.Buffer(skin_weights_full)
+        self._skin_indices_full = nn.Buffer(skin_indices_full)
 
         # Skeleton buffers
-        self.register_buffer("joint_offsets", torch.from_numpy(data["joint_offsets"]))
-        self.register_buffer("joint_pre_rotations", torch.from_numpy(data["joint_pre_rotations"]))
-        self.register_buffer("parameter_transform", torch.from_numpy(data["parameter_transform"]))
+        self.joint_offsets = nn.Buffer(torch.from_numpy(data["joint_offsets"]))
+        self.joint_pre_rotations = nn.Buffer(torch.from_numpy(data["joint_pre_rotations"]))
+        self.parameter_transform = nn.Buffer(torch.from_numpy(data["parameter_transform"]))
 
         inv_bind = torch.from_numpy(data["inverse_bind_pose"])
         t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
-        self.register_buffer(
-            "bind_inv_linear", SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s.unsqueeze(-1)
-        )
-        self.register_buffer("bind_inv_translation", t)
+        self.bind_inv_linear = nn.Buffer(SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s.unsqueeze(-1))
+        self.bind_inv_translation = nn.Buffer(t)
 
         # Load pose correctives weights
         corrective_weights = load_pose_correctives_weights(resolved_path, lod)
-        self.register_buffer("corrective_W1", torch.from_numpy(corrective_weights["W1"]))
-        self.register_buffer("corrective_W2", torch.from_numpy(corrective_weights["W2"]))
+        self.corrective_W1 = nn.Buffer(torch.from_numpy(corrective_weights["W1"]))
+        self.corrective_W2 = nn.Buffer(torch.from_numpy(corrective_weights["W2"]))
 
         joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
         self.parents = joint_parents.tolist()

@@ -102,51 +102,51 @@ class SKEL(BodyModel, nn.Module):
             posedirs = posedirs_full
 
         # Full-resolution buffers for skeleton computation
-        self.register_buffer("_v_template_full", torch.as_tensor(v_template_full))
+        self._v_template_full = nn.Buffer(torch.as_tensor(v_template_full))
         self.shapedirs_full = nn.Parameter(torch.as_tensor(shapedirs_full), requires_grad=False)
         self.posedirs_full = nn.Parameter(torch.as_tensor(posedirs_full), requires_grad=False)
-        self.register_buffer("J_regressor", _sparse_to_dense(data["J_regressor_osim"]))
+        self.J_regressor = nn.Buffer(_sparse_to_dense(data["J_regressor_osim"]))
 
         # Simplified buffers for mesh output
-        self.register_buffer("_v_template", torch.as_tensor(v_template))
-        self.register_buffer("_faces", torch.as_tensor(faces, dtype=torch.int64))
+        self._v_template = nn.Buffer(torch.as_tensor(v_template))
+        self._faces = nn.Buffer(torch.as_tensor(faces, dtype=torch.int64))
         self.shapedirs = nn.Parameter(torch.as_tensor(shapedirs), requires_grad=False)
         self.posedirs = nn.Parameter(torch.as_tensor(posedirs), requires_grad=False)
-        self.register_buffer("_skin_weights", torch.as_tensor(skin_weights))
+        self._skin_weights = nn.Buffer(torch.as_tensor(skin_weights))
 
         # Skeleton mesh (not simplified - separate mesh)
-        self.register_buffer("_skel_v_template", torch.tensor(data["skel_template_v"], dtype=torch.float32))
-        self.register_buffer("_skel_faces", torch.tensor(data["skel_template_f"], dtype=torch.int64))
-        self.register_buffer("_skel_weights", _sparse_to_dense(data["skel_weights"]))
-        self.register_buffer("_skel_weights_rigid", _sparse_to_dense(data["skel_weights_rigid"]))
+        self._skel_v_template = nn.Buffer(torch.tensor(data["skel_template_v"], dtype=torch.float32))
+        self._skel_faces = nn.Buffer(torch.tensor(data["skel_template_f"], dtype=torch.int64))
+        self._skel_weights = nn.Buffer(_sparse_to_dense(data["skel_weights"]))
+        self._skel_weights_rigid = nn.Buffer(_sparse_to_dense(data["skel_weights_rigid"]))
 
         # Anatomical pose data
         apose = torch.tensor(data["apose_rel_transfo"], dtype=torch.float32)
-        self.register_buffer("apose_R", apose[:, :3, :3])
-        self.register_buffer("apose_t", apose[:, :3, 3])
-        self.register_buffer("per_joint_rot", torch.tensor(data["per_joint_rot"], dtype=torch.float32))
+        self.apose_R = nn.Buffer(apose[:, :3, :3])
+        self.apose_t = nn.Buffer(apose[:, :3, 3])
+        self.per_joint_rot = nn.Buffer(torch.tensor(data["per_joint_rot"], dtype=torch.float32))
 
         # Kinematic tree
         kintree = torch.tensor(data["osim_kintree_table"], dtype=torch.int64)
         id_to_col = {kintree[1, i].item(): i for i in range(kintree.shape[1])}
         self.parent_list = [id_to_col[kintree[0, i].item()] for i in range(1, kintree.shape[1])]
         self.parents = [-1, *self.parent_list]
-        self.register_buffer("parent", torch.tensor(self.parent_list, dtype=torch.int64))
+        self.parent = nn.Buffer(torch.tensor(self.parent_list, dtype=torch.int64))
 
         # Child indices for bone orientation
         child_list = []
         for i in range(self.NUM_JOINTS):
             children = (kintree[0] == i).nonzero(as_tuple=True)[0]
             child_list.append(kintree[1, children[0]].item() if len(children) > 0 else 0)
-        self.register_buffer("child", torch.tensor(child_list, dtype=torch.int64))
+        self.child = nn.Buffer(torch.tensor(child_list, dtype=torch.int64))
 
         # Indices where bone orientation is fixed (pelvis, feet, head)
-        self.register_buffer("fixed_orientation_joints", torch.tensor([0, 5, 10, 13, 18, 23], dtype=torch.int64))
+        self.fixed_orientation_joints = nn.Buffer(torch.tensor([0, 5, 10, 13, 18, 23], dtype=torch.int64))
 
         # Non-leaf joints for bone scaling
         non_leaf = [i for i, c in enumerate(child_list) if c != 0]
-        self.register_buffer("non_leaf_joints", torch.tensor(non_leaf, dtype=torch.int64))
-        self.register_buffer("non_leaf_children", torch.tensor([child_list[i] for i in non_leaf], dtype=torch.int64))
+        self.non_leaf_joints = nn.Buffer(torch.tensor(non_leaf, dtype=torch.int64))
+        self.non_leaf_children = nn.Buffer(torch.tensor([child_list[i] for i in non_leaf], dtype=torch.int64))
 
         # Number of SMPL joints (for pose blend shapes)
         self.num_joints_smpl = data["J_regressor"].shape[0]
@@ -154,7 +154,7 @@ class SKEL(BodyModel, nn.Module):
 
         # Feet offset for Y=0 floor
         y_offset = -v_template[:, 1].min().item()
-        self.register_buffer("_feet_offset", torch.tensor([0.0, y_offset, 0.0], dtype=torch.float32))
+        self._feet_offset = nn.Buffer(torch.tensor([0.0, y_offset, 0.0], dtype=torch.float32))
 
     def _init_joints(self) -> None:
         """Precompute axes and indices for vectorized joint rotation computation."""
@@ -227,13 +227,13 @@ class SKEL(BodyModel, nn.Module):
         # Append zero axis (produces identity rotation)
         all_axes.append([0.0, 0.0, 0.0])
 
-        self.register_buffer("_all_axes", torch.tensor(all_axes, dtype=torch.float32))
-        self.register_buffer("_rotation_indices", torch.tensor(rotation_indices, dtype=torch.long))
+        self._all_axes = nn.Buffer(torch.tensor(all_axes, dtype=torch.float32))
+        self._rotation_indices = nn.Buffer(torch.tensor(rotation_indices, dtype=torch.long))
 
         # Store joint axes for scapula and spine (needed for offset computation)
-        self.register_buffer("_scapula_r_axes", torch.tensor([[0, 1, 0], [0, 0, -1], [-1, 0, 0]], dtype=torch.float32))
-        self.register_buffer("_scapula_l_axes", torch.tensor([[0, 1, 0], [0, 0, 1], [1, 0, 0]], dtype=torch.float32))
-        self.register_buffer("_spine_axes", torch.tensor([[1, 0, 0], [0, 0, 1], [0, 1, 0]], dtype=torch.float32))
+        self._scapula_r_axes = nn.Buffer(torch.tensor([[0, 1, 0], [0, 0, -1], [-1, 0, 0]], dtype=torch.float32))
+        self._scapula_l_axes = nn.Buffer(torch.tensor([[0, 1, 0], [0, 0, 1], [1, 0, 0]], dtype=torch.float32))
+        self._spine_axes = nn.Buffer(torch.tensor([[1, 0, 0], [0, 0, 1], [0, 1, 0]], dtype=torch.float32))
 
     # -------------------------------------------------------------------------
     # Properties

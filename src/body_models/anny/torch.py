@@ -133,29 +133,26 @@ class ANNY(BodyModel, nn.Module):
 
         # Register buffers
         dtype = data["template_vertices"].dtype
-        for key in [
-            "template_vertices",
-            "blendshapes",
-            "template_bone_heads",
-            "template_bone_tails",
-            "bone_heads_blendshapes",
-            "bone_tails_blendshapes",
-            "bone_rolls_rotmat",
-            "vertex_bone_weights",
-            "vertex_bone_indices",
-            "phenotype_mask",
-        ]:
-            self.register_buffer(key, data[key], persistent=False)
+        self.template_vertices = nn.Buffer(data["template_vertices"], persistent=False)
+        self.blendshapes = nn.Buffer(data["blendshapes"], persistent=False)
+        self.template_bone_heads = nn.Buffer(data["template_bone_heads"], persistent=False)
+        self.template_bone_tails = nn.Buffer(data["template_bone_tails"], persistent=False)
+        self.bone_heads_blendshapes = nn.Buffer(data["bone_heads_blendshapes"], persistent=False)
+        self.bone_tails_blendshapes = nn.Buffer(data["bone_tails_blendshapes"], persistent=False)
+        self.bone_rolls_rotmat = nn.Buffer(data["bone_rolls_rotmat"], persistent=False)
+        self.vertex_bone_weights = nn.Buffer(data["vertex_bone_weights"], persistent=False)
+        self.vertex_bone_indices = nn.Buffer(data["vertex_bone_indices"], persistent=False)
+        self.phenotype_mask = nn.Buffer(data["phenotype_mask"], persistent=False)
 
-        self.register_buffer("_y_axis", torch.tensor([0.0, 1.0, 0.0], dtype=dtype), persistent=False)
-        self.register_buffer(
-            "_degenerate_rotation", torch.diag(torch.tensor([1.0, -1.0, -1.0], dtype=dtype)), persistent=False
+        self._y_axis = nn.Buffer(torch.tensor([0.0, 1.0, 0.0], dtype=dtype), persistent=False)
+        self._degenerate_rotation = nn.Buffer(
+            torch.diag(torch.tensor([1.0, -1.0, -1.0], dtype=dtype)), persistent=False
         )
         # Precompute dense LBS weights for faster skinning
         V, J = data["vertex_bone_weights"].shape[0], len(data["bone_labels"])
         lbs_weights = torch.zeros(V, J, dtype=dtype)
         lbs_weights.scatter_(1, data["vertex_bone_indices"], data["vertex_bone_weights"])
-        self.register_buffer("lbs_weights", lbs_weights, persistent=False)
+        self.lbs_weights = nn.Buffer(lbs_weights, persistent=False)
 
         self._faces = data["faces"]
         self.parents = data["parents"]
