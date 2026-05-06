@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 
 from ... import common
 from ...anny import core as anny_core
-from .. import core
+from ..backend import core
 
 
 @dataclass(frozen=True)
@@ -163,3 +163,37 @@ def transfer_shape(
     rest_shape = rest_shape * transfer.output_scale
     rest_shape_active = rest_shape if vertex_map is None else rest_shape[:, vertex_map]
     return rest_shape, rest_shape_active
+
+
+def rest_shapes(
+    *,
+    data: Any,
+    identity_source: Any,
+    identity: Float[Any, "B I"],
+    scale_params: Float[Any, "B K"] | None,
+    xp: Any,
+) -> tuple[Float[Any, "B Vf 3"], Float[Any, "B Va 3"]]:
+    if identity_source is None:
+        rest_shape_full = core.identity_to_rest_vertices(
+            xp,
+            data.mean_full,
+            data.shapedirs_full,
+            data.eigenvalues,
+            identity,
+        )
+        rest_shape_active = core.identity_to_rest_vertices(
+            xp,
+            data.mean_active,
+            data.shapedirs_active,
+            data.eigenvalues,
+            identity,
+        )
+        return rest_shape_full, rest_shape_active
+
+    source_shape = identity_source.source_shape(identity, scale_params)
+    return transfer_shape(
+        source_shape,
+        transfer=identity_source.transfer,
+        vertex_map=data.vertex_map,
+        xp=xp,
+    )

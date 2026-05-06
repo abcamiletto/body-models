@@ -35,7 +35,6 @@ __all__ = [
     "load_model_data",
     "get_identity_model_path",
     "load_identity_transfer_data",
-    "load_pose_correctives_weights",
     "compute_kinematic_fronts",
     "simplify_mesh",
 ]
@@ -559,7 +558,7 @@ def _dense_from_sparse(sparse: _SparseCoo) -> np.ndarray:
     return dense
 
 
-def load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
+def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     """Load SOMA pose-corrective weights in backend-agnostic form."""
     cache_file = _correctives_cache_file(asset_dir)
     if cache_file.exists():
@@ -735,7 +734,7 @@ def _load_or_build_joint_position_regressor(
 @lru_cache(maxsize=None)
 def _load_model_data_cached(model_dir: str) -> SomaWeights:
     asset_dir = Path(model_dir)
-    correctives = load_pose_correctives_weights(asset_dir)
+    correctives = _load_pose_correctives_weights(asset_dir)
     with np.load(asset_dir / SOMA_CORE_ASSET, allow_pickle=False) as data:
         mean = np.asarray(data["mean"], dtype=np.float32)
         num_vertices = mean.shape[0]
