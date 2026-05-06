@@ -73,11 +73,11 @@ class SMPL(BodyModel, nn.Module):
             v_template = v_template_full
 
         # Register buffers for device management
-        self.register_buffer("v_template", torch.as_tensor(v_template))
-        self.register_buffer("v_template_full", torch.as_tensor(v_template_full))
-        self.register_buffer("lbs_weights", torch.as_tensor(lbs_weights))
-        self.register_buffer("J_regressor", torch.as_tensor(J_regressor))
-        self.register_buffer("_faces", torch.as_tensor(faces))
+        self.v_template = nn.Buffer(torch.as_tensor(v_template))
+        self.v_template_full = nn.Buffer(torch.as_tensor(v_template_full))
+        self.lbs_weights = nn.Buffer(torch.as_tensor(lbs_weights))
+        self.J_regressor = nn.Buffer(torch.as_tensor(J_regressor))
+        self._faces = nn.Buffer(torch.as_tensor(faces))
 
         # Use nn.Parameter for blend shapes (for proper device handling)
         self.shapedirs = nn.Parameter(torch.as_tensor(shapedirs), requires_grad=False)
@@ -92,8 +92,8 @@ class SMPL(BodyModel, nn.Module):
         # Avoids materializing [B, V_full, 3] intermediate at runtime
         _j_template = J_regressor @ v_template_full  # [24, 3]
         _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full)  # [24, 3, S]
-        self.register_buffer("_j_template", torch.as_tensor(_j_template))
-        self.register_buffer("_j_shapedirs", torch.as_tensor(_j_shapedirs))
+        self._j_template = nn.Buffer(torch.as_tensor(_j_template))
+        self._j_shapedirs = nn.Buffer(torch.as_tensor(_j_shapedirs))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
