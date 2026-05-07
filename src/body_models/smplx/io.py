@@ -8,7 +8,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import load_model_dict, simplify_mesh, validate_simplify
 
 PathLike = Path | str
 Array = Any
@@ -40,8 +40,8 @@ def validate_path(model_path: PathLike) -> Path:
         raise ValueError(f"Expected an SMPLX model file, got directory: {model_path}")
     if not model_path.is_file():
         raise FileNotFoundError(f"SMPLX model file not found: {model_path}")
-    if model_path.suffix != ".npz":
-        raise ValueError(f"Expected an SMPLX .npz file, got: {model_path}")
+    if model_path.suffix not in {".npz", ".pkl"}:
+        raise ValueError(f"Expected an SMPLX .npz or .pkl file, got: {model_path}")
     return model_path
 
 
@@ -59,7 +59,7 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
     if resolved_path is None:
         raise FileNotFoundError(
-            f"SMPLX model not found. Download from https://smpl-x.is.tue.mpg.de/ "
+            "SMPLX model not found. Download from https://smpl-x.is.tue.mpg.de/ "
             f"and run: body-models set smplx-{gender} /path/to/SMPLX_{gender.upper()}.npz"
         )
 
@@ -67,9 +67,9 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
 
 def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> SmplxWeights:
-    """Load SMPL-X model data from .npz file."""
-    assert simplify >= 1.0
-    data = dict(np.load(path, allow_pickle=True))
+    """Load SMPL-X model data from .pkl or .npz file."""
+    validate_simplify(simplify)
+    data = load_model_dict(path)
 
     v_template_full = np.asarray(data["v_template"], dtype=np.float32)
     faces = np.asarray(data["f"], dtype=np.int32)
@@ -117,7 +117,9 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
 
 def get_joint_names(model_data: dict) -> list[str]:
     """Extract ordered SMPL-X joint names from model data."""
-    joint2num = model_data["joint2num"].item()
+    joint2num = model_data["joint2num"]
+    if isinstance(joint2num, np.ndarray):
+        joint2num = joint2num.item()
     return [name for name, _ in sorted(joint2num.items(), key=lambda item: int(item[1]))]
 
 

@@ -7,7 +7,7 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.cache import get_cached_path
-from body_models.common import simplify_mesh
+from body_models.common import load_model_dict, simplify_mesh, validate_simplify
 from body_models.smpl.download import SMPL_FILES
 
 PathLike = Path | str
@@ -69,13 +69,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
 def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplWeights:
     """Load SMPL model data from a .pkl or .npz file."""
-    assert simplify >= 1.0
-    model_data = (
-        dict(np.load(model_path, allow_pickle=True)) if model_path.suffix == ".npz" else _load_smpl_pkl(model_path)
-    )
-
-    if hasattr(model_data["J_regressor"], "toarray"):
-        model_data["J_regressor"] = model_data["J_regressor"].toarray()
+    validate_simplify(simplify)
+    model_data = load_model_dict(model_path)
 
     parents = np.asarray(model_data["kintree_table"][0], dtype=np.int64)
     parents[0] = -1
@@ -127,53 +122,6 @@ def compute_sparse_lbs_weights(
         weights[vertex, : len(active)] = row[active]
 
     return indices, weights
-
-
-def _load_smpl_pkl(model_path: Path) -> dict:
-    """Load legacy SMPL pickles without requiring chumpy at runtime."""
-    import pickle
-
-    class _ChumpyPlaceholder:
-        def __setstate__(self, state):
-            if isinstance(state, dict) and "x" in state:
-                self.data = np.asarray(state["x"])
-                return
-            if isinstance(state, dict) and "a" in state and "idxs" in state:
-                source = state["a"]
-                source_data = source.data if isinstance(source, _ChumpyPlaceholder) else np.asarray(source)
-                data = np.asarray(source_data).reshape(-1)[np.asarray(state["idxs"], dtype=np.int64)]
-                if "preferred_shape" in state:
-                    data = data.reshape(tuple(state["preferred_shape"]))
-                self.data = data
-                return
-            if isinstance(state, dict):
-                for value in state.values():
-                    if isinstance(value, np.ndarray):
-                        self.data = value
-                        return
-            self.data = state
-
-    class _CompatUnpickler(pickle.Unpickler):
-        def find_class(self, module, name):
-            if module == "scipy.sparse.csc" and name == "csc_matrix":
-                from scipy.sparse import csc_matrix
-
-                return csc_matrix
-            if module.startswith("chumpy"):
-                return _ChumpyPlaceholder
-            return super().find_class(module, name)
-
-    with open(model_path, "rb") as f:
-        data = _CompatUnpickler(f, encoding="latin1").load()
-
-    return {
-        key: value.data
-        if isinstance(value, _ChumpyPlaceholder)
-        else value.toarray()
-        if hasattr(value, "toarray")
-        else value
-        for key, value in data.items()
-    }
 
 
 def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:

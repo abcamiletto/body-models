@@ -34,7 +34,8 @@ class MANO(BodyModel):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
 
         self.side = side if side is not None else "right"
         self.rotation_type = rotation_type

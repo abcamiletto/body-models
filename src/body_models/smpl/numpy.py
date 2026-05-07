@@ -42,7 +42,8 @@ class SMPL(BodyModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if backend not in FLAVORS:
             raise ValueError(f"Invalid backend: {backend}")
-        assert simplify >= 1.0
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
 
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"

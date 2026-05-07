@@ -8,15 +8,15 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import load_model_dict, simplify_mesh, validate_simplify
 from body_models.mano.constants import MANO_JOINT_NAMES
-from body_models.smpl.io import _load_smpl_pkl
 
 PathLike = Path | str
 Array = Any
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 __all__ = ["load_model_data"]
+
 
 @dataclass(frozen=True)
 class ManoWeights:
@@ -67,10 +67,8 @@ def get_model_path(model_path: PathLike | None, side: Literal["right", "left"] |
 
 def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> ManoWeights:
     """Load MANO model data from .pkl or .npz file."""
-    assert simplify >= 1.0
-    data = dict(np.load(path, allow_pickle=True)) if path.suffix == ".npz" else _load_smpl_pkl(path)
-    if hasattr(data["J_regressor"], "toarray"):
-        data["J_regressor"] = data["J_regressor"].toarray()
+    validate_simplify(simplify)
+    data = load_model_dict(path)
     v_template = np.asarray(data["v_template"])
     if np.asarray(data["shapedirs"]).ndim == 1:
         data["shapedirs"] = np.asarray(data["shapedirs"]).reshape(v_template.shape[0], 3, -1)
@@ -118,7 +116,9 @@ def get_joint_names(model_data: dict) -> list[str]:
     """Extract ordered MANO joint names from model data."""
     if "joint2num" not in model_data:
         return list(MANO_JOINT_NAMES)
-    joint2num = model_data["joint2num"].item()
+    joint2num = model_data["joint2num"]
+    if isinstance(joint2num, np.ndarray):
+        joint2num = joint2num.item()
     return [name for name, _ in sorted(joint2num.items(), key=lambda item: int(item[1]))]
 
 
