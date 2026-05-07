@@ -52,7 +52,7 @@ jobs:
           - group: skel
             paths: tests/test_skel.py
           - group: smpl
-            paths: tests/test_smpl.py
+            paths: tests/smpl/test_smpl.py
           - group: smplh
             paths: tests/test_smplh.py
           - group: mano
