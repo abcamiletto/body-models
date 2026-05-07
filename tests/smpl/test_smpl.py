@@ -19,8 +19,9 @@ from accelerator_utils import get_accelerator_device
 from nanomanifold import SO3
 from gradient_utils import prepare_params, sampled_gradcheck
 
-ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "smpl-neutral"
-REFERENCE_DIR = Path(__file__).parent / "assets" / "references" / "smpl-neutral"
+TESTS_DIR = Path(__file__).parents[1]
+ASSET_DIR = TESTS_DIR / "assets" / "models_hub" / "smpl-neutral"
+REFERENCE_DIR = TESTS_DIR / "assets" / "references" / "smpl-neutral"
 MODEL_PATH = ASSET_DIR / "model.npz"
 INPUTS_DIR = REFERENCE_DIR / "inputs"
 OUTPUTS_DIR = REFERENCE_DIR / "outputs"
