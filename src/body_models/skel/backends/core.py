@@ -10,8 +10,9 @@ from typing import Any
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from .. import common
-from ..common import get_namespace
+from body_models import common
+from body_models.common import get_namespace
+from body_models.skel.io import SkelWeights
 
 Array = Any  # Generic array type (numpy, torch, jax)
 
@@ -25,28 +26,7 @@ NUM_BETAS = 10
 
 
 def forward_vertices(
-    # Model data
-    v_template: Float[Array, "V 3"],
-    v_template_full: Float[Array, "V_full 3"],
-    shapedirs: Float[Array, "V 3 B"],
-    shapedirs_full: Float[Array, "V_full 3 B"],
-    posedirs: Float[Array, "V*3 P"],
-    skin_weights: Float[Array, "V 24"],
-    J_regressor: Float[Array, "24 V_full"],
-    parents: list[int],
-    all_axes: Float[Array, "47 3"],
-    rotation_indices: Int[Array, "24 3"],
-    apose_R: Float[Array, "24 3 3"],
-    apose_t: Float[Array, "24 3"],
-    per_joint_rot: Float[Array, "24 3 3"],
-    child: Int[Array, "24"],
-    fixed_orientation_joints: Int[Array, "6"],
-    feet_offset: Float[Array, "3"],
-    num_joints_smpl: int,
-    scapula_r_axes: Float[Array, "3 3"],
-    scapula_l_axes: Float[Array, "3 3"],
-    spine_axes: Float[Array, "3 3"],
-    # Inputs
+    weights: SkelWeights,
     shape: Float[Array, "B 10"],
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
@@ -65,6 +45,10 @@ def forward_vertices(
         xp = get_namespace(pose)
     B = pose.shape[0]
 
+    v_template = weights.v_template
+    shapedirs = weights.shapedirs
+    posedirs = weights.posedirs
+    skin_weights = weights.skin_weights
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
         v_template = v_template[vertex_indices]
@@ -80,9 +64,9 @@ def forward_vertices(
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
     # Joint positions (use full-resolution for accurate skeleton)
-    v_shaped_full = v_template_full + xp.einsum("vdi,bi->bvd", shapedirs_full, shape)
-    J = xp.einsum("bvd,jv->bjd", v_shaped_full, J_regressor)
-    J_rel = _compute_J_rel(xp, J, parents)
+    v_shaped_full = weights.v_template_full + xp.einsum("vdi,bi->bvd", weights.shapedirs_full, shape)
+    J = xp.einsum("bvd,jv->bjd", v_shaped_full, weights.j_regressor)
+    J_rel = _compute_J_rel(xp, J, weights.parent)
 
     # Forward kinematics
     G_local = _compute_local_transforms(
@@ -90,25 +74,25 @@ def forward_vertices(
         pose=pose,
         J=J,
         J_rel=J_rel,
-        all_axes=all_axes,
-        rotation_indices=rotation_indices,
-        apose_R=apose_R,
-        apose_t=apose_t,
-        per_joint_rot=per_joint_rot,
-        child=child,
-        fixed_orientation_joints=fixed_orientation_joints,
-        scapula_r_axes=scapula_r_axes,
-        scapula_l_axes=scapula_l_axes,
-        spine_axes=spine_axes,
+        all_axes=weights.all_axes,
+        rotation_indices=weights.rotation_indices,
+        apose_R=weights.apose_R,
+        apose_t=weights.apose_t,
+        per_joint_rot=weights.per_joint_rot,
+        child=weights.child,
+        fixed_orientation_joints=weights.fixed_orientation_joints,
+        scapula_r_axes=weights.scapula_r_axes,
+        scapula_l_axes=weights.scapula_l_axes,
+        spine_axes=weights.spine_axes,
     )
-    G = _propagate_transforms(xp, G_local, parents)
+    G = _propagate_transforms(xp, G_local, weights.parents[1:])
 
     # Shape blend shapes (simplified mesh for output)
     v_shaped = v_template + xp.einsum("vdi,bi->bvd", shapedirs, shape)
 
     # Pose blend shapes (SMPL-compatible)
-    eye3 = common.eye_as(apose_R, batch_dims=(B, 1), xp=xp)
-    R_smpl = xp.broadcast_to(eye3, (B, num_joints_smpl, 3, 3))
+    eye3 = common.eye_as(weights.apose_R, batch_dims=(B, 1), xp=xp)
+    R_smpl = xp.broadcast_to(eye3, (B, weights.num_joints_smpl, 3, 3))
     # Set SKEL rotations into SMPL positions (copy=True handles broadcast->contiguous)
     idx_smpl = (slice(None), SMPL_JOINT_MAP)
     R_smpl = common.set(R_smpl, idx_smpl, G_local[:, :, :3, :3], copy=True, xp=xp)
@@ -131,27 +115,11 @@ def forward_vertices(
         R = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
         v_out = (R @ v_out.mT).mT
 
-    return v_out + feet_offset
+    return v_out + weights.feet_offset
 
 
 def forward_skeleton(
-    # Model data
-    v_template_full: Float[Array, "V_full 3"],
-    shapedirs_full: Float[Array, "V_full 3 B"],
-    J_regressor: Float[Array, "24 V_full"],
-    parents: list[int],
-    all_axes: Float[Array, "47 3"],
-    rotation_indices: Int[Array, "24 3"],
-    apose_R: Float[Array, "24 3 3"],
-    apose_t: Float[Array, "24 3"],
-    per_joint_rot: Float[Array, "24 3 3"],
-    child: Int[Array, "24"],
-    fixed_orientation_joints: Int[Array, "6"],
-    feet_offset: Float[Array, "3"],
-    scapula_r_axes: Float[Array, "3 3"],
-    scapula_l_axes: Float[Array, "3 3"],
-    spine_axes: Float[Array, "3 3"],
-    # Inputs
+    weights: SkelWeights,
     shape: Float[Array, "B 10"],
     pose: Float[Array, "B 46"],
     global_rotation: Float[Array, "B 3"] | None = None,
@@ -175,7 +143,7 @@ def forward_skeleton(
         global_translation = common.zeros_as(pose, shape=(B, 3), xp=xp)
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
-    full_parents = [-1, *parents]
+    full_parents = weights.parents
     active_joints = None
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
@@ -190,9 +158,9 @@ def forward_skeleton(
                 cur = full_parents[cur]
 
     # Shape blend shapes -> joint positions (use full-resolution for accurate skeleton)
-    v_shaped_full = v_template_full + xp.einsum("vdi,bi->bvd", shapedirs_full, shape)
-    J = xp.einsum("bvd,jv->bjd", v_shaped_full, J_regressor)
-    J_rel = _compute_J_rel(xp, J, parents)
+    v_shaped_full = weights.v_template_full + xp.einsum("vdi,bi->bvd", weights.shapedirs_full, shape)
+    J = xp.einsum("bvd,jv->bjd", v_shaped_full, weights.j_regressor)
+    J_rel = _compute_J_rel(xp, J, weights.parent)
 
     # Forward kinematics
     G_local = _compute_local_transforms(
@@ -200,18 +168,18 @@ def forward_skeleton(
         pose=pose,
         J=J,
         J_rel=J_rel,
-        all_axes=all_axes,
-        rotation_indices=rotation_indices,
-        apose_R=apose_R,
-        apose_t=apose_t,
-        per_joint_rot=per_joint_rot,
-        child=child,
-        fixed_orientation_joints=fixed_orientation_joints,
-        scapula_r_axes=scapula_r_axes,
-        scapula_l_axes=scapula_l_axes,
-        spine_axes=spine_axes,
+        all_axes=weights.all_axes,
+        rotation_indices=weights.rotation_indices,
+        apose_R=weights.apose_R,
+        apose_t=weights.apose_t,
+        per_joint_rot=weights.per_joint_rot,
+        child=weights.child,
+        fixed_orientation_joints=weights.fixed_orientation_joints,
+        scapula_r_axes=weights.scapula_r_axes,
+        scapula_l_axes=weights.scapula_l_axes,
+        spine_axes=weights.spine_axes,
     )
-    G = _propagate_transforms(xp, G_local, parents, joint_indices=joint_indices, active_joints=active_joints)
+    G = _propagate_transforms(xp, G_local, weights.parents[1:], joint_indices=joint_indices, active_joints=active_joints)
 
     # Apply global transform
     rot = G[:, :, :3, :3]
@@ -223,7 +191,7 @@ def forward_skeleton(
     trans = trans + global_translation[:, None]
 
     # Add feet offset
-    trans = trans + feet_offset
+    trans = trans + weights.feet_offset
 
     # Build output transform
     last_row = common.zeros_as(rot, shape=(B, rot.shape[1], 1, 4), xp=xp)
