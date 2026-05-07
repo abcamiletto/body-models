@@ -6,14 +6,12 @@ from typing import Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from ..base import BodyModel
+from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
-
-Array = np.ndarray
+from body_models.mano.backends import numpy as backend
+from body_models.mano.io import get_model_path, load_model_data
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["MANO"]
 
@@ -30,66 +28,24 @@ class MANO(BodyModel):
         side: Literal["right", "left"] | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ):
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
 
         self.side = side if side is not None else "right"
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, side)
-        data = load_model_data(resolved_path)
-
-        v_template_full = np.asarray(data["v_template"], dtype=np.float32)
-        faces = np.asarray(data["f"], dtype=np.int32)
-        lbs_weights = np.asarray(data["weights"], dtype=np.float32)
-        shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
-        shapedirs = shapedirs_full
-        posedirs = np.asarray(data["posedirs"], dtype=np.float32)
-        J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
-        parents[0] = -1
-
-        if simplify > 1.0:
-            target_faces = int(len(faces) / simplify)
-            v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
-            lbs_weights = lbs_weights[vertex_map]
-            shapedirs = shapedirs_full[vertex_map]
-            posedirs = posedirs[vertex_map]
-        else:
-            v_template = v_template_full
-
-        # Store arrays as instance attributes
-        self.v_template = v_template
-        self.v_template_full = v_template_full
-        self.lbs_weights = lbs_weights
-        self.J_regressor = J_regressor
-        self.parents = parents.tolist()
-        self._faces = faces
-
-        hand_mean = np.asarray(data.get("hands_mean", np.zeros(45)), dtype=np.float32)
-        if flat_hand_mean:
-            hand_mean = np.zeros_like(hand_mean)
-        self.hand_mean = hand_mean
-
-        self.shapedirs = shapedirs
-        self.shapedirs_full = shapedirs_full
-        self.posedirs = posedirs.reshape(-1, posedirs.shape[-1]).T
-
-        self._kinematic_fronts = compute_kinematic_fronts(parents)
-        self._joint_names = get_joint_names(data)
-
-        # Precomputed joint regression matrices
-        self._j_template = J_regressor @ v_template_full
-        self._j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full)
+        self.weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
 
     @property
-    def faces(self) -> Int[Array, "F 3"]:
-        return self._faces
+    def faces(self) -> Int[np.ndarray, "F 3"]:
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -97,39 +53,47 @@ class MANO(BodyModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return self.weights.joint_names
 
     @property
     def num_vertices(self) -> int:
-        return self.v_template.shape[0]
+        return self.weights.v_template.shape[0]
 
     @property
-    def skin_weights(self) -> Float[Array, "V J"]:
-        return self.lbs_weights
+    def skin_weights(self) -> Float[np.ndarray, "V 16"]:
+        return self.weights.lbs_weights
 
     @property
-    def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.v_template
+    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
+        return self.weights.v_template
+
+    @property
+    def shapedirs(self) -> Float[np.ndarray, "V 3 S"]:
+        return self.weights.shapedirs
+
+    @property
+    def posedirs(self) -> Float[np.ndarray, "P V*3"]:
+        return self.weights.posedirs
+
+    @property
+    def lbs_weights(self) -> Float[np.ndarray, "V 16"]:
+        return self.weights.lbs_weights
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
-        shape: Float[Array, "B|1 10"],
-        hand_pose: Float[Array, "B 15 N"] | Float[Array, "B 15 3 3"],
-        wrist_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_translation: Float[Array, "B 3"] | None = None,
+        shape: Float[np.ndarray, "B|1 10"],
+        hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"],
+        wrist_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
-    ) -> Float[Array, "B V 3"]:
-        return core.forward_vertices(
-            v_template=self.v_template,
-            shapedirs=self.shapedirs,
-            posedirs=self.posedirs,
-            lbs_weights=self.lbs_weights,
-            j_template=self._j_template,
-            j_shapedirs=self._j_shapedirs,
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean,
+    ) -> Float[np.ndarray, "B V 3"]:
+        return backend.forward_vertices(
+            weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
             wrist_rotation=wrist_rotation,
@@ -141,19 +105,15 @@ class MANO(BodyModel):
 
     def forward_skeleton(
         self,
-        shape: Float[Array, "B|1 10"],
-        hand_pose: Float[Array, "B 15 N"] | Float[Array, "B 15 3 3"],
-        wrist_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-        global_translation: Float[Array, "B 3"] | None = None,
+        shape: Float[np.ndarray, "B|1 10"],
+        hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"],
+        wrist_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
-    ) -> Float[Array, "B 16 4 4"]:
-        return core.forward_skeleton(
-            j_template=self._j_template,
-            j_shapedirs=self._j_shapedirs,
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean,
+    ) -> Float[np.ndarray, "B 16 4 4"]:
+        return backend.forward_skeleton(
+            weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
             wrist_rotation=wrist_rotation,
@@ -163,7 +123,7 @@ class MANO(BodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, Array]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
         hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
         wrist_ref = np.zeros((batch_size, 3), dtype=dtype)
         return {

@@ -37,7 +37,8 @@ class SMPL(BodyModel, nn.Module):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
         super().__init__()
 
         # Default gender to "neutral" for attribute storage when model_path is given

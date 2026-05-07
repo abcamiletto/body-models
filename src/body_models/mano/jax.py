@@ -1,26 +1,25 @@
-"""JAX backend for MANO model using Flax NNX."""
+"""JAX backend for MANO model."""
 
 from pathlib import Path
 from typing import Literal
 
 import jax
 import jax.numpy as jnp
-import numpy as np
-from flax import nnx
 from jaxtyping import Float, Int
 
-from ..base import BodyModel
+from body_models import common
+from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
+from body_models.mano.backends import jax as backend
+from body_models.mano.io import get_model_path, load_model_data
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["MANO"]
 
 
-class MANO(BodyModel, nnx.Module):
-    """MANO hand model with JAX/Flax NNX backend."""
+class MANO(BodyModel):
+    """MANO hand model with JAX backend."""
 
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
@@ -31,68 +30,25 @@ class MANO(BodyModel, nnx.Module):
         side: Literal["right", "left"] | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ):
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
 
         self.side = side if side is not None else "right"
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, side)
-        data = load_model_data(resolved_path)
-
-        v_template_full = np.asarray(data["v_template"], dtype=np.float32)
-        faces = np.asarray(data["f"], dtype=np.int32)
-        lbs_weights = np.asarray(data["weights"], dtype=np.float32)
-        shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
-        shapedirs = shapedirs_full
-        posedirs = np.asarray(data["posedirs"], dtype=np.float32)
-        J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
-        parents[0] = -1
-
-        if simplify > 1.0:
-            target_faces = int(len(faces) / simplify)
-            v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
-            lbs_weights = lbs_weights[vertex_map]
-            shapedirs = shapedirs_full[vertex_map]
-            posedirs = posedirs[vertex_map]
-        else:
-            v_template = v_template_full
-
-        # Store as nnx.Variable for proper pytree handling
-        self.v_template = nnx.Variable(jnp.asarray(v_template))
-        self.v_template_full = nnx.Variable(jnp.asarray(v_template_full))
-        self.lbs_weights = nnx.Variable(jnp.asarray(lbs_weights))
-        self.J_regressor = nnx.Variable(jnp.asarray(J_regressor))
-        self._faces = nnx.Variable(jnp.asarray(faces))
-
-        hand_mean = np.asarray(data.get("hands_mean", np.zeros(45)), dtype=np.float32)
-        if flat_hand_mean:
-            hand_mean = np.zeros_like(hand_mean)
-        self.hand_mean = nnx.Variable(jnp.asarray(hand_mean))
-
-        self.shapedirs = nnx.Variable(jnp.asarray(shapedirs))
-        self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full))
-        self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
-
-        self.parents = parents.tolist()
-        self._kinematic_fronts = compute_kinematic_fronts(parents)
-        self._joint_names = get_joint_names(data)
-
-        # Precomputed joint regression matrices
-        _j_template = J_regressor @ v_template_full
-        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full)
-        self._j_template = nnx.Variable(jnp.asarray(_j_template))
-        self._j_shapedirs = nnx.Variable(jnp.asarray(_j_shapedirs))
+        weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        self.weights = common.jaxify(weights)
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
-        return self._faces[...]
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -100,19 +56,35 @@ class MANO(BodyModel, nnx.Module):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return self.weights.joint_names
 
     @property
     def num_vertices(self) -> int:
-        return self.v_template[...].shape[0]
+        return self.weights.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[jax.Array, "V 16"]:
-        return self.lbs_weights[...]
+        return self.weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.v_template[...]
+        return self.weights.v_template
+
+    @property
+    def shapedirs(self) -> Float[jax.Array, "V 3 S"]:
+        return self.weights.shapedirs
+
+    @property
+    def posedirs(self) -> Float[jax.Array, "P V*3"]:
+        return self.weights.posedirs
+
+    @property
+    def lbs_weights(self) -> Float[jax.Array, "V 16"]:
+        return self.weights.lbs_weights
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
@@ -123,16 +95,8 @@ class MANO(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
-        return core.forward_vertices(
-            v_template=self.v_template[...],
-            shapedirs=self.shapedirs[...],
-            posedirs=self.posedirs[...],
-            lbs_weights=self.lbs_weights[...],
-            j_template=self._j_template[...],
-            j_shapedirs=self._j_shapedirs[...],
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean[...],
+        return backend.forward_vertices(
+            weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
             wrist_rotation=wrist_rotation,
@@ -151,12 +115,8 @@ class MANO(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B 16 4 4"]:
-        return core.forward_skeleton(
-            j_template=self._j_template[...],
-            j_shapedirs=self._j_shapedirs[...],
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean[...],
+        return backend.forward_skeleton(
+            weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
             wrist_rotation=wrist_rotation,

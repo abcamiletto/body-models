@@ -1,14 +1,14 @@
-"""Backend-agnostic SMPL-X computation."""
+"""Backend-agnostic SMPL-H computation."""
 
 from typing import Any
 
 from jaxtyping import Float
 
-from .. import common
-from ..common import get_namespace
+from body_models import common
+from body_models.common import get_namespace
 from nanomanifold import SO3
 
-from ..rotations import RotationType, is_rotmat_type
+from body_models.rotations import RotationType, is_rotmat_type
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -18,12 +18,10 @@ def forward_vertices(
     # Model data
     v_template: Float[Array, "V 3"],
     shapedirs: Float[Array, "V 3 S"],
-    exprdirs: Float[Array, "V 3 E"],
     posedirs: Float[Array, "P V*3"],
-    lbs_weights: Float[Array, "V 55"],
-    j_template: Float[Array, "55 3"],
-    j_shapedirs: Float[Array, "55 3 S"],
-    j_exprdirs: Float[Array, "55 3 E"],
+    lbs_weights: Float[Array, "V 52"],
+    j_template: Float[Array, "52 3"],
+    j_shapedirs: Float[Array, "52 3 S"],
     parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
@@ -31,8 +29,6 @@ def forward_vertices(
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 21 N"] | Float[Array, "B 21 3 3"],
     hand_pose: Float[Array, "B 30 N"] | Float[Array, "B 30 3 3"],
-    head_pose: Float[Array, "B 3 N"] | Float[Array, "B 3 3 3"],
-    expression: Float[Array, "B 10"] | None = None,
     pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
@@ -43,7 +39,6 @@ def forward_vertices(
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
     assert shape.ndim >= 1 and shape.shape[-1] >= 1
-    assert expression is None or (expression.ndim >= 1 and expression.shape[-1] >= 1)
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
@@ -52,36 +47,26 @@ def forward_vertices(
         vertex_indices = xp.asarray(vertex_indices)
         v_template = v_template[vertex_indices]
         shapedirs = shapedirs[vertex_indices]
-        exprdirs = exprdirs[vertex_indices]
         lbs_weights = lbs_weights[vertex_indices]
         posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, vertex_indices].reshape(posedirs.shape[0], -1)
     pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
-    assert tuple(head_pose.shape[:-pose_ndim]) == batch_shape
-    assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-
-    if expression is None:
-        expression = common.zeros_as(shape, shape=(*batch_shape, 10), xp=xp)
 
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
         v_template=v_template,
         shapedirs=shapedirs,
-        exprdirs=exprdirs,
         j_template=j_template,
         j_shapedirs=j_shapedirs,
-        j_exprdirs=j_exprdirs,
         parents=parents,
         kinematic_fronts=kinematic_fronts,
         hand_mean=hand_mean,
         shape=shape,
-        expression=expression,
         body_pose=body_pose,
         hand_pose=hand_pose,
-        head_pose=head_pose,
         pelvis_rotation=pelvis_rotation,
         skeleton_only=False,
         rotation_type=rotation_type,
@@ -110,7 +95,6 @@ def forward_skeleton(
     # Model data
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
-    j_exprdirs: Float[Array, "J 3 E"],
     parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
@@ -118,8 +102,6 @@ def forward_skeleton(
     shape: Float[Array, "B 10"],
     body_pose: Float[Array, "B 21 N"] | Float[Array, "B 21 3 3"],
     hand_pose: Float[Array, "B 30 N"] | Float[Array, "B 30 3 3"],
-    head_pose: Float[Array, "B 3 N"] | Float[Array, "B 3 3 3"],
-    expression: Float[Array, "B 10"] | None = None,
     pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
@@ -130,7 +112,6 @@ def forward_skeleton(
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton joint transforms [B, J, 4, 4]."""
     assert shape.ndim >= 1 and shape.shape[-1] >= 1
-    assert expression is None or (expression.ndim >= 1 and expression.shape[-1] >= 1)
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
@@ -156,30 +137,21 @@ def forward_skeleton(
     pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
-    assert tuple(head_pose.shape[:-pose_ndim]) == batch_shape
-    assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-
-    if expression is None:
-        expression = common.zeros_as(shape, shape=(*batch_shape, 10), xp=xp)
 
     _, _, _, T_world = _forward_core(
         xp=xp,
         v_template=None,
         shapedirs=None,
-        exprdirs=None,
         j_template=j_template,
         j_shapedirs=j_shapedirs,
-        j_exprdirs=j_exprdirs,
         parents=parents,
         kinematic_fronts=active_fronts,
         hand_mean=hand_mean,
         shape=shape,
-        expression=expression,
         body_pose=body_pose,
         hand_pose=hand_pose,
-        head_pose=head_pose,
         pelvis_rotation=pelvis_rotation,
         skeleton_only=True,
         joint_indices=joint_indices,
@@ -209,18 +181,14 @@ def _forward_core(
     xp,
     v_template: Float[Array, "V 3"] | None,
     shapedirs: Float[Array, "V 3 S"] | None,
-    exprdirs: Float[Array, "V 3 E"] | None,
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
-    j_exprdirs: Float[Array, "J 3 E"],
     parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
     shape: Float[Array, "*batch 10"],
-    expression: Float[Array, "*batch 10"],
     body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-    head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
     pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     skeleton_only: bool,
     rotation_type: RotationType,
@@ -240,7 +208,7 @@ def _forward_core(
     if rotation_type == "axis_angle":
         hand_pose_axis_angle = hand_pose
     else:
-        # SMPL-X hand pose mean is defined in axis-angle coordinates.
+        # SMPL-H hand pose mean is defined in axis-angle coordinates.
         hand_pose_axis_angle = SO3.convert(hand_pose, src=rotation_type, dst="axis_angle", xp=xp)
     lh = hand_pose_axis_angle[..., :15, :] + hand_mean[0].reshape(15, 3)
     rh = hand_pose_axis_angle[..., 15:, :] + hand_mean[1].reshape(15, 3)
@@ -257,24 +225,19 @@ def _forward_core(
     else:
         pelvis_matrices = SO3.convert(pelvis_rotation, src=rotation_type, dst="rotmat", xp=xp)[..., None, :, :]
     body_matrices = SO3.convert(body_pose, src=rotation_type, dst="rotmat", xp=xp)
-    head_matrices = SO3.convert(head_pose, src=rotation_type, dst="rotmat", xp=xp)
     hand_matrices = SO3.convert(hand_pose_adj, src="axis_angle", dst="rotmat", xp=xp)
-    pose_matrices = xp.concat([pelvis_matrices, body_matrices, head_matrices, hand_matrices], axis=-3)
+    pose_matrices = xp.concat([pelvis_matrices, body_matrices, hand_matrices], axis=-3)
 
     # Joint locations from precomputed regression matrices
     shape_dim = shape.shape[-1]
-    expr_dim = expression.shape[-1]
-    params_full = xp.concat([shape, expression], axis=-1)
-    j_dirs = xp.concat([j_shapedirs[:, :, :shape_dim], j_exprdirs[:, :, :expr_dim]], axis=-1)
-    j_t = j_template + xp.einsum("...p,jdp->...jd", params_full, j_dirs)
+    j_t = j_template + xp.einsum("...p,jdp->...jd", shape, j_shapedirs[:, :, :shape_dim])
 
     # Shape blend shapes for mesh output
     if skeleton_only:
         v_t = None
     else:
-        assert v_template is not None and shapedirs is not None and exprdirs is not None
-        dirs_simp = xp.concat([shapedirs[:, :, :shape_dim], exprdirs[:, :, :expr_dim]], axis=-1)
-        v_t = v_template + xp.einsum("...i,vdi->...vd", params_full, dirs_simp)
+        assert v_template is not None and shapedirs is not None
+        v_t = v_template + xp.einsum("...i,vdi->...vd", shape, shapedirs[:, :, :shape_dim])
 
     # Forward kinematics
     j0 = j_t[..., 0:1, :]

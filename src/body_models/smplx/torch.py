@@ -3,18 +3,18 @@
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 from torch import Tensor
 
-from ..base import BodyModel
+from body_models import common
+from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
+from body_models.smplx.backends import torch as backend
+from body_models.smplx.io import get_model_path, load_model_data
 
 __all__ = ["SMPLX"]
 
@@ -23,17 +23,9 @@ class SMPLX(BodyModel, nn.Module):
     """SMPL-X body model with PyTorch backend."""
 
     NUM_BODY_JOINTS = 21
-    NUM_HAND_JOINTS = 30  # 15 per hand
-    NUM_HEAD_JOINTS = 3  # jaw, left eye, right eye
-    NUM_JOINTS = 55  # 22 body + 30 hands + 3 head
-
-    # Type declarations for registered buffers
-    v_template: Tensor
-    v_template_full: Tensor
-    lbs_weights: Tensor
-    J_regressor: Tensor
-    hand_mean: Tensor
-    _faces: Tensor
+    NUM_HAND_JOINTS = 30
+    NUM_HEAD_JOINTS = 3
+    NUM_JOINTS = 55
 
     def __init__(
         self,
@@ -41,83 +33,26 @@ class SMPLX(BodyModel, nn.Module):
         gender: Literal["neutral", "male", "female"] | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
         super().__init__()
 
-        # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)
-        data = load_model_data(resolved_path)
-
-        v_template_full = np.asarray(data["v_template"], dtype=np.float32)
-        faces = np.asarray(data["f"], dtype=np.int32)
-        lbs_weights = np.asarray(data["weights"], dtype=np.float32)
-        shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
-        shapedirs = shapedirs_full
-        posedirs = np.asarray(data["posedirs"], dtype=np.float32)
-        J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
-        parents[0] = -1
-
-        if simplify > 1.0:
-            target_faces = int(len(faces) / simplify)
-            v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
-            lbs_weights = lbs_weights[vertex_map]
-            shapedirs = shapedirs_full[vertex_map]
-            posedirs = posedirs[vertex_map]
-        else:
-            v_template = v_template_full
-
-        # Register buffers for device management
-        self.v_template = nn.Buffer(torch.as_tensor(v_template))
-        self.v_template_full = nn.Buffer(torch.as_tensor(v_template_full))
-        self.lbs_weights = nn.Buffer(torch.as_tensor(lbs_weights))
-        self.J_regressor = nn.Buffer(torch.as_tensor(J_regressor))
-        self._faces = nn.Buffer(torch.as_tensor(faces))
-
-        # Hand pose mean
-        hand_mean = np.stack(
-            [
-                np.asarray(data["hands_meanl"], dtype=np.float32),
-                np.asarray(data["hands_meanr"], dtype=np.float32),
-            ]
-        )
-        if flat_hand_mean:
-            hand_mean = np.zeros_like(hand_mean)
-        self.hand_mean = nn.Buffer(torch.as_tensor(hand_mean))
-
-        # Use nn.Parameter for blend shapes (for proper device handling)
-        # Split shapedirs into shape (first 300) and expression (300-400)
-        self.shapedirs = nn.Parameter(torch.as_tensor(shapedirs[:, :, :300]), requires_grad=False)
-        self.shapedirs_full = nn.Parameter(torch.as_tensor(shapedirs_full[:, :, :300]), requires_grad=False)
-        self.exprdirs = nn.Parameter(torch.as_tensor(shapedirs[:, :, 300:400]), requires_grad=False)
-        self.exprdirs_full = nn.Parameter(torch.as_tensor(shapedirs_full[:, :, 300:400]), requires_grad=False)
-        self.posedirs = nn.Parameter(torch.as_tensor(posedirs.reshape(-1, posedirs.shape[-1]).T), requires_grad=False)
-
-        self.parents = parents.tolist()
-        self._kinematic_fronts = compute_kinematic_fronts(parents)
-        self._joint_names = get_joint_names(data)
-
-        # Precomputed joint regression: j_t = j_template + einsum(params, j_dirs)
-        # Avoids materializing [B, V_full, 3] intermediate at runtime
-        _j_template = J_regressor @ v_template_full  # [55, 3]
-        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full[:, :, :300])  # [55, 3, 300]
-        _j_exprdirs = np.einsum("jv,vde->jde", J_regressor, shapedirs_full[:, :, 300:400])  # [55, 3, 100]
-        self._j_template = nn.Buffer(torch.as_tensor(_j_template))
-        self._j_shapedirs = nn.Buffer(torch.as_tensor(_j_shapedirs))
-        self._j_exprdirs = nn.Buffer(torch.as_tensor(_j_exprdirs))
+        weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        self.weights = common.torchify(weights)
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
-        return self._faces
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -125,19 +60,39 @@ class SMPLX(BodyModel, nn.Module):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return self.weights.joint_names
 
     @property
     def num_vertices(self) -> int:
-        return self.v_template.shape[0]
+        return self.weights.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[Tensor, "V 55"]:
-        return self.lbs_weights
+        return self.weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.v_template
+        return self.weights.v_template
+
+    @property
+    def shapedirs(self) -> Float[Tensor, "V 3 S"]:
+        return self.weights.shapedirs
+
+    @property
+    def exprdirs(self) -> Float[Tensor, "V 3 E"]:
+        return self.weights.exprdirs
+
+    @property
+    def posedirs(self) -> Float[Tensor, "P V*3"]:
+        return self.weights.posedirs
+
+    @property
+    def lbs_weights(self) -> Float[Tensor, "V 55"]:
+        return self.weights.lbs_weights
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
@@ -151,18 +106,8 @@ class SMPLX(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
-        return core.forward_vertices(
-            v_template=self.v_template,
-            shapedirs=self.shapedirs,
-            exprdirs=self.exprdirs,
-            posedirs=self.posedirs,
-            lbs_weights=self.lbs_weights,
-            j_template=self._j_template,
-            j_shapedirs=self._j_shapedirs,
-            j_exprdirs=self._j_exprdirs,
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean,
+        return backend.forward_vertices(
+            weights=self.weights,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
@@ -173,7 +118,6 @@ class SMPLX(BodyModel, nn.Module):
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            xp=torch,
         )
 
     def forward_skeleton(
@@ -188,13 +132,8 @@ class SMPLX(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B 55 4 4"]:
-        return core.forward_skeleton(
-            j_template=self._j_template,
-            j_shapedirs=self._j_shapedirs,
-            j_exprdirs=self._j_exprdirs,
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean,
+        return backend.forward_skeleton(
+            weights=self.weights,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
@@ -205,11 +144,10 @@ class SMPLX(BodyModel, nn.Module):
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            xp=torch,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
-        device = self.v_template.device
+    def get_rest_pose(self, batch_size: int = 1, dtype=torch.float32) -> dict[str, Tensor]:
+        device = self.rest_vertices.device
         body_pose_ref = torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
         hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
         head_pose_ref = torch.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), device=device, dtype=dtype)
