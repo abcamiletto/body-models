@@ -6,7 +6,8 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import load_model_dict, simplify_mesh, validate_simplify
+from body_models.common import simplify_mesh
+from body_models.common.chumpy_fix import load_model_dict
 
 PathLike = Path | str
 Array = Any
@@ -58,7 +59,8 @@ def get_model_path(model_path: PathLike | None) -> Path:
 
 def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
     """Load FLAME model data from a .pkl or .npz file."""
-    validate_simplify(simplify)
+    if simplify < 1.0:
+        raise ValueError("simplify must be >= 1.0")
     model_data = load_model_dict(model_path)
 
     v_template_full = np.asarray(model_data["v_template"], dtype=np.float32)

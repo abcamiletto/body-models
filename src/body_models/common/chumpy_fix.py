@@ -1,4 +1,4 @@
-"""Shared model-file loading helpers."""
+"""Load model files that may contain legacy chumpy objects."""
 
 from __future__ import annotations
 
@@ -11,12 +11,7 @@ from scipy import sparse
 
 PathLike = Path | str
 
-__all__ = ["load_model_dict", "validate_simplify"]
-
-
-def validate_simplify(simplify: float) -> None:
-    if simplify < 1.0:
-        raise ValueError("simplify must be >= 1.0")
+__all__ = ["load_model_dict"]
 
 
 def load_model_dict(model_path: PathLike) -> dict[str, Any]:
