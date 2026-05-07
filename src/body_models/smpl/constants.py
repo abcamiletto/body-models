@@ -26,4 +26,3 @@ SMPL_JOINT_NAMES = [
 ]
 
 __all__ = ["SMPL_JOINT_NAMES"]
-
