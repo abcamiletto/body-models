@@ -1,4 +1,4 @@
-"""Tests for the MANO hand model."""
+"""Tests for the SMPL-H body model."""
 
 from contextlib import nullcontext
 from importlib import import_module
@@ -12,19 +12,19 @@ from nanomanifold import SO3
 
 pytestmark = pytest.mark.fast
 
-MODEL_PATH = Path(__file__).parent / "assets" / "models_hub" / "mano-right" / "model.pkl"
+MODEL_PATH = Path(__file__).parents[1] / "assets" / "models_hub" / "smplh-neutral" / "model.npz"
 RTOL, ATOL = 1e-4, 1e-4
 ROTATION_TYPES = ["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 
 if not MODEL_PATH.exists():
-    pytest.skip(f"MANO model not found at {MODEL_PATH}", allow_module_level=True)
+    pytest.skip(f"SMPLH model not found at {MODEL_PATH}", allow_module_level=True)
 
 
-def _mano_backend(backend: str):
+def _smplh_backend(backend: str):
     if backend == "jax":
         pytest.importorskip("jax.numpy")
-    module = import_module(f"body_models.mano.{backend}")
-    return getattr(module, "MANO")
+    module = import_module(f"body_models.smplh.{backend}")
+    return getattr(module, "SMPLH")
 
 
 def _backend_array(backend: str, value: np.ndarray):
@@ -53,16 +53,17 @@ def _convert_rotation_inputs(inputs: dict[str, np.ndarray], rotation_type: str) 
 
     return {
         "shape": inputs["shape"],
+        "body_pose": SO3.convert(inputs["body_pose"], src="axis_angle", dst=rotation_type, xp=np),
         "hand_pose": SO3.convert(inputs["hand_pose"], src="axis_angle", dst=rotation_type, xp=np),
-        "wrist_rotation": SO3.convert(inputs["wrist_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+        "pelvis_rotation": SO3.convert(inputs["pelvis_rotation"], src="axis_angle", dst=rotation_type, xp=np),
         "global_translation": inputs["global_translation"],
     }
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_forward_rest_pose(backend: str) -> None:
-    MANO = _mano_backend(backend)
-    model = MANO(model_path=MODEL_PATH)
+    SMPLH = _smplh_backend(backend)
+    model = SMPLH(model_path=MODEL_PATH)
     params = model.get_rest_pose(batch_size=2)
 
     context = torch.no_grad() if backend == "torch" else nullcontext()
@@ -73,45 +74,29 @@ def test_forward_rest_pose(backend: str) -> None:
     vertices_np = _to_numpy(backend, vertices)
     skeleton_np = _to_numpy(backend, skeleton)
 
-    assert vertices_np.shape == (2, model.num_vertices, 3)
-    assert skeleton_np.shape == (2, 16, 4, 4)
+    assert vertices_np.shape == (2, 6890, 3)
+    assert skeleton_np.shape == (2, 52, 4, 4)
     assert np.isfinite(vertices_np).all()
     assert np.isfinite(skeleton_np).all()
 
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
-def test_side_uses_config_lookup_like_smpl_gender(backend: str) -> None:
-    MANO = _mano_backend(backend)
-    model = MANO(side="right")
-    params = model.get_rest_pose(batch_size=1)
-
-    context = torch.no_grad() if backend == "torch" else nullcontext()
-    with context:
-        vertices = model.forward_vertices(**params)
-
-    assert _to_numpy(backend, vertices).shape == (1, model.num_vertices, 3)
-
-
-def test_side_is_rejected_with_explicit_model_path() -> None:
-    from body_models.mano.numpy import MANO
-
-    with pytest.raises(ValueError, match="side is only supported"):
-        MANO(model_path=MODEL_PATH, side="right")
-
-
-@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 @pytest.mark.parametrize("rotation_type", ROTATION_TYPES)
 def test_rotation_types(rotation_type: str, backend: str) -> None:
-    MANO = _mano_backend(backend)
-    native_model = MANO(model_path=MODEL_PATH)
-    rotated_model = MANO(model_path=MODEL_PATH, rotation_type=rotation_type)
+    SMPLH = _smplh_backend(backend)
+    native_model = SMPLH(model_path=MODEL_PATH)
+    rotated_model = SMPLH(model_path=MODEL_PATH, rotation_type=rotation_type)
 
     inputs = _rest_pose_inputs(native_model)
+    inputs["body_pose"] = np.linspace(-0.1, 0.1, native_model.NUM_BODY_JOINTS * 3, dtype=np.float32).reshape(
+        native_model.NUM_BODY_JOINTS,
+        3,
+    )
     inputs["hand_pose"] = np.linspace(-0.05, 0.05, native_model.NUM_HAND_JOINTS * 3, dtype=np.float32).reshape(
         native_model.NUM_HAND_JOINTS,
         3,
     )
-    inputs["wrist_rotation"] = np.array([0.03, -0.02, 0.01], dtype=np.float32)
+    inputs["pelvis_rotation"] = np.array([0.03, -0.02, 0.01], dtype=np.float32)
 
     rotated_inputs = _convert_rotation_inputs(inputs, rotation_type)
     native_kwargs = {key: _backend_array(backend, value)[None] for key, value in inputs.items()}
@@ -140,8 +125,8 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
 
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_vertex_subset_matches_full_output(backend: str) -> None:
-    MANO = _mano_backend(backend)
-    model = MANO(model_path=MODEL_PATH)
+    SMPLH = _smplh_backend(backend)
+    model = SMPLH(model_path=MODEL_PATH)
     kwargs = {key: _backend_array(backend, value)[None] for key, value in _rest_pose_inputs(model).items()}
     vertex_indices = [0, 10, 1, 10, 25]
 
@@ -159,10 +144,10 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
 
 
 def test_simplify() -> None:
-    from body_models.mano.torch import MANO
+    from body_models.smplh.torch import SMPLH
 
-    model_orig = MANO(model_path=MODEL_PATH, simplify=1.0)
-    model_2x = MANO(model_path=MODEL_PATH, simplify=2.0)
+    model_orig = SMPLH(model_path=MODEL_PATH, simplify=1.0)
+    model_2x = SMPLH(model_path=MODEL_PATH, simplify=2.0)
 
     assert model_2x.num_vertices < model_orig.num_vertices
     assert model_2x.faces.shape[0] < model_orig.faces.shape[0]
@@ -173,4 +158,4 @@ def test_simplify() -> None:
         skeleton = model_2x.forward_skeleton(**params)
 
     assert vertices.shape == (2, model_2x.num_vertices, 3)
-    assert skeleton.shape == (2, 16, 4, 4)
+    assert skeleton.shape == (2, 52, 4, 4)

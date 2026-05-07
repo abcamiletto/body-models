@@ -1,18 +1,36 @@
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
-from jaxtyping import Int
+from jaxtyping import Float, Int
 
-from .. import config
-from ..common import simplify_mesh
+from body_models import config
+from body_models.common import simplify_mesh
+from body_models.common.chumpy_fix import load_model_dict
 
 PathLike = Path | str
+Array = Any
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
-FLAME_JOINT_NAMES = ["root", "neck", "jaw", "left_eye", "right_eye"]
+__all__ = ["load_model_data"]
 
-__all__ = ["FLAME_JOINT_NAMES", "get_model_path", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
+
+@dataclass(frozen=True)
+class FlameWeights:
+    v_template: Float[Array, "V 3"]
+    v_template_full: Float[Array, "V_full 3"]
+    faces: Int[Array, "F 3"]
+    lbs_weights: Float[Array, "V 5"]
+    shapedirs: Float[Array, "V 3 S"]
+    shapedirs_full: Float[Array, "V_full 3 S"]
+    exprdirs: Float[Array, "V 3 E"]
+    exprdirs_full: Float[Array, "V_full 3 E"]
+    posedirs: Float[Array, "P V*3"]
+    J_regressor: Float[Array, "5 V_full"]
+    parents: list[int]
+    kinematic_fronts: list[Front]
 
 
 def validate_path(model_path: PathLike) -> Path:
@@ -39,65 +57,44 @@ def get_model_path(model_path: PathLike | None) -> Path:
     return validate_path(model_path)
 
 
-def load_model_data(model_path: Path) -> dict:
+def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
     """Load FLAME model data from a .pkl or .npz file."""
-    if model_path.suffix == ".npz":
-        return dict(np.load(model_path, allow_pickle=True))
+    if simplify < 1.0:
+        raise ValueError("simplify must be >= 1.0")
+    model_data = load_model_dict(model_path)
 
-    model_data = _load_flame_pkl(model_path)
+    v_template_full = np.asarray(model_data["v_template"], dtype=np.float32)
+    faces = np.asarray(model_data["f"], dtype=np.int32)
+    lbs_weights = np.asarray(model_data["weights"], dtype=np.float32)
+    shapedirs_full = np.asarray(model_data["shapedirs"], dtype=np.float32)
+    posedirs = np.asarray(model_data["posedirs"], dtype=np.float32)
+    J_regressor = np.asarray(model_data["J_regressor"], dtype=np.float32)
+    parents = np.asarray(model_data["kintree_table"][0], dtype=np.int64)
+    parents[0] = -1
 
-    # Handle scipy sparse matrices
-    if hasattr(model_data.get("J_regressor"), "toarray"):
-        model_data["J_regressor"] = model_data["J_regressor"].toarray()
+    v_template = v_template_full
+    shapedirs = shapedirs_full
+    if simplify > 1.0:
+        target_faces = int(len(faces) / simplify)
+        v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
+        lbs_weights = lbs_weights[vertex_map]
+        shapedirs = shapedirs_full[vertex_map]
+        posedirs = posedirs[vertex_map]
 
-    return model_data
-
-
-def _load_flame_pkl(model_path: Path) -> dict:
-    """Load FLAME pickles without requiring chumpy at runtime."""
-    import pickle
-
-    class _ChumpyPlaceholder:
-        def __setstate__(self, state):
-            if isinstance(state, dict) and "x" in state:
-                self.data = np.asarray(state["x"])
-                return
-            if isinstance(state, dict) and "a" in state and "idxs" in state:
-                source = state["a"]
-                source_data = source.data if isinstance(source, _ChumpyPlaceholder) else np.asarray(source)
-                data = np.asarray(source_data).reshape(-1)[np.asarray(state["idxs"], dtype=np.int64)]
-                if "preferred_shape" in state:
-                    data = data.reshape(tuple(state["preferred_shape"]))
-                self.data = data
-                return
-            if isinstance(state, dict):
-                for value in state.values():
-                    if isinstance(value, np.ndarray):
-                        self.data = value
-                        return
-            self.data = state
-
-    class _CompatUnpickler(pickle.Unpickler):
-        def find_class(self, module, name):
-            if module == "scipy.sparse.csc" and name == "csc_matrix":
-                from scipy.sparse import csc_matrix
-
-                return csc_matrix
-            if module.startswith("chumpy"):
-                return _ChumpyPlaceholder
-            return super().find_class(module, name)
-
-    with open(model_path, "rb") as f:
-        data = _CompatUnpickler(f, encoding="latin1").load()
-
-    return {
-        key: value.data
-        if isinstance(value, _ChumpyPlaceholder)
-        else value.toarray()
-        if hasattr(value, "toarray")
-        else value
-        for key, value in data.items()
-    }
+    return FlameWeights(
+        v_template=v_template,
+        v_template_full=v_template_full,
+        faces=faces,
+        lbs_weights=lbs_weights,
+        shapedirs=shapedirs[:, :, :300],
+        shapedirs_full=shapedirs_full[:, :, :300],
+        exprdirs=shapedirs[:, :, 300:],
+        exprdirs_full=shapedirs_full[:, :, 300:],
+        posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
+        J_regressor=J_regressor,
+        parents=parents.tolist(),
+        kinematic_fronts=compute_kinematic_fronts(parents),
+    )
 
 
 def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
