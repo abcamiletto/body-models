@@ -1,0 +1,18 @@
+MANO_JOINT_NAMES = [
+    "wrist",
+    "index1",
+    "index2",
+    "index3",
+    "middle1",
+    "middle2",
+    "middle3",
+    "pinky1",
+    "pinky2",
+    "pinky3",
+    "ring1",
+    "ring2",
+    "ring3",
+    "thumb1",
+    "thumb2",
+    "thumb3",
+]
