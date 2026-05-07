@@ -23,6 +23,8 @@ class SmplWeights:
     v_template: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     lbs_weights: Float[Array, "V 24"]
+    lbs_joint_indices: Int[Array, "V K"]
+    lbs_joint_weights: Float[Array, "V K"]
     shapedirs: Float[Array, "V 3 S"]
     posedirs: Float[Array, "P V*3"]
     j_template: Float[Array, "24 3"]
@@ -95,10 +97,14 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplWeights:
         shapedirs = shapedirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
+    lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
+
     return SmplWeights(
         v_template=v_template,
         faces=faces,
         lbs_weights=lbs_weights,
+        lbs_joint_indices=lbs_joint_indices,
+        lbs_joint_weights=lbs_joint_weights,
         shapedirs=shapedirs,
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
         j_template=j_template,
@@ -106,6 +112,21 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplWeights:
         parents=parent_list,
         kinematic_fronts=compute_kinematic_fronts(parents),
     )
+
+
+def compute_sparse_lbs_weights(
+    lbs_weights: Float[np.ndarray, "V J"],
+) -> tuple[Int[np.ndarray, "V K"], Float[np.ndarray, "V K"]]:
+    counts = (np.abs(lbs_weights) > 1e-8).sum(axis=1)
+    indices = np.full((lbs_weights.shape[0], int(counts.max())), -1, dtype=np.int64)
+    weights = np.zeros(indices.shape, dtype=lbs_weights.dtype)
+
+    for vertex, row in enumerate(lbs_weights):
+        active = np.flatnonzero(np.abs(row) > 1e-8)
+        indices[vertex, : len(active)] = active
+        weights[vertex, : len(active)] = row[active]
+
+    return indices, weights
 
 
 def _load_smpl_pkl(model_path: Path) -> dict:
