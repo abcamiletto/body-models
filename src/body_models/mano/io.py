@@ -8,7 +8,8 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import load_model_dict, simplify_mesh, validate_simplify
+from body_models.common import simplify_mesh
+from body_models.common.chumpy_fix import load_model_dict
 from body_models.mano.constants import MANO_JOINT_NAMES
 
 PathLike = Path | str
@@ -67,7 +68,8 @@ def get_model_path(model_path: PathLike | None, side: Literal["right", "left"] |
 
 def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> ManoWeights:
     """Load MANO model data from .pkl or .npz file."""
-    validate_simplify(simplify)
+    if simplify < 1.0:
+        raise ValueError("simplify must be >= 1.0")
     data = load_model_dict(path)
     v_template = np.asarray(data["v_template"])
     if np.asarray(data["shapedirs"]).ndim == 1:

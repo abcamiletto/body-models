@@ -8,7 +8,8 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import load_model_dict, simplify_mesh, validate_simplify
+from body_models.common import simplify_mesh
+from body_models.common.chumpy_fix import load_model_dict
 from body_models.smplh.constants import SMPLH_JOINT_NAMES
 
 PathLike = Path | str
@@ -67,7 +68,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
 def load_model_data(path: Path, flat_hand_mean: bool = True, simplify: float = 1.0) -> SmplhWeights:
     """Load SMPL-H model data from .pkl or .npz file."""
-    validate_simplify(simplify)
+    if simplify < 1.0:
+        raise ValueError("simplify must be >= 1.0")
     data = load_model_dict(path)
 
     v_template_full = np.asarray(data["v_template"], dtype=np.float32)
