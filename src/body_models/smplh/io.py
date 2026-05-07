@@ -8,15 +8,15 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import load_model_dict, simplify_mesh, validate_simplify
 from body_models.smplh.constants import SMPLH_JOINT_NAMES
-from body_models.smpl.io import _load_smpl_pkl
 
 PathLike = Path | str
 Array = Any
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 __all__ = ["load_model_data"]
+
 
 @dataclass(frozen=True)
 class SmplhWeights:
@@ -67,10 +67,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
 def load_model_data(path: Path, flat_hand_mean: bool = True, simplify: float = 1.0) -> SmplhWeights:
     """Load SMPL-H model data from .pkl or .npz file."""
-    assert simplify >= 1.0
-    data = dict(np.load(path, allow_pickle=True)) if path.suffix == ".npz" else _load_smpl_pkl(path)
-    if hasattr(data["J_regressor"], "toarray"):
-        data["J_regressor"] = data["J_regressor"].toarray()
+    validate_simplify(simplify)
+    data = load_model_dict(path)
 
     v_template_full = np.asarray(data["v_template"], dtype=np.float32)
     faces = np.asarray(data["f"], dtype=np.int32)
@@ -119,7 +117,9 @@ def get_joint_names(model_data: dict) -> list[str]:
     """Extract ordered SMPL-H joint names from model data."""
     if "joint2num" not in model_data:
         return list(SMPLH_JOINT_NAMES)
-    joint2num = model_data["joint2num"].item()
+    joint2num = model_data["joint2num"]
+    if isinstance(joint2num, np.ndarray):
+        joint2num = joint2num.item()
     return [name for name, _ in sorted(joint2num.items(), key=lambda item: int(item[1]))]
 
 

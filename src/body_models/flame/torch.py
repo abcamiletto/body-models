@@ -33,7 +33,8 @@ class FLAME(BodyModel, nn.Module):
     ):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        assert simplify >= 1.0
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
         super().__init__()
         self.rotation_type = rotation_type
 
@@ -99,7 +100,9 @@ class FLAME(BodyModel, nn.Module):
         if pose is not None:
             batch_size = pose.shape[0]
         if expression is None:
-            expression = torch.zeros((batch_size, 100), device=self.rest_vertices.device, dtype=self.rest_vertices.dtype)
+            expression = torch.zeros(
+                (batch_size, 100), device=self.rest_vertices.device, dtype=self.rest_vertices.dtype
+            )
         if pose is None:
             pose = SO3.identity_as(
                 expression,
@@ -133,7 +136,9 @@ class FLAME(BodyModel, nn.Module):
         if pose is not None:
             batch_size = pose.shape[0]
         if expression is None:
-            expression = torch.zeros((batch_size, 100), device=self.rest_vertices.device, dtype=self.rest_vertices.dtype)
+            expression = torch.zeros(
+                (batch_size, 100), device=self.rest_vertices.device, dtype=self.rest_vertices.dtype
+            )
         if pose is None:
             pose = SO3.identity_as(
                 expression,
@@ -166,6 +171,8 @@ class FLAME(BodyModel, nn.Module):
                 xp=torch,
             ),
             "head_rotation": SO3.identity_as(ref, batch_dims=(batch_size,), rotation_type=self.rotation_type, xp=torch),
-            "global_rotation": SO3.identity_as(ref, batch_dims=(batch_size,), rotation_type=self.rotation_type, xp=torch),
+            "global_rotation": SO3.identity_as(
+                ref, batch_dims=(batch_size,), rotation_type=self.rotation_type, xp=torch
+            ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }

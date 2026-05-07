@@ -1,4 +1,4 @@
-"""Tests for the SMPL-X body model.
+"""Tests for the FLAME head model.
 
 - Numerical precision: parametrized across torch/numpy/jax backends
 - Gradient correctness: torch backend with gradcheck
@@ -19,9 +19,9 @@ from accelerator_utils import get_accelerator_device
 from nanomanifold import SO3
 from gradient_utils import prepare_params, sampled_gradcheck
 
-ASSET_DIR = Path(__file__).parent / "assets" / "models_hub" / "smplx-neutral"
-REFERENCE_DIR = Path(__file__).parent / "assets" / "references" / "smplx-neutral"
-MODEL_PATH = ASSET_DIR / "model.npz"
+ASSET_DIR = Path(__file__).parents[1] / "assets" / "models_hub" / "flame"
+REFERENCE_DIR = Path(__file__).parents[1] / "assets" / "references" / "flame"
+MODEL_PATH = ASSET_DIR / "model.pkl"
 INPUTS_DIR = REFERENCE_DIR / "inputs"
 OUTPUTS_DIR = REFERENCE_DIR / "outputs"
 NUM_CASES = 1
@@ -33,9 +33,14 @@ pytestmark = [
     pytest.mark.fast,
     pytest.mark.skipif(
         not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists(),
-        reason=f"SMPLX reference assets not found at {REFERENCE_DIR}",
+        reason=f"FLAME reference assets not found at {REFERENCE_DIR}",
     ),
 ]
+
+requires_model = pytest.mark.skipif(
+    not MODEL_PATH.exists() or not INPUTS_DIR.exists() or not OUTPUTS_DIR.exists(),
+    reason=f"FLAME reference assets not found at {ASSET_DIR}",
+)
 
 
 # ============================================================================
@@ -46,17 +51,12 @@ pytestmark = [
 def load_test_case(idx: int) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
     """Load inputs and reference outputs for a test case."""
     data = json.loads((INPUTS_DIR / f"{idx}.json").read_text())
+    pose = data["neck_pose"] + data["jaw_pose"] + data["leye_pose"] + data["reye_pose"]
     inputs = {
         "shape": np.array(data["shape"], dtype=np.float32),
         "expression": np.array(data["expression"], dtype=np.float32),
-        "body_pose": np.array(data["body_pose"], dtype=np.float32).reshape(21, 3),
-        "hand_pose": np.concatenate([data["left_hand_pose"], data["right_hand_pose"]], axis=-1)
-        .astype(np.float32)
-        .reshape(30, 3),
-        "head_pose": np.concatenate([data["jaw_pose"], data["leye_pose"], data["reye_pose"]], axis=-1)
-        .astype(np.float32)
-        .reshape(3, 3),
-        "pelvis_rotation": np.array(data["global_orient"], dtype=np.float32),
+        "pose": np.array(pose, dtype=np.float32).reshape(4, 3),
+        "head_rotation": np.array(data["global_orient"], dtype=np.float32),
         "global_translation": np.array(data["transl"], dtype=np.float32),
     }
     outputs = {
@@ -73,19 +73,17 @@ def convert_rotation_inputs(inputs: dict[str, np.ndarray], rotation_type: str) -
     return {
         "shape": inputs["shape"],
         "expression": inputs["expression"],
-        "body_pose": SO3.convert(inputs["body_pose"], src="axis_angle", dst=rotation_type, xp=np),
-        "hand_pose": SO3.convert(inputs["hand_pose"], src="axis_angle", dst=rotation_type, xp=np),
-        "head_pose": SO3.convert(inputs["head_pose"], src="axis_angle", dst=rotation_type, xp=np),
-        "pelvis_rotation": SO3.convert(inputs["pelvis_rotation"], src="axis_angle", dst=rotation_type, xp=np),
+        "pose": SO3.convert(inputs["pose"], src="axis_angle", dst=rotation_type, xp=np),
+        "head_rotation": SO3.convert(inputs["head_rotation"], src="axis_angle", dst=rotation_type, xp=np),
         "global_translation": inputs["global_translation"],
     }
 
 
-def _smplx_backend(backend: str):
+def _flame_backend(backend: str):
     if backend == "jax":
         pytest.importorskip("jax.numpy")
-    module = import_module(f"body_models.smplx.{backend}")
-    return getattr(module, "SMPLX")
+    module = import_module(f"body_models.flame.{backend}")
+    return getattr(module, "FLAME")
 
 
 def _backend_array(backend: str, value: np.ndarray):
@@ -109,88 +107,84 @@ def _to_numpy(backend: str, value):
 # ============================================================================
 
 
+@requires_model
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_torch(idx: int) -> None:
     """Test PyTorch forward_vertices matches reference."""
-    from body_models.smplx.torch import SMPLX
+    from body_models.flame.torch import FLAME
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
+    model = FLAME(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     with torch.no_grad():
         verts = model.forward_vertices(
-            shape=torch.as_tensor(inputs["shape"])[None],
-            expression=torch.as_tensor(inputs["expression"])[None],
-            body_pose=torch.as_tensor(inputs["body_pose"])[None],
-            hand_pose=torch.as_tensor(inputs["hand_pose"])[None],
-            head_pose=torch.as_tensor(inputs["head_pose"])[None],
-            pelvis_rotation=torch.as_tensor(inputs["pelvis_rotation"])[None],
-            global_translation=torch.as_tensor(inputs["global_translation"])[None],
+            shape=torch.tensor(inputs["shape"])[None],
+            expression=torch.tensor(inputs["expression"])[None],
+            pose=torch.tensor(inputs["pose"])[None],
+            head_rotation=torch.tensor(inputs["head_rotation"])[None],
+            global_translation=torch.tensor(inputs["global_translation"])[None],
         )
 
     np.testing.assert_allclose(verts[0].numpy(), ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
+@requires_model
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_numpy(idx: int) -> None:
     """Test NumPy forward_vertices matches reference."""
-    from body_models.smplx.numpy import SMPLX
+    from body_models.flame.numpy import FLAME
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
+    model = FLAME(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     verts = model.forward_vertices(
         shape=inputs["shape"][None],
         expression=inputs["expression"][None],
-        body_pose=inputs["body_pose"][None],
-        hand_pose=inputs["hand_pose"][None],
-        head_pose=inputs["head_pose"][None],
-        pelvis_rotation=inputs["pelvis_rotation"][None],
+        pose=inputs["pose"][None],
+        head_rotation=inputs["head_rotation"][None],
         global_translation=inputs["global_translation"][None],
     )
 
     np.testing.assert_allclose(verts[0], ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
+@requires_model
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_jax(idx: int) -> None:
     """Test JAX forward_vertices matches reference."""
     jnp = pytest.importorskip("jax.numpy")
-    from body_models.smplx.jax import SMPLX
+    from body_models.flame.jax import FLAME
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
+    model = FLAME(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     verts = model.forward_vertices(
         shape=jnp.array(inputs["shape"])[None],
         expression=jnp.array(inputs["expression"])[None],
-        body_pose=jnp.array(inputs["body_pose"])[None],
-        hand_pose=jnp.array(inputs["hand_pose"])[None],
-        head_pose=jnp.array(inputs["head_pose"])[None],
-        pelvis_rotation=jnp.array(inputs["pelvis_rotation"])[None],
+        pose=jnp.array(inputs["pose"])[None],
+        head_rotation=jnp.array(inputs["head_rotation"])[None],
         global_translation=jnp.array(inputs["global_translation"])[None],
     )
 
     np.testing.assert_allclose(np.asarray(verts[0]), ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
+@requires_model
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_skeleton_torch(idx: int) -> None:
     """Test PyTorch forward_skeleton matches reference joint positions."""
-    from body_models.smplx.torch import SMPLX
+    from body_models.flame.torch import FLAME
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
+    model = FLAME(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     with torch.no_grad():
         transforms = model.forward_skeleton(
-            shape=torch.as_tensor(inputs["shape"])[None],
-            expression=torch.as_tensor(inputs["expression"])[None],
-            body_pose=torch.as_tensor(inputs["body_pose"])[None],
-            hand_pose=torch.as_tensor(inputs["hand_pose"])[None],
-            head_pose=torch.as_tensor(inputs["head_pose"])[None],
-            pelvis_rotation=torch.as_tensor(inputs["pelvis_rotation"])[None],
-            global_translation=torch.as_tensor(inputs["global_translation"])[None],
+            shape=torch.tensor(inputs["shape"])[None],
+            expression=torch.tensor(inputs["expression"])[None],
+            pose=torch.tensor(inputs["pose"])[None],
+            head_rotation=torch.tensor(inputs["head_rotation"])[None],
+            global_translation=torch.tensor(inputs["global_translation"])[None],
         )
 
     joints = transforms[0, :, :3, 3].numpy()
@@ -198,21 +192,20 @@ def test_forward_skeleton_torch(idx: int) -> None:
     np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
 
 
+@requires_model
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_skeleton_numpy(idx: int) -> None:
     """Test NumPy forward_skeleton matches reference joint positions."""
-    from body_models.smplx.numpy import SMPLX
+    from body_models.flame.numpy import FLAME
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
+    model = FLAME(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     transforms = model.forward_skeleton(
         shape=inputs["shape"][None],
         expression=inputs["expression"][None],
-        body_pose=inputs["body_pose"][None],
-        hand_pose=inputs["hand_pose"][None],
-        head_pose=inputs["head_pose"][None],
-        pelvis_rotation=inputs["pelvis_rotation"][None],
+        pose=inputs["pose"][None],
+        head_rotation=inputs["head_rotation"][None],
         global_translation=inputs["global_translation"][None],
     )
 
@@ -221,22 +214,21 @@ def test_forward_skeleton_numpy(idx: int) -> None:
     np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
 
 
+@requires_model
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_skeleton_jax(idx: int) -> None:
     """Test JAX forward_skeleton matches reference joint positions."""
     jnp = pytest.importorskip("jax.numpy")
-    from body_models.smplx.jax import SMPLX
+    from body_models.flame.jax import FLAME
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
+    model = FLAME(model_path=MODEL_PATH)
     inputs, ref = load_test_case(idx)
 
     transforms = model.forward_skeleton(
         shape=jnp.array(inputs["shape"])[None],
         expression=jnp.array(inputs["expression"])[None],
-        body_pose=jnp.array(inputs["body_pose"])[None],
-        hand_pose=jnp.array(inputs["hand_pose"])[None],
-        head_pose=jnp.array(inputs["head_pose"])[None],
-        pelvis_rotation=jnp.array(inputs["pelvis_rotation"])[None],
+        pose=jnp.array(inputs["pose"])[None],
+        head_rotation=jnp.array(inputs["head_rotation"])[None],
         global_translation=jnp.array(inputs["global_translation"])[None],
     )
 
@@ -245,32 +237,31 @@ def test_forward_skeleton_jax(idx: int) -> None:
     np.testing.assert_allclose(joints[:num_joints], ref["joints"][:num_joints], rtol=RTOL, atol=ATOL)
 
 
+@requires_model
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 @pytest.mark.parametrize("rotation_type", ROTATION_TYPES)
 def test_rotation_types(rotation_type: str, backend: str) -> None:
-    """Test SMPL-X matches axis-angle across rotation representations."""
-    SMPLX = _smplx_backend(backend)
+    """Test FLAME matches axis-angle across rotation representations."""
+    FLAME = _flame_backend(backend)
     inputs, _ = load_test_case(0)
-    native_model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
-    rotated_model = SMPLX(
-        model_path=MODEL_PATH,
-        flat_hand_mean=False,
-        rotation_type=rotation_type,
-    )
+    native_model = FLAME(model_path=MODEL_PATH)
+    rotated_model = FLAME(model_path=MODEL_PATH, rotation_type=rotation_type)
 
+    native_kwargs = {k: _backend_array(backend, v[None]) for k, v in inputs.items()}
     rotated_inputs = convert_rotation_inputs(inputs, rotation_type)
-    native_kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
-    rotated_kwargs = {k: _backend_array(backend, v)[None] for k, v in rotated_inputs.items()}
+    rotated_kwargs = {k: _backend_array(backend, v[None]) for k, v in rotated_inputs.items()}
 
-    context = torch.no_grad() if backend == "torch" else nullcontext()
-    with context:
-        native_verts = native_model.forward_vertices(**native_kwargs)
+    with torch.no_grad() if backend == "torch" else nullcontext():
+        native_vertices = native_model.forward_vertices(**native_kwargs)
+        rotated_vertices = rotated_model.forward_vertices(**rotated_kwargs)
         native_skeleton = native_model.forward_skeleton(**native_kwargs)
-        rotated_verts = rotated_model.forward_vertices(**rotated_kwargs)
         rotated_skeleton = rotated_model.forward_skeleton(**rotated_kwargs)
 
     np.testing.assert_allclose(
-        _to_numpy(backend, rotated_verts), _to_numpy(backend, native_verts), rtol=RTOL, atol=ATOL
+        _to_numpy(backend, rotated_vertices),
+        _to_numpy(backend, native_vertices),
+        rtol=RTOL,
+        atol=ATOL,
     )
     np.testing.assert_allclose(
         _to_numpy(backend, rotated_skeleton),
@@ -280,11 +271,12 @@ def test_rotation_types(rotation_type: str, backend: str) -> None:
     )
 
 
+@requires_model
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_vertex_subset_matches_full_output(backend: str) -> None:
     """Test vertex_indices returns the same vertices as slicing the full output."""
-    SMPLX = _smplx_backend(backend)
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
+    FLAME = _flame_backend(backend)
+    model = FLAME(model_path=MODEL_PATH)
     inputs, _ = load_test_case(0)
     kwargs = {k: _backend_array(backend, v)[None] for k, v in inputs.items()}
     vertex_indices = [0, 10, 1, 10, 25]
@@ -302,15 +294,6 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
     )
 
 
-@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
-def test_constructor_rejects_removed_use_hand_pca_kwarg(backend: str) -> None:
-    """Removed compatibility kwargs should not linger in the public constructor."""
-    SMPLX = _smplx_backend(backend)
-
-    with pytest.raises(TypeError, match="use_hand_pca"):
-        SMPLX(model_path=MODEL_PATH, use_hand_pca=True)
-
-
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================
@@ -318,13 +301,17 @@ def test_constructor_rejects_removed_use_hand_pca_kwarg(backend: str) -> None:
 
 @pytest.fixture
 def model_float64():
-    """Create SMPLX model in float64 for gradient checking."""
-    from body_models.smplx.torch import SMPLX
+    """Create FLAME model in float64 for gradient checking."""
+    from body_models.flame.torch import FLAME
 
-    model = SMPLX(model_path=MODEL_PATH)
+    if not MODEL_PATH.exists():
+        pytest.skip(f"FLAME model not found at {MODEL_PATH}")
+
+    model = FLAME(model_path=MODEL_PATH)
     return model.to(torch.float64).eval()
 
 
+@requires_model
 def test_gradients_forward_vertices(model_float64) -> None:
     """Test gradients flow correctly through forward_vertices."""
     params = prepare_params(model_float64.get_rest_pose(batch_size=1))
@@ -337,6 +324,7 @@ def test_gradients_forward_vertices(model_float64) -> None:
     assert sampled_gradcheck(fn, inputs, n_samples=GRADCHECK_SAMPLES)
 
 
+@requires_model
 def test_gradients_forward_skeleton(model_float64) -> None:
     """Test gradients flow correctly through forward_skeleton."""
     params = prepare_params(model_float64.get_rest_pose(batch_size=1))
@@ -354,50 +342,21 @@ def test_gradients_forward_skeleton(model_float64) -> None:
 # ============================================================================
 
 
-@pytest.mark.parametrize("batch_shape", [(2, 3), (2, 1, 3)])
-def test_forward_arbitrary_batch_dims_torch(batch_shape: tuple[int, ...]) -> None:
-    """Test torch forward_* supports multiple leading batch dimensions."""
-    from body_models.smplx.torch import SMPLX
-
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False)
-    flat_batch = int(np.prod(batch_shape))
-
-    params_flat = model.get_rest_pose(batch_size=flat_batch)
-    params_flat["shape"] = torch.randn(flat_batch, 10, dtype=torch.float32)
-    params_flat["body_pose"] = torch.randn(flat_batch, model.NUM_BODY_JOINTS, 3, dtype=torch.float32) * 0.1
-    params_flat["hand_pose"] = torch.randn(flat_batch, model.NUM_HAND_JOINTS, 3, dtype=torch.float32) * 0.05
-    params_flat["head_pose"] = torch.randn(flat_batch, model.NUM_HEAD_JOINTS, 3, dtype=torch.float32) * 0.05
-    params_flat["expression"] = torch.randn(flat_batch, 10, dtype=torch.float32) * 0.1
-    params_flat["pelvis_rotation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.1
-    params_flat["global_translation"] = torch.randn(flat_batch, 3, dtype=torch.float32) * 0.01
-
-    params_nd = {key: value.reshape(*batch_shape, *value.shape[1:]) for key, value in params_flat.items()}
-
-    verts_nd = model.forward_vertices(**params_nd)
-    skel_nd = model.forward_skeleton(**params_nd)
-    verts_flat = model.forward_vertices(**params_flat)
-    skel_flat = model.forward_skeleton(**params_flat)
-
-    assert verts_nd.shape == (*batch_shape, model.num_vertices, 3)
-    assert skel_nd.shape == (*batch_shape, model.NUM_JOINTS, 4, 4)
-    torch.testing.assert_close(verts_nd.reshape(flat_batch, model.num_vertices, 3), verts_flat, rtol=1e-5, atol=1e-5)
-    torch.testing.assert_close(skel_nd.reshape(flat_batch, model.NUM_JOINTS, 4, 4), skel_flat, rtol=1e-5, atol=1e-5)
-
-
+@requires_model
 def test_forward_accelerator_optional_defaults() -> None:
     """Test accelerator forward_* with omitted optional params stays on-device."""
-    from body_models.smplx.torch import SMPLX
+    from body_models.flame.torch import FLAME
 
     device = get_accelerator_device()
     if device is None:
         pytest.skip("No accelerator available (cuda or mps)")
 
-    model = SMPLX(model_path=MODEL_PATH, flat_hand_mean=False).to(device)
+    model = FLAME(model_path=MODEL_PATH).to(device)
     B = 2
     params = model.get_rest_pose(batch_size=B)
-    params["body_pose"] = torch.randn(B, model.NUM_BODY_JOINTS, 3, device=device, dtype=torch.float32)
+    params["pose"] = torch.randn(B, model.NUM_HEAD_JOINTS, 3, device=device, dtype=torch.float32)
     params.pop("expression")
-    params.pop("pelvis_rotation")
+    params.pop("head_rotation")
 
     with torch.no_grad():
         verts = model.forward_vertices(**params)
@@ -407,13 +366,14 @@ def test_forward_accelerator_optional_defaults() -> None:
     assert skel.device.type == device.type
 
 
+@requires_model
 def test_simplify() -> None:
     """Test mesh simplification reduces vertex/face count and forward pass works."""
-    from body_models.smplx.torch import SMPLX
+    from body_models.flame.torch import FLAME
 
-    model_orig = SMPLX(model_path=MODEL_PATH, simplify=1.0)
-    model_2x = SMPLX(model_path=MODEL_PATH, simplify=2.0)
-    model_4x = SMPLX(model_path=MODEL_PATH, simplify=4.0)
+    model_orig = FLAME(model_path=MODEL_PATH, simplify=1.0)
+    model_2x = FLAME(model_path=MODEL_PATH, simplify=2.0)
+    model_4x = FLAME(model_path=MODEL_PATH, simplify=4.0)
 
     # Check vertex/face counts are reduced
     assert model_2x.num_vertices < model_orig.num_vertices
@@ -431,7 +391,7 @@ def test_simplify() -> None:
     skel = model_2x.forward_skeleton(**params)
 
     assert verts.shape == (2, model_2x.num_vertices, 3)
-    assert skel.shape == (2, 55, 4, 4)
+    assert skel.shape == (2, 5, 4, 4)
 
     # Skeleton should be identical (uses full-resolution mesh internally)
     params_orig = model_orig.get_rest_pose(batch_size=1)
