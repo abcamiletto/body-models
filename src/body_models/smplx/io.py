@@ -1,18 +1,37 @@
 """I/O utilities for SMPL-X model."""
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
-from jaxtyping import Int
+from jaxtyping import Float, Int
 
-from .. import config
-from ..common import simplify_mesh
+from body_models import config
+from body_models.common import simplify_mesh
 
 PathLike = Path | str
-
-__all__ = ["get_model_path", "get_joint_names", "load_model_data", "compute_kinematic_fronts", "simplify_mesh"]
+Array = Any
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
+__all__ = ["load_model_data"]
+
+
+@dataclass(frozen=True)
+class SmplxWeights:
+    v_template: Float[Array, "V 3"]
+    faces: Int[Array, "F 3"]
+    lbs_weights: Float[Array, "V 55"]
+    shapedirs: Float[Array, "V 3 S"]
+    exprdirs: Float[Array, "V 3 E"]
+    posedirs: Float[Array, "P V*3"]
+    j_template: Float[Array, "55 3"]
+    j_shapedirs: Float[Array, "55 3 S"]
+    j_exprdirs: Float[Array, "55 3 E"]
+    hand_mean: Float[Array, "2 45"]
+    parents: list[int]
+    kinematic_fronts: list[Front]
+    joint_names: list[str]
 
 
 def validate_path(model_path: PathLike) -> Path:
@@ -47,9 +66,53 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
     return validate_path(resolved_path)
 
 
-def load_model_data(path: Path) -> dict:
+def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> SmplxWeights:
     """Load SMPL-X model data from .npz file."""
-    return dict(np.load(path, allow_pickle=True))
+    assert simplify >= 1.0
+    data = dict(np.load(path, allow_pickle=True))
+
+    v_template_full = np.asarray(data["v_template"], dtype=np.float32)
+    faces = np.asarray(data["f"], dtype=np.int32)
+    lbs_weights = np.asarray(data["weights"], dtype=np.float32)
+    shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
+    posedirs = np.asarray(data["posedirs"], dtype=np.float32)
+    J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
+    parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+    parents[0] = -1
+
+    v_template = v_template_full
+    shapedirs = shapedirs_full
+    if simplify > 1.0:
+        target_faces = int(len(faces) / simplify)
+        v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
+        lbs_weights = lbs_weights[vertex_map]
+        shapedirs = shapedirs_full[vertex_map]
+        posedirs = posedirs[vertex_map]
+
+    hand_mean = np.stack(
+        [
+            np.asarray(data["hands_meanl"], dtype=np.float32),
+            np.asarray(data["hands_meanr"], dtype=np.float32),
+        ]
+    )
+    if flat_hand_mean:
+        hand_mean = np.zeros_like(hand_mean)
+
+    return SmplxWeights(
+        v_template=v_template,
+        faces=faces,
+        lbs_weights=lbs_weights,
+        shapedirs=shapedirs[:, :, :300],
+        exprdirs=shapedirs[:, :, 300:400],
+        posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
+        j_template=J_regressor @ v_template_full,
+        j_shapedirs=np.einsum("jv,vds->jds", J_regressor, shapedirs_full[:, :, :300]),
+        j_exprdirs=np.einsum("jv,vde->jde", J_regressor, shapedirs_full[:, :, 300:400]),
+        hand_mean=hand_mean,
+        parents=parents.tolist(),
+        kinematic_fronts=compute_kinematic_fronts(parents),
+        joint_names=get_joint_names(data),
+    )
 
 
 def get_joint_names(model_data: dict) -> list[str]:

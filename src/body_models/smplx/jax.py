@@ -1,32 +1,30 @@
-"""JAX backend for SMPL-X model using Flax NNX."""
+"""JAX backend for SMPL-X model."""
 
 from pathlib import Path
 from typing import Literal
 
 import jax
 import jax.numpy as jnp
-import numpy as np
-from flax import nnx
 from jaxtyping import Float, Int
 
-from ..base import BodyModel
+from body_models import common
+from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import compute_kinematic_fronts, get_joint_names, get_model_path, load_model_data, simplify_mesh
-
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
+from body_models.smplx.backends import jax as backend
+from body_models.smplx.io import get_model_path, load_model_data
 
 __all__ = ["SMPLX"]
 
 
-class SMPLX(BodyModel, nnx.Module):
-    """SMPL-X body model with JAX/Flax NNX backend."""
+class SMPLX(BodyModel):
+    """SMPL-X body model with JAX backend."""
 
     NUM_BODY_JOINTS = 21
-    NUM_HAND_JOINTS = 30  # 15 per hand
-    NUM_HEAD_JOINTS = 3  # jaw, left eye, right eye
-    NUM_JOINTS = 55  # 22 body + 30 hands + 3 head
+    NUM_HAND_JOINTS = 30
+    NUM_HEAD_JOINTS = 3
+    NUM_JOINTS = 55
 
     def __init__(
         self,
@@ -34,7 +32,7 @@ class SMPLX(BodyModel, nnx.Module):
         gender: Literal["neutral", "male", "female"] | None = None,
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
@@ -42,72 +40,16 @@ class SMPLX(BodyModel, nnx.Module):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         assert simplify >= 1.0
 
-        # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
 
         resolved_path = get_model_path(model_path, gender)
-        data = load_model_data(resolved_path)
-
-        v_template_full = np.asarray(data["v_template"], dtype=np.float32)
-        faces = np.asarray(data["f"], dtype=np.int32)
-        lbs_weights = np.asarray(data["weights"], dtype=np.float32)
-        shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
-        shapedirs = shapedirs_full
-        posedirs = np.asarray(data["posedirs"], dtype=np.float32)
-        J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
-        parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
-        parents[0] = -1
-
-        if simplify > 1.0:
-            target_faces = int(len(faces) / simplify)
-            v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
-            lbs_weights = lbs_weights[vertex_map]
-            shapedirs = shapedirs_full[vertex_map]
-            posedirs = posedirs[vertex_map]
-        else:
-            v_template = v_template_full
-
-        # Store as nnx.Variable for proper pytree handling
-        self.v_template = nnx.Variable(jnp.asarray(v_template))
-        self.v_template_full = nnx.Variable(jnp.asarray(v_template_full))
-        self.lbs_weights = nnx.Variable(jnp.asarray(lbs_weights))
-        self.J_regressor = nnx.Variable(jnp.asarray(J_regressor))
-        self._faces = nnx.Variable(jnp.asarray(faces))
-
-        # Hand pose mean
-        hand_mean = np.stack(
-            [
-                np.asarray(data["hands_meanl"], dtype=np.float32),
-                np.asarray(data["hands_meanr"], dtype=np.float32),
-            ]
-        )
-        if flat_hand_mean:
-            hand_mean = np.zeros_like(hand_mean)
-        self.hand_mean = nnx.Variable(jnp.asarray(hand_mean))
-
-        # Blend shapes - split into shape and expression
-        self.shapedirs = nnx.Variable(jnp.asarray(shapedirs[:, :, :300]))
-        self.shapedirs_full = nnx.Variable(jnp.asarray(shapedirs_full[:, :, :300]))
-        self.exprdirs = nnx.Variable(jnp.asarray(shapedirs[:, :, 300:400]))
-        self.exprdirs_full = nnx.Variable(jnp.asarray(shapedirs_full[:, :, 300:400]))
-        self.posedirs = nnx.Variable(jnp.asarray(posedirs.reshape(-1, posedirs.shape[-1]).T))
-
-        self.parents = parents.tolist()
-        self._kinematic_fronts = compute_kinematic_fronts(parents)
-        self._joint_names = get_joint_names(data)
-
-        # Precomputed joint regression matrices
-        _j_template = J_regressor @ v_template_full
-        _j_shapedirs = np.einsum("jv,vds->jds", J_regressor, shapedirs_full[:, :, :300])
-        _j_exprdirs = np.einsum("jv,vde->jde", J_regressor, shapedirs_full[:, :, 300:400])
-        self._j_template = nnx.Variable(jnp.asarray(_j_template))
-        self._j_shapedirs = nnx.Variable(jnp.asarray(_j_shapedirs))
-        self._j_exprdirs = nnx.Variable(jnp.asarray(_j_exprdirs))
+        weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        self.weights = common.jaxify(weights)
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
-        return self._faces[...]
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -115,19 +57,39 @@ class SMPLX(BodyModel, nnx.Module):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return self.weights.joint_names
 
     @property
     def num_vertices(self) -> int:
-        return self.v_template[...].shape[0]
+        return self.weights.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[jax.Array, "V 55"]:
-        return self.lbs_weights[...]
+        return self.weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.v_template[...]
+        return self.weights.v_template
+
+    @property
+    def shapedirs(self) -> Float[jax.Array, "V 3 S"]:
+        return self.weights.shapedirs
+
+    @property
+    def exprdirs(self) -> Float[jax.Array, "V 3 E"]:
+        return self.weights.exprdirs
+
+    @property
+    def posedirs(self) -> Float[jax.Array, "P V*3"]:
+        return self.weights.posedirs
+
+    @property
+    def lbs_weights(self) -> Float[jax.Array, "V 55"]:
+        return self.weights.lbs_weights
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
@@ -141,18 +103,8 @@ class SMPLX(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
-        return core.forward_vertices(
-            v_template=self.v_template[...],
-            shapedirs=self.shapedirs[...],
-            exprdirs=self.exprdirs[...],
-            posedirs=self.posedirs[...],
-            lbs_weights=self.lbs_weights[...],
-            j_template=self._j_template[...],
-            j_shapedirs=self._j_shapedirs[...],
-            j_exprdirs=self._j_exprdirs[...],
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean[...],
+        return backend.forward_vertices(
+            weights=self.weights,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
@@ -177,13 +129,8 @@ class SMPLX(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B 55 4 4"]:
-        return core.forward_skeleton(
-            j_template=self._j_template[...],
-            j_shapedirs=self._j_shapedirs[...],
-            j_exprdirs=self._j_exprdirs[...],
-            parents=self.parents,
-            kinematic_fronts=self._kinematic_fronts,
-            hand_mean=self.hand_mean[...],
+        return backend.forward_skeleton(
+            weights=self.weights,
             shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,

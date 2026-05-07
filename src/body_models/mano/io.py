@@ -1,45 +1,36 @@
 """I/O utilities for MANO model."""
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
-from jaxtyping import Int
+from jaxtyping import Float, Int
 
-from .. import config
-from ..common import simplify_mesh
-from ..smpl.io import _load_smpl_pkl
+from body_models import config
+from body_models.common import simplify_mesh
+from body_models.mano.constants import MANO_JOINT_NAMES
+from body_models.smpl.io import _load_smpl_pkl
 
 PathLike = Path | str
-
-__all__ = [
-    "validate_path",
-    "get_model_path",
-    "get_joint_names",
-    "load_model_data",
-    "compute_kinematic_fronts",
-    "simplify_mesh",
-]
+Array = Any
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
-MANO_JOINT_NAMES = [
-    "wrist",
-    "index1",
-    "index2",
-    "index3",
-    "middle1",
-    "middle2",
-    "middle3",
-    "pinky1",
-    "pinky2",
-    "pinky3",
-    "ring1",
-    "ring2",
-    "ring3",
-    "thumb1",
-    "thumb2",
-    "thumb3",
-]
+__all__ = ["load_model_data"]
+
+@dataclass(frozen=True)
+class ManoWeights:
+    v_template: Float[Array, "V 3"]
+    faces: Int[Array, "F 3"]
+    lbs_weights: Float[Array, "V 16"]
+    shapedirs: Float[Array, "V 3 S"]
+    posedirs: Float[Array, "P V*3"]
+    j_template: Float[Array, "16 3"]
+    j_shapedirs: Float[Array, "16 3 S"]
+    hand_mean: Float[Array, "45"]
+    parents: list[int]
+    kinematic_fronts: list[Front]
+    joint_names: list[str]
 
 
 def validate_path(model_path: PathLike) -> Path:
@@ -74,8 +65,9 @@ def get_model_path(model_path: PathLike | None, side: Literal["right", "left"] |
     return validate_path(resolved_path)
 
 
-def load_model_data(path: Path) -> dict:
+def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> ManoWeights:
     """Load MANO model data from .pkl or .npz file."""
+    assert simplify >= 1.0
     data = dict(np.load(path, allow_pickle=True)) if path.suffix == ".npz" else _load_smpl_pkl(path)
     if hasattr(data["J_regressor"], "toarray"):
         data["J_regressor"] = data["J_regressor"].toarray()
@@ -84,7 +76,42 @@ def load_model_data(path: Path) -> dict:
         data["shapedirs"] = np.asarray(data["shapedirs"]).reshape(v_template.shape[0], 3, -1)
     if np.asarray(data["posedirs"]).ndim == 1:
         data["posedirs"] = np.asarray(data["posedirs"]).reshape(v_template.shape[0], 3, -1)
-    return data
+
+    v_template_full = np.asarray(data["v_template"], dtype=np.float32)
+    faces = np.asarray(data["f"], dtype=np.int32)
+    lbs_weights = np.asarray(data["weights"], dtype=np.float32)
+    shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
+    posedirs = np.asarray(data["posedirs"], dtype=np.float32)
+    J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
+    parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
+    parents[0] = -1
+
+    v_template = v_template_full
+    shapedirs = shapedirs_full
+    if simplify > 1.0:
+        target_faces = int(len(faces) / simplify)
+        v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
+        lbs_weights = lbs_weights[vertex_map]
+        shapedirs = shapedirs_full[vertex_map]
+        posedirs = posedirs[vertex_map]
+
+    hand_mean = np.asarray(data["hands_mean"], dtype=np.float32)
+    if flat_hand_mean:
+        hand_mean = np.zeros_like(hand_mean)
+
+    return ManoWeights(
+        v_template=v_template,
+        faces=faces,
+        lbs_weights=lbs_weights,
+        shapedirs=shapedirs,
+        posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
+        j_template=J_regressor @ v_template_full,
+        j_shapedirs=np.einsum("jv,vds->jds", J_regressor, shapedirs_full),
+        hand_mean=hand_mean,
+        parents=parents.tolist(),
+        kinematic_fronts=compute_kinematic_fronts(parents),
+        joint_names=get_joint_names(data),
+    )
 
 
 def get_joint_names(model_data: dict) -> list[str]:
