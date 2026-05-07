@@ -126,7 +126,7 @@ def _skin_vertices(
     batch_size, num_vertices = v_shaped.shape[:2]
     output = np.empty_like(v_shaped)
 
-    for batch in prange(batch_size):
+    for batch in prange(batch_size):  # ty: ignore[not-iterable]
         for vertex in range(num_vertices):
             vx = v_shaped[batch, vertex, 0]
             vy = v_shaped[batch, vertex, 1]
@@ -176,7 +176,7 @@ def _forward_kinematics(
     R_world = np.empty_like(R_local)
     t_world = np.empty_like(t_local)
 
-    for batch in prange(batch_size):
+    for batch in prange(batch_size):  # ty: ignore[not-iterable]
         for joint in range(num_joints):
             parent = parents[joint]
             if parent < 0:

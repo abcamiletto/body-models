@@ -182,6 +182,7 @@ def forward_skeleton(
         return T_world
 
     if global_rotation is None:
+        assert global_translation is not None
         t = T_world[..., :3, 3] + global_translation[:, None]
         return common.set(T_world, (..., slice(None, 3), 3), t, xp=xp)
 
