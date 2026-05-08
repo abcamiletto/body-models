@@ -60,7 +60,7 @@ class AnnyIdentitySource(IdentitySource):
         super().__init__(transfer_data)
         self.model = ANNY(model_path=get_identity_model_path("anny"), all_phenotypes=False, simplify=1.0)
         rotation, translation = core.fit_rigid_transform(
-            self.model.template_vertices,
+            self.model.weights.template_vertices,
             transfer_data.source_vertices,
             xp=np,
         )
@@ -81,10 +81,10 @@ class AnnyIdentitySource(IdentitySource):
     ) -> Float[np.ndarray, "B V 3"]:
         del scale_params
         return anny_identity_shape(
-            template_vertices=self.model.template_vertices,
-            blendshapes=self.model.blendshapes,
-            phenotype_mask=self.model.phenotype_mask,
-            anchors=self.model._anchors,
+            template_vertices=self.model.weights.template_vertices,
+            blendshapes=self.model.weights.blendshapes,
+            phenotype_mask=self.model.weights.phenotype_mask,
+            anchors=self.model.weights.anchors,
             identity=identity,
             xp=np,
         )

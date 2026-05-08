@@ -59,7 +59,8 @@ def _register_jax_dataclass(cls: type, jax: Any) -> None:
         static = {}
         for field in fields(obj):
             value = getattr(obj, field.name)
-            if isinstance(value, jax.Array):
+            child_leaves, _ = jax.tree_util.tree_flatten(value)
+            if child_leaves and all(isinstance(leaf, jax.Array) for leaf in child_leaves):
                 children.append(value)
                 child_names.append(field.name)
             else:

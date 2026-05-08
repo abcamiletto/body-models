@@ -1,88 +1,43 @@
-"""NumPy backend for ANNY model."""
+"""NumPy frontend for ANNY."""
 
 from pathlib import Path
 
 import numpy as np
 from jaxtyping import Float, Int
-
-from ..base import BodyModel
 from nanomanifold import SO3
 
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import (
-    EXCLUDED_PHENOTYPES,
-    PHENOTYPE_LABELS,
-    build_anchors,
-    load_model_data_numpy,
-)
+from body_models.anny.backends import numpy as backend
+from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
+from body_models.base import BodyModel
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
 
-PathLike = Path | str
-
-
 class ANNY(BodyModel):
-    """ANNY body model with NumPy backend.
-
-    Args:
-        model_path: Path to ANNY model directory. Auto-downloads if None.
-        rig: Skeleton rig type ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo").
-        topology: Mesh topology ("default" or "makehuman").
-        all_phenotypes: Include race, cupsize, firmness phenotypes.
-        extrapolate_phenotypes: Allow phenotype values outside [0, 1].
-        simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
-    """
+    """ANNY body model with NumPy backend."""
 
     def __init__(
         self,
-        model_path: PathLike | None = None,
+        model_path: Path | str | None = None,
         *,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ) -> None:
-        assert rig in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo")
-        assert topology in ("default", "makehuman")
-        assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
+            raise ValueError(f"Invalid rig: {rig}")
+        if topology not in ("default", "makehuman"):
+            raise ValueError(f"Invalid topology: {topology}")
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
 
-        data = load_model_data_numpy(
-            model_path=model_path,
-            rig=rig,
-            topology=topology,
-            simplify=simplify,
-            dtype=np.float32,
-        )
-
-        # Store model data
-        self.template_vertices = data["template_vertices"]
-        self.blendshapes = data["blendshapes"]
-        self.template_bone_heads = data["template_bone_heads"]
-        self.template_bone_tails = data["template_bone_tails"]
-        self.bone_heads_blendshapes = data["bone_heads_blendshapes"]
-        self.bone_tails_blendshapes = data["bone_tails_blendshapes"]
-        self.bone_rolls_rotmat = data["bone_rolls_rotmat"]
-        self.phenotype_mask = data["phenotype_mask"]
-        self.lbs_weights = data["lbs_weights"]
-        self._faces = data["faces"]
-        self.bone_labels = data["bone_labels"]
-        self.parents = data["parents"]
-        self._kinematic_fronts = data["kinematic_fronts"]
-
-        # Constants
-        dtype = np.float32
-        self._y_axis = np.array([0.0, 1.0, 0.0], dtype=dtype)
-        self._degenerate_rotation = np.diag(np.array([1.0, -1.0, -1.0], dtype=dtype))
-
-        # Phenotype anchors
-        self._anchors = build_anchors(dtype=dtype)
-
+        self.weights = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
@@ -92,28 +47,31 @@ class ANNY(BodyModel):
 
     @property
     def faces(self) -> Int[np.ndarray, "F _"]:
-        """Face indices. Shape [F, 4] for quads (original) or [F, 3] for triangles (simplified)."""
-        return self._faces
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
-        return len(self.bone_labels)
+        return len(self.weights.bone_labels)
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self.bone_labels)
+        return list(self.weights.bone_labels)
 
     @property
     def num_vertices(self) -> int:
-        return self.template_vertices.shape[0]
+        return self.weights.template_vertices.shape[0]
 
     @property
     def skin_weights(self) -> Float[np.ndarray, "V J"]:
-        return self.lbs_weights
+        return self.weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
-        return self.template_vertices
+        return self.weights.template_vertices
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
@@ -126,24 +84,10 @@ class ANNY(BodyModel):
         pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
-        """Compute mesh vertices [B, V, 3]."""
-        return core.forward_vertices(
-            template_vertices=self.template_vertices,
-            blendshapes=self.blendshapes,
-            template_bone_heads=self.template_bone_heads,
-            template_bone_tails=self.template_bone_tails,
-            bone_heads_blendshapes=self.bone_heads_blendshapes,
-            bone_tails_blendshapes=self.bone_tails_blendshapes,
-            bone_rolls_rotmat=self.bone_rolls_rotmat,
-            lbs_weights=self.lbs_weights,
-            phenotype_mask=self.phenotype_mask,
-            anchors=self._anchors,
-            kinematic_fronts=self._kinematic_fronts,
-            y_axis=self._y_axis,
-            degenerate_rotation=self._degenerate_rotation,
-            extrapolate_phenotypes=self.extrapolate_phenotypes,
+        return backend.forward_vertices(
+            weights=self.weights,
             gender=gender,
             age=age,
             muscle=muscle,
@@ -155,6 +99,7 @@ class ANNY(BodyModel):
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
     def forward_skeleton(
@@ -168,21 +113,10 @@ class ANNY(BodyModel):
         pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B J 4 4"]:
-        """Compute skeleton transforms [B, J, 4, 4]."""
-        return core.forward_skeleton(
-            template_bone_heads=self.template_bone_heads,
-            template_bone_tails=self.template_bone_tails,
-            bone_heads_blendshapes=self.bone_heads_blendshapes,
-            bone_tails_blendshapes=self.bone_tails_blendshapes,
-            bone_rolls_rotmat=self.bone_rolls_rotmat,
-            phenotype_mask=self.phenotype_mask,
-            anchors=self._anchors,
-            kinematic_fronts=self._kinematic_fronts,
-            y_axis=self._y_axis,
-            degenerate_rotation=self._degenerate_rotation,
-            extrapolate_phenotypes=self.extrapolate_phenotypes,
+        return backend.forward_skeleton(
+            weights=self.weights,
             gender=gender,
             age=age,
             muscle=muscle,
@@ -194,23 +128,24 @@ class ANNY(BodyModel):
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
-        """Get rest pose parameters."""
+        pose_ref = np.zeros((batch_size,), dtype=dtype)
         return {
             **{
-                k: np.full((batch_size,), 0.5, dtype=dtype)
-                for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
+                name: np.full((batch_size,), 0.5, dtype=dtype)
+                for name in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
             "pose": SO3.identity_as(
-                np.zeros((batch_size,), dtype=dtype),
+                pose_ref,
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
             "global_rotation": SO3.identity_as(
-                np.zeros((batch_size,), dtype=dtype),
+                pose_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=np,

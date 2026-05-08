@@ -1,99 +1,45 @@
-"""JAX backend for ANNY model using Flax NNX."""
+"""JAX frontend for ANNY."""
 
 from pathlib import Path
 
-import jax
 import jax.numpy as jnp
-import numpy as np
-from flax import nnx
 from jaxtyping import Float, Int
-
-from ..base import BodyModel
 from nanomanifold import SO3
 
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import (
-    EXCLUDED_PHENOTYPES,
-    PHENOTYPE_LABELS,
-    build_anchors,
-    load_model_data_numpy,
-)
+from body_models import common
+from body_models.anny.backends import jax as backend
+from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
+from body_models.base import BodyModel
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
 
-PathLike = Path | str
-
-
-class ANNY(BodyModel, nnx.Module):
-    """ANNY body model with JAX/Flax NNX backend.
-
-    Args:
-        model_path: Path to ANNY model directory. Auto-downloads if None.
-        rig: Skeleton rig type ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo").
-        topology: Mesh topology ("default" or "makehuman").
-        all_phenotypes: Include race, cupsize, firmness phenotypes.
-        extrapolate_phenotypes: Allow phenotype values outside [0, 1].
-        simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
-    """
+class ANNY(BodyModel):
+    """ANNY body model with JAX backend."""
 
     def __init__(
         self,
-        model_path: PathLike | None = None,
+        model_path: Path | str | None = None,
         *,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ) -> None:
-        assert rig in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo")
-        assert topology in ("default", "makehuman")
-        assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
+            raise ValueError(f"Invalid rig: {rig}")
+        if topology not in ("default", "makehuman"):
+            raise ValueError(f"Invalid topology: {topology}")
+        if simplify < 1.0:
+            raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
 
-        data = load_model_data_numpy(
-            model_path=model_path,
-            rig=rig,
-            topology=topology,
-            simplify=simplify,
-            dtype=np.float32,
-        )
-
-        # Store model data as nnx.Variable for proper pytree handling
-        self.template_vertices = nnx.Variable(jnp.asarray(data["template_vertices"]))
-        self.blendshapes = nnx.Variable(jnp.asarray(data["blendshapes"]))
-        self.template_bone_heads = nnx.Variable(jnp.asarray(data["template_bone_heads"]))
-        self.template_bone_tails = nnx.Variable(jnp.asarray(data["template_bone_tails"]))
-        self.bone_heads_blendshapes = nnx.Variable(jnp.asarray(data["bone_heads_blendshapes"]))
-        self.bone_tails_blendshapes = nnx.Variable(jnp.asarray(data["bone_tails_blendshapes"]))
-        self.bone_rolls_rotmat = nnx.Variable(jnp.asarray(data["bone_rolls_rotmat"]))
-        self.phenotype_mask = nnx.Variable(jnp.asarray(data["phenotype_mask"]))
-        self.lbs_weights = nnx.Variable(jnp.asarray(data["lbs_weights"]))
-        self._faces = nnx.Variable(jnp.asarray(data["faces"]))
-        self.bone_labels = data["bone_labels"]
-        self.parents = data["parents"]
-        self._kinematic_fronts = data["kinematic_fronts"]
-
-        # Constants
-        dtype = jnp.float32
-        self._y_axis = nnx.Variable(jnp.array([0.0, 1.0, 0.0], dtype=dtype))
-        self._degenerate_rotation = nnx.Variable(jnp.diag(jnp.array([1.0, -1.0, -1.0], dtype=dtype)))
-
-        # Phenotype anchors (stored as individual nnx.Variable)
-        anchors_np = build_anchors(dtype=np.float32)
-        self._anchor_age = nnx.Variable(jnp.asarray(anchors_np["age"]))
-        self._anchor_gender = nnx.Variable(jnp.asarray(anchors_np["gender"]))
-        self._anchor_muscle = nnx.Variable(jnp.asarray(anchors_np["muscle"]))
-        self._anchor_weight = nnx.Variable(jnp.asarray(anchors_np["weight"]))
-        self._anchor_height = nnx.Variable(jnp.asarray(anchors_np["height"]))
-        self._anchor_proportions = nnx.Variable(jnp.asarray(anchors_np["proportions"]))
-        self._anchor_cupsize = nnx.Variable(jnp.asarray(anchors_np["cupsize"]))
-        self._anchor_firmness = nnx.Variable(jnp.asarray(anchors_np["firmness"]))
-
+        data = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
+        self.weights = common.jaxify(data)
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
@@ -102,72 +48,48 @@ class ANNY(BodyModel, nnx.Module):
         )
 
     @property
-    def faces(self) -> Int[jax.Array, "F _"]:
-        """Face indices. Shape [F, 4] for quads (original) or [F, 3] for triangles (simplified)."""
-        return self._faces[...]
+    def faces(self) -> Int[jnp.ndarray, "F _"]:
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
-        return len(self.bone_labels)
+        return len(self.weights.bone_labels)
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self.bone_labels)
+        return list(self.weights.bone_labels)
 
     @property
     def num_vertices(self) -> int:
-        return self.template_vertices[...].shape[0]
+        return self.weights.template_vertices.shape[0]
 
     @property
-    def skin_weights(self) -> Float[jax.Array, "V J"]:
-        return self.lbs_weights[...]
+    def skin_weights(self) -> Float[jnp.ndarray, "V J"]:
+        return self.weights.lbs_weights
 
     @property
-    def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.template_vertices[...]
+    def rest_vertices(self) -> Float[jnp.ndarray, "V 3"]:
+        return self.weights.template_vertices
 
-    def _get_anchors_dict(self) -> dict[str, jnp.ndarray]:
-        """Get anchors as plain arrays for core functions."""
-        return {
-            "age": self._anchor_age[...],
-            "gender": self._anchor_gender[...],
-            "muscle": self._anchor_muscle[...],
-            "weight": self._anchor_weight[...],
-            "height": self._anchor_height[...],
-            "proportions": self._anchor_proportions[...],
-            "cupsize": self._anchor_cupsize[...],
-            "firmness": self._anchor_firmness[...],
-        }
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
-        gender: Float[jax.Array, "B"],
-        age: Float[jax.Array, "B"],
-        muscle: Float[jax.Array, "B"],
-        weight: Float[jax.Array, "B"],
-        height: Float[jax.Array, "B"],
-        proportions: Float[jax.Array, "B"],
-        pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"],
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        vertex_indices=None,
-    ) -> Float[jax.Array, "B V 3"]:
-        """Compute mesh vertices [B, V, 3]."""
-        return core.forward_vertices(
-            template_vertices=self.template_vertices[...],
-            blendshapes=self.blendshapes[...],
-            template_bone_heads=self.template_bone_heads[...],
-            template_bone_tails=self.template_bone_tails[...],
-            bone_heads_blendshapes=self.bone_heads_blendshapes[...],
-            bone_tails_blendshapes=self.bone_tails_blendshapes[...],
-            bone_rolls_rotmat=self.bone_rolls_rotmat[...],
-            lbs_weights=self.lbs_weights[...],
-            phenotype_mask=self.phenotype_mask[...],
-            anchors=self._get_anchors_dict(),
-            kinematic_fronts=self._kinematic_fronts,
-            y_axis=self._y_axis[...],
-            degenerate_rotation=self._degenerate_rotation[...],
-            extrapolate_phenotypes=self.extrapolate_phenotypes,
+        gender: Float[jnp.ndarray, "B"],
+        age: Float[jnp.ndarray, "B"],
+        muscle: Float[jnp.ndarray, "B"],
+        weight: Float[jnp.ndarray, "B"],
+        height: Float[jnp.ndarray, "B"],
+        proportions: Float[jnp.ndarray, "B"],
+        pose: Float[jnp.ndarray, "B J N"] | Float[jnp.ndarray, "B J 3 3"],
+        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"] | None = None,
+        global_translation: Float[jnp.ndarray, "B 3"] | None = None,
+        vertex_indices: list[int] | None = None,
+    ) -> Float[jnp.ndarray, "B V 3"]:
+        return backend.forward_vertices(
+            weights=self.weights,
             gender=gender,
             age=age,
             muscle=muscle,
@@ -179,34 +101,24 @@ class ANNY(BodyModel, nnx.Module):
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
     def forward_skeleton(
         self,
-        gender: Float[jax.Array, "B"],
-        age: Float[jax.Array, "B"],
-        muscle: Float[jax.Array, "B"],
-        weight: Float[jax.Array, "B"],
-        height: Float[jax.Array, "B"],
-        proportions: Float[jax.Array, "B"],
-        pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"],
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        joint_indices=None,
-    ) -> Float[jax.Array, "B J 4 4"]:
-        """Compute skeleton transforms [B, J, 4, 4]."""
-        return core.forward_skeleton(
-            template_bone_heads=self.template_bone_heads[...],
-            template_bone_tails=self.template_bone_tails[...],
-            bone_heads_blendshapes=self.bone_heads_blendshapes[...],
-            bone_tails_blendshapes=self.bone_tails_blendshapes[...],
-            bone_rolls_rotmat=self.bone_rolls_rotmat[...],
-            phenotype_mask=self.phenotype_mask[...],
-            anchors=self._get_anchors_dict(),
-            kinematic_fronts=self._kinematic_fronts,
-            y_axis=self._y_axis[...],
-            degenerate_rotation=self._degenerate_rotation[...],
-            extrapolate_phenotypes=self.extrapolate_phenotypes,
+        gender: Float[jnp.ndarray, "B"],
+        age: Float[jnp.ndarray, "B"],
+        muscle: Float[jnp.ndarray, "B"],
+        weight: Float[jnp.ndarray, "B"],
+        height: Float[jnp.ndarray, "B"],
+        proportions: Float[jnp.ndarray, "B"],
+        pose: Float[jnp.ndarray, "B J N"] | Float[jnp.ndarray, "B J 3 3"],
+        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"] | None = None,
+        global_translation: Float[jnp.ndarray, "B 3"] | None = None,
+        joint_indices: list[int] | None = None,
+    ) -> Float[jnp.ndarray, "B J 4 4"]:
+        return backend.forward_skeleton(
+            weights=self.weights,
             gender=gender,
             age=age,
             muscle=muscle,
@@ -218,23 +130,24 @@ class ANNY(BodyModel, nnx.Module):
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
-        """Get rest pose parameters."""
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
+        pose_ref = jnp.zeros((batch_size,), dtype=dtype)
         return {
             **{
-                k: jnp.full((batch_size,), 0.5, dtype=dtype)
-                for k in ["gender", "age", "muscle", "weight", "height", "proportions"]
+                name: jnp.full((batch_size,), 0.5, dtype=dtype)
+                for name in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
             "pose": SO3.identity_as(
-                jnp.zeros((batch_size,), dtype=dtype),
+                pose_ref,
                 batch_dims=(batch_size, self.num_joints),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
             "global_rotation": SO3.identity_as(
-                jnp.zeros((batch_size,), dtype=dtype),
+                pose_ref,
                 batch_dims=(batch_size,),
                 rotation_type=self.rotation_type,
                 xp=jnp,

@@ -2,16 +2,19 @@ import gzip
 import hashlib
 import itertools
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from .. import config
 from ..cache import download_and_extract, get_cache_dir
 
 PathLike = Path | str
+Array = Any
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
@@ -38,6 +41,18 @@ _RIG_CONFIGS = {
     "game_engine": ("rig.game_engine.json", "weights.game_engine.json"),
     "mixamo": ("rig.mixamo.json", "weights.mixamo.json"),
 }
+
+
+@dataclass(frozen=True)
+class AnnyAnchors:
+    age: Float[Array, "A"]
+    gender: Float[Array, "A"]
+    muscle: Float[Array, "A"]
+    weight: Float[Array, "A"]
+    height: Float[Array, "A"]
+    proportions: Float[Array, "A"]
+    cupsize: Float[Array, "A"]
+    firmness: Float[Array, "A"]
 
 
 def validate_path(model_path: PathLike) -> Path:
@@ -89,15 +104,38 @@ def build_kinematic_fronts(parents: list[int]) -> list[Front]:
     return fronts
 
 
-def build_anchors(dtype=np.float32) -> dict[str, np.ndarray]:
+@dataclass(frozen=True)
+class AnnyWeights:
+    template_vertices: Float[Array, "V 3"]
+    blendshapes: Float[Array, "S V 3"]
+    template_bone_heads: Float[Array, "J 3"]
+    template_bone_tails: Float[Array, "J 3"]
+    bone_heads_blendshapes: Float[Array, "S J 3"]
+    bone_tails_blendshapes: Float[Array, "S J 3"]
+    bone_rolls_rotmat: Float[Array, "J 3 3"]
+    phenotype_mask: Float[Array, "S P"]
+    lbs_weights: Float[Array, "V J"]
+    faces: Int[Array, "F _"]
+    bone_labels: list[str]
+    parents: list[int]
+    kinematic_fronts: list[Front]
+    anchors: AnnyAnchors
+    y_axis: Float[Array, "3"]
+    degenerate_rotation: Float[Array, "3 3"]
+
+
+def build_anchors(dtype=np.float32) -> AnnyAnchors:
     """Build phenotype interpolation anchors."""
-    return {
-        "age": np.linspace(-1 / 3, 1.0, 5, dtype=dtype),
-        **{
-            k: np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS[k]), dtype=dtype)
-            for k in ["gender", "muscle", "weight", "height", "proportions", "cupsize", "firmness"]
-        },
-    }
+    return AnnyAnchors(
+        age=np.linspace(-1 / 3, 1.0, 5, dtype=dtype),
+        gender=np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS["gender"]), dtype=dtype),
+        muscle=np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS["muscle"]), dtype=dtype),
+        weight=np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS["weight"]), dtype=dtype),
+        height=np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS["height"]), dtype=dtype),
+        proportions=np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS["proportions"]), dtype=dtype),
+        cupsize=np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS["cupsize"]), dtype=dtype),
+        firmness=np.linspace(0.0, 1.0, len(PHENOTYPE_VARIATIONS["firmness"]), dtype=dtype),
+    )
 
 
 def load_model_data_numpy(
@@ -106,7 +144,7 @@ def load_model_data_numpy(
     topology: str = "default",
     simplify: float = 1.0,
     dtype: Any = np.float32,
-) -> dict:
+) -> AnnyWeights:
     """Load ANNY model data as numpy arrays."""
     resolved_path = get_model_path(model_path)
     cache_dir = get_cache_dir() / "anny" / "preprocessed"
@@ -159,21 +197,24 @@ def load_model_data_numpy(
     # Build kinematic fronts
     kinematic_fronts = build_kinematic_fronts(data["parents"])
 
-    return {
-        "template_vertices": data["template_vertices"].astype(dtype),
-        "blendshapes": data["blendshapes"].astype(dtype),
-        "template_bone_heads": data["template_bone_heads"].astype(dtype),
-        "template_bone_tails": data["template_bone_tails"].astype(dtype),
-        "bone_heads_blendshapes": data["bone_heads_blendshapes"].astype(dtype),
-        "bone_tails_blendshapes": data["bone_tails_blendshapes"].astype(dtype),
-        "bone_rolls_rotmat": data["bone_rolls_rotmat"].astype(dtype),
-        "phenotype_mask": data["phenotype_mask"].astype(dtype),
-        "lbs_weights": lbs_weights.astype(dtype),
-        "faces": data["faces"],
-        "bone_labels": data["bone_labels"],
-        "parents": data["parents"],
-        "kinematic_fronts": kinematic_fronts,
-    }
+    return AnnyWeights(
+        template_vertices=data["template_vertices"].astype(dtype),
+        blendshapes=data["blendshapes"].astype(dtype),
+        template_bone_heads=data["template_bone_heads"].astype(dtype),
+        template_bone_tails=data["template_bone_tails"].astype(dtype),
+        bone_heads_blendshapes=data["bone_heads_blendshapes"].astype(dtype),
+        bone_tails_blendshapes=data["bone_tails_blendshapes"].astype(dtype),
+        bone_rolls_rotmat=data["bone_rolls_rotmat"].astype(dtype),
+        phenotype_mask=data["phenotype_mask"].astype(dtype),
+        lbs_weights=lbs_weights.astype(dtype),
+        faces=data["faces"],
+        bone_labels=data["bone_labels"],
+        parents=data["parents"],
+        kinematic_fronts=kinematic_fronts,
+        anchors=build_anchors(dtype=dtype),
+        y_axis=np.asarray([0.0, 1.0, 0.0], dtype=dtype),
+        degenerate_rotation=np.diag(np.asarray([1.0, -1.0, -1.0], dtype=dtype)),
+    )
 
 
 def _cache_file_stem(rig: str, eyes: bool, tongue: bool) -> str:
