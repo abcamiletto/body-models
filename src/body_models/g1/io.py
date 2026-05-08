@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import struct
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from .. import config
 from ..cache import get_cache_dir
 
 PathLike = Path | str
 Convention = Literal["soma", "mujoco"]
+Array = Any
 
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 VALID_CONVENTIONS = ("soma", "mujoco")
@@ -129,6 +132,28 @@ G1_MESH_JOINT_MAP = {
 }
 
 
+@dataclass(frozen=True)
+class G1Weights:
+    joint_names: list[str]
+    parents: list[int]
+    local_offsets: Float[Array, "J 3"]
+    rest_local_rotations: Float[Array, "J 3 3"]
+    vertices: Float[Array, "V 3"]
+    faces: Int[Array, "F 3"]
+    link_joint_indices: list[int]
+    link_vertex_starts: list[int]
+    link_vertex_counts: list[int]
+    link_face_starts: list[int]
+    link_face_counts: list[int]
+    link_geom_positions: Float[Array, "L 3"]
+    link_geom_rotations: Float[Array, "L 3 3"]
+    link_names: list[str]
+    qpos_joint_indices: list[int]
+    qpos_joint_axes: Float[Array, "Q 3"]
+    qpos_joint_limits: Float[Array, "Q 2"]
+    qpos_joint_names: list[str]
+
+
 def get_model_path(model_path: PathLike | None = None) -> Path:
     """Resolve a G1 asset directory containing ``xml/g1.xml`` and ``meshes/g1``."""
     if model_path is None:
@@ -175,7 +200,12 @@ def validate_path(path: PathLike) -> Path:
     return path
 
 
-def load_model_data(model_path: PathLike | None = None, *, convention: Convention = "soma", dtype=np.float32) -> dict:
+def load_model_data(
+    model_path: PathLike | None = None,
+    *,
+    convention: Convention = "soma",
+    dtype=np.float32,
+) -> G1Weights:
     if convention not in VALID_CONVENTIONS:
         raise ValueError(f"Invalid convention: {convention}")
     coord = MUJOCO_TO_KIMODO if convention == "soma" else np.eye(3, dtype=np.float32)
@@ -195,26 +225,26 @@ def load_model_data(model_path: PathLike | None = None, *, convention: Conventio
         coord,
     )
     vertices, faces, link_data = _load_link_meshes(mesh_dir, mesh_transforms, coord, dtype=dtype)
-    return {
-        "joint_names": JOINT_NAMES.copy(),
-        "parents": PARENTS.copy(),
-        "local_offsets": local_offsets.astype(dtype),
-        "rest_local_rotations": rest_local_rotations.astype(dtype),
-        "vertices": vertices.astype(dtype),
-        "faces": faces.astype(np.int64),
-        "link_joint_indices": link_data["joint_indices"],
-        "link_vertex_starts": link_data["vertex_starts"],
-        "link_vertex_counts": link_data["vertex_counts"],
-        "link_face_starts": link_data["face_starts"],
-        "link_face_counts": link_data["face_counts"],
-        "link_geom_positions": link_data["geom_positions"].astype(dtype),
-        "link_geom_rotations": link_data["geom_rotations"].astype(dtype),
-        "link_names": link_data["names"],
-        "qpos_joint_indices": qpos_joint_indices,
-        "qpos_joint_axes": qpos_joint_axes.astype(dtype),
-        "qpos_joint_limits": qpos_joint_limits.astype(dtype),
-        "qpos_joint_names": qpos_joint_names,
-    }
+    return G1Weights(
+        joint_names=JOINT_NAMES.copy(),
+        parents=PARENTS.copy(),
+        local_offsets=local_offsets.astype(dtype),
+        rest_local_rotations=rest_local_rotations.astype(dtype),
+        vertices=vertices.astype(dtype),
+        faces=faces.astype(np.int64),
+        link_joint_indices=link_data["joint_indices"],
+        link_vertex_starts=link_data["vertex_starts"],
+        link_vertex_counts=link_data["vertex_counts"],
+        link_face_starts=link_data["face_starts"],
+        link_face_counts=link_data["face_counts"],
+        link_geom_positions=link_data["geom_positions"].astype(dtype),
+        link_geom_rotations=link_data["geom_rotations"].astype(dtype),
+        link_names=link_data["names"],
+        qpos_joint_indices=qpos_joint_indices,
+        qpos_joint_axes=qpos_joint_axes.astype(dtype),
+        qpos_joint_limits=qpos_joint_limits.astype(dtype),
+        qpos_joint_names=qpos_joint_names,
+    )
 
 
 def _parse_joint_defaults(root: ET.Element) -> tuple[dict[str, np.ndarray], dict[str, tuple[float, float]]]:

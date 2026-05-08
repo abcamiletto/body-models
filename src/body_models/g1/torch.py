@@ -8,10 +8,11 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 from torch import Tensor
 
-from ..base import BodyModel
-from . import core
-from .io import load_model_data
-
+from body_models import common
+from body_models.base import BodyModel
+from body_models.g1.backends import core
+from body_models.g1.backends import torch as backend
+from body_models.g1.io import load_model_data
 
 __all__ = ["G1"]
 
@@ -19,16 +20,7 @@ __all__ = ["G1"]
 class G1(BodyModel, nn.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
-    NUM_JOINTS = 34
     is_rigid_body = True
-    local_offsets: Tensor
-    rest_local_rotations: Tensor
-    link_geom_positions: Tensor
-    link_geom_rotations: Tensor
-    qpos_joint_axes: Tensor
-    qpos_joint_limits: Tensor
-    _vertices: Tensor
-    _faces: Tensor
 
     def __init__(
         self,
@@ -42,41 +34,67 @@ class G1(BodyModel, nn.Module):
         super().__init__()
         self.rotation_type = rotation_type
         self.convention = convention
-        data = load_model_data(model_path, convention=convention)
-        self._joint_names = data["joint_names"]
-        self.parents = data["parents"]
-        self.link_names = data["link_names"]
-        self.qpos_joint_names = data["qpos_joint_names"]
-        self.link_joint_indices = data["link_joint_indices"]
-        self.link_vertex_starts = data["link_vertex_starts"]
-        self.link_vertex_counts = data["link_vertex_counts"]
-        self.link_face_starts = data["link_face_starts"]
-        self.link_face_counts = data["link_face_counts"]
-        self.qpos_joint_indices = data["qpos_joint_indices"]
-        self.local_offsets = nn.Buffer(torch.as_tensor(data["local_offsets"], dtype=torch.float32))
-        self.rest_local_rotations = nn.Buffer(torch.as_tensor(data["rest_local_rotations"], dtype=torch.float32))
-        self.link_geom_positions = nn.Buffer(torch.as_tensor(data["link_geom_positions"], dtype=torch.float32))
-        self.link_geom_rotations = nn.Buffer(torch.as_tensor(data["link_geom_rotations"], dtype=torch.float32))
-        self.qpos_joint_axes = nn.Buffer(torch.as_tensor(data["qpos_joint_axes"], dtype=torch.float32))
-        self.qpos_joint_limits = nn.Buffer(torch.as_tensor(data["qpos_joint_limits"], dtype=torch.float32))
-        self._vertices = nn.Buffer(torch.as_tensor(data["vertices"], dtype=torch.float32))
-        self._faces = nn.Buffer(torch.as_tensor(data["faces"], dtype=torch.int64))
+        self.weights = common.torchify(load_model_data(model_path, convention=convention))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
-        return self._faces
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
-        return self.NUM_JOINTS
+        return len(self.weights.joint_names)
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return self.weights.joint_names
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
+
+    @property
+    def qpos_joint_names(self) -> list[str]:
+        return self.weights.qpos_joint_names
+
+    @property
+    def qpos_joint_indices(self) -> list[int]:
+        return self.weights.qpos_joint_indices
+
+    @property
+    def qpos_joint_axes(self) -> Float[Tensor, "Q 3"]:
+        return self.weights.qpos_joint_axes
+
+    @property
+    def qpos_joint_limits(self) -> Float[Tensor, "Q 2"]:
+        return self.weights.qpos_joint_limits
+
+    @property
+    def link_names(self) -> list[str]:
+        return self.weights.link_names
+
+    @property
+    def link_joint_indices(self) -> list[int]:
+        return self.weights.link_joint_indices
+
+    @property
+    def link_vertex_starts(self) -> list[int]:
+        return self.weights.link_vertex_starts
+
+    @property
+    def link_vertex_counts(self) -> list[int]:
+        return self.weights.link_vertex_counts
+
+    @property
+    def link_face_starts(self) -> list[int]:
+        return self.weights.link_face_starts
+
+    @property
+    def link_face_counts(self) -> list[int]:
+        return self.weights.link_face_counts
 
     @property
     def num_vertices(self) -> int:
-        return self._vertices.shape[0]
+        return self.weights.vertices.shape[0]
 
     @property
     def skin_weights(self) -> Float[Tensor, "V J"]:
@@ -84,7 +102,7 @@ class G1(BodyModel, nn.Module):
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        params = self.get_rest_pose(batch_size=1, dtype=self._vertices.dtype)
+        params = self.get_rest_pose(batch_size=1)
         return self.forward_vertices(
             body_pose=params["body_pose"],
             global_translation=params["global_translation"],
@@ -93,112 +111,88 @@ class G1(BodyModel, nn.Module):
 
     def forward_skeleton(
         self,
-        body_pose: Float[Tensor, "B 29 N"] | Float[Tensor, "B 29 3 3"],
+        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         joint_indices: list[int] | None = None,
-    ) -> Float[Tensor, "B 34 4 4"]:
-        return core.forward_skeleton(
-            local_offsets=self.local_offsets,
-            rest_local_rotations=self.rest_local_rotations,
-            body_joint_indices=self.qpos_joint_indices,
-            body_joint_axes=self.qpos_joint_axes,
-            parents=self.parents,
-            body_pose=body_pose,
-            global_translation=global_translation,
+    ) -> Float[Tensor, "B J 4 4"]:
+        return backend.forward_skeleton(
+            self.weights,
+            body_pose,
+            global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            xp=torch,
         )
 
     def forward_vertices(
         self,
-        body_pose: Float[Tensor, "B 29 N"] | Float[Tensor, "B 29 3 3"],
+        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[Tensor, "B V 3"]:
-        return core.forward_vertices(
-            vertices=self._vertices,
-            local_offsets=self.local_offsets,
-            rest_local_rotations=self.rest_local_rotations,
-            body_joint_indices=self.qpos_joint_indices,
-            body_joint_axes=self.qpos_joint_axes,
-            parents=self.parents,
-            link_joint_indices=self.link_joint_indices,
-            link_vertex_starts=self.link_vertex_starts,
-            link_vertex_counts=self.link_vertex_counts,
-            link_geom_positions=self.link_geom_positions,
-            link_geom_rotations=self.link_geom_rotations,
-            body_pose=body_pose,
-            global_translation=global_translation,
+        return backend.forward_vertices(
+            self.weights,
+            body_pose,
+            global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            xp=torch,
         )
 
     def forward_links(
         self,
-        body_pose: Float[Tensor, "B 29 N"] | Float[Tensor, "B 29 3 3"],
+        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
     ) -> Float[Tensor, "B L 4 4"]:
-        return core.forward_links(
-            local_offsets=self.local_offsets,
-            rest_local_rotations=self.rest_local_rotations,
-            body_joint_indices=self.qpos_joint_indices,
-            body_joint_axes=self.qpos_joint_axes,
-            parents=self.parents,
-            link_joint_indices=self.link_joint_indices,
-            link_geom_positions=self.link_geom_positions,
-            link_geom_rotations=self.link_geom_rotations,
-            body_pose=body_pose,
-            global_translation=global_translation,
+        return backend.forward_links(
+            self.weights,
+            body_pose,
+            global_translation,
             global_rotation=global_rotation,
             rotation_type=self.rotation_type,
-            xp=torch,
         )
 
-    def link_mesh(self, link_name: str) -> dict[str, Float[Tensor, "V 3"] | Int[Tensor, "F 3"] | str | int]:
+    def link_mesh(self, link_name: str) -> dict[str, Tensor | str | int]:
         return core.link_mesh(
-            vertices=self._vertices,
-            faces=self._faces,
-            link_joint_indices=self.link_joint_indices,
-            link_vertex_starts=self.link_vertex_starts,
-            link_vertex_counts=self.link_vertex_counts,
-            link_face_starts=self.link_face_starts,
-            link_face_counts=self.link_face_counts,
-            joint_names=self._joint_names,
-            link_names=self.link_names,
+            vertices=self.weights.vertices,
+            faces=self.weights.faces,
+            link_joint_indices=self.weights.link_joint_indices,
+            link_vertex_starts=self.weights.link_vertex_starts,
+            link_vertex_counts=self.weights.link_vertex_counts,
+            link_face_starts=self.weights.link_face_starts,
+            link_face_counts=self.weights.link_face_counts,
+            joint_names=self.weights.joint_names,
+            link_names=self.weights.link_names,
             link_name=link_name,
         )
 
-    def joint_meshes(self, joint_name: str) -> list[dict[str, Float[Tensor, "V 3"] | Int[Tensor, "F 3"] | str | int]]:
+    def joint_meshes(self, joint_name: str) -> list[dict[str, Tensor | str | int]]:
         return core.joint_meshes(
-            vertices=self._vertices,
-            faces=self._faces,
-            link_joint_indices=self.link_joint_indices,
-            link_vertex_starts=self.link_vertex_starts,
-            link_vertex_counts=self.link_vertex_counts,
-            link_face_starts=self.link_face_starts,
-            link_face_counts=self.link_face_counts,
-            joint_names=self._joint_names,
-            link_names=self.link_names,
+            vertices=self.weights.vertices,
+            faces=self.weights.faces,
+            link_joint_indices=self.weights.link_joint_indices,
+            link_vertex_starts=self.weights.link_vertex_starts,
+            link_vertex_counts=self.weights.link_vertex_counts,
+            link_face_starts=self.weights.link_face_starts,
+            link_face_counts=self.weights.link_face_counts,
+            joint_names=self.weights.joint_names,
+            link_names=self.weights.link_names,
             joint_name=joint_name,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
-        device = self._vertices.device
-        pose_ref = torch.zeros((batch_size, len(self.qpos_joint_indices), 3), device=device, dtype=dtype)
+        device = self.weights.vertices.device
+        pose_ref = torch.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)
         global_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         body_pose = SO3.identity_as(
             pose_ref,
-            batch_dims=(batch_size, len(self.qpos_joint_indices)),
+            batch_dims=(batch_size, len(self.weights.qpos_joint_indices)),
             rotation_type=self.rotation_type,
             xp=torch,
         )
