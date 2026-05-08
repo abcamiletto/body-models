@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 
 from ... import common
 from ...anny.backends import core as anny_core
-from ..backend import core
+from ..backends import core
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,24 @@ class IdentityTransfer:
     source_to_soma_rotation: Float[Any, "3 3"]
     source_scale: float
     output_scale: float
+
+
+def identity_transfer(transfer_data: Any) -> IdentityTransfer:
+    return IdentityTransfer(
+        source_tetrahedra=transfer_data.source_tetrahedra,
+        face_ids=transfer_data.face_ids,
+        bary_coords=transfer_data.bary_coords,
+        unknown_ids=transfer_data.unknown_ids,
+        anchor_ids=transfer_data.anchor_ids,
+        solve_matrix=transfer_data.solve_matrix,
+        anchor_matrix=transfer_data.anchor_matrix,
+        rhs_base=transfer_data.rhs_base,
+        internal_to_source_rotation=transfer_data.internal_to_source_rotation,
+        internal_to_source_translation=transfer_data.internal_to_source_translation,
+        source_to_soma_rotation=transfer_data.source_to_soma_rotation,
+        source_scale=transfer_data.source_scale,
+        output_scale=transfer_data.output_scale,
+    )
 
 
 def linear_identity_shape(

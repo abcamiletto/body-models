@@ -17,17 +17,17 @@ from .io import (
     load_model_data,
     simplify_mesh,
 )
-import body_models.soma.backend.numpy as numpy_kernel
-import body_models.soma.backend.scipy as scipy_kernel
-from body_models.soma.backend import core as backend_core
+from body_models.soma.backends import numpy as numpy_backend
+from body_models.soma.backends import scipy as scipy_backend
+from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import numpy as identity_sources
 
 PathLike = Path | str
 KernelBackend = Literal["numpy", "scipy"]
-PreparedSomaIdentity = backend_core.PreparedSomaIdentity
+PreparedSomaIdentity = core.PreparedSomaIdentity
 
-__all__ = ["SOMA", "PreparedSomaIdentity"]
+__all__ = ["SOMA"]
 
 
 class SOMA(BodyModel):
@@ -38,7 +38,7 @@ class SOMA(BodyModel):
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
 
     _kernel: Any
-    model_weights: Any
+    weights: Any
 
     def __init__(
         self,
@@ -63,7 +63,7 @@ class SOMA(BodyModel):
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
         self.match_warp = match_warp
-        self._kernel = {"numpy": numpy_kernel, "scipy": scipy_kernel}[backend]
+        self._kernel = {"numpy": numpy_backend, "scipy": scipy_backend}[backend]
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 
@@ -94,7 +94,7 @@ class SOMA(BodyModel):
             faces=np.asarray(faces, dtype=np.int64),
             vertex_map=vertex_map,
         )
-        self.model_weights = self._kernel.prepare_data(weights)
+        self.weights = self._kernel.prepare_data(weights)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim
@@ -107,7 +107,7 @@ class SOMA(BodyModel):
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
-        return self.model_weights.faces
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -119,15 +119,15 @@ class SOMA(BodyModel):
 
     @property
     def num_vertices(self) -> int:
-        return self.model_weights.mean_active.shape[0]
+        return self.weights.mean_active.shape[0]
 
     @property
     def skin_weights(self) -> Float[np.ndarray, "V J"]:
-        return self.model_weights.skin_weights_active[:, 1:]
+        return self.weights.skin_weights_active[:, 1:]
 
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
-        return self.model_weights.mean_active * 0.01
+        return self.weights.mean_active * 0.01
 
     def forward_vertices(
         self,
@@ -150,7 +150,7 @@ class SOMA(BodyModel):
                 dtype=pose.dtype,
             )
         return self._kernel.forward_vertices(
-            data=self.model_weights,
+            data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
             global_rotation=global_rotation,
@@ -182,7 +182,7 @@ class SOMA(BodyModel):
                 dtype=pose.dtype,
             )
         return self._kernel.forward_skeleton(
-            data=self.model_weights,
+            data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
             global_rotation=global_rotation,
@@ -272,14 +272,14 @@ class SOMA(BodyModel):
         scale_params: Float[np.ndarray, "B K"] | None,
     ) -> PreparedSomaIdentity:
         rest_shape_full, rest_shape_active = identities.rest_shapes(
-            data=self.model_weights,
+            data=self.weights,
             identity_source=self._identity_source,
             identity=identity,
             scale_params=scale_params,
             xp=np,
         )
-        return backend_core.prepare_identity_from_rest_shape(
-            data=self.model_weights,
+        return core.prepare_identity_from_rest_shape(
+            data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             match_warp=self.match_warp,

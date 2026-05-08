@@ -2,54 +2,28 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import torch
 import torch.nn as nn
 from jaxtyping import Float
 from torch import Tensor
 
+from body_models import common
+
 from ...anny.torch import ANNY
 from ...mhr.torch import MHR
 from ...smpl.torch import SMPL
 from ...smplx.torch import SMPLX
-from ..backend import core
+from ..backends import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
-from . import IdentityTransfer, anny_identity_shape, linear_identity_shape, mhr_identity_shape
+from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape
 
 
 class IdentitySource(nn.Module):
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
         super().__init__()
-        self.source_scale = transfer_data.source_scale
-        self.output_scale = transfer_data.output_scale
-        self.source_tetrahedra = nn.Buffer(torch.as_tensor(transfer_data.source_tetrahedra, dtype=torch.int64))
-        self.face_ids = nn.Buffer(torch.as_tensor(transfer_data.face_ids, dtype=torch.int64))
-        self.bary_coords = nn.Buffer(torch.as_tensor(transfer_data.bary_coords))
-        self.unknown_ids = nn.Buffer(torch.as_tensor(transfer_data.unknown_ids, dtype=torch.int64))
-        self.anchor_ids = nn.Buffer(torch.as_tensor(transfer_data.anchor_ids, dtype=torch.int64))
-        self.solve_matrix = nn.Buffer(torch.as_tensor(transfer_data.solve_matrix))
-        self.anchor_matrix = nn.Buffer(torch.as_tensor(transfer_data.anchor_matrix))
-        self.rhs_base = nn.Buffer(torch.as_tensor(transfer_data.rhs_base))
-        self.internal_to_source_rotation = nn.Buffer(torch.as_tensor(transfer_data.internal_to_source_rotation))
-        self.internal_to_source_translation = nn.Buffer(torch.as_tensor(transfer_data.internal_to_source_translation))
-        self.source_to_soma_rotation = nn.Buffer(torch.as_tensor(transfer_data.source_to_soma_rotation))
-
-    @property
-    def transfer(self) -> IdentityTransfer:
-        return IdentityTransfer(
-            source_tetrahedra=self.source_tetrahedra,
-            face_ids=self.face_ids,
-            bary_coords=self.bary_coords,
-            unknown_ids=self.unknown_ids,
-            anchor_ids=self.anchor_ids,
-            solve_matrix=self.solve_matrix,
-            anchor_matrix=self.anchor_matrix,
-            rhs_base=self.rhs_base,
-            internal_to_source_rotation=self.internal_to_source_rotation,
-            internal_to_source_translation=self.internal_to_source_translation,
-            source_to_soma_rotation=self.source_to_soma_rotation,
-            source_scale=self.source_scale,
-            output_scale=self.output_scale,
-        )
+        self.transfer = common.torchify(identity_transfer(transfer_data))
 
     def source_shape(
         self,
@@ -82,12 +56,16 @@ class AnnyIdentitySource(IdentitySource):
         rotation, translation = core.fit_rigid_transform(
             self.model.weights.template_vertices, source_vertices, xp=torch
         )
-        self.internal_to_source_rotation = rotation
-        self.internal_to_source_translation = translation
-        self.source_to_soma_rotation = torch.as_tensor(
-            [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
-            dtype=self.model.weights.template_vertices.dtype,
+        transfer = replace(
+            identity_transfer(transfer_data),
+            internal_to_source_rotation=rotation,
+            internal_to_source_translation=translation,
+            source_to_soma_rotation=torch.as_tensor(
+                [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
+                dtype=self.model.weights.template_vertices.dtype,
+            ),
         )
+        self.transfer = common.torchify(transfer)
 
     def source_shape(
         self,
