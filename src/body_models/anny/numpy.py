@@ -50,8 +50,7 @@ class ANNY(BodyModel):
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
-        self.backend = backend
-        self._backend = get_backend(backend)
+        self._kernel = _get_kernel(backend)
         self.phenotype_labels = (
             PHENOTYPE_LABELS if all_phenotypes else [x for x in PHENOTYPE_LABELS if x not in EXCLUDED_PHENOTYPES]
         )
@@ -97,7 +96,7 @@ class ANNY(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
-        return self._backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             gender=gender,
             age=age,
@@ -126,7 +125,7 @@ class ANNY(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B J 4 4"]:
-        return self._backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             weights=self.weights,
             gender=gender,
             age=age,
@@ -165,7 +164,7 @@ class ANNY(BodyModel):
         }
 
 
-def get_backend(backend: Backend):
+def _get_kernel(backend: Backend):
     if backend == "numpy":
         return numpy_backend
 

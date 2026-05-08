@@ -82,6 +82,8 @@ class SomaWeights:
     joint_regressor: Float[np.ndarray, "Jf Vf"]
     skin_weights_full: Float[np.ndarray, "Vf Jf"]
     skin_weights_active: Float[np.ndarray, "Va Jf"]
+    skin_joint_indices_active: Int[np.ndarray, "Va K"]
+    skin_joint_weights_active: Float[np.ndarray, "Va K"]
     faces: Int[np.ndarray, "F 3"]
     vertex_map: Int[np.ndarray, "Va"] | None
     facial_inner_vertices: Int[np.ndarray, "Va"]
@@ -284,6 +286,17 @@ def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
         processed.update(joints)
 
     return fronts
+
+
+def compute_sparse_skin_weights(skin_weights: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    counts = (np.abs(skin_weights) > 1e-8).sum(axis=1)
+    indices = np.full((skin_weights.shape[0], int(counts.max())), -1, dtype=np.int64)
+    weights = np.zeros(indices.shape, dtype=skin_weights.dtype)
+    for vertex, row in enumerate(skin_weights):
+        active = np.flatnonzero(np.abs(row) > 1e-8)
+        indices[vertex, : len(active)] = active
+        weights[vertex, : len(active)] = row[active]
+    return indices, weights
 
 
 def _missing_assets(model_dir: Path) -> list[str]:
@@ -781,6 +794,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
     ]
 
     parents_full = joint_parents_full.astype(np.int64).tolist()
+    skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
     return SomaWeights(
         mean_full=mean,
         mean_active=mean,
@@ -795,6 +809,8 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         joint_regressor=joint_regressor,
         skin_weights_full=skin_weights,
         skin_weights_active=skin_weights,
+        skin_joint_indices_active=skin_joint_indices,
+        skin_joint_weights_active=skin_joint_weights,
         faces=faces,
         vertex_map=None,
         facial_inner_vertices=facial_inner,

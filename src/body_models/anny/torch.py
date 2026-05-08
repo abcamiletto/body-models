@@ -1,6 +1,7 @@
 """PyTorch frontend for ANNY."""
 
 from pathlib import Path
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -9,16 +10,21 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from body_models import common
-from body_models.anny.backends import torch as backend
+from body_models.anny.backends import torch as torch_backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
+Backend = Literal["torch", "warp"]
+FLAVORS = ("torch", "warp")
+
 
 class ANNY(BodyModel, nn.Module):
     """ANNY body model with PyTorch backend."""
+
+    flavors = FLAVORS
 
     def __init__(
         self,
@@ -30,6 +36,7 @@ class ANNY(BodyModel, nn.Module):
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        backend: Backend = "torch",
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
@@ -39,6 +46,8 @@ class ANNY(BodyModel, nn.Module):
             raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if backend not in FLAVORS:
+            raise ValueError(f"Invalid backend: {backend}")
         super().__init__()
 
         data = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
@@ -46,6 +55,7 @@ class ANNY(BodyModel, nn.Module):
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
+        self._kernel = _get_kernel(backend)
         self.phenotype_labels = (
             PHENOTYPE_LABELS if all_phenotypes else [x for x in PHENOTYPE_LABELS if x not in EXCLUDED_PHENOTYPES]
         )
@@ -95,7 +105,7 @@ class ANNY(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
-        return backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             gender=gender,
             age=age,
@@ -124,7 +134,7 @@ class ANNY(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B J 4 4"]:
-        return backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             weights=self.weights,
             gender=gender,
             age=age,
@@ -163,3 +173,15 @@ class ANNY(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+
+
+def _get_kernel(backend: Backend):
+    if backend == "torch":
+        return torch_backend
+
+    try:
+        from body_models.anny.backends import warp as warp_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[warp] to use ANNY backend='warp'.") from exc
+
+    return warp_backend

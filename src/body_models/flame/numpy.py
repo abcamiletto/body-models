@@ -42,8 +42,7 @@ class FLAME(BodyModel):
         if backend not in FLAVORS:
             raise ValueError(f"Invalid backend: {backend}")
         self.rotation_type = rotation_type
-        self.backend = backend
-        self._backend = get_backend(backend)
+        self._kernel = _get_kernel(backend)
 
         resolved_path = get_model_path(model_path)
         self.weights = load_model_data(resolved_path, simplify=simplify)
@@ -114,7 +113,7 @@ class FLAME(BodyModel):
                 rotation_type=self.rotation_type,
                 xp=np,
             )
-        return self._backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
             expression=expression,
@@ -148,7 +147,7 @@ class FLAME(BodyModel):
                 rotation_type=self.rotation_type,
                 xp=np,
             )
-        return self._backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
             expression=expression,
@@ -177,7 +176,7 @@ class FLAME(BodyModel):
         }
 
 
-def get_backend(backend: Backend):
+def _get_kernel(backend: Backend):
     if backend == "numpy":
         return numpy_backend
     if backend == "scipy":
