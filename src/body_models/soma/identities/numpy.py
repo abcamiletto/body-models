@@ -11,28 +11,14 @@ from ...anny.numpy import ANNY
 from ...mhr.numpy import MHR
 from ...smpl.numpy import SMPL
 from ...smplx.numpy import SMPLX
-from ..backend import core
+from ..backends import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
-from . import IdentityTransfer, anny_identity_shape, linear_identity_shape, mhr_identity_shape
+from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape
 
 
 class IdentitySource:
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
-        self.transfer = IdentityTransfer(
-            source_tetrahedra=transfer_data.source_tetrahedra,
-            face_ids=transfer_data.face_ids,
-            bary_coords=transfer_data.bary_coords,
-            unknown_ids=transfer_data.unknown_ids,
-            anchor_ids=transfer_data.anchor_ids,
-            solve_matrix=transfer_data.solve_matrix,
-            anchor_matrix=transfer_data.anchor_matrix,
-            rhs_base=transfer_data.rhs_base,
-            internal_to_source_rotation=transfer_data.internal_to_source_rotation,
-            internal_to_source_translation=transfer_data.internal_to_source_translation,
-            source_to_soma_rotation=transfer_data.source_to_soma_rotation,
-            source_scale=transfer_data.source_scale,
-            output_scale=transfer_data.output_scale,
-        )
+        self.transfer = identity_transfer(transfer_data)
 
     def source_shape(
         self,

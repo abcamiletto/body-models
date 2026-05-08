@@ -1,4 +1,4 @@
-"""JAX backend for SOMA model using Flax NNX."""
+"""JAX backend for SOMA model."""
 
 from dataclasses import replace
 from pathlib import Path
@@ -6,9 +6,10 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
-from flax import nnx
 from jaxtyping import Float, Int
 from nanomanifold import SO3
+
+from body_models import common
 
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
@@ -19,8 +20,8 @@ from .io import (
     load_model_data,
     simplify_mesh,
 )
-import body_models.soma.backend.jax as core
-from body_models.soma.backend import core as backend_core
+from body_models.soma.backends import jax as backend
+from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import jax as identity_sources
 
@@ -29,8 +30,8 @@ PathLike = Path | str
 __all__ = ["SOMA"]
 
 
-class SOMA(BodyModel, nnx.Module):
-    """SOMA body model with JAX/Flax NNX backend."""
+class SOMA(BodyModel):
+    """SOMA body model with JAX backend."""
 
     SHAPE_DIM = 128
     NUM_JOINTS = 77
@@ -86,7 +87,7 @@ class SOMA(BodyModel, nnx.Module):
             faces=np.asarray(faces, dtype=np.int64),
             vertex_map=vertex_map,
         )
-        self.model_weights = core.prepare_data(weights)
+        self.weights = common.jaxify(weights)
 
         self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
         self._joint_names = data.joint_names_full[1:]
@@ -95,14 +96,14 @@ class SOMA(BodyModel, nnx.Module):
         self.identity_dim = spec.identity_dim
         self.num_scale_params = spec.num_scale_params
         self._default_identity_value = spec.default_identity_value
-        self._identity_source = nnx.data(None)
+        self._identity_source = None
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
             self._identity_source = identity_sources.create_identity_source(self.model_type, transfer_data)
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
-        return jnp.asarray(self.model_weights.faces)
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -114,15 +115,15 @@ class SOMA(BodyModel, nnx.Module):
 
     @property
     def num_vertices(self) -> int:
-        return self.model_weights.mean_active.shape[0]
+        return self.weights.mean_active.shape[0]
 
     @property
     def skin_weights(self) -> Float[jax.Array, "V J"]:
-        return jnp.asarray(self.model_weights.skin_weights_active[:, 1:])
+        return self.weights.skin_weights_active[:, 1:]
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.model_weights.mean_active * 0.01
+        return self.weights.mean_active * 0.01
 
     def forward_vertices(
         self,
@@ -139,8 +140,8 @@ class SOMA(BodyModel, nnx.Module):
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
-        return core.forward_vertices(
-            data=self.model_weights,
+        return backend.forward_vertices(
+            data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
             global_rotation=global_rotation,
@@ -166,8 +167,8 @@ class SOMA(BodyModel, nnx.Module):
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
-        return core.forward_skeleton(
-            data=self.model_weights,
+        return backend.forward_skeleton(
+            data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
             global_rotation=global_rotation,
@@ -249,14 +250,14 @@ class SOMA(BodyModel, nnx.Module):
         scale_params: Float[jax.Array, "B K"] | None,
     ) -> core.PreparedSomaIdentity:
         rest_shape_full, rest_shape_active = identities.rest_shapes(
-            data=self.model_weights,
+            data=self.weights,
             identity_source=self._identity_source,
             identity=identity,
             scale_params=scale_params,
             xp=jnp,
         )
-        return backend_core.prepare_identity_from_rest_shape(
-            data=self.model_weights,
+        return core.prepare_identity_from_rest_shape(
+            data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             match_warp=self.match_warp,
