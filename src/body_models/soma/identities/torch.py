@@ -76,8 +76,12 @@ class AnnyIdentitySource(IdentitySource):
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
         super().__init__(transfer_data)
         self.model = ANNY(model_path=get_identity_model_path("anny"), all_phenotypes=False, simplify=1.0)
-        source_vertices = torch.as_tensor(transfer_data.source_vertices, dtype=self.model.weights.template_vertices.dtype)
-        rotation, translation = core.fit_rigid_transform(self.model.weights.template_vertices, source_vertices, xp=torch)
+        source_vertices = torch.as_tensor(
+            transfer_data.source_vertices, dtype=self.model.weights.template_vertices.dtype
+        )
+        rotation, translation = core.fit_rigid_transform(
+            self.model.weights.template_vertices, source_vertices, xp=torch
+        )
         self.internal_to_source_rotation = rotation
         self.internal_to_source_translation = translation
         self.source_to_soma_rotation = torch.as_tensor(

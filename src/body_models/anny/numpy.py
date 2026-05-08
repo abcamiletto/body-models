@@ -84,7 +84,7 @@ class ANNY(BodyModel):
         pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices: list[int] | None = None,
+        vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
         return backend.forward_vertices(
             weights=self.weights,
@@ -113,7 +113,7 @@ class ANNY(BodyModel):
         pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        joint_indices: list[int] | None = None,
+        joint_indices=None,
     ) -> Float[np.ndarray, "B J 4 4"]:
         return backend.forward_skeleton(
             weights=self.weights,
