@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import torch
@@ -16,17 +17,20 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
+    compute_sparse_skin_weights,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
     simplify_mesh,
 )
-from body_models.soma.backends import torch as backend
+from body_models.soma.backends import torch as torch_backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
 
 PathLike = Path | str
+Backend = Literal["torch", "warp"]
+FLAVORS = ("torch", "warp")
 
 __all__ = ["SOMA"]
 
@@ -37,6 +41,7 @@ class SOMA(BodyModel, nn.Module):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
+    flavors = FLAVORS
 
     def __init__(
         self,
@@ -46,6 +51,7 @@ class SOMA(BodyModel, nn.Module):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
+        backend: Backend = "torch",
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -54,6 +60,8 @@ class SOMA(BodyModel, nn.Module):
             )
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if backend not in FLAVORS:
+            raise ValueError(f"Invalid backend: {backend}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
         super().__init__()
@@ -61,6 +69,7 @@ class SOMA(BodyModel, nn.Module):
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
         self.match_warp = match_warp
+        self._kernel = _get_kernel(backend)
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 
@@ -81,11 +90,14 @@ class SOMA(BodyModel, nn.Module):
             skin_weights_active = skin_weights_full
             vertex_map = None
 
+        skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
         weights = replace(
             data,
             mean_active=np.asarray(mean_active, dtype=np.float32),
             shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
             skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
+            skin_joint_indices_active=skin_joint_indices_active,
+            skin_joint_weights_active=skin_joint_weights_active,
             faces=np.asarray(faces, dtype=np.int64),
             vertex_map=vertex_map,
         )
@@ -145,7 +157,7 @@ class SOMA(BodyModel, nn.Module):
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
-        return backend.forward_vertices(
+        return self._kernel.forward_vertices(
             data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
@@ -172,7 +184,7 @@ class SOMA(BodyModel, nn.Module):
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
-        return backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
@@ -279,3 +291,15 @@ class SOMA(BodyModel, nn.Module):
             match_warp=self.match_warp,
             xp=torch,
         )
+
+
+def _get_kernel(backend: Backend):
+    if backend == "torch":
+        return torch_backend
+
+    try:
+        from body_models.soma.backends import warp as warp_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[warp] to use SOMA backend='warp'.") from exc
+
+    return warp_backend

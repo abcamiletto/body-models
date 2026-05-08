@@ -371,6 +371,24 @@ def test_numba_backend_matches_numpy() -> None:
     np.testing.assert_allclose(numba_subset, numpy_subset, rtol=RTOL, atol=ATOL)
 
 
+def test_torch_warp_backend_matches_torch() -> None:
+    pytest.importorskip("warp")
+    from body_models.anny.torch import ANNY
+
+    model = ANNY(model_path=MODEL_PATH, backend="warp")
+    reference_model = ANNY(model_path=MODEL_PATH)
+    params = reference_model.get_rest_pose(batch_size=2)
+    vertex_indices = [0, 10, 1, 10, 25]
+
+    with torch.no_grad():
+        vertices = model.forward_vertices(**params)
+        reference = reference_model.forward_vertices(**params)
+        subset = model.forward_vertices(**params, vertex_indices=vertex_indices)
+
+    np.testing.assert_allclose(vertices.numpy(), reference.numpy(), rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(subset.numpy(), reference[:, vertex_indices].numpy(), rtol=RTOL, atol=ATOL)
+
+
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================
