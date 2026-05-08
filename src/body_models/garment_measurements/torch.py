@@ -8,10 +8,11 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 from torch import Tensor
 
+from .. import common
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES
-from . import core
-from .io import compute_kinematic_fronts, load_model_data
+from ..rotations import VALID_ROTATION_TYPES, RotationType
+from .backends import torch as backend
+from .io import get_model_path, load_model_data
 
 
 __all__ = ["GarmentMeasurements"]
@@ -20,65 +21,50 @@ __all__ = ["GarmentMeasurements"]
 class GarmentMeasurements(BodyModel, nn.Module):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
-    mean_vertices: Float[Tensor, "V 3"]
-    components: Float[Tensor, "V 3 C"]
-    eigenvalues: Float[Tensor, "C"]
-    bind_quats: Float[Tensor, "J 4"]
-    _skin_weights: Float[Tensor, "V J"]
-    mvc_weights: Float[Tensor, "V J"]
-
     def __init__(
         self,
         model_path: Path | str | None = None,
         *,
-        rotation_type: core.RotationType = "axis_angle",
+        rotation_type: RotationType = "axis_angle",
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
 
-        data = load_model_data(model_path=model_path, dtype="float32")
-        self.mean_vertices = nn.Buffer(torch.as_tensor(data["mean_vertices"], dtype=torch.float32), persistent=False)
-        self.components = nn.Buffer(torch.as_tensor(data["components"], dtype=torch.float32), persistent=False)
-        self.eigenvalues = nn.Buffer(torch.as_tensor(data["eigenvalues"], dtype=torch.float32), persistent=False)
-        self.bind_quats = nn.Buffer(torch.as_tensor(data["bind_quats"], dtype=torch.float32), persistent=False)
-        self.mvc_weights = nn.Buffer(torch.as_tensor(data["mvc_weights"], dtype=torch.float32), persistent=False)
-
-        skin_weights = torch.as_tensor(data["skin_weights"], dtype=torch.float32)
-        self._skin_weights = nn.Buffer(skin_weights, persistent=False)
-        self._faces = torch.as_tensor(data["faces"], dtype=torch.int64)
-        self.parents = data["parents"].astype(int).tolist()
-        self._kinematic_fronts = compute_kinematic_fronts(self.parents)
-        self._joint_names = list(data["joint_names"])
+        self.weights = common.torchify(load_model_data(get_model_path(model_path), dtype="float32"))
         self.rotation_type = rotation_type
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
-        return self._faces
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
-        return len(self._joint_names)
+        return len(self.weights.joint_names)
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return list(self.weights.joint_names)
 
     @property
     def num_vertices(self) -> int:
-        return self.mean_vertices.shape[0]
+        return self.weights.mean_vertices.shape[0]
 
     @property
     def num_shape_components(self) -> int:
-        return self.eigenvalues.shape[0]
+        return self.weights.eigenvalues.shape[0]
 
     @property
     def skin_weights(self) -> Float[Tensor, "V J"]:
-        return self._skin_weights
+        return self.weights.skin_weights
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.mean_vertices
+        return self.weights.mean_vertices
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
@@ -88,21 +74,14 @@ class GarmentMeasurements(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[Tensor, "B V 3"]:
-        return core.forward_vertices(
-            mean_vertices=self.mean_vertices,
-            components=self.components,
-            eigenvalues=self.eigenvalues,
-            bind_quats=self.bind_quats,
-            skin_weights=self._skin_weights,
-            mvc_weights=self.mvc_weights,
-            kinematic_fronts=self._kinematic_fronts,
+        return backend.forward_vertices(
+            weights=self.weights,
             shape=shape,
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            xp=torch,
         )
 
     def forward_skeleton(
@@ -113,25 +92,19 @@ class GarmentMeasurements(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Tensor, "B J 4 4"]:
-        return core.forward_skeleton(
-            mean_vertices=self.mean_vertices,
-            components=self.components,
-            eigenvalues=self.eigenvalues,
-            bind_quats=self.bind_quats,
-            mvc_weights=self.mvc_weights,
-            kinematic_fronts=self._kinematic_fronts,
+        return backend.forward_skeleton(
+            weights=self.weights,
             shape=shape,
             pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            xp=torch,
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype | None = None) -> dict[str, Tensor]:
-        dtype = dtype or self.mean_vertices.dtype
-        device = self.mean_vertices.device
+        dtype = dtype or self.weights.mean_vertices.dtype
+        device = self.weights.mean_vertices.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), dtype=dtype, device=device)
         global_ref = torch.zeros((batch_size,), dtype=dtype, device=device)
         return {
