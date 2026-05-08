@@ -8,11 +8,14 @@ The upstream model is the ``musclemimic_models`` package from
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import struct
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from .. import config
@@ -28,6 +31,38 @@ MUJOCO_TO_KIMODO = (_RY_90 @ _MUJOCO_TO_KIMODO_BARE).astype(np.float32)
 MUSCLEMIMIC_REPO_ZIP = "https://github.com/amathislab/musclemimic_models/archive/refs/heads/main.zip"
 MAIN_XML_RELPATH = Path("body") / "myofullbody.xml"
 ROOT_BODY_NAME = "Full Body"
+Array = Any
+
+
+@dataclass(frozen=True)
+class MyoFullBodyWeights:
+    joint_names: list[str]
+    parents: list[int]
+    local_offsets: Float[Array, "J 3"]
+    rest_local_rotations: Float[Array, "J 3 3"]
+    qpos_joint_names: list[str]
+    qpos_joint_axes: Float[Array, "Q 3"]
+    qpos_joint_anchors: Float[Array, "Q 3"]
+    qpos_joint_types: list[str]
+    qpos_joint_limits: Float[Array, "Q 2"]
+    hinge_mask: Float[Array, "Q"]
+    slide_mask: Float[Array, "Q"]
+    body_qpos_starts: list[int]
+    body_qpos_counts: list[int]
+    vertices: Float[Array, "V 3"]
+    faces: Int[Array, "F 3"]
+    link_joint_indices: list[int]
+    link_vertex_starts: list[int]
+    link_vertex_counts: list[int]
+    link_face_starts: list[int]
+    link_face_counts: list[int]
+    link_geom_positions: Float[Array, "L 3"]
+    link_geom_rotations: Float[Array, "L 3 3"]
+    link_names: list[str]
+    site_names: list[str]
+    site_positions: Float[Array, "S 3"]
+    site_body_indices: list[int]
+    tendons: list[dict]
 
 
 # ----------------------------------------------------------------------------
@@ -76,7 +111,7 @@ def _validate_model_path(path: Path) -> Path:
 # ----------------------------------------------------------------------------
 
 
-def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -> dict:
+def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -> MyoFullBodyWeights:
     """Parse ``body/myofullbody.xml`` (with ``<include>`` resolution) plus link STLs."""
     model_dir = get_model_path(model_path)
     xml_path = model_dir / MAIN_XML_RELPATH
@@ -136,35 +171,35 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     site_body_indices = [s["body"] for s in site_records]
     tendons = _parse_tendons(root, site_names, class_defaults)
 
-    return {
-        "joint_names": joint_names,
-        "parents": parents,
-        "local_offsets": local_offsets.astype(dtype),
-        "rest_local_rotations": rest_local_rotations.astype(dtype),
-        "qpos_joint_names": qpos_joint_names,
-        "qpos_joint_axes": qpos_joint_axes.astype(dtype),
-        "qpos_joint_anchors": qpos_joint_anchors.astype(dtype),
-        "qpos_joint_types": qpos_joint_types,
-        "qpos_joint_limits": qpos_joint_limits.astype(dtype),
-        "hinge_mask": hinge_mask.astype(dtype),
-        "slide_mask": slide_mask.astype(dtype),
-        "body_qpos_starts": body_qpos_starts,
-        "body_qpos_counts": body_qpos_counts,
-        "vertices": vertices.astype(dtype),
-        "faces": faces.astype(np.int64),
-        "link_joint_indices": link_meta["joint_indices"],
-        "link_vertex_starts": link_meta["vertex_starts"],
-        "link_vertex_counts": link_meta["vertex_counts"],
-        "link_face_starts": link_meta["face_starts"],
-        "link_face_counts": link_meta["face_counts"],
-        "link_geom_positions": link_meta["geom_positions"].astype(dtype),
-        "link_geom_rotations": link_meta["geom_rotations"].astype(dtype),
-        "link_names": link_meta["names"],
-        "site_names": site_names,
-        "site_positions": site_positions.astype(dtype),
-        "site_body_indices": site_body_indices,
-        "tendons": tendons,
-    }
+    return MyoFullBodyWeights(
+        joint_names=joint_names,
+        parents=parents,
+        local_offsets=local_offsets.astype(dtype),
+        rest_local_rotations=rest_local_rotations.astype(dtype),
+        qpos_joint_names=qpos_joint_names,
+        qpos_joint_axes=qpos_joint_axes.astype(dtype),
+        qpos_joint_anchors=qpos_joint_anchors.astype(dtype),
+        qpos_joint_types=qpos_joint_types,
+        qpos_joint_limits=qpos_joint_limits.astype(dtype),
+        hinge_mask=hinge_mask.astype(dtype),
+        slide_mask=slide_mask.astype(dtype),
+        body_qpos_starts=body_qpos_starts,
+        body_qpos_counts=body_qpos_counts,
+        vertices=vertices.astype(dtype),
+        faces=faces.astype(np.int64),
+        link_joint_indices=link_meta["joint_indices"],
+        link_vertex_starts=link_meta["vertex_starts"],
+        link_vertex_counts=link_meta["vertex_counts"],
+        link_face_starts=link_meta["face_starts"],
+        link_face_counts=link_meta["face_counts"],
+        link_geom_positions=link_meta["geom_positions"].astype(dtype),
+        link_geom_rotations=link_meta["geom_rotations"].astype(dtype),
+        link_names=link_meta["names"],
+        site_names=site_names,
+        site_positions=site_positions.astype(dtype),
+        site_body_indices=site_body_indices,
+        tendons=tendons,
+    )
 
 
 def _stack_or_empty(records: list[dict], key: str, empty_shape: tuple[int, ...]) -> np.ndarray:
