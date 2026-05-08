@@ -9,7 +9,7 @@ plus a free-root ``global_translation``/``global_rotation``.
 
 from typing import Any
 
-from . import core as _core
+from .backends import core as _core
 
 __all__ = ["to_mujoco_qpos", "from_mujoco_qpos"]
 

@@ -14,7 +14,7 @@ from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from .. import common
+from ... import common
 
 Array = Any
 
