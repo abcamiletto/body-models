@@ -5,21 +5,38 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from .. import config
 from ..cache import download_and_extract, get_cache_dir
 
 PathLike = Path | str
+Array = Any
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 GARMENT_MEASUREMENTS_URL = "https://github.com/mbotsch/GarmentMeasurements/archive/refs/heads/main.zip"
 PREPROCESSED_FILENAME = "garment_measurements.npz"
 GENERATOR_PYTHON = "3.11"
+
+
+@dataclass(frozen=True)
+class GarmentMeasurementsWeights:
+    mean_vertices: Float[Array, "V 3"]
+    components: Float[Array, "V 3 C"]
+    eigenvalues: Float[Array, "C"]
+    faces: Int[Array, "F 3"]
+    joint_names: list[str]
+    parents: list[int]
+    kinematic_fronts: list[Front]
+    bind_quats: Float[Array, "J 4"]
+    skin_weights: Float[Array, "V J"]
+    mvc_weights: Float[Array, "V J"]
 
 
 def get_model_path(model_path: PathLike | None = None) -> Path:
@@ -59,7 +76,7 @@ def download_model() -> Path:
     return cache_dir
 
 
-def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32) -> dict[str, Any]:
+def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32) -> GarmentMeasurementsWeights:
     """Load preprocessed model data as NumPy arrays."""
     resolved_path = get_model_path(model_path)
     model_file = _find_preprocessed_file(resolved_path)
@@ -97,7 +114,7 @@ def preprocess_model(upstream_data: PathLike, output_dir: PathLike | None = None
     return output_file
 
 
-def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> dict[str, Any]:
+def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> GarmentMeasurementsWeights:
     """Load a preprocessed dependency-free GarmentMeasurements ``.npz`` asset."""
     path = Path(model_path)
     with np.load(path, allow_pickle=False) as data:
@@ -116,20 +133,40 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> di
         if missing:
             raise ValueError(f"{path} is missing required arrays: {missing}")
 
-        result = {
-            "mean_vertices": np.asarray(data["mean_vertices"], dtype=dtype),
-            "components": np.asarray(data["components"], dtype=dtype),
-            "eigenvalues": np.asarray(data["eigenvalues"], dtype=dtype),
-            "faces": np.asarray(data["faces"], dtype=np.int64),
-            "joint_names": [str(name) for name in data["joint_names"].tolist()],
-            "parents": np.asarray(data["parents"], dtype=np.int64),
-            "bind_quats": np.asarray(data["bind_quats"], dtype=dtype),
-            "skin_weights": np.asarray(data["skin_weights"], dtype=dtype),
-            "mvc_weights": np.asarray(data["mvc_weights"], dtype=dtype),
-        }
+        mean_vertices = np.asarray(data["mean_vertices"], dtype=dtype)
+        components = np.asarray(data["components"], dtype=dtype)
+        eigenvalues = np.asarray(data["eigenvalues"], dtype=dtype)
+        faces = np.asarray(data["faces"], dtype=np.int64)
+        joint_names = [str(name) for name in data["joint_names"].tolist()]
+        parents = np.asarray(data["parents"], dtype=np.int64)
+        bind_quats = np.asarray(data["bind_quats"], dtype=dtype)
+        skin_weights = np.asarray(data["skin_weights"], dtype=dtype)
+        mvc_weights = np.asarray(data["mvc_weights"], dtype=dtype)
 
-    _validate_preprocessed_model(path, result)
-    return result
+    data_dict = {
+        "mean_vertices": mean_vertices,
+        "components": components,
+        "eigenvalues": eigenvalues,
+        "faces": faces,
+        "joint_names": joint_names,
+        "parents": parents,
+        "bind_quats": bind_quats,
+        "skin_weights": skin_weights,
+        "mvc_weights": mvc_weights,
+    }
+    _validate_preprocessed_model(path, data_dict)
+    return GarmentMeasurementsWeights(
+        mean_vertices=mean_vertices,
+        components=components,
+        eigenvalues=eigenvalues,
+        faces=faces,
+        joint_names=joint_names,
+        parents=parents.astype(int).tolist(),
+        kinematic_fronts=compute_kinematic_fronts(parents),
+        bind_quats=bind_quats,
+        skin_weights=skin_weights,
+        mvc_weights=mvc_weights,
+    )
 
 
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
@@ -234,6 +271,7 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
 
 __all__ = [
     "Front",
+    "GarmentMeasurementsWeights",
     "GARMENT_MEASUREMENTS_URL",
     "GENERATOR_PYTHON",
     "PREPROCESSED_FILENAME",
