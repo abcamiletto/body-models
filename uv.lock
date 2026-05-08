@@ -126,6 +126,9 @@ torch = [
     { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.10.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+warp = [
+    { name = "warp-lang" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -141,6 +144,7 @@ dev = [
     { name = "torch", version = "2.10.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "ty" },
     { name = "viser" },
+    { name = "warp-lang" },
 ]
 docs = [
     { name = "mkdocs" },
@@ -164,8 +168,9 @@ requires-dist = [
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.3.0" },
     { name = "typer", specifier = ">=0.9.0" },
+    { name = "warp-lang", marker = "extra == 'warp'", specifier = ">=1.12.0" },
 ]
-provides-extras = ["torch", "jax", "numba"]
+provides-extras = ["torch", "jax", "numba", "warp"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -181,6 +186,7 @@ dev = [
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "ty", specifier = ">=0.0.1a13" },
     { name = "viser", specifier = ">=1.0.21" },
+    { name = "warp-lang", specifier = ">=1.12.0" },
 ]
 docs = [
     { name = "mkdocs", specifier = ">=1.6.1" },

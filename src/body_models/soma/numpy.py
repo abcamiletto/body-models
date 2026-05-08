@@ -12,6 +12,7 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
+    compute_sparse_skin_weights,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
@@ -86,11 +87,14 @@ class SOMA(BodyModel):
 
         self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
         self._joint_names = data.joint_names_full[1:]
+        skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
         weights = replace(
             data,
             mean_active=np.asarray(mean_active, dtype=np.float32),
             shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
             skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
+            skin_joint_indices_active=skin_joint_indices_active,
+            skin_joint_weights_active=skin_joint_weights_active,
             faces=np.asarray(faces, dtype=np.int64),
             vertex_map=vertex_map,
         )

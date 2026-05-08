@@ -47,8 +47,7 @@ class MANO(BodyModel):
 
         self.side = side if side is not None else "right"
         self.rotation_type = rotation_type
-        self.backend = backend
-        self._backend = get_backend(backend)
+        self._kernel = _get_kernel(backend)
 
         resolved_path = get_model_path(model_path, side)
         self.weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
@@ -102,7 +101,7 @@ class MANO(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
-        return self._backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
@@ -122,7 +121,7 @@ class MANO(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 16 4 4"]:
-        return self._backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
@@ -154,7 +153,7 @@ class MANO(BodyModel):
         }
 
 
-def get_backend(backend: Backend):
+def _get_kernel(backend: Backend):
     if backend == "numpy":
         return numpy_backend
     if backend == "scipy":

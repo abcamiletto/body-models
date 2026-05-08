@@ -151,6 +151,23 @@ def test_forward_vertices_numpy_specialized_backends(backend: str) -> None:
     np.testing.assert_allclose(verts, reference, rtol=RTOL, atol=ATOL)
 
 
+def test_forward_vertices_torch_warp_backend() -> None:
+    pytest.importorskip("warp")
+    from body_models.smpl.torch import SMPL
+
+    model = SMPL(model_path=MODEL_PATH, backend="warp")
+    reference_model = SMPL(model_path=MODEL_PATH)
+    params = reference_model.get_rest_pose(batch_size=2)
+
+    with torch.no_grad():
+        verts = model.forward_vertices(**params)
+        reference = reference_model.forward_vertices(**params)
+        subset = model.forward_vertices(**params, vertex_indices=[0, 10, 1, 10, 25])
+
+    np.testing.assert_allclose(verts.numpy(), reference.numpy(), rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(subset.numpy(), reference[:, [0, 10, 1, 10, 25]].numpy(), rtol=RTOL, atol=ATOL)
+
+
 @pytest.mark.parametrize("idx", range(NUM_CASES))
 def test_forward_vertices_jax(idx: int) -> None:
     """Test JAX forward_vertices matches reference."""
