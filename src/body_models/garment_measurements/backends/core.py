@@ -7,8 +7,8 @@ from typing import Any
 from jaxtyping import Float
 from nanomanifold import SE3, SO3
 
-from .. import common
-from ..rotations import RotationType
+from ... import common
+from ...rotations import RotationType
 
 Array = Any
 Front = tuple[list[int], list[int]]
