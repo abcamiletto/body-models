@@ -8,7 +8,7 @@ from typing import Any
 from jaxtyping import Float, Int
 
 from ... import common
-from ...anny import core as anny_core
+from ...anny.backends import core as anny_core
 from ..backend import core
 
 
@@ -66,7 +66,7 @@ def anny_identity_shape(
     template_vertices: Float[Any, "V 3"],
     blendshapes: Float[Any, "S V 3"],
     phenotype_mask: Float[Any, "S P"],
-    anchors: dict[str, Float[Any, "A"]],
+    anchors: Any,
     identity: Float[Any, "B 6"],
     *,
     xp: Any = None,
