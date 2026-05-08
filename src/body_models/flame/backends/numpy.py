@@ -24,14 +24,13 @@ def forward_vertices(
 ):
     return _forward_vertices(
         v_template=weights.v_template,
-        v_template_full=weights.v_template_full,
         shapedirs=weights.shapedirs,
-        shapedirs_full=weights.shapedirs_full,
         exprdirs=weights.exprdirs,
-        exprdirs_full=weights.exprdirs_full,
         posedirs=weights.posedirs,
         lbs_weights=weights.lbs_weights,
-        J_regressor=weights.J_regressor,
+        j_template=weights.j_template,
+        j_shapedirs=weights.j_shapedirs,
+        j_exprdirs=weights.j_exprdirs,
         parents=weights.parents,
         kinematic_fronts=weights.kinematic_fronts,
         shape=shape,
@@ -58,10 +57,9 @@ def forward_skeleton(
     rotation_type: RotationType = "axis_angle",
 ):
     return _forward_skeleton(
-        v_template_full=weights.v_template_full,
-        shapedirs_full=weights.shapedirs_full,
-        exprdirs_full=weights.exprdirs_full,
-        J_regressor=weights.J_regressor,
+        j_template=weights.j_template,
+        j_shapedirs=weights.j_shapedirs,
+        j_exprdirs=weights.j_exprdirs,
         parents=weights.parents,
         kinematic_fronts=weights.kinematic_fronts,
         shape=shape,
