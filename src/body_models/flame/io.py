@@ -8,6 +8,7 @@ from jaxtyping import Float, Int
 from body_models import config
 from body_models.common import simplify_mesh
 from body_models.common.chumpy_fix import load_model_dict
+from body_models.smpl.io import compute_sparse_lbs_weights
 
 PathLike = Path | str
 Array = Any
@@ -23,6 +24,8 @@ class FlameWeights:
     v_template_full: Float[Array, "V_full 3"]
     faces: Int[Array, "F 3"]
     lbs_weights: Float[Array, "V 5"]
+    lbs_joint_indices: Int[Array, "V K"]
+    lbs_joint_weights: Float[Array, "V K"]
     shapedirs: Float[Array, "V 3 S"]
     shapedirs_full: Float[Array, "V_full 3 S"]
     exprdirs: Float[Array, "V 3 E"]
@@ -81,11 +84,15 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
         shapedirs = shapedirs_full[vertex_map]
         posedirs = posedirs[vertex_map]
 
+    lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
+
     return FlameWeights(
         v_template=v_template,
         v_template_full=v_template_full,
         faces=faces,
         lbs_weights=lbs_weights,
+        lbs_joint_indices=lbs_joint_indices,
+        lbs_joint_weights=lbs_joint_weights,
         shapedirs=shapedirs[:, :, :300],
         shapedirs_full=shapedirs_full[:, :, :300],
         exprdirs=shapedirs[:, :, 300:],
