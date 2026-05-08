@@ -10,8 +10,12 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
-from body_models.smplx.backends import numpy as backend
+from body_models.smplx.backends import numpy as numpy_backend
+from body_models.smplx.backends import scipy as scipy_backend
 from body_models.smplx.io import get_model_path, load_model_data
+
+Backend = Literal["numpy", "scipy", "numba"]
+FLAVORS = ("numpy", "scipy", "numba")
 
 __all__ = ["SMPLX"]
 
@@ -23,6 +27,7 @@ class SMPLX(BodyModel):
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
     NUM_JOINTS = 55
+    flavors = FLAVORS
 
     def __init__(
         self,
@@ -31,6 +36,7 @@ class SMPLX(BodyModel):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        backend: Backend = "numpy",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
@@ -38,9 +44,13 @@ class SMPLX(BodyModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
+        if backend not in FLAVORS:
+            raise ValueError(f"Invalid backend: {backend}")
 
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
+        self.backend = backend
+        self._backend = get_backend(backend)
 
         resolved_path = get_model_path(model_path, gender)
         self.weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
@@ -101,7 +111,7 @@ class SMPLX(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
-        return backend.forward_vertices(
+        return self._backend.forward_vertices(
             weights=self.weights,
             shape=shape,
             body_pose=body_pose,
@@ -127,7 +137,7 @@ class SMPLX(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 55 4 4"]:
-        return backend.forward_skeleton(
+        return self._backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
             body_pose=body_pose,
@@ -175,3 +185,17 @@ class SMPLX(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+
+def get_backend(backend: Backend):
+    if backend == "numpy":
+        return numpy_backend
+    if backend == "scipy":
+        return scipy_backend
+
+    try:
+        from body_models.smplx.backends import numba as numba_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[numba] to use SMPLX backend='numba'.") from exc
+
+    return numba_backend

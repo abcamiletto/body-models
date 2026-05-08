@@ -10,6 +10,7 @@ from jaxtyping import Float, Int
 from body_models import config
 from body_models.common import simplify_mesh
 from body_models.common.chumpy_fix import load_model_dict
+from body_models.smpl.io import compute_sparse_lbs_weights
 from body_models.smplh.constants import SMPLH_JOINT_NAMES
 
 PathLike = Path | str
@@ -24,6 +25,8 @@ class SmplhWeights:
     v_template: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     lbs_weights: Float[Array, "V 52"]
+    lbs_joint_indices: Int[Array, "V K"]
+    lbs_joint_weights: Float[Array, "V K"]
     shapedirs: Float[Array, "V 3 S"]
     posedirs: Float[Array, "P V*3"]
     j_template: Float[Array, "52 3"]
@@ -100,10 +103,14 @@ def load_model_data(path: Path, flat_hand_mean: bool = True, simplify: float = 1
             ]
         )
 
+    lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
+
     return SmplhWeights(
         v_template=v_template,
         faces=faces,
         lbs_weights=lbs_weights,
+        lbs_joint_indices=lbs_joint_indices,
+        lbs_joint_weights=lbs_joint_weights,
         shapedirs=shapedirs,
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
         j_template=J_regressor @ v_template_full,

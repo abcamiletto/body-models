@@ -12,6 +12,28 @@ from nanomanifold import SO3
 __all__ = ["forward_vertices", "forward_skeleton"]
 
 
+def numba_skin(
+    v_shaped,
+    j_t,
+    T_world,
+    joint_indices,
+    joint_weights,
+    *,
+    global_rotation=None,
+    global_translation=None,
+    rotation_type: RotationType = "axis_angle",
+):
+    v_posed = _skin_vertices(
+        v_shaped,
+        j_t,
+        T_world[..., :3, :3],
+        T_world[..., :3, 3],
+        joint_indices,
+        joint_weights,
+    )
+    return core.apply_global_transform(np, v_posed, global_rotation, global_translation, rotation_type)
+
+
 def forward_vertices(
     weights: SmplWeights,
     shape: Float[np.ndarray, "B 10"],
@@ -44,20 +66,15 @@ def forward_vertices(
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
 
-    v_posed = _skin_vertices(
+    return numba_skin(
         v_shaped,
         j_t,
-        T_world[..., :3, :3],
-        T_world[..., :3, 3],
+        T_world,
         joint_indices,
         joint_weights,
-    )
-    return core.apply_global_transform(
-        np,
-        v_posed,
-        global_rotation,
-        global_translation,
-        rotation_type,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+        rotation_type=rotation_type,
     )
 
 
@@ -95,15 +112,15 @@ def forward_skeleton(
     parents = np.asarray(weights.parents, dtype=np.int64)
     if global_rotation is not None:
         R_world, t_world = _forward_kinematics(pose_matrices, t_local, parents)
-        R_world, t_world = core.apply_global_transform_to_rt(
-            np,
-            R_world,
-            t_world,
-            global_rotation,
-            global_translation,
-            rotation_type,
-        )
-        T_world = core.build_transform_matrix(np, R_world, t_world)
+        R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=np)
+        t_world = (R_global @ t_world.mT).mT
+        R_world = R_global[:, None] @ R_world
+        if global_translation is not None:
+            t_world = t_world + global_translation[:, None]
+        T_world = np.zeros((*R_world.shape[:-2], 4, 4), dtype=R_world.dtype)
+        T_world[..., :3, :3] = R_world
+        T_world[..., :3, 3] = t_world
+        T_world[..., 3, 3] = 1.0
     else:
         if global_translation is None:
             global_translation = np.zeros((B, 3), dtype=t_local.dtype)

@@ -89,18 +89,21 @@ MODELS = [
     ),
     ModelSpec(
         "SMPLH",
-        lambda flavor: smplh_numpy.SMPLH(gender="neutral"),
+        lambda flavor: smplh_numpy.SMPLH(gender="neutral", backend=flavor),
         lambda d: torch_model(smplh_torch.SMPLH(gender="neutral"), d),
+        flavors=smplh_numpy.SMPLH.flavors,
     ),
     ModelSpec(
         "SMPLX",
-        lambda flavor: smplx_numpy.SMPLX(gender="neutral"),
+        lambda flavor: smplx_numpy.SMPLX(gender="neutral", backend=flavor),
         lambda d: torch_model(smplx_torch.SMPLX(gender="neutral"), d),
+        flavors=smplx_numpy.SMPLX.flavors,
     ),
     ModelSpec(
         "MANO",
-        lambda flavor: mano_numpy.MANO(side="left"),
+        lambda flavor: mano_numpy.MANO(side="left", backend=flavor),
         lambda d: torch_model(mano_torch.MANO(side="left"), d),
+        flavors=mano_numpy.MANO.flavors,
     ),
     ModelSpec(
         "SKEL",
@@ -109,8 +112,9 @@ MODELS = [
     ),
     ModelSpec(
         "FLAME",
-        lambda flavor: flame_numpy.FLAME(),
+        lambda flavor: flame_numpy.FLAME(backend=flavor),
         lambda d: torch_model(flame_torch.FLAME(), d),
+        flavors=flame_numpy.FLAME.flavors,
     ),
     ModelSpec("ANNY", lambda flavor: anny_numpy.ANNY(), lambda d: torch_model(anny_torch.ANNY(), d)),
     ModelSpec("MHR", lambda flavor: mhr_numpy.MHR(), lambda d: torch_model(mhr_torch.MHR(), d)),

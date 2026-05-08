@@ -9,9 +9,13 @@ from jaxtyping import Float, Int
 from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from body_models.mano.backends import numpy as backend
+from body_models.mano.backends import numpy as numpy_backend
+from body_models.mano.backends import scipy as scipy_backend
 from body_models.mano.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
+
+Backend = Literal["numpy", "scipy", "numba"]
+FLAVORS = ("numpy", "scipy", "numba")
 
 __all__ = ["MANO"]
 
@@ -21,6 +25,7 @@ class MANO(BodyModel):
 
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
+    flavors = FLAVORS
 
     def __init__(
         self,
@@ -29,6 +34,7 @@ class MANO(BodyModel):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        backend: Backend = "numpy",
     ):
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
@@ -36,9 +42,13 @@ class MANO(BodyModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
+        if backend not in FLAVORS:
+            raise ValueError(f"Invalid backend: {backend}")
 
         self.side = side if side is not None else "right"
         self.rotation_type = rotation_type
+        self.backend = backend
+        self._backend = get_backend(backend)
 
         resolved_path = get_model_path(model_path, side)
         self.weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
@@ -92,7 +102,7 @@ class MANO(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
-        return backend.forward_vertices(
+        return self._backend.forward_vertices(
             weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
@@ -112,7 +122,7 @@ class MANO(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 16 4 4"]:
-        return backend.forward_skeleton(
+        return self._backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
@@ -142,3 +152,17 @@ class MANO(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+
+def get_backend(backend: Backend):
+    if backend == "numpy":
+        return numpy_backend
+    if backend == "scipy":
+        return scipy_backend
+
+    try:
+        from body_models.mano.backends import numba as numba_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[numba] to use MANO backend='numba'.") from exc
+
+    return numba_backend

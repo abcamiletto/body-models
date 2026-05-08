@@ -46,7 +46,7 @@ jobs:
           - group: anny
             paths: tests/test_anny.py
           - group: flame
-            paths: tests/test_flame.py
+            paths: tests/flame
           - group: mhr
             paths: tests/test_mhr.py
           - group: skel
@@ -54,11 +54,11 @@ jobs:
           - group: smpl
             paths: tests/smpl/test_smpl.py
           - group: smplh
-            paths: tests/test_smplh.py
+            paths: tests/smplh
           - group: mano
-            paths: tests/test_mano.py
+            paths: tests/mano
           - group: smplx
-            paths: tests/test_smplx.py
+            paths: tests/smplx
           - group: soma
             paths: tests/test_soma.py tests/test_soma_identity_backends.py
           - group: garment-measurements

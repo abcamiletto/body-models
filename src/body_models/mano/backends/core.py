@@ -6,6 +6,7 @@ from jaxtyping import Float
 
 from body_models import common
 from body_models.common import get_namespace
+from body_models.smpl.backends import core as smpl_core
 from nanomanifold import SO3
 
 from body_models.rotations import RotationType
@@ -42,7 +43,6 @@ def forward_vertices(
 
     if xp is None:
         xp = get_namespace(shape)
-    B = hand_pose.shape[0]
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
         v_template = v_template[vertex_indices]
@@ -66,20 +66,11 @@ def forward_vertices(
         rotation_type=rotation_type,
     )
 
-    # Pose blend shapes
-    eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1), xp=xp)
-    pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
-    v_shaped = v_t + (pose_delta @ posedirs).reshape(B, -1, 3)
-
-    # Linear blend skinning
-    R_world = T_world[..., :3, :3]
-    t_world = T_world[..., :3, 3]
-    W_R = xp.einsum("vj,bjkl->bvkl", lbs_weights, R_world)
-    W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t_world - xp.squeeze(R_world @ j_t[..., None], axis=-1))
-    v_posed = xp.squeeze(W_R @ v_shaped[..., None], axis=-1) + W_t
-
-    # Apply global transform
-    v_posed = _apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
+    eye3 = common.eye_as(pose_matrices, batch_dims=(hand_pose.shape[0], 1), xp=xp)
+    pose_delta = (pose_matrices[:, 1:] - eye3).reshape(hand_pose.shape[0], -1)
+    v_shaped = v_t + (pose_delta @ posedirs).reshape(hand_pose.shape[0], -1, 3)
+    v_posed = smpl_core.linear_blend_skinning(xp, v_shaped, j_t, T_world, lbs_weights)
+    v_posed = smpl_core.apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
 
     return v_posed
 
@@ -150,17 +141,19 @@ def forward_skeleton(
 
     # Apply global transform
     if global_rotation is not None or global_translation is not None:
-        R_world, t_world = _apply_global_transform_to_rt(
-            xp,
-            R_world,
-            t_world,
-            global_rotation,
-            global_translation,
-            rotation_type,
-        )
+        if global_rotation is not None:
+            R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
+            t_world = (R_global @ t_world.mT).mT
+            R_world = R_global[..., None, :, :] @ R_world
+        if global_translation is not None:
+            t_world = t_world + global_translation[..., None, :]
 
-    # Reconstruct T from R and t
-    return _build_transform_matrix(xp, R_world, t_world)
+    batch_shape = R_world.shape[:-3]
+    J = R_world.shape[-3]
+    upper = xp.concat([R_world, t_world[..., None]], axis=-1)
+    bottom = common.zeros_as(upper, shape=(*batch_shape, J, 1, 4), xp=xp)
+    bottom = common.set(bottom, (..., 0, 3), 1.0, xp=xp)
+    return xp.concat([upper, bottom], axis=-2)
 
 
 def _forward_core(
@@ -231,95 +224,6 @@ def _forward_core(
     j_rest = j_t[:, 1:] - j_t[:, parents[1:]]  # [B, J-1, 3]
     t_local = xp.concat([j0, j_rest], axis=1)  # [B, J, 3]
 
-    T_world = _batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts, joint_indices)
+    T_world = smpl_core.batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts, joint_indices)
 
     return v_t, j_t, pose_matrices, T_world
-
-
-def _batched_forward_kinematics(
-    xp,
-    R: Float[Array, "B J 3 3"],
-    t: Float[Array, "B J 3"],
-    fronts: list[Front],
-    joint_indices: list[int] | None = None,
-) -> Float[Array, "B J 4 4"]:
-    """Batched forward kinematics using precomputed kinematic fronts.
-
-    Uses unified 4x4 homogeneous transforms: one bmm per depth level instead
-    of two (R_parent @ R_local + R_parent @ t_local).
-    """
-    _, J = R.shape[:2]
-
-    # Build all local 4x4 transforms up front
-    T_local = _build_transform_matrix(xp, R, t)
-
-    T_world: list[Float[Array, "B 4 4"] | None] = [None] * J
-
-    for joints, parents in fronts:
-        if parents[0] < 0:  # Root joints
-            for joint in joints:
-                T_world[joint] = T_local[:, joint]
-            continue
-
-        T_parent = xp.stack([T_world[i] for i in parents], axis=1)
-        T_cur = T_parent @ T_local[:, joints]
-        for idx, joint in enumerate(joints):
-            T_world[joint] = T_cur[:, idx]
-
-    if joint_indices is None:
-        return xp.stack(T_world, axis=1)
-    return xp.stack([T_world[j] for j in joint_indices], axis=1)
-
-
-def _build_transform_matrix(
-    xp,
-    R: Float[Array, "B J 3 3"],
-    t: Float[Array, "B J 3"],
-) -> Float[Array, "B J 4 4"]:
-    """Build 4x4 transform matrix from R [B, J, 3, 3] and t [B, J, 3]."""
-    B, J = R.shape[:2]
-    dtype = R.dtype
-
-    T = common.zeros_as(R, shape=(B, J, 4, 4), xp=xp)
-    idx_R = (..., slice(None, 3), slice(None, 3))
-    idx_t = (..., slice(None, 3), 3)
-    T = common.set(T, idx_R, R, xp=xp)
-    T = common.set(T, idx_t, t, xp=xp)
-    T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
-    return T
-
-
-def _apply_global_transform(
-    xp,
-    points: Float[Array, "B N 3"],
-    rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
-    translation: Float[Array, "B 3"] | None,
-    rotation_type: RotationType,
-) -> Float[Array, "B N 3"]:
-    """Apply global rotation and translation to points [B, N, 3]."""
-    if rotation is not None:
-        R = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
-        points = (R @ points.mT).mT
-    if translation is not None:
-        points = points + translation[:, None]
-    return points
-
-
-def _apply_global_transform_to_rt(
-    xp,
-    R: Float[Array, "B J 3 3"],
-    t: Float[Array, "B J 3"],
-    rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,
-    translation: Float[Array, "B 3"] | None,
-    rotation_type: RotationType,
-) -> tuple[Float[Array, "B J 3 3"], Float[Array, "B J 3"]]:
-    """Apply global rotation and translation to R, t components."""
-    if rotation is not None:
-        R_global = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
-        # Transform t: R_global @ t
-        t = (R_global @ t.mT).mT
-        # Transform R: R_global @ R (broadcast R_global over J dimension)
-        R = R_global[:, None] @ R
-    if translation is not None:
-        t = t + translation[:, None]
-    return R, t
