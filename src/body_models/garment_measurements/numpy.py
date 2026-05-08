@@ -1,6 +1,7 @@
 """NumPy backend for the GarmentMeasurements PCA body model."""
 
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -8,27 +9,37 @@ from nanomanifold import SO3
 
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
-from .backends import numpy as backend
+from .backends import numpy as numpy_backend
 from .io import get_model_path, load_model_data
 
 
 __all__ = ["GarmentMeasurements"]
 
+Backend = Literal["numpy", "numba"]
+FLAVORS = ("numpy", "numba")
+
 
 class GarmentMeasurements(BodyModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
+
+    flavors = FLAVORS
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         *,
         rotation_type: RotationType = "axis_angle",
+        backend: Backend = "numpy",
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if backend not in FLAVORS:
+            raise ValueError(f"Invalid backend: {backend}")
 
         self.weights = load_model_data(get_model_path(model_path), dtype=np.float32)
         self.rotation_type = rotation_type
+        self.backend = backend
+        self._backend = get_backend(backend)
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
@@ -70,7 +81,7 @@ class GarmentMeasurements(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
-        return backend.forward_vertices(
+        return self._backend.forward_vertices(
             weights=self.weights,
             shape=shape,
             pose=pose,
@@ -88,7 +99,7 @@ class GarmentMeasurements(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B J 4 4"]:
-        return backend.forward_skeleton(
+        return self._backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
             pose=pose,
@@ -117,3 +128,15 @@ class GarmentMeasurements(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+
+def get_backend(backend: Backend):
+    if backend == "numpy":
+        return numpy_backend
+
+    try:
+        from body_models.garment_measurements.backends import numba as numba_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[numba] to use GarmentMeasurements backend='numba'.") from exc
+
+    return numba_backend

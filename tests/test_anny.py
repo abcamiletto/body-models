@@ -353,6 +353,24 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
     )
 
 
+def test_numba_backend_matches_numpy() -> None:
+    pytest.importorskip("numba")
+    from body_models.anny.numpy import ANNY
+
+    numpy_model = ANNY(model_path=MODEL_PATH)
+    numba_model = ANNY(model_path=MODEL_PATH, backend="numba")
+    params = numpy_model.get_rest_pose(batch_size=2)
+    vertex_indices = [0, 10, 1, 10, 25]
+
+    numpy_vertices = numpy_model.forward_vertices(**params)
+    numba_vertices = numba_model.forward_vertices(**params)
+    numpy_subset = numpy_model.forward_vertices(**params, vertex_indices=vertex_indices)
+    numba_subset = numba_model.forward_vertices(**params, vertex_indices=vertex_indices)
+
+    np.testing.assert_allclose(numba_vertices, numpy_vertices, rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(numba_subset, numpy_subset, rtol=RTOL, atol=ATOL)
+
+
 # ============================================================================
 # Gradient tests (torch only)
 # ============================================================================
