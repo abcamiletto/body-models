@@ -169,8 +169,7 @@ class SKEL(BodyModel, nn.Module):
         if shape.shape[0] == 1 and batch_size > 1:
             shape = shape.expand(batch_size, -1)
 
-        v_shaped_full = weights.v_template_full + torch.einsum("vdi,bi->bvd", weights.shapedirs_full, shape)
-        joints = torch.einsum("bvd,jv->bjd", v_shaped_full, weights.j_regressor)
+        joints = weights.j_template + torch.einsum("jdi,bi->bjd", weights.j_shapedirs, shape)
         joint_rel = core._compute_J_rel(torch, joints, weights.parent)
         local_transforms = core._compute_local_transforms(
             torch,
@@ -268,7 +267,9 @@ class SKEL(BodyModel, nn.Module):
         scale_matrices[:, :, 3, 3] = 1
 
         aligned_transforms = _homog_matrix(bone_orientation, joints.unsqueeze(-1)) @ scale_matrices
-        skel_h = torch.cat([weights.skel_v_template, torch.ones(weights.skel_v_template.shape[0], 1, device=device)], -1)
+        skel_h = torch.cat(
+            [weights.skel_v_template, torch.ones(weights.skel_v_template.shape[0], 1, device=device)], -1
+        )
         blend = torch.einsum("vj,bjxy->bvxy", weights.skel_weights_rigid, aligned_transforms)
         skel_aligned = (blend @ skel_h.unsqueeze(0).unsqueeze(-1)).squeeze(-1)
 

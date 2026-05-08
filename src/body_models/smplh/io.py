@@ -75,22 +75,22 @@ def load_model_data(path: Path, flat_hand_mean: bool = True, simplify: float = 1
         raise ValueError("simplify must be >= 1.0")
     data = load_model_dict(path)
 
-    v_template_full = np.asarray(data["v_template"], dtype=np.float32)
+    model_template = np.asarray(data["v_template"], dtype=np.float32)
     faces = np.asarray(data["f"], dtype=np.int32)
     lbs_weights = np.asarray(data["weights"], dtype=np.float32)
-    shapedirs_full = np.asarray(data["shapedirs"], dtype=np.float32)
+    model_dirs = np.asarray(data["shapedirs"], dtype=np.float32)
     posedirs = np.asarray(data["posedirs"], dtype=np.float32)
-    J_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
+    joint_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
     parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
     parents[0] = -1
 
-    v_template = v_template_full
-    shapedirs = shapedirs_full
+    v_template = model_template
+    shapedirs = model_dirs
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh(model_template, faces, target_faces)
         lbs_weights = lbs_weights[vertex_map]
-        shapedirs = shapedirs_full[vertex_map]
+        shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
     if flat_hand_mean:
@@ -113,8 +113,8 @@ def load_model_data(path: Path, flat_hand_mean: bool = True, simplify: float = 1
         lbs_joint_weights=lbs_joint_weights,
         shapedirs=shapedirs,
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
-        j_template=J_regressor @ v_template_full,
-        j_shapedirs=np.einsum("jv,vds->jds", J_regressor, shapedirs_full),
+        j_template=joint_regressor @ model_template,
+        j_shapedirs=np.einsum("jv,vds->jds", joint_regressor, model_dirs),
         hand_mean=hand_mean,
         parents=parents.tolist(),
         kinematic_fronts=compute_kinematic_fronts(parents),

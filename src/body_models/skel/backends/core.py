@@ -63,9 +63,7 @@ def forward_vertices(
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
 
-    # Joint positions (use full-resolution for accurate skeleton)
-    v_shaped_full = weights.v_template_full + xp.einsum("vdi,bi->bvd", weights.shapedirs_full, shape)
-    J = xp.einsum("bvd,jv->bjd", v_shaped_full, weights.j_regressor)
+    J = weights.j_template + xp.einsum("jdi,bi->bjd", weights.j_shapedirs, shape)
     J_rel = _compute_J_rel(xp, J, weights.parent)
 
     # Forward kinematics
@@ -157,9 +155,7 @@ def forward_skeleton(
                 active_joints.add(cur)
                 cur = full_parents[cur]
 
-    # Shape blend shapes -> joint positions (use full-resolution for accurate skeleton)
-    v_shaped_full = weights.v_template_full + xp.einsum("vdi,bi->bvd", weights.shapedirs_full, shape)
-    J = xp.einsum("bvd,jv->bjd", v_shaped_full, weights.j_regressor)
+    J = weights.j_template + xp.einsum("jdi,bi->bjd", weights.j_shapedirs, shape)
     J_rel = _compute_J_rel(xp, J, weights.parent)
 
     # Forward kinematics
@@ -179,7 +175,9 @@ def forward_skeleton(
         scapula_l_axes=weights.scapula_l_axes,
         spine_axes=weights.spine_axes,
     )
-    G = _propagate_transforms(xp, G_local, weights.parents[1:], joint_indices=joint_indices, active_joints=active_joints)
+    G = _propagate_transforms(
+        xp, G_local, weights.parents[1:], joint_indices=joint_indices, active_joints=active_joints
+    )
 
     # Apply global transform
     rot = G[:, :, :3, :3]

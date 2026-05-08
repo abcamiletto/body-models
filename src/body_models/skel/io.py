@@ -19,13 +19,12 @@ __all__ = ["load_model_data"]
 @dataclass(frozen=True)
 class SkelWeights:
     v_template: Float[Array, "V 3"]
-    v_template_full: Float[Array, "V_full 3"]
     faces: Int[Array, "F 3"]
     shapedirs: Float[Array, "V 3 B"]
-    shapedirs_full: Float[Array, "V_full 3 B"]
     posedirs: Float[Array, "P V*3"]
     skin_weights: Float[Array, "V 24"]
-    j_regressor: Float[Array, "24 V_full"]
+    j_template: Float[Array, "24 3"]
+    j_shapedirs: Float[Array, "24 3 B"]
     skel_v_template: Float[Array, "Vs 3"]
     skel_faces: Int[Array, "Fs 3"]
     skel_weights: Float[Array, "Vs 24"]
@@ -80,21 +79,24 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
     with open(model_path, "rb") as f:
         data = pickle.load(f)
 
-    v_template_full = np.asarray(data["skin_template_v"], dtype=np.float32)
+    skin_template = np.asarray(data["skin_template_v"], dtype=np.float32)
     faces = np.asarray(data["skin_template_f"], dtype=np.int32)
-    shapedirs_full = np.asarray(data["shapedirs"][:, :, :10], dtype=np.float32)
+    skin_shapedirs = np.asarray(data["shapedirs"][:, :, :10], dtype=np.float32)
     posedirs_full = np.asarray(data["posedirs"], dtype=np.float32)
     skin_weights = _sparse_to_dense(data["skin_weights"])
+    j_regressor = _sparse_to_dense(data["J_regressor_osim"])
+    j_template = j_regressor @ skin_template
+    j_shapedirs = np.einsum("jv,vdb->jdb", j_regressor, skin_shapedirs)
 
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
-        shapedirs = shapedirs_full[vertex_map]
+        v_template, faces, vertex_map = simplify_mesh(skin_template, faces, target_faces)
+        shapedirs = skin_shapedirs[vertex_map]
         posedirs = posedirs_full[vertex_map]
         skin_weights = skin_weights[vertex_map]
     else:
-        v_template = v_template_full
-        shapedirs = shapedirs_full
+        v_template = skin_template
+        shapedirs = skin_shapedirs
         posedirs = posedirs_full
 
     kintree = np.asarray(data["osim_kintree_table"], dtype=np.int64)
@@ -106,13 +108,12 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
 
     return SkelWeights(
         v_template=v_template,
-        v_template_full=v_template_full,
         faces=faces,
         shapedirs=shapedirs,
-        shapedirs_full=shapedirs_full,
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
         skin_weights=skin_weights,
-        j_regressor=_sparse_to_dense(data["J_regressor_osim"]),
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
         skel_v_template=np.asarray(data["skel_template_v"], dtype=np.float32),
         skel_faces=np.asarray(data["skel_template_f"], dtype=np.int32),
         skel_weights=_sparse_to_dense(data["skel_weights"]),
