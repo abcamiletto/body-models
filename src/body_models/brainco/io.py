@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import shutil
 import struct
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
+from jaxtyping import Float, Int
 
 from .. import config
 from ..cache import get_cache_dir
 
 PathLike = Path | str
 Side = Literal["left", "right"]
+Array = Any
 VALID_SIDES = ("left", "right")
 BRAINCO_REVO2_MUJOCO_URL = (
     "https://brainco-common-public.oss-cn-hangzhou.aliyuncs.com/web-config/docs-sdk/Revo2_xml.zip"
@@ -45,6 +48,33 @@ ACTIVE_JOINT_SUFFIXES = {
     "ring_proximal_skel",
     "pinky_proximal_skel",
 }
+
+
+@dataclass(frozen=True)
+class BrainCoWeights:
+    side: Side
+    joint_names: list[str]
+    parents: list[int]
+    local_offsets: Float[Array, "J 3"]
+    rest_local_rotations: Float[Array, "J 3 3"]
+    vertices: Float[Array, "V 3"]
+    faces: Int[Array, "F 3"]
+    link_joint_indices: list[int]
+    link_vertex_starts: list[int]
+    link_vertex_counts: list[int]
+    link_face_starts: list[int]
+    link_face_counts: list[int]
+    link_geom_positions: Float[Array, "L 3"]
+    link_geom_rotations: Float[Array, "L 3 3"]
+    link_names: list[str]
+    qpos_joint_indices: list[int]
+    qpos_joint_axes: Float[Array, "Q 3"]
+    qpos_joint_limits: Float[Array, "Q 2"]
+    qpos_joint_names: list[str]
+    coupled_joint_indices: list[int]
+    coupled_joint_axes: Float[Array, "C 3"]
+    coupled_driver_indices: list[int]
+    coupled_polycoef: Float[Array, "C 4"]
 
 
 def get_model_path(model_path: PathLike | None = None) -> Path:
@@ -102,7 +132,7 @@ def validate_path(path: PathLike) -> Path:
     return path
 
 
-def load_model_data(model_path: PathLike | None = None, *, side: Side = "right", dtype=np.float32) -> dict:
+def load_model_data(model_path: PathLike | None = None, *, side: Side = "right", dtype=np.float32) -> BrainCoWeights:
     if side not in VALID_SIDES:
         raise ValueError(f"Invalid BrainCo side: {side}")
     model_dir = get_model_path(model_path)
@@ -118,31 +148,31 @@ def load_model_data(model_path: PathLike | None = None, *, side: Side = "right",
         class_axes,
     )
     vertices, faces, link_data = _load_link_meshes(model_dir / "meshes" / side, mesh_transforms, names, dtype=dtype)
-    return {
-        "side": side,
-        "joint_names": names,
-        "parents": PARENTS.copy(),
-        "local_offsets": local_offsets.astype(dtype),
-        "rest_local_rotations": rest_local_rotations.astype(dtype),
-        "vertices": vertices.astype(dtype),
-        "faces": faces.astype(np.int64),
-        "link_joint_indices": link_data["joint_indices"],
-        "link_vertex_starts": link_data["vertex_starts"],
-        "link_vertex_counts": link_data["vertex_counts"],
-        "link_face_starts": link_data["face_starts"],
-        "link_face_counts": link_data["face_counts"],
-        "link_geom_positions": link_data["geom_positions"].astype(dtype),
-        "link_geom_rotations": link_data["geom_rotations"].astype(dtype),
-        "link_names": link_data["names"],
-        "qpos_joint_indices": joint_indices,
-        "qpos_joint_axes": joint_axes.astype(dtype),
-        "qpos_joint_limits": joint_limits.astype(dtype),
-        "qpos_joint_names": joint_names,
-        "coupled_joint_indices": coupled_joint_indices,
-        "coupled_joint_axes": coupled_joint_axes.astype(dtype),
-        "coupled_driver_indices": coupled_driver_indices,
-        "coupled_polycoef": coupled_polycoef.astype(dtype),
-    }
+    return BrainCoWeights(
+        side=side,
+        joint_names=names,
+        parents=PARENTS.copy(),
+        local_offsets=local_offsets.astype(dtype),
+        rest_local_rotations=rest_local_rotations.astype(dtype),
+        vertices=vertices.astype(dtype),
+        faces=faces.astype(np.int64),
+        link_joint_indices=link_data["joint_indices"],
+        link_vertex_starts=link_data["vertex_starts"],
+        link_vertex_counts=link_data["vertex_counts"],
+        link_face_starts=link_data["face_starts"],
+        link_face_counts=link_data["face_counts"],
+        link_geom_positions=link_data["geom_positions"].astype(dtype),
+        link_geom_rotations=link_data["geom_rotations"].astype(dtype),
+        link_names=link_data["names"],
+        qpos_joint_indices=joint_indices,
+        qpos_joint_axes=joint_axes.astype(dtype),
+        qpos_joint_limits=joint_limits.astype(dtype),
+        qpos_joint_names=joint_names,
+        coupled_joint_indices=coupled_joint_indices,
+        coupled_joint_axes=coupled_joint_axes.astype(dtype),
+        coupled_driver_indices=coupled_driver_indices,
+        coupled_polycoef=coupled_polycoef.astype(dtype),
+    )
 
 
 def _parse_joint_defaults(root: ET.Element) -> tuple[dict[str, np.ndarray], dict[str, tuple[float, float]]]:

@@ -8,8 +8,8 @@ from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from .. import common
-from ..rotations import RotationType as SO3RotationType
+from ... import common
+from ...rotations import RotationType as SO3RotationType
 
 Array = Any
 RotationType = SO3RotationType | Literal["hinge"]
