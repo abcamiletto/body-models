@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from body_models import g1
-from body_models.g1 import core
+from body_models.g1.backends import core
 from body_models.g1.io import G1_MESH_JOINT_MAP
 from gradient_utils import prepare_params, sampled_gradcheck
 
