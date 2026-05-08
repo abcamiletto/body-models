@@ -21,17 +21,16 @@ __all__ = ["load_model_data"]
 @dataclass(frozen=True)
 class FlameWeights:
     v_template: Float[Array, "V 3"]
-    v_template_full: Float[Array, "V_full 3"]
     faces: Int[Array, "F 3"]
     lbs_weights: Float[Array, "V 5"]
     lbs_joint_indices: Int[Array, "V K"]
     lbs_joint_weights: Float[Array, "V K"]
     shapedirs: Float[Array, "V 3 S"]
-    shapedirs_full: Float[Array, "V_full 3 S"]
     exprdirs: Float[Array, "V 3 E"]
-    exprdirs_full: Float[Array, "V_full 3 E"]
     posedirs: Float[Array, "P V*3"]
-    J_regressor: Float[Array, "5 V_full"]
+    j_template: Float[Array, "5 3"]
+    j_shapedirs: Float[Array, "5 3 S"]
+    j_exprdirs: Float[Array, "5 3 E"]
     parents: list[int]
     kinematic_fronts: list[Front]
 
@@ -66,39 +65,42 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
         raise ValueError("simplify must be >= 1.0")
     model_data = load_model_dict(model_path)
 
-    v_template_full = np.asarray(model_data["v_template"], dtype=np.float32)
+    model_template = np.asarray(model_data["v_template"], dtype=np.float32)
     faces = np.asarray(model_data["f"], dtype=np.int32)
     lbs_weights = np.asarray(model_data["weights"], dtype=np.float32)
-    shapedirs_full = np.asarray(model_data["shapedirs"], dtype=np.float32)
+    model_dirs = np.asarray(model_data["shapedirs"], dtype=np.float32)
     posedirs = np.asarray(model_data["posedirs"], dtype=np.float32)
-    J_regressor = np.asarray(model_data["J_regressor"], dtype=np.float32)
+    joint_regressor = np.asarray(model_data["J_regressor"], dtype=np.float32)
     parents = np.asarray(model_data["kintree_table"][0], dtype=np.int64)
     parents[0] = -1
 
-    v_template = v_template_full
-    shapedirs = shapedirs_full
+    j_template = joint_regressor @ model_template
+    j_shapedirs = np.einsum("jv,vds->jds", joint_regressor, model_dirs[:, :, :300])
+    j_exprdirs = np.einsum("jv,vde->jde", joint_regressor, model_dirs[:, :, 300:])
+
+    v_template = model_template
+    shapedirs = model_dirs
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(v_template_full, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh(model_template, faces, target_faces)
         lbs_weights = lbs_weights[vertex_map]
-        shapedirs = shapedirs_full[vertex_map]
+        shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
     lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
 
     return FlameWeights(
         v_template=v_template,
-        v_template_full=v_template_full,
         faces=faces,
         lbs_weights=lbs_weights,
         lbs_joint_indices=lbs_joint_indices,
         lbs_joint_weights=lbs_joint_weights,
         shapedirs=shapedirs[:, :, :300],
-        shapedirs_full=shapedirs_full[:, :, :300],
         exprdirs=shapedirs[:, :, 300:],
-        exprdirs_full=shapedirs_full[:, :, 300:],
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
-        J_regressor=J_regressor,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        j_exprdirs=j_exprdirs,
         parents=parents.tolist(),
         kinematic_fronts=compute_kinematic_fronts(parents),
     )
