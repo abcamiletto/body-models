@@ -6,8 +6,8 @@ from typing import Any
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from .. import common
-from ..common import get_namespace
+from body_models import common
+from body_models.common import get_namespace
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -22,22 +22,6 @@ def apply_pose_correctives(
     *,
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
-    """Compute neural pose correctives from joint parameters.
-
-    This implements the pose correctives network in a backend-agnostic way:
-    - Extract rotation features from joints 2+ (125 joints)
-    - Apply sparse linear layer (densified) + ReLU
-    - Apply dense linear layer to get vertex offsets
-
-    Args:
-        joint_params: Per-joint parameters [B, J, 7] from skeleton forward.
-        W1: First layer weights [3000, 750] (densified sparse layer).
-        W2: Second layer weights [V*3, 3000] (corrective blendshapes).
-        xp: Array namespace (optional).
-
-    Returns:
-        Vertex offsets [B, V, 3] to add to shaped vertices.
-    """
     if xp is None:
         xp = get_namespace(joint_params)
 
@@ -45,35 +29,21 @@ def apply_pose_correctives(
     V = W2.shape[0] // 3
     dtype = joint_params.dtype
 
-    # Extract euler angles from joints 2+ (125 joints for MHR)
-    euler = joint_params[:, 2:, 3:6]  # [B, 125, 3]
-
-    # Convert to rotation matrices
-    rot = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz", xp=xp)  # [B, 125, 3, 3]
-
-    # Extract first two columns as features: [r00, r10, r20, r01, r11, r21]
-    feat = xp.concat([rot[..., 0], rot[..., 1]], axis=-1)  # [B, 125, 6]
-
-    # Subtract identity components (r00=1 and r11=1 for identity rotation)
-    # This makes features zero for unrotated joints
+    euler = joint_params[:, 2:, 3:6]
+    rot = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz", xp=xp)
+    feat = xp.concat([rot[..., 0], rot[..., 1]], axis=-1)
     feat = common.set(feat, (..., 0), feat[..., 0] - 1.0, copy=False, xp=xp)
     feat = common.set(feat, (..., 4), feat[..., 4] - 1.0, copy=False, xp=xp)
 
-    # Flatten: [B, 750]
     feat_flat = feat.reshape(B, -1)
-
-    # First layer + ReLU: [B, 750] @ [750, 3000] -> [B, 3000]
     h = feat_flat @ W1.T
     h = xp.maximum(h, xp.asarray(0.0, dtype=dtype))
-
-    # Second layer: [B, 3000] @ [3000, V*3] -> [B, V*3]
     out = h @ W2.T
 
     return out.reshape(B, V, 3)
 
 
 def forward_vertices(
-    # Model data
     base_vertices: Float[Array, "V 3"],
     blendshape_dirs: Float[Array, "117 V 3"],
     skin_weights: Float[Array, "V K"],
@@ -83,20 +53,18 @@ def forward_vertices(
     parameter_transform: Float[Array, "D N"],
     bind_inv_linear: Float[Array, "J 3 3"],
     bind_inv_translation: Float[Array, "J 3"],
+    corrective_W1: Float[Array, "3000 750"],
+    corrective_W2: Float[Array, "V*3 3000"],
     kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
     expr_dim: int,
-    # Inputs
     shape: Float[Array, "B 45"],
     pose: Float[Array, "B 204"],
     expression: Float[Array, "B 72"] | None = None,
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    # Optional pose correctives weights
-    corrective_W1: Float[Array, "3000 750"] | None = None,
-    corrective_W2: Float[Array, "V*3 3000"] | None = None,
     *,
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
@@ -117,16 +85,13 @@ def forward_vertices(
         blendshape_dirs = blendshape_dirs[:, vertex_indices]
         skin_weights = skin_weights[vertex_indices]
         skin_indices = skin_indices[vertex_indices]
-        if corrective_W2 is not None:
-            corrective_W2 = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])[vertex_indices].reshape(
-                -1, corrective_W2.shape[-1]
-            )
+        corrective_W2 = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])[vertex_indices].reshape(
+            -1, corrective_W2.shape[-1]
+        )
 
-    # Handle expression
     if expression is None:
         expression = common.zeros_as(shape, shape=(B, expr_dim), xp=xp)
 
-    # Broadcast shape/expression if needed
     if shape.shape[0] == 1 and B > 1:
         shape = xp.broadcast_to(shape, (B, shape.shape[1]))
     if expression.shape[0] == 1 and B > 1:
@@ -134,7 +99,6 @@ def forward_vertices(
 
     coeffs = xp.concat([shape, expression], axis=1)
 
-    # Forward skeleton
     t_g, r_g, s_g, j_p = _forward_skeleton_core(
         xp=xp,
         pose=pose,
@@ -146,30 +110,20 @@ def forward_vertices(
         shape_dim=shape_dim,
     )
 
-    # Blendshapes
     v_t = base_vertices + xp.einsum("bi,ivk->bvk", coeffs, blendshape_dirs)
+    v_t = v_t + apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp)
 
-    # Apply pose correctives if weights provided
-    if corrective_W1 is not None and corrective_W2 is not None:
-        v_t = v_t + apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp)
+    lin_g = r_g * s_g[..., None]
+    lin = xp.einsum("bjik,jkl->bjil", lin_g, bind_inv_linear)
+    t = xp.einsum("bjik,jk->bji", lin_g, bind_inv_translation) + t_g
 
-    # Linear blend skinning
-    lin_g = r_g * s_g[..., None]  # [B, J, 3, 3]
-    lin = xp.einsum("bjik,jkl->bjil", lin_g, bind_inv_linear)  # [B, J, 3, 3]
-    t = xp.einsum("bjik,jk->bji", lin_g, bind_inv_translation) + t_g  # [B, J, 3]
+    lin = _gather_axis1(xp, lin, skin_indices)
+    t = _gather_axis1(xp, t, skin_indices)
 
-    # Gather skinning matrices per vertex
-    lin = _gather_axis1(xp, lin, skin_indices)  # [B, V, K, 3, 3]
-    t = _gather_axis1(xp, t, skin_indices)  # [B, V, K, 3]
-
-    # Apply LBS: v' = sum_k w_k * (R_k @ v + t_k)
-    v_transformed = xp.einsum("bvkij,bvj->bvki", lin, v_t) + t  # [B, V, K, 3]
-    verts = xp.sum(v_transformed * skin_weights[None, :, :, None], axis=2)  # [B, V, 3]
-
-    # Convert to meters
+    v_transformed = xp.einsum("bvkij,bvj->bvki", lin, v_t) + t
+    verts = xp.sum(v_transformed * skin_weights[None, :, :, None], axis=2)
     verts = verts * 0.01
 
-    # Apply global transform
     if global_rotation is not None:
         R = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
         verts = xp.einsum("bij,bvj->bvi", R, verts)
@@ -180,14 +134,12 @@ def forward_vertices(
 
 
 def forward_skeleton(
-    # Model data
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
     kinematic_fronts: list[Front],
     num_joints: int,
     shape_dim: int,
-    # Inputs
     pose: Float[Array, "B 204"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
@@ -238,10 +190,8 @@ def forward_skeleton(
         joint_indices=joint_indices,
     )
 
-    # Build 4x4 transforms (in meters)
     T = _trs_to_transforms(xp, t_g * 0.01, r_g, s_g)
 
-    # Apply global transform
     if global_rotation is not None or global_translation is not None:
         B = T.shape[0]
         dtype = T.dtype
@@ -260,7 +210,6 @@ def forward_skeleton(
         if global_translation is not None:
             global_T = common.set(global_T, idx_t, global_translation, xp=xp)
 
-        # global_T: [B, 4, 4], T: [B, J, 4, 4] -> broadcast global_T @ T for each joint
         T = xp.einsum("bij,bnjk->bnik", global_T, T)
 
     return T
@@ -277,18 +226,11 @@ def _forward_skeleton_core(
     shape_dim: int,
     joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"], Float[Array, "B J 7"]]:
-    """Compute global skeleton transforms from pose.
-
-    Returns (t_g, r_g, s_g, j_p) - translations, rotation matrices, scales, joint params.
-    """
-    # Convert pose to joint parameters
     j_p = _pose_to_joint_params(xp, pose, parameter_transform, num_joints, shape_dim)
 
-    # Local transforms
-    t_l = j_p[..., :3] + joint_offsets  # [B, J, 3]
-    euler = j_p[..., 3:6]  # [B, J, 3]
+    t_l = j_p[..., :3] + joint_offsets
+    euler = j_p[..., 3:6]
 
-    # Convert euler to quaternion and apply pre-rotation
     q_local = SO3.canonicalize(
         SO3.conversions.from_euler_to_quat(euler, euler_convention="xyz", quat_convention="xyzw", xp=xp),
         convention="xyzw",
@@ -298,10 +240,7 @@ def _forward_skeleton_core(
         SO3.multiply(joint_pre_rotations, q_local, convention="xyzw", xp=xp), convention="xyzw", xp=xp
     )
 
-    # Scale from joint params
-    s_l = xp.exp(_LN2 * j_p[..., 6:7])  # [B, J, 1]
-
-    # Forward kinematics
+    s_l = xp.exp(_LN2 * j_p[..., 6:7])
     t_g, r_g, s_g = _compose_global_trs(xp, t_l, q_l, s_l, kinematic_fronts, num_joints, joint_indices)
 
     return t_g, r_g, s_g, j_p
@@ -330,15 +269,14 @@ def _compose_global_trs(
     num_joints: int,
     joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"]]:
-    """Compose local TRS transforms into global via batched FK."""
-    r_l = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)  # [B, J, 3, 3]
+    r_l = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)
 
     t_results: list[Float[Array, "B 3"] | None] = [None] * num_joints
     s_results: list[Float[Array, "B 1"] | None] = [None] * num_joints
     r_results: list[Float[Array, "B 3 3"] | None] = [None] * num_joints
 
     for joints, parents in kinematic_fronts:
-        if parents[0] < 0:  # Root joints
+        if parents[0] < 0:
             for j in joints:
                 t_results[j] = t_l[:, j]
                 s_results[j] = s_l[:, j]
@@ -368,7 +306,6 @@ def _trs_to_transforms(
     r: Float[Array, "B J 3 3"],
     s: Float[Array, "B J 1"],
 ) -> Float[Array, "B J 4 4"]:
-    """Convert translation, rotation matrix, scale to 4x4 transforms."""
     R = r * s[..., None]
     B, J = t.shape[:2]
     dtype = t.dtype
@@ -383,22 +320,9 @@ def _trs_to_transforms(
 
 
 def _gather_axis1(xp, arr: Array, indices: Int[Array, "V K"]) -> Array:
-    """Gather from arr along axis 1 using indices.
-
-    arr: [B, J, ...] -> out: [B, V, K, ...]
-    indices: [V, K] with values in range [0, J)
-    """
-    # Use advanced indexing
-    # For shape [B, J, 3, 3] and indices [V, K], we want [B, V, K, 3, 3]
     B = arr.shape[0]
     V, K = indices.shape
-
-    # Flatten indices and gather
-    flat_indices = indices.reshape(-1)  # [V*K]
-
-    # Gather: arr[:, flat_indices] -> [B, V*K, ...]
+    flat_indices = indices.reshape(-1)
     gathered = arr[:, flat_indices]
-
-    # Reshape to [B, V, K, ...]
     new_shape = (B, V, K) + arr.shape[2:]
     return gathered.reshape(new_shape)

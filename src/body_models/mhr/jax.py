@@ -1,38 +1,83 @@
-"""JAX backend for MHR model using Flax NNX."""
+"""JAX backend for MHR model."""
 
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
-import numpy as np
-from flax import nnx
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
-from ..base import BodyModel
-from . import core
-from .io import get_model_path, load_model_data, load_pose_correctives_weights, compute_kinematic_fronts, simplify_mesh
-
+from body_models import common
+from body_models.base import BodyModel
+from body_models.mhr.backends import jax as backend
+from body_models.mhr.io import MhrWeights, get_model_path, load_model_data
 
 __all__ = ["MHR"]
 
 
-class MHR(BodyModel, nnx.Module):
-    """MHR body model with JAX/Flax NNX backend and neural pose correctives.
+def _flatten_mhr_weights(weights: MhrWeights):
+    children = (
+        weights.base_vertices,
+        weights.blendshape_dirs,
+        weights.skin_weights,
+        weights.skin_indices,
+        weights.faces,
+        weights.joint_offsets,
+        weights.joint_pre_rotations,
+        weights.parameter_transform,
+        weights.bind_inv_linear,
+        weights.bind_inv_translation,
+        weights.corrective_W1,
+        weights.corrective_W2,
+    )
+    aux_data = (
+        tuple(weights.parents),
+        tuple((tuple(joints), tuple(parents)) for joints, parents in weights.kinematic_fronts),
+        tuple(weights.joint_names),
+    )
+    return children, aux_data
 
-    Args:
-        model_path: Path to MHR model directory. Auto-downloads if None.
-        lod: Level of detail for pose correctives (1 = default).
-        simplify: Mesh simplification ratio. 1.0 = original mesh, 2.0 = half faces, etc.
 
-    Forward API:
-        forward_vertices(shape, pose, expression, global_rotation, global_translation, vertex_indices=None)
-        forward_skeleton(shape, pose, expression, global_rotation, global_translation)
+def _unflatten_mhr_weights(aux_data, children):
+    (
+        base_vertices,
+        blendshape_dirs,
+        skin_weights,
+        skin_indices,
+        faces,
+        joint_offsets,
+        joint_pre_rotations,
+        parameter_transform,
+        bind_inv_linear,
+        bind_inv_translation,
+        corrective_W1,
+        corrective_W2,
+    ) = children
+    parents, kinematic_fronts, joint_names = aux_data
+    return MhrWeights(
+        base_vertices=base_vertices,
+        blendshape_dirs=blendshape_dirs,
+        skin_weights=skin_weights,
+        skin_indices=skin_indices,
+        faces=faces,
+        joint_offsets=joint_offsets,
+        joint_pre_rotations=joint_pre_rotations,
+        parameter_transform=parameter_transform,
+        bind_inv_linear=bind_inv_linear,
+        bind_inv_translation=bind_inv_translation,
+        corrective_W1=corrective_W1,
+        corrective_W2=corrective_W2,
+        parents=list(parents),
+        kinematic_fronts=[(list(joints), list(parents)) for joints, parents in kinematic_fronts],
+        joint_names=list(joint_names),
+    )
 
-        shape: [B, 45] identity blendshapes
-        pose: [B, 204] joint parameters
-        expression: [B, 72] facial blendshapes (optional)
-    """
+
+jax.tree_util.register_pytree_node(MhrWeights, _flatten_mhr_weights, _unflatten_mhr_weights)
+
+
+@jax.tree_util.register_pytree_node_class
+class MHR(BodyModel):
+    """MHR body model with JAX backend."""
 
     SHAPE_DIM = 45
     EXPR_DIM = 72
@@ -44,98 +89,51 @@ class MHR(BodyModel, nnx.Module):
         lod: int = 1,
         simplify: float = 1.0,
     ) -> None:
-        assert simplify >= 1.0, "simplify must be >= 1.0 (1.0 = original mesh)"
+        self.weights = common.jaxify(load_model_data(get_model_path(model_path), lod=lod, simplify=simplify))
 
-        resolved_path = get_model_path(model_path)
-        data = load_model_data(resolved_path)
+    def tree_flatten(self):
+        return (self.weights,), None
 
-        base_vertices_full = data["base_vertices"]
-        blendshape_dirs_full = data["blendshape_dirs"]
-        skin_weights_full = data["skin_weights"]
-        skin_indices_full = data["skin_indices"].astype(np.int64)
-        faces = data["faces"]
-
-        corrective_weights = load_pose_correctives_weights(resolved_path, lod)
-        corrective_W2 = corrective_weights["W2"]
-
-        # Apply mesh simplification if requested
-        if simplify > 1.0:
-            target_faces = int(len(faces) / simplify)
-            new_vertices, new_faces, vertex_map = simplify_mesh(base_vertices_full, faces.astype(int), target_faces)
-
-            base_vertices = new_vertices.astype(np.float32)
-            blendshape_dirs = blendshape_dirs_full[:, vertex_map]
-            skin_weights = skin_weights_full[vertex_map]
-            skin_indices = skin_indices_full[vertex_map]
-            faces = new_faces.astype(np.int64)
-            corrective_W2_vertices = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])
-            corrective_W2 = corrective_W2_vertices[vertex_map].reshape(-1, corrective_W2.shape[-1])
-        else:
-            base_vertices = base_vertices_full
-            blendshape_dirs = blendshape_dirs_full
-            skin_weights = skin_weights_full
-            skin_indices = skin_indices_full
-            faces = faces.astype(np.int64)
-
-        # Store as nnx.Variable for proper pytree handling
-        self.base_vertices = nnx.Variable(jnp.asarray(base_vertices))
-        self.blendshape_dirs = nnx.Variable(jnp.asarray(blendshape_dirs))
-        self._skin_weights = nnx.Variable(jnp.asarray(skin_weights))
-        self._skin_indices = nnx.Variable(jnp.asarray(skin_indices))
-        self._faces = nnx.Variable(jnp.asarray(faces))
-
-        # Skeleton data
-        self.joint_offsets = nnx.Variable(jnp.asarray(data["joint_offsets"]))
-        self.joint_pre_rotations = nnx.Variable(jnp.asarray(data["joint_pre_rotations"]))
-        self.parameter_transform = nnx.Variable(jnp.asarray(data["parameter_transform"]))
-
-        inv_bind = data["inverse_bind_pose"]
-        t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
-        self.bind_inv_linear = nnx.Variable(
-            jnp.asarray(SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s[..., None])
-        )
-        self.bind_inv_translation = nnx.Variable(jnp.asarray(t))
-
-        self.corrective_W1 = nnx.Variable(jnp.asarray(corrective_weights["W1"]))
-        self.corrective_W2 = nnx.Variable(jnp.asarray(corrective_W2))
-
-        joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
-        self.parents = joint_parents.tolist()
-        self._kinematic_fronts = compute_kinematic_fronts(joint_parents)
-        self._num_joints = len(joint_parents)
-        self._joint_names = list(data["joint_names"])
-        self._pose_dim = data["parameter_transform"].shape[1] - self.SHAPE_DIM
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        obj = cls.__new__(cls)
+        (obj.weights,) = children
+        return obj
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:
-        return self._faces[...]
+        return self.weights.faces
 
     @property
     def num_joints(self) -> int:
-        return self._num_joints
+        return len(self.weights.parents)
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return list(self.weights.joint_names)
 
     @property
     def num_vertices(self) -> int:
-        return self.base_vertices[...].shape[0]
+        return self.weights.base_vertices.shape[0]
 
     @property
     def pose_dim(self) -> int:
-        return self._pose_dim
+        return self.weights.parameter_transform.shape[1] - self.SHAPE_DIM
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.base_vertices[...] * 0.01
+        return self.weights.base_vertices * 0.01
 
     @property
     def skin_weights(self) -> Float[jax.Array, "V J"]:
-        dense = jnp.zeros((self._skin_weights[...].shape[0], self.num_joints), dtype=self._skin_weights[...].dtype)
-        return dense.at[jnp.arange(self._skin_weights[...].shape[0])[:, None], self._skin_indices[...]].set(
-            self._skin_weights[...]
+        dense = jnp.zeros((self.weights.skin_weights.shape[0], self.num_joints), dtype=self.weights.skin_weights.dtype)
+        return dense.at[jnp.arange(self.weights.skin_weights.shape[0])[:, None], self.weights.skin_indices].set(
+            self.weights.skin_weights
         )
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
 
     def forward_vertices(
         self,
@@ -146,29 +144,14 @@ class MHR(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
-        """Compute mesh vertices [B, V, 3] in meters."""
-        return core.forward_vertices(
-            base_vertices=self.base_vertices[...],
-            blendshape_dirs=self.blendshape_dirs[...],
-            skin_weights=self._skin_weights[...],
-            skin_indices=self._skin_indices[...],
-            joint_offsets=self.joint_offsets[...],
-            joint_pre_rotations=self.joint_pre_rotations[...],
-            parameter_transform=self.parameter_transform[...],
-            bind_inv_linear=self.bind_inv_linear[...],
-            bind_inv_translation=self.bind_inv_translation[...],
-            kinematic_fronts=self._kinematic_fronts,
-            num_joints=self.num_joints,
-            shape_dim=self.SHAPE_DIM,
-            expr_dim=self.EXPR_DIM,
+        return backend.forward_vertices(
+            weights=self.weights,
             shape=shape,
             pose=pose,
             expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            corrective_W1=self.corrective_W1[...],
-            corrective_W2=self.corrective_W2[...],
         )
 
     def forward_skeleton(
@@ -180,15 +163,11 @@ class MHR(BodyModel, nnx.Module):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B J 4 4"]:
-        """Compute skeleton transforms [B, J, 4, 4] in meters."""
-        return core.forward_skeleton(
-            joint_offsets=self.joint_offsets[...],
-            joint_pre_rotations=self.joint_pre_rotations[...],
-            parameter_transform=self.parameter_transform[...],
-            kinematic_fronts=self._kinematic_fronts,
-            num_joints=self.num_joints,
-            shape_dim=self.SHAPE_DIM,
+        return backend.forward_skeleton(
+            weights=self.weights,
+            shape=shape,
             pose=pose,
+            expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any
 
 import numpy as np
+from nanomanifold import SO3
 
 from .. import config
 from ..common import simplify_mesh
@@ -19,6 +21,7 @@ __all__ = [
     "get_model_path",
     "download_model",
     "load_model_data",
+    "MhrWeights",
     "compute_kinematic_fronts",
     "simplify_mesh",
     "load_pose_correctives_weights",
@@ -28,18 +31,23 @@ __all__ = [
 MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
 
 
-class MHRModelData(TypedDict):
+@dataclass(frozen=True)
+class MhrWeights:
     base_vertices: np.ndarray
     blendshape_dirs: np.ndarray
-    joint_parents: np.ndarray
-    joint_names: list[str]
-    joint_offsets: np.ndarray
-    joint_pre_rotations: np.ndarray
     skin_weights: np.ndarray
     skin_indices: np.ndarray
-    parameter_transform: np.ndarray
-    inverse_bind_pose: np.ndarray
     faces: np.ndarray
+    joint_offsets: np.ndarray
+    joint_pre_rotations: np.ndarray
+    parameter_transform: np.ndarray
+    bind_inv_linear: np.ndarray
+    bind_inv_translation: np.ndarray
+    corrective_W1: np.ndarray
+    corrective_W2: np.ndarray
+    parents: list[int]
+    kinematic_fronts: list[Front]
+    joint_names: list[str]
 
 
 def validate_path(model_path: PathLike) -> Path:
@@ -78,7 +86,52 @@ def download_model() -> Path:
     return cache_dir
 
 
-def load_model_data(asset_dir: Path) -> MHRModelData:
+def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrWeights:
+    if simplify < 1.0:
+        raise ValueError("simplify must be >= 1.0")
+
+    data = _load_raw_model_data(asset_dir)
+    base_vertices = data["base_vertices"]
+    blendshape_dirs = data["blendshape_dirs"]
+    skin_weights = data["skin_weights"]
+    skin_indices = data["skin_indices"].astype(np.int64)
+    faces = data["faces"].astype(np.int64)
+    corrective_weights = load_pose_correctives_weights(asset_dir, lod)
+    corrective_W2 = corrective_weights["W2"]
+
+    if simplify > 1.0:
+        target_faces = int(len(faces) / simplify)
+        base_vertices, faces, vertex_map = simplify_mesh(base_vertices, faces.astype(int), target_faces)
+        blendshape_dirs = blendshape_dirs[:, vertex_map]
+        skin_weights = skin_weights[vertex_map]
+        skin_indices = skin_indices[vertex_map]
+        corrective_W2_vertices = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])
+        corrective_W2 = corrective_W2_vertices[vertex_map].reshape(-1, corrective_W2.shape[-1])
+
+    inv_bind = data["inverse_bind_pose"]
+    t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
+    joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
+
+    return MhrWeights(
+        base_vertices=np.array(base_vertices, copy=True),
+        blendshape_dirs=np.array(blendshape_dirs, copy=True),
+        skin_weights=np.array(skin_weights, copy=True),
+        skin_indices=np.array(skin_indices, copy=True),
+        faces=np.array(faces, copy=True),
+        joint_offsets=np.array(data["joint_offsets"], copy=True),
+        joint_pre_rotations=np.array(data["joint_pre_rotations"], copy=True),
+        parameter_transform=np.array(data["parameter_transform"], copy=True),
+        bind_inv_linear=np.array(SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s[..., None], copy=True),
+        bind_inv_translation=np.array(t, copy=True),
+        corrective_W1=np.array(corrective_weights["W1"], copy=True),
+        corrective_W2=np.array(corrective_W2, copy=True),
+        parents=joint_parents.tolist(),
+        kinematic_fronts=compute_kinematic_fronts(joint_parents),
+        joint_names=list(data["joint_names"]),
+    )
+
+
+def _load_raw_model_data(asset_dir: Path) -> dict[str, Any]:
     """Load MHR model data from disk without requiring torch."""
     model = _load_checkpoint_numpy(asset_dir / "mhr_model.pt")
     character = _get_attr(model, "character_torch")
