@@ -59,11 +59,71 @@ def forward_vertices(
     if xp is None:
         xp = get_namespace(gender)
 
+    rest_verts, bone_transforms = forward_unskinned_vertices(
+        template_vertices=template_vertices,
+        blendshapes=blendshapes,
+        template_bone_heads=template_bone_heads,
+        template_bone_tails=template_bone_tails,
+        bone_heads_blendshapes=bone_heads_blendshapes,
+        bone_tails_blendshapes=bone_tails_blendshapes,
+        bone_rolls_rotmat=bone_rolls_rotmat,
+        phenotype_mask=phenotype_mask,
+        anchors=anchors,
+        kinematic_fronts=kinematic_fronts,
+        y_axis=y_axis,
+        degenerate_rotation=degenerate_rotation,
+        extrapolate_phenotypes=extrapolate_phenotypes,
+        gender=gender,
+        age=age,
+        muscle=muscle,
+        weight=weight,
+        height=height,
+        proportions=proportions,
+        pose=pose,
+        vertex_indices=vertex_indices,
+        rotation_type=rotation_type,
+        xp=xp,
+    )
+    lbs = lbs_weights if vertex_indices is None else lbs_weights[xp.asarray(vertex_indices)]
+    vertices = linear_blend_skinning(xp, rest_verts, bone_transforms, lbs)
+    return apply_global_transform(xp, vertices, global_rotation, global_translation, rotation_type)
+
+
+def forward_unskinned_vertices(
+    # Model data
+    template_vertices: Float[Array, "V 3"],
+    blendshapes: Float[Array, "S V 3"],
+    template_bone_heads: Float[Array, "J 3"],
+    template_bone_tails: Float[Array, "J 3"],
+    bone_heads_blendshapes: Float[Array, "S J 3"],
+    bone_tails_blendshapes: Float[Array, "S J 3"],
+    bone_rolls_rotmat: Float[Array, "J 3 3"],
+    phenotype_mask: Float[Array, "S P"],
+    anchors: Any,
+    kinematic_fronts: list[Front],
+    y_axis: Float[Array, "3"],
+    degenerate_rotation: Float[Array, "3 3"],
+    extrapolate_phenotypes: bool,
+    # Inputs
+    gender: Float[Array, "B"],
+    age: Float[Array, "B"],
+    muscle: Float[Array, "B"],
+    weight: Float[Array, "B"],
+    height: Float[Array, "B"],
+    proportions: Float[Array, "B"],
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    vertex_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
+    *,
+    xp: Any = None,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    if xp is None:
+        xp = get_namespace(gender)
+
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
         template_vertices = template_vertices[vertex_indices]
         blendshapes = blendshapes[:, vertex_indices]
-        lbs_weights = lbs_weights[vertex_indices]
 
     pose_T = _pose_to_transform(xp, pose, rotation_type)
     coeffs, _, bone_transforms = _forward_core(
@@ -88,17 +148,30 @@ def forward_vertices(
         pose_T=pose_T,
     )
 
-    # Vertex blendshapes
     rest_verts = template_vertices + xp.einsum("bs,svd->bvd", coeffs, blendshapes)
+    return rest_verts, bone_transforms
 
-    # Linear blend skinning
+
+def linear_blend_skinning(
+    xp,
+    rest_verts: Float[Array, "B V 3"],
+    bone_transforms: Float[Array, "B J 4 4"],
+    lbs_weights: Float[Array, "V J"],
+) -> Float[Array, "B V 3"]:
     R = bone_transforms[..., :3, :3]  # [B, J, 3, 3]
     t = bone_transforms[..., :3, 3]  # [B, J, 3]
     W_R = xp.einsum("vj,bjkl->bvkl", lbs_weights, R)  # [B, V, 3, 3]
     W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t)  # [B, V, 3]
-    vertices = xp.squeeze(W_R @ rest_verts[..., None], axis=-1) + W_t
+    return xp.squeeze(W_R @ rest_verts[..., None], axis=-1) + W_t
 
-    # Global transform
+
+def apply_global_transform(
+    xp,
+    vertices: Float[Array, "B V 3"],
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_translation: Float[Array, "B 3"] | None = None,
+    rotation_type: RotationType = "axis_angle",
+) -> Float[Array, "B V 3"]:
     if global_rotation is not None:
         global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
         R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
