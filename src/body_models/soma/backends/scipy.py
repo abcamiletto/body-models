@@ -22,11 +22,20 @@ __all__ = [
     "linear_blend_skinning",
     "PreparedSomaIdentity",
     "prepare_data",
+    "prepare_identity_from_rest_shape",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 PreparedSomaIdentity = core.PreparedSomaIdentity
+
+
+def prepare_identity_from_rest_shape(*args, **kwargs):
+    return core.prepare_identity_from_rest_shape(
+        *args,
+        **kwargs,
+        linear_blend_skinning_fn=linear_blend_skinning,
+    )
 
 
 @dataclass(frozen=True)

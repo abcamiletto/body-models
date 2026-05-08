@@ -14,14 +14,14 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
-Backend = Literal["numpy", "numba"]
-FLAVORS = ("numpy", "numba")
+Kernel = Literal["numpy", "numba"]
+KERNELS = ("numpy", "numba")
 
 
 class ANNY(BodyModel):
     """ANNY body model with NumPy backend."""
 
-    flavors = FLAVORS
+    kernels = KERNELS
 
     def __init__(
         self,
@@ -33,7 +33,7 @@ class ANNY(BodyModel):
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        backend: Backend = "numpy",
+        kernel: Kernel = "numpy",
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
@@ -43,14 +43,14 @@ class ANNY(BodyModel):
             raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if backend not in FLAVORS:
-            raise ValueError(f"Invalid backend: {backend}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
 
         self.weights = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
-        self._kernel = _get_kernel(backend)
+        self._kernel = _get_kernel(kernel)
         self.phenotype_labels = (
             PHENOTYPE_LABELS if all_phenotypes else [x for x in PHENOTYPE_LABELS if x not in EXCLUDED_PHENOTYPES]
         )
@@ -164,13 +164,13 @@ class ANNY(BodyModel):
         }
 
 
-def _get_kernel(backend: Backend):
-    if backend == "numpy":
+def _get_kernel(kernel: Kernel):
+    if kernel == "numpy":
         return numpy_backend
 
     try:
         from body_models.anny.backends import numba as numba_backend
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use ANNY backend='numba'.") from exc
+        raise ModuleNotFoundError("Install body-models[numba] to use ANNY kernel='numba'.") from exc
 
     return numba_backend

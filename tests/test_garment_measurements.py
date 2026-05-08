@@ -119,12 +119,12 @@ def test_backends_evaluate_posed_model_consistently(backend: str) -> None:
     np.testing.assert_allclose(np.asarray(subset), np.asarray(vertices)[:, [3, 1]], atol=ATOL, rtol=RTOL)
 
 
-def test_numba_backend_matches_numpy() -> None:
+def test_numba_kernel_matches_numpy() -> None:
     pytest.importorskip("numba")
     from body_models.garment_measurements.numpy import GarmentMeasurements
 
     numpy_model = GarmentMeasurements(model_path=MODEL_PATH)
-    numba_model = GarmentMeasurements(model_path=MODEL_PATH, backend="numba")
+    numba_model = GarmentMeasurements(model_path=MODEL_PATH, kernel="numba")
     params = numpy_model.get_rest_pose(batch_size=2)
     params["shape"] = np.zeros((2, numpy_model.num_shape_components), dtype=np.float32)
     params["shape"][1, 0] = 0.5
