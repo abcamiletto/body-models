@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 Array = Any
+_JAX_DATACLASSES = set()
 
 __all__ = ["Array", "eye_as", "get_namespace", "jaxify", "set", "torchify", "zeros_as"]
 
@@ -33,6 +34,7 @@ def torchify(obj: Any) -> Any:
 
 def jaxify(obj: Any) -> Any:
     """Convert dataclass arrays to JAX arrays, preserving dataclass types."""
+    import jax
     import jax.numpy as jnp
 
     def convert_leaf(value):
@@ -41,9 +43,37 @@ def jaxify(obj: Any) -> Any:
         return value
 
     def convert_dataclass(cls, values):
+        _register_jax_dataclass(cls, jax)
         return cls(**values)
 
     return _map_structure(obj, convert_leaf, convert_dataclass)
+
+
+def _register_jax_dataclass(cls: type, jax: Any) -> None:
+    if cls in _JAX_DATACLASSES:
+        return
+
+    def flatten(obj):
+        children = []
+        child_names = []
+        static = {}
+        for field in fields(obj):
+            value = getattr(obj, field.name)
+            if isinstance(value, jax.Array):
+                children.append(value)
+                child_names.append(field.name)
+            else:
+                static[field.name] = value
+        return tuple(children), (tuple(child_names), static)
+
+    def unflatten(aux_data, children):
+        child_names, static = aux_data
+        values = dict(static)
+        values.update(zip(child_names, children, strict=True))
+        return cls(**values)
+
+    jax.tree_util.register_pytree_node(cls, flatten, unflatten)
+    _JAX_DATACLASSES.add(cls)
 
 
 def _map_structure(obj: Any, convert_leaf, convert_dataclass) -> Any:

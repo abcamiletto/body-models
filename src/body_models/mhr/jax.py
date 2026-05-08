@@ -9,70 +9,9 @@ from jaxtyping import Float, Int
 from body_models import common
 from body_models.base import BodyModel
 from body_models.mhr.backends import jax as backend
-from body_models.mhr.io import MhrWeights, get_model_path, load_model_data
+from body_models.mhr.io import get_model_path, load_model_data
 
 __all__ = ["MHR"]
-
-
-def _flatten_mhr_weights(weights: MhrWeights):
-    children = (
-        weights.base_vertices,
-        weights.blendshape_dirs,
-        weights.skin_weights,
-        weights.skin_indices,
-        weights.faces,
-        weights.joint_offsets,
-        weights.joint_pre_rotations,
-        weights.parameter_transform,
-        weights.bind_inv_linear,
-        weights.bind_inv_translation,
-        weights.corrective_W1,
-        weights.corrective_W2,
-    )
-    aux_data = (
-        tuple(weights.parents),
-        tuple((tuple(joints), tuple(parents)) for joints, parents in weights.kinematic_fronts),
-        tuple(weights.joint_names),
-    )
-    return children, aux_data
-
-
-def _unflatten_mhr_weights(aux_data, children):
-    (
-        base_vertices,
-        blendshape_dirs,
-        skin_weights,
-        skin_indices,
-        faces,
-        joint_offsets,
-        joint_pre_rotations,
-        parameter_transform,
-        bind_inv_linear,
-        bind_inv_translation,
-        corrective_W1,
-        corrective_W2,
-    ) = children
-    parents, kinematic_fronts, joint_names = aux_data
-    return MhrWeights(
-        base_vertices=base_vertices,
-        blendshape_dirs=blendshape_dirs,
-        skin_weights=skin_weights,
-        skin_indices=skin_indices,
-        faces=faces,
-        joint_offsets=joint_offsets,
-        joint_pre_rotations=joint_pre_rotations,
-        parameter_transform=parameter_transform,
-        bind_inv_linear=bind_inv_linear,
-        bind_inv_translation=bind_inv_translation,
-        corrective_W1=corrective_W1,
-        corrective_W2=corrective_W2,
-        parents=list(parents),
-        kinematic_fronts=[(list(joints), list(parents)) for joints, parents in kinematic_fronts],
-        joint_names=list(joint_names),
-    )
-
-
-jax.tree_util.register_pytree_node(MhrWeights, _flatten_mhr_weights, _unflatten_mhr_weights)
 
 
 @jax.tree_util.register_pytree_node_class

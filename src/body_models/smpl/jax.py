@@ -14,60 +14,10 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smpl.backends import jax as backend
 from body_models.smpl.constants import SMPL_JOINT_NAMES
-from body_models.smpl.io import SmplWeights, get_model_path, load_model_data
+from body_models.smpl.io import get_model_path, load_model_data
 
 
 __all__ = ["SMPL"]
-
-
-def _flatten_smpl_weights(weights: SmplWeights):
-    children = (
-        weights.v_template,
-        weights.faces,
-        weights.lbs_weights,
-        weights.lbs_joint_indices,
-        weights.lbs_joint_weights,
-        weights.shapedirs,
-        weights.posedirs,
-        weights.j_template,
-        weights.j_shapedirs,
-    )
-    aux_data = (
-        tuple(weights.parents),
-        tuple((tuple(joints), tuple(parents)) for joints, parents in weights.kinematic_fronts),
-    )
-    return children, aux_data
-
-
-def _unflatten_smpl_weights(aux_data, children):
-    (
-        v_template,
-        faces,
-        lbs_weights,
-        lbs_joint_indices,
-        lbs_joint_weights,
-        shapedirs,
-        posedirs,
-        j_template,
-        j_shapedirs,
-    ) = children
-    parents, kinematic_fronts = aux_data
-    return SmplWeights(
-        v_template=v_template,
-        faces=faces,
-        lbs_weights=lbs_weights,
-        lbs_joint_indices=lbs_joint_indices,
-        lbs_joint_weights=lbs_joint_weights,
-        shapedirs=shapedirs,
-        posedirs=posedirs,
-        j_template=j_template,
-        j_shapedirs=j_shapedirs,
-        parents=list(parents),
-        kinematic_fronts=[(list(joints), list(parents)) for joints, parents in kinematic_fronts],
-    )
-
-
-jax.tree_util.register_pytree_node(SmplWeights, _flatten_smpl_weights, _unflatten_smpl_weights)
 
 
 @jax.tree_util.register_pytree_node_class
