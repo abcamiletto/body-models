@@ -1,21 +1,27 @@
 """NumPy frontend for ANNY."""
 
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models.anny.backends import numpy as backend
+from body_models.anny.backends import numpy as numpy_backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
+Backend = Literal["numpy", "numba"]
+FLAVORS = ("numpy", "numba")
+
 
 class ANNY(BodyModel):
     """ANNY body model with NumPy backend."""
+
+    flavors = FLAVORS
 
     def __init__(
         self,
@@ -27,6 +33,7 @@ class ANNY(BodyModel):
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        backend: Backend = "numpy",
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
@@ -36,11 +43,15 @@ class ANNY(BodyModel):
             raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if backend not in FLAVORS:
+            raise ValueError(f"Invalid backend: {backend}")
 
         self.weights = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
+        self.backend = backend
+        self._backend = get_backend(backend)
         self.phenotype_labels = (
             PHENOTYPE_LABELS if all_phenotypes else [x for x in PHENOTYPE_LABELS if x not in EXCLUDED_PHENOTYPES]
         )
@@ -86,7 +97,7 @@ class ANNY(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
-        return backend.forward_vertices(
+        return self._backend.forward_vertices(
             weights=self.weights,
             gender=gender,
             age=age,
@@ -115,7 +126,7 @@ class ANNY(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B J 4 4"]:
-        return backend.forward_skeleton(
+        return self._backend.forward_skeleton(
             weights=self.weights,
             gender=gender,
             age=age,
@@ -152,3 +163,15 @@ class ANNY(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+
+def get_backend(backend: Backend):
+    if backend == "numpy":
+        return numpy_backend
+
+    try:
+        from body_models.anny.backends import numba as numba_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[numba] to use ANNY backend='numba'.") from exc
+
+    return numba_backend

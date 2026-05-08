@@ -116,7 +116,12 @@ MODELS = [
         lambda d: torch_model(flame_torch.FLAME(), d),
         flavors=flame_numpy.FLAME.flavors,
     ),
-    ModelSpec("ANNY", lambda flavor: anny_numpy.ANNY(), lambda d: torch_model(anny_torch.ANNY(), d)),
+    ModelSpec(
+        "ANNY",
+        lambda flavor: anny_numpy.ANNY(backend=flavor),
+        lambda d: torch_model(anny_torch.ANNY(), d),
+        flavors=anny_numpy.ANNY.flavors,
+    ),
     ModelSpec("MHR", lambda flavor: mhr_numpy.MHR(), lambda d: torch_model(mhr_torch.MHR(), d)),
     ModelSpec(
         "BRAINCO",
@@ -162,8 +167,9 @@ MODELS = [
     ),
     ModelSpec(
         "GARMENT-MEASUREMENTS",
-        lambda flavor: garment_measurements_numpy.GarmentMeasurements(),
+        lambda flavor: garment_measurements_numpy.GarmentMeasurements(backend=flavor),
         lambda d: torch_model(garment_measurements_torch.GarmentMeasurements(), d),
+        flavors=garment_measurements_numpy.GarmentMeasurements.flavors,
     ),
     ModelSpec(
         "MYOFULLBODY",

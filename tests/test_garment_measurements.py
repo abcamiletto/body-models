@@ -119,6 +119,27 @@ def test_backends_evaluate_posed_model_consistently(backend: str) -> None:
     np.testing.assert_allclose(np.asarray(subset), np.asarray(vertices)[:, [3, 1]], atol=ATOL, rtol=RTOL)
 
 
+def test_numba_backend_matches_numpy() -> None:
+    pytest.importorskip("numba")
+    from body_models.garment_measurements.numpy import GarmentMeasurements
+
+    numpy_model = GarmentMeasurements(model_path=MODEL_PATH)
+    numba_model = GarmentMeasurements(model_path=MODEL_PATH, backend="numba")
+    params = numpy_model.get_rest_pose(batch_size=2)
+    params["shape"] = np.zeros((2, numpy_model.num_shape_components), dtype=np.float32)
+    params["shape"][1, 0] = 0.5
+    params["pose"][1, 1, 2] = 0.2
+    vertex_indices = [3, 1, 3]
+
+    numpy_vertices = numpy_model.forward_vertices(**params)
+    numba_vertices = numba_model.forward_vertices(**params)
+    numpy_subset = numpy_model.forward_vertices(**params, vertex_indices=vertex_indices)
+    numba_subset = numba_model.forward_vertices(**params, vertex_indices=vertex_indices)
+
+    np.testing.assert_allclose(numba_vertices, numpy_vertices, atol=ATOL, rtol=RTOL)
+    np.testing.assert_allclose(numba_subset, numpy_subset, atol=ATOL, rtol=RTOL)
+
+
 @pytest.fixture
 def model_float64():
     """Create GarmentMeasurements model in float64 for gradient checking."""

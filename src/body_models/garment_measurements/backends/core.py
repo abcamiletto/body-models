@@ -34,6 +34,50 @@ def forward_vertices(
     """Evaluate shaped and posed body vertices [B, V, 3]."""
     batch_size = _input_batch_size(shape, pose, global_rotation, global_translation)
     shape = _broadcast_batch(shape, batch_size, xp=xp)
+    vertices, final_skeleton = forward_unskinned_vertices(
+        mean_vertices=mean_vertices,
+        components=components,
+        eigenvalues=eigenvalues,
+        bind_quats=bind_quats,
+        mvc_weights=mvc_weights,
+        kinematic_fronts=kinematic_fronts,
+        shape=shape,
+        pose=pose,
+        vertex_indices=vertex_indices,
+        rotation_type=rotation_type,
+        xp=xp,
+    )
+    weights = skin_weights
+    if vertex_indices is not None:
+        weights = weights[xp.asarray(vertex_indices)]
+
+    skin_mats = SE3.to_matrix(final_skeleton, xp=xp)
+    vertices = linear_blend_skinning(xp, vertices, skin_mats, weights)
+    return _apply_global_transform(
+        values=vertices,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+        rotation_type=rotation_type,
+        xp=xp,
+    )
+
+
+def forward_unskinned_vertices(
+    mean_vertices: Float[Array, "V 3"],
+    components: Float[Array, "V 3 C"],
+    eigenvalues: Float[Array, "C"],
+    bind_quats: Float[Array, "J 4"],
+    mvc_weights: Float[Array, "V J"],
+    kinematic_fronts: list[Front],
+    shape: Float[Array, "B C"],
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None = None,
+    vertex_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
+    *,
+    xp: Any,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 7"]]:
+    batch_size = _input_batch_size(shape, pose, None, None)
+    shape = _broadcast_batch(shape, batch_size, xp=xp)
     shaped_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
     bind_skeleton, posed_skeleton = _forward_skeleton_se3(
         shaped_vertices=shaped_vertices,
@@ -46,28 +90,24 @@ def forward_vertices(
     )
 
     final_skeleton = SE3.multiply(posed_skeleton, SE3.inverse(bind_skeleton, xp=xp), xp=xp)
-
     vertices = shaped_vertices
-    weights = skin_weights
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
         vertices = vertices[:, vertex_indices]
-        weights = weights[vertex_indices]
+    return vertices, final_skeleton
 
-    skin_mats = SE3.to_matrix(final_skeleton, xp=xp)
+
+def linear_blend_skinning(
+    xp,
+    vertices: Float[Array, "B V 3"],
+    skin_mats: Float[Array, "B J 4 4"],
+    weights: Float[Array, "V J"],
+) -> Float[Array, "B V 3"]:
     skin_rot = skin_mats[:, :, :3, :3]
     skin_trans = skin_mats[:, :, :3, 3]
     weighted_rot = xp.einsum("vj,bjkl->bvkl", weights, skin_rot)
     weighted_trans = xp.einsum("vj,bjk->bvk", weights, skin_trans)
-    vertices = xp.squeeze(weighted_rot @ vertices[..., None], axis=-1) + weighted_trans
-
-    return _apply_global_transform(
-        values=vertices,
-        global_rotation=global_rotation,
-        global_translation=global_translation,
-        rotation_type=rotation_type,
-        xp=xp,
-    )
+    return xp.squeeze(weighted_rot @ vertices[..., None], axis=-1) + weighted_trans
 
 
 def forward_skeleton(

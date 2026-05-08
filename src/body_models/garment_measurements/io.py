@@ -36,6 +36,8 @@ class GarmentMeasurementsWeights:
     kinematic_fronts: list[Front]
     bind_quats: Float[Array, "J 4"]
     skin_weights: Float[Array, "V J"]
+    skin_joint_indices: Int[Array, "V K"]
+    skin_joint_weights: Float[Array, "V K"]
     mvc_weights: Float[Array, "V J"]
 
 
@@ -155,6 +157,7 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
         "mvc_weights": mvc_weights,
     }
     _validate_preprocessed_model(path, data_dict)
+    skin_joint_indices, skin_joint_weights = _sparse_weight_slots(skin_weights)
     return GarmentMeasurementsWeights(
         mean_vertices=mean_vertices,
         components=components,
@@ -165,8 +168,24 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
         kinematic_fronts=compute_kinematic_fronts(parents),
         bind_quats=bind_quats,
         skin_weights=skin_weights,
+        skin_joint_indices=skin_joint_indices,
+        skin_joint_weights=skin_joint_weights,
         mvc_weights=mvc_weights,
     )
+
+
+def _sparse_weight_slots(weights: np.ndarray, threshold: float = 1e-8) -> tuple[np.ndarray, np.ndarray]:
+    counts = np.count_nonzero(np.abs(weights) > threshold, axis=1)
+    max_count = int(counts.max(initial=0))
+    indices = np.zeros((weights.shape[0], max_count), dtype=np.int64)
+    values = np.zeros((weights.shape[0], max_count), dtype=weights.dtype)
+    for vertex, count in enumerate(counts):
+        if count == 0:
+            continue
+        joints = np.flatnonzero(np.abs(weights[vertex]) > threshold)
+        indices[vertex, :count] = joints
+        values[vertex, :count] = weights[vertex, joints]
+    return indices, values
 
 
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
