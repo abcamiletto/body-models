@@ -76,13 +76,13 @@ class AnnyIdentitySource(IdentitySource):
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
         super().__init__(transfer_data)
         self.model = ANNY(model_path=get_identity_model_path("anny"), all_phenotypes=False, simplify=1.0)
-        source_vertices = torch.as_tensor(transfer_data.source_vertices, dtype=self.model.template_vertices.dtype)
-        rotation, translation = core.fit_rigid_transform(self.model.template_vertices, source_vertices, xp=torch)
+        source_vertices = torch.as_tensor(transfer_data.source_vertices, dtype=self.model.weights.template_vertices.dtype)
+        rotation, translation = core.fit_rigid_transform(self.model.weights.template_vertices, source_vertices, xp=torch)
         self.internal_to_source_rotation = rotation
         self.internal_to_source_translation = translation
         self.source_to_soma_rotation = torch.as_tensor(
             [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
-            dtype=self.model.template_vertices.dtype,
+            dtype=self.model.weights.template_vertices.dtype,
         )
 
     def source_shape(
@@ -92,10 +92,10 @@ class AnnyIdentitySource(IdentitySource):
     ) -> Float[Tensor, "B V 3"]:
         del scale_params
         return anny_identity_shape(
-            template_vertices=self.model.template_vertices,
-            blendshapes=self.model.blendshapes,
-            phenotype_mask=self.model.phenotype_mask,
-            anchors=self.model._get_anchors_dict(),
+            template_vertices=self.model.weights.template_vertices,
+            blendshapes=self.model.weights.blendshapes,
+            phenotype_mask=self.model.weights.phenotype_mask,
+            anchors=self.model.weights.anchors,
             identity=identity,
             xp=torch,
         )

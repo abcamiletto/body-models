@@ -5,10 +5,10 @@ from typing import Any
 from jaxtyping import Float
 from nanomanifold import SO3
 
-from .. import common
-from ..common import get_namespace
-from ..rotations import RotationType
-from .io import PHENOTYPE_VARIATIONS
+from ... import common
+from ...common import get_namespace
+from ...rotations import RotationType
+from ..io import PHENOTYPE_VARIATIONS
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -26,7 +26,7 @@ def forward_vertices(
     bone_rolls_rotmat: Float[Array, "J 3 3"],
     lbs_weights: Float[Array, "V J"],
     phenotype_mask: Float[Array, "S P"],
-    anchors: dict[str, Float[Array, "A"]],
+    anchors: Any,
     kinematic_fronts: list[Front],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
@@ -113,7 +113,7 @@ def identity_shape(
     template_vertices: Float[Array, "V 3"],
     blendshapes: Float[Array, "S V 3"],
     phenotype_mask: Float[Array, "S P"],
-    anchors: dict[str, Float[Array, "A"]],
+    anchors: Any,
     identity: Float[Array, "B 6"],
     *,
     extrapolate_phenotypes: bool = False,
@@ -146,7 +146,7 @@ def forward_skeleton(
     bone_tails_blendshapes: Float[Array, "S J 3"],
     bone_rolls_rotmat: Float[Array, "J 3 3"],
     phenotype_mask: Float[Array, "S P"],
-    anchors: dict[str, Float[Array, "A"]],
+    anchors: Any,
     kinematic_fronts: list[Front],
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
@@ -344,7 +344,7 @@ def _phenotype_to_coeffs(
         ("cupsize", cupsize),
         ("firmness", firmness),
     ]:
-        anchor_arr = anchors[name]
+        anchor_arr = getattr(anchors, name)
         n_anchors = anchor_arr.shape[0]
 
         # searchsorted equivalent
