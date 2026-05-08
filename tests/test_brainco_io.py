@@ -42,11 +42,11 @@ def test_brainco_official_assets_load_from_cache() -> None:
         pytest.skip(f"BrainCo test assets not found at {path}")
     data = io.load_model_data(path, side="right")
 
-    assert len(data["joint_names"]) == 12
-    assert len(data["parents"]) == 12
-    assert len(data["qpos_joint_names"]) == 6
-    assert data["joint_names"][0] == "right_base_skel"
-    assert data["qpos_joint_names"] == [
+    assert len(data.joint_names) == 12
+    assert len(data.parents) == 12
+    assert len(data.qpos_joint_names) == 6
+    assert data.joint_names[0] == "right_base_skel"
+    assert data.qpos_joint_names == [
         "right_thumb_metacarpal_skel",
         "right_thumb_proximal_skel",
         "right_index_proximal_skel",
@@ -54,7 +54,7 @@ def test_brainco_official_assets_load_from_cache() -> None:
         "right_ring_proximal_skel",
         "right_pinky_proximal_skel",
     ]
-    assert data["coupled_joint_indices"] == [5, 7, 9, 11, 3]
-    assert data["coupled_driver_indices"] == [2, 3, 4, 5, 1]
-    assert data["vertices"].shape[1] == 3
-    assert data["faces"].shape[1] == 3
+    assert data.coupled_joint_indices == [5, 7, 9, 11, 3]
+    assert data.coupled_driver_indices == [2, 3, 4, 5, 1]
+    assert data.vertices.shape[1] == 3
+    assert data.faces.shape[1] == 3
