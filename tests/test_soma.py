@@ -127,6 +127,25 @@ def test_torch_warp_backend_matches_torch(model_path: Path) -> None:
     np.testing.assert_allclose(subset.numpy(), reference[:, vertex_indices].numpy(), atol=1e-4, rtol=1e-4)
 
 
+def test_torch_prepare_identity_matches_forward(model_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    from body_models.soma.torch import SOMA
+
+    model = SOMA(model_path=model_path)
+    params = model.get_rest_pose(batch_size=2)
+    prepared = model.prepare_identity(identity=params["identity"], scale_params=None, ref=params["pose"])
+    pose_params = {key: value for key, value in params.items() if key not in {"identity", "scale_params"}}
+
+    with torch.no_grad():
+        vertices = model.forward_vertices(**params)
+        prepared_vertices = model.forward_vertices(**pose_params, prepared_identity=prepared)
+        skeleton = model.forward_skeleton(**params)
+        prepared_skeleton = model.forward_skeleton(**pose_params, prepared_identity=prepared)
+
+    np.testing.assert_allclose(prepared_vertices.numpy(), vertices.numpy(), atol=1e-5, rtol=1e-5)
+    np.testing.assert_allclose(prepared_skeleton.numpy(), skeleton.numpy(), atol=1e-5, rtol=1e-5)
+
+
 def test_numpy_prepare_identity_matches_forward(model_path: Path) -> None:
     from body_models.soma.numpy import SOMA
 
