@@ -10,6 +10,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 from torch import Tensor
 
+from body_models import common
+
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
@@ -19,8 +21,8 @@ from .io import (
     load_model_data,
     simplify_mesh,
 )
-import body_models.soma.backend.torch as core
-from body_models.soma.backend import core as backend_core
+from body_models.soma.backends import torch as backend
+from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
 
@@ -35,8 +37,6 @@ class SOMA(BodyModel, nn.Module):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
-
-    model_weights: core.SomaTorchWeights
 
     def __init__(
         self,
@@ -89,7 +89,7 @@ class SOMA(BodyModel, nn.Module):
             faces=np.asarray(faces, dtype=np.int64),
             vertex_map=vertex_map,
         )
-        self.model_weights = core.prepare_data(weights)
+        self.weights = common.torchify(weights)
         self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
         self._joint_names = data.joint_names_full[1:]
 
@@ -104,11 +104,11 @@ class SOMA(BodyModel, nn.Module):
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
-        return self.model_weights.faces
+        return self.weights.faces
 
     @property
     def mean_active(self) -> Float[Tensor, "Va 3"]:
-        return self.model_weights.mean_active
+        return self.weights.mean_active
 
     @property
     def num_joints(self) -> int:
@@ -120,15 +120,15 @@ class SOMA(BodyModel, nn.Module):
 
     @property
     def num_vertices(self) -> int:
-        return int(self.model_weights.mean_active.shape[0])
+        return int(self.weights.mean_active.shape[0])
 
     @property
     def skin_weights(self) -> Float[Tensor, "V J"]:
-        return self.model_weights.skin_weights_active[:, 1:]
+        return self.weights.skin_weights_active[:, 1:]
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.model_weights.mean_active * 0.01
+        return self.weights.mean_active * 0.01
 
     def forward_vertices(
         self,
@@ -145,8 +145,8 @@ class SOMA(BodyModel, nn.Module):
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
-        return core.forward_vertices(
-            data=self.model_weights,
+        return backend.forward_vertices(
+            data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
             global_rotation=global_rotation,
@@ -172,8 +172,8 @@ class SOMA(BodyModel, nn.Module):
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
-        return core.forward_skeleton(
-            data=self.model_weights,
+        return backend.forward_skeleton(
+            data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
             global_rotation=global_rotation,
@@ -185,7 +185,7 @@ class SOMA(BodyModel, nn.Module):
         )
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
-        device = self.model_weights.mean_active.device
+        device = self.weights.mean_active.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
         rot_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         params = {
@@ -266,14 +266,14 @@ class SOMA(BodyModel, nn.Module):
         scale_params: Float[Tensor, "B K"] | None,
     ) -> core.PreparedSomaIdentity:
         rest_shape_full, rest_shape_active = identities.rest_shapes(
-            data=self.model_weights,
+            data=self.weights,
             identity_source=self._identity_source,
             identity=identity,
             scale_params=scale_params,
             xp=torch,
         )
-        return backend_core.prepare_identity_from_rest_shape(
-            data=self.model_weights,
+        return core.prepare_identity_from_rest_shape(
+            data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             match_warp=self.match_warp,
