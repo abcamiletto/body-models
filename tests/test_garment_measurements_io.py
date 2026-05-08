@@ -33,8 +33,8 @@ def test_upstream_folder_is_preprocessed_to_platform_cache(tmp_path, monkeypatch
 
     assert generated == [(upstream, io._preprocessed_output_dir(upstream))]
     assert (generated[0][1] / io.PREPROCESSED_FILENAME).is_file()
-    assert data["mean_vertices"].shape == (3, 3)
-    assert data["skin_weights"].shape == (3, 1)
+    assert data.mean_vertices.shape == (3, 3)
+    assert data.skin_weights.shape == (3, 1)
 
 
 def test_run_asset_generator_uses_uv_pep723_script(tmp_path, monkeypatch) -> None:
