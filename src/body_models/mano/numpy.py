@@ -12,6 +12,7 @@ from nanomanifold import SO3
 from body_models.mano.backends import numpy as numpy_backend
 from body_models.mano.backends import scipy as scipy_backend
 from body_models.mano.io import get_model_path, load_model_data
+from body_models.mano.constants import LEFT_MANO_JOINTS, RIGHT_MANO_JOINTS
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["MANO"]
@@ -60,6 +61,10 @@ class MANO(BodyModel):
     @property
     def joint_names(self) -> list[str]:
         return self.weights.joint_names
+
+    @property
+    def _standard_joints(self):
+        return LEFT_MANO_JOINTS if self.side == "left" else RIGHT_MANO_JOINTS
 
     @property
     def num_vertices(self) -> int:

@@ -1,5 +1,6 @@
 from . import anny, brainco, flame, g1, garment_measurements, mano, mhr, myofullbody, skel, smpl, smplh, smplx, soma
 from .base import BodyModel
+from .constants import Joint
 
 __all__ = [
     # Submodules
@@ -18,6 +19,7 @@ __all__ = [
     "soma",
     # Base class
     "BodyModel",
+    "Joint",
 ]
 
 

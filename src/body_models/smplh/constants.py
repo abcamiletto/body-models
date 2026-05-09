@@ -1,3 +1,7 @@
+from body_models.constants import Joint
+from body_models.smpl.constants import SMPL_JOINTS
+
+
 SMPLH_JOINT_NAMES = [
     "pelvis",
     "left_hip",
@@ -52,3 +56,18 @@ SMPLH_JOINT_NAMES = [
     "right_thumb2",
     "right_thumb3",
 ]
+
+SMPLH_JOINTS = SMPL_JOINTS | {
+    Joint.LEFT_THUMB_TIP: "left_thumb3",
+    Joint.RIGHT_THUMB_TIP: "right_thumb3",
+    Joint.LEFT_INDEX_TIP: "left_index3",
+    Joint.RIGHT_INDEX_TIP: "right_index3",
+    Joint.LEFT_MIDDLE_TIP: "left_middle3",
+    Joint.RIGHT_MIDDLE_TIP: "right_middle3",
+    Joint.LEFT_RING_TIP: "left_ring3",
+    Joint.RIGHT_RING_TIP: "right_ring3",
+    Joint.LEFT_PINKY_TIP: "left_pinky3",
+    Joint.RIGHT_PINKY_TIP: "right_pinky3",
+}
+
+__all__ = ["SMPLH_JOINT_NAMES", "SMPLH_JOINTS"]

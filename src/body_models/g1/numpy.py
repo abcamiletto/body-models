@@ -10,6 +10,7 @@ from body_models.base import BodyModel
 from body_models.g1.backends import core
 from body_models.g1.backends import numpy as backend
 from body_models.g1.io import load_model_data
+from body_models.g1.constants import G1_JOINTS
 
 __all__ = ["G1"]
 
@@ -18,6 +19,7 @@ class G1(BodyModel):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
     is_rigid_body = True
+    JOINTS = G1_JOINTS
 
     def __init__(
         self,
