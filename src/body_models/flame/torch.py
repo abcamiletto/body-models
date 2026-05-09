@@ -1,6 +1,7 @@
 """PyTorch backend for FLAME model."""
 
 from pathlib import Path
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -11,7 +12,7 @@ from body_models import common
 from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from body_models.flame.backends import torch as backend
+from body_models.flame.backends import torch as torch_backend
 from body_models.flame.constants import FLAME_JOINT_NAMES
 from body_models.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -24,19 +25,24 @@ class FLAME(BodyModel, nn.Module):
 
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
+    kernels = ("torch", "warp")
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        kernel: Literal["torch", "warp"] = "torch",
     ):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if kernel not in self.kernels:
+            raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
         super().__init__()
         self.rotation_type = rotation_type
+        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path)
         weights = load_model_data(resolved_path, simplify=simplify)
@@ -110,7 +116,7 @@ class FLAME(BodyModel, nn.Module):
                 rotation_type=self.rotation_type,
                 xp=torch,
             )
-        return backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
             expression=expression,
@@ -146,7 +152,7 @@ class FLAME(BodyModel, nn.Module):
                 rotation_type=self.rotation_type,
                 xp=torch,
             )
-        return backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
             expression=expression,
@@ -176,3 +182,15 @@ class FLAME(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+
+
+def _get_kernel(kernel: Literal["torch", "warp"]):
+    if kernel == "torch":
+        return torch_backend
+
+    try:
+        from body_models.flame.backends import warp as warp_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[warp] to use FLAME kernel='warp'.") from exc
+
+    return warp_backend
