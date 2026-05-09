@@ -353,12 +353,12 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
     )
 
 
-def test_numba_backend_matches_numpy() -> None:
+def test_numba_kernel_matches_numpy() -> None:
     pytest.importorskip("numba")
     from body_models.anny.numpy import ANNY
 
     numpy_model = ANNY(model_path=MODEL_PATH)
-    numba_model = ANNY(model_path=MODEL_PATH, backend="numba")
+    numba_model = ANNY(model_path=MODEL_PATH, kernel="numba")
     params = numpy_model.get_rest_pose(batch_size=2)
     vertex_indices = [0, 10, 1, 10, 25]
 
@@ -371,11 +371,11 @@ def test_numba_backend_matches_numpy() -> None:
     np.testing.assert_allclose(numba_subset, numpy_subset, rtol=RTOL, atol=ATOL)
 
 
-def test_torch_warp_backend_matches_torch() -> None:
+def test_torch_warp_kernel_matches_torch() -> None:
     pytest.importorskip("warp")
     from body_models.anny.torch import ANNY
 
-    model = ANNY(model_path=MODEL_PATH, backend="warp")
+    model = ANNY(model_path=MODEL_PATH, kernel="warp")
     reference_model = ANNY(model_path=MODEL_PATH)
     params = reference_model.get_rest_pose(batch_size=2)
     vertex_indices = [0, 10, 1, 10, 25]

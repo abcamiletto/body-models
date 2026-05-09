@@ -140,9 +140,7 @@ def warp_linear_blend_skinning(
 ) -> Float[Tensor, "B V 3"]:
     _check_warp_inputs(vertices)
     if vertices.requires_grad or transforms.requires_grad or joints.requires_grad:
-        raise ValueError(
-            "backend='warp' is an inference-only forward path; use the default Torch backend for gradients."
-        )
+        raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
 
     _init_warp()
     vertices = vertices.contiguous()
@@ -221,9 +219,7 @@ def warp_affine_blend_skinning(
 ) -> Float[Tensor, "B V 3"]:
     _check_warp_inputs(vertices)
     if transforms.requires_grad:
-        raise ValueError(
-            "backend='warp' is an inference-only forward path; use the default Torch backend for gradients."
-        )
+        raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
     _init_warp()
     vertices = vertices.contiguous()
     transforms = transforms.contiguous()
@@ -261,11 +257,9 @@ def warp_affine_blend_skinning(
 
 def _check_warp_inputs(vertices: Tensor) -> None:
     if vertices.dtype != torch.float32:
-        raise TypeError("backend='warp' currently supports float32 tensors only.")
+        raise TypeError("kernel='warp' currently supports float32 tensors only.")
     if vertices.requires_grad:
-        raise ValueError(
-            "backend='warp' is an inference-only forward path; use the default Torch backend for gradients."
-        )
+        raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
 
 
 def _init_warp() -> None:

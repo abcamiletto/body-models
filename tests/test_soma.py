@@ -108,12 +108,12 @@ def test_simplify_reduces_mesh(model_path: Path) -> None:
     assert skel.shape == (2, model_half.num_joints, 4, 4)
 
 
-def test_torch_warp_backend_matches_torch(model_path: Path) -> None:
+def test_torch_warp_kernel_matches_torch(model_path: Path) -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
     from body_models.soma.torch import SOMA
 
-    model = SOMA(model_path=model_path, backend="warp")
+    model = SOMA(model_path=model_path, kernel="warp")
     reference_model = SOMA(model_path=model_path)
     params = reference_model.get_rest_pose(batch_size=2)
     vertex_indices = [0, 10, 1, 10, 25]
@@ -186,8 +186,8 @@ def test_scipy_kernel_matches_numpy(model_path: Path) -> None:
     from body_models.soma.numpy import SOMA
 
     params = SOMA(model_path=model_path).get_rest_pose(batch_size=2)
-    model_numpy = SOMA(model_path=model_path, backend="numpy")
-    model_scipy = SOMA(model_path=model_path, backend="scipy")
+    model_numpy = SOMA(model_path=model_path, kernel="numpy")
+    model_scipy = SOMA(model_path=model_path, kernel="scipy")
 
     vertices_numpy = model_numpy.forward_vertices(
         pose=params["pose"],

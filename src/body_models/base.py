@@ -24,7 +24,7 @@ class BodyModel(ABC):
     # True for models that expose MJCF-style muscle via-points and tendons
     # (currently MyoFullBody only). Renderers branch on this to draw muscles.
     has_tendons: bool = False
-    flavors: ClassVar[tuple[str, ...]] = ("numpy",)
+    kernels: ClassVar[tuple[str, ...]] = ("numpy",)
 
     @property
     @abstractmethod
