@@ -3,15 +3,12 @@
 # dependencies = [
 #   "body-models",
 #   "numpy>=2.4.1",
-#   "viser>=0.2.32",
+#   "viser>=1.0.21",
 # ]
 # [tool.uv.sources]
 # body-models = { path = ".." }
 # ///
-"""Visualize all body models side by side with interactive controls.
-
-Default asset paths point at ``tests/assets/<model>/model/...``; SOMA falls back
-to the auto-downloaded body-models cache. Adjust the constants below to relocate.
+"""Visualize configured body models side by side with interactive controls.
 
 Usage:
     uv run scripts/visualize_models.py
@@ -21,8 +18,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, cast
+from typing import Protocol, TypedDict, cast
 
 import numpy as np
 import viser
@@ -42,22 +38,18 @@ from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
 
-# ── Asset locations ──────────────────────────────────────────────────────────
-ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets"
-SMPL_PATH = ASSETS_DIR / "smpl/model/SMPL_NEUTRAL.npz"
-SMPLH_PATH = ASSETS_DIR / "smplh/model/neutral/model.npz"
-MANO_PATH = ASSETS_DIR / "mano/model/right/MANO_RIGHT.pkl"
-SMPLX_PATH = ASSETS_DIR / "smplx/model/SMPLX_NEUTRAL.npz"
-SKEL_PATH = ASSETS_DIR / "skel/model"
-ANNY_PATH = ASSETS_DIR / "anny/model"
-MHR_PATH = ASSETS_DIR / "mhr/model"
-FLAME_PATH = ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"
-GARMENT_MEASUREMENTS_PATH = ASSETS_DIR / "garment_measurements/model"
-G1_PATH = ASSETS_DIR / "g1/model"
-MYOFULLBODY_PATH = ASSETS_DIR / "myofullbody/model"
-BRAINCO_PATH: Path | None = None  # None -> load from body-models config/cache
-SOMA_PATH: Path | None = None  # None → load from body-models cache
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2
+
+
+class Tendon(TypedDict):
+    site_indices: list[int]
+
+
+class MuscleModel(Protocol):
+    tendons: list[Tendon]
+
+    def world_sites(self, skeleton: np.ndarray) -> np.ndarray: ...
+
 
 # ── Per-tab joint configurations ─────────────────────────────────────────────
 SMPL_POSE_JOINTS = [
@@ -186,9 +178,10 @@ BRAINCO_POSE_JOINTS = [
 ]
 
 # Grid layout: split models across rows on the xz ground plane.
-GRID_COLS = 5  # max models per row; with 11 models this gives 5 + 5 + 1
+GRID_COLS = 5
 GRID_SPACING_X = 1.8
 GRID_SPACING_Z = 1.8
+VISER_PORT = 8081
 
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "SMPL": (173, 216, 230),
@@ -218,8 +211,9 @@ class ModelState:
     y_offset: float
     z_offset: float
     mesh_handle: viser.MeshHandle | None = None
-    muscle_handle: viser.LineSegmentsHandle | None = None
+    label_handle: viser.LabelHandle | None = None
     muscle_segment_indices: np.ndarray | None = None
+    muscle_handle: viser.LineSegmentsHandle | None = None
     changed: bool = True
 
 
@@ -432,7 +426,7 @@ def myofullbody_tab(server, tabs, state) -> None:
             for label, qpos_idx in MYOFULLBODY_POSE_JOINTS:
                 if qpos_idx >= state.model.num_qpos:
                     continue
-                lo, hi = (float(x) for x in state.model.qpos_limits[qpos_idx])
+                lo, hi = (float(x) for x in state.model.weights.qpos_joint_limits[qpos_idx])
                 if not np.isfinite(lo) or not np.isfinite(hi):
                     lo, hi = -np.pi, np.pi
                 handles.append(
@@ -504,71 +498,97 @@ def _muscle_segment_indices(model: BodyModel) -> np.ndarray | None:
     if not model.has_tendons:
         return None
     segments: list[tuple[int, int]] = []
-    for tendon in cast(Any, model).tendons:
+    for tendon in cast(MuscleModel, model).tendons:
         sites = tendon["site_indices"]
         segments.extend(zip(sites[:-1], sites[1:]))
     return np.asarray(segments, dtype=np.int64)
 
 
-def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
-    verts = state.model.forward_vertices(**state.params)[0]
-    if state.mesh_handle is None:
-        state.mesh_handle = server.scene.add_mesh_simple(
-            f"/{name}",
-            vertices=verts,
-            faces=state.faces,
-            color=state.color,
-            position=(state.x_offset, state.y_offset, state.z_offset),
-        )
-    else:
-        state.mesh_handle.vertices = verts
+def model_vertices(state: ModelState) -> np.ndarray:
+    vertices = state.model.forward_vertices(**state.params)[0]
+    return np.asarray(vertices, dtype=np.float32)
 
-    if state.muscle_segment_indices is not None:
-        # The viser mesh handle at /{name} carries the grid offset; nest the
-        # muscles under it so they inherit the same translation rather than
-        # double-applying it.
-        skeleton = state.model.forward_skeleton(**state.params)
-        sites = np.asarray(cast(Any, state.model).world_sites(skeleton))[0]
-        seg_points = sites[state.muscle_segment_indices].astype(np.float32)
-        if state.muscle_handle is None:
-            state.muscle_handle = server.scene.add_line_segments(
-                f"/{name}/muscles",
-                points=seg_points,
-                colors=(220, 50, 50),
-                line_width=2.0,
-            )
-        else:
-            state.muscle_handle.points = seg_points
+
+def label_position(state: ModelState, vertices: np.ndarray) -> tuple[float, float, float]:
+    y = float(vertices[:, 1].max()) + state.y_offset + 0.1
+    return state.x_offset, y, state.z_offset
+
+
+def muscle_points(state: ModelState) -> np.ndarray | None:
+    if state.muscle_segment_indices is None:
+        return None
+    skeleton = state.model.forward_skeleton(**state.params)
+    sites = np.asarray(cast(MuscleModel, state.model).world_sites(skeleton))[0]
+    return sites[state.muscle_segment_indices].astype(np.float32)
+
+
+def create_scene_handles(server: viser.ViserServer, name: str, state: ModelState) -> None:
+    vertices = model_vertices(state)
+    state.mesh_handle = server.scene.add_mesh_simple(
+        f"/{name}",
+        vertices=vertices,
+        faces=state.faces,
+        color=state.color,
+        position=(state.x_offset, state.y_offset, state.z_offset),
+    )
+    state.label_handle = server.scene.add_label(f"/labels/{name}", text=name, position=label_position(state, vertices))
+
+    points = muscle_points(state)
+    if points is None:
+        return
+    # The mesh handle at /{name} carries the grid offset; nesting muscles under
+    # it makes them inherit the same transform.
+    state.muscle_handle = server.scene.add_line_segments(
+        f"/{name}/muscles",
+        points=points,
+        colors=(220, 50, 50),
+        line_width=2.0,
+    )
+
+
+def update_scene_handles(state: ModelState) -> None:
+    if state.mesh_handle is None or state.label_handle is None:
+        raise RuntimeError("Scene handles must be created before updates.")
+
+    vertices = model_vertices(state)
+    state.mesh_handle.vertices = vertices
+    state.label_handle.position = label_position(state, vertices)
+
+    if state.muscle_handle is not None:
+        points = muscle_points(state)
+        if points is None:
+            raise RuntimeError("Muscle handle exists without muscle segment indices.")
+        state.muscle_handle.points = points
 
 
 def load_models() -> dict[str, BodyModel]:
-    print(f"Loading SMPL from {SMPL_PATH}", flush=True)
-    smpl = SMPL(SMPL_PATH)
-    print(f"Loading SMPLH from {SMPLH_PATH}", flush=True)
-    smplh = SMPLH(SMPLH_PATH)
-    print(f"Loading MANO from {MANO_PATH}", flush=True)
-    mano = MANO(MANO_PATH)
-    print(f"Loading SMPLX from {SMPLX_PATH}", flush=True)
-    smplx = SMPLX(SMPLX_PATH)
-    print(f"Loading SKEL from {SKEL_PATH}", flush=True)
-    skel = SKEL(SKEL_PATH, "male")
-    print(f"Loading ANNY from {ANNY_PATH}", flush=True)
-    anny = ANNY(ANNY_PATH)
-    print(f"Loading MHR from {MHR_PATH}", flush=True)
-    mhr = MHR(MHR_PATH)
-    print(f"Loading FLAME from {FLAME_PATH}", flush=True)
-    flame = FLAME(FLAME_PATH)
-    print(f"Loading GarmentMeasurements from {GARMENT_MEASUREMENTS_PATH}", flush=True)
-    gm = GarmentMeasurements(GARMENT_MEASUREMENTS_PATH)
-    print(f"Loading SOMA from {SOMA_PATH or '<cache>'}", flush=True)
-    soma = SOMA(model_path=SOMA_PATH)
-    print(f"Loading G1 from {G1_PATH}", flush=True)
+    print("Loading SMPL from configured path/cache", flush=True)
+    smpl = SMPL(gender="neutral")
+    print("Loading SMPLH from configured path/cache", flush=True)
+    smplh = SMPLH(gender="neutral")
+    print("Loading MANO from configured path/cache", flush=True)
+    mano = MANO(side="right")
+    print("Loading SMPLX from configured path/cache", flush=True)
+    smplx = SMPLX(gender="neutral")
+    print("Loading SKEL from configured path/cache", flush=True)
+    skel = SKEL(gender="male")
+    print("Loading ANNY from configured path/cache", flush=True)
+    anny = ANNY()
+    print("Loading MHR from configured path/cache", flush=True)
+    mhr = MHR()
+    print("Loading FLAME from configured path/cache", flush=True)
+    flame = FLAME()
+    print("Loading GarmentMeasurements from configured path/cache", flush=True)
+    gm = GarmentMeasurements()
+    print("Loading SOMA from configured path/cache", flush=True)
+    soma = SOMA()
+    print("Loading G1 from configured path/cache", flush=True)
     # Hinge parametrization: one scalar angle per qpos joint around its intrinsic axis.
-    g1 = G1(G1_PATH, rotation_type="hinge")
-    print(f"Loading MyoFullBody from {MYOFULLBODY_PATH}", flush=True)
-    myo = MyoFullBody(MYOFULLBODY_PATH)
-    print(f"Loading BrainCo from {BRAINCO_PATH or '<config/cache>'}", flush=True)
-    brainco = BrainCoHand(model_path=BRAINCO_PATH, side="right", rotation_type="hinge")
+    g1 = G1(rotation_type="hinge")
+    print("Loading MyoFullBody from configured path/cache", flush=True)
+    myo = MyoFullBody()
+    print("Loading BrainCo from configured path/cache", flush=True)
+    brainco = BrainCoHand(side="right", rotation_type="hinge")
     return {
         "SMPL": smpl,
         "SMPLH": smplh,
@@ -587,7 +607,7 @@ def load_models() -> dict[str, BodyModel]:
 
 
 def main() -> None:
-    server = viser.ViserServer()
+    server = viser.ViserServer(port=VISER_PORT)
     server.scene.set_up_direction("+y")
     server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
     server.gui.configure_theme(control_layout="fixed", control_width="large")
@@ -604,14 +624,14 @@ def main() -> None:
         params = model.get_rest_pose()
         if name == "ANNY":
             params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
-        verts = model.forward_vertices(**params)
+        vertices = np.asarray(model.forward_vertices(**params)[0])
         states[name] = ModelState(
             model=model,
             params=params,
             faces=triangulate(np.asarray(model.faces)),
             color=MODEL_COLORS[name],
             x_offset=(col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
-            y_offset=-float(verts[..., 1].min()),
+            y_offset=-float(vertices[:, 1].min()),
             z_offset=(row - 0.5 * (num_rows - 1)) * GRID_SPACING_Z,
             muscle_segment_indices=_muscle_segment_indices(model),
         )
@@ -621,17 +641,16 @@ def main() -> None:
         TAB_BUILDERS[name](server, tabs, state)
 
     for name, state in states.items():
-        verts = state.model.forward_vertices(**state.params)
-        label_y = float(verts[..., 1].max()) + state.y_offset + 0.1
-        server.scene.add_label(f"/labels/{name}", text=name, position=(state.x_offset, label_y, state.z_offset))
+        create_scene_handles(server, name, state)
+        state.changed = False
 
-    print("\nServer running at http://localhost:8080", flush=True)
+    print(f"\nServer running at http://localhost:{VISER_PORT}", flush=True)
     while True:
         time.sleep(0.02)
         for name, state in states.items():
             if state.changed:
                 state.changed = False
-                update_mesh(server, name, state)
+                update_scene_handles(state)
 
 
 if __name__ == "__main__":

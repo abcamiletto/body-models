@@ -56,6 +56,9 @@ dev = [
     "py-soma-x>=0.1.0",
     "anny>=0.3.1",
     "smplx>=0.1.28",
+    "loguru>=0.7.3",
+    "rich>=14.2.0",
+    "tqdm>=4.67.1",
 ]
 docs = [
     "mkdocs>=1.6.1",
