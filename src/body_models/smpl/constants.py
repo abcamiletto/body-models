@@ -1,3 +1,6 @@
+from body_models.constants import Joint
+
+
 SMPL_JOINT_NAMES = [
     "pelvis",
     "left_hip",
@@ -25,4 +28,21 @@ SMPL_JOINT_NAMES = [
     "right_hand",
 ]
 
-__all__ = ["SMPL_JOINT_NAMES"]
+SMPL_JOINTS = {
+    Joint.LEFT_SHOULDER: "left_shoulder",
+    Joint.RIGHT_SHOULDER: "right_shoulder",
+    Joint.LEFT_ELBOW: "left_elbow",
+    Joint.RIGHT_ELBOW: "right_elbow",
+    Joint.LEFT_WRIST: "left_wrist",
+    Joint.RIGHT_WRIST: "right_wrist",
+    Joint.LEFT_HIP: "left_hip",
+    Joint.RIGHT_HIP: "right_hip",
+    Joint.LEFT_KNEE: "left_knee",
+    Joint.RIGHT_KNEE: "right_knee",
+    Joint.LEFT_ANKLE: "left_ankle",
+    Joint.RIGHT_ANKLE: "right_ankle",
+    Joint.LEFT_FOOT: "left_foot",
+    Joint.RIGHT_FOOT: "right_foot",
+}
+
+__all__ = ["SMPL_JOINT_NAMES", "SMPL_JOINTS"]

@@ -11,6 +11,7 @@ from body_models import common
 from body_models.base import BodyModel
 from body_models.mhr.backends import torch as backend
 from body_models.mhr.io import get_model_path, load_model_data
+from body_models.mhr.constants import MHR_JOINTS
 
 __all__ = ["MHR"]
 
@@ -20,6 +21,7 @@ class MHR(BodyModel, nn.Module):
 
     SHAPE_DIM = 45
     EXPR_DIM = 72
+    JOINTS = MHR_JOINTS
 
     def __init__(
         self,

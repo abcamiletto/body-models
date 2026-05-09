@@ -12,6 +12,7 @@ from body_models.base import BodyModel
 from body_models.myofullbody.backends import core
 from body_models.myofullbody.backends import torch as backend
 from body_models.myofullbody.io import load_model_data
+from body_models.myofullbody.constants import MYOFULLBODY_JOINTS
 
 __all__ = ["MyoFullBody"]
 
@@ -21,6 +22,7 @@ class MyoFullBody(BodyModel, nn.Module):
 
     is_rigid_body = True
     has_tendons = True
+    JOINTS = MYOFULLBODY_JOINTS
 
     def __init__(self, model_path: Path | str | None = None) -> None:
         super().__init__()

@@ -10,6 +10,7 @@ from body_models.base import BodyModel
 from body_models.brainco.backends import core
 from body_models.brainco.backends import numpy as backend
 from body_models.brainco.io import Side, load_model_data
+from body_models.brainco.constants import LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
 
 __all__ = ["BrainCoHand"]
 
@@ -46,6 +47,10 @@ class BrainCoHand(BodyModel):
     @property
     def joint_names(self) -> list[str]:
         return self.weights.joint_names
+
+    @property
+    def _standard_joints(self):
+        return LEFT_BRAINCO_JOINTS if self.side == "left" else RIGHT_BRAINCO_JOINTS
 
     @property
     def parents(self) -> list[int]:

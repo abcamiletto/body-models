@@ -23,6 +23,7 @@ from body_models.soma.backends import scipy as scipy_backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import numpy as identity_sources
+from body_models.soma.constants import SOMA_JOINTS
 
 PathLike = Path | str
 PreparedSomaIdentity = core.PreparedSomaIdentity
@@ -37,6 +38,7 @@ class SOMA(BodyModel):
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
     kernels = ("numpy", "scipy")
+    JOINTS = SOMA_JOINTS
 
     _kernel: Any
     weights: Any

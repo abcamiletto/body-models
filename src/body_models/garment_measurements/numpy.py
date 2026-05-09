@@ -11,6 +11,7 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import numpy as numpy_backend
 from .io import get_model_path, load_model_data
+from .constants import GARMENT_JOINTS
 
 
 __all__ = ["GarmentMeasurements"]
@@ -20,6 +21,7 @@ class GarmentMeasurements(BodyModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
     kernels = ("numpy", "numba")
+    JOINTS = GARMENT_JOINTS
 
     def __init__(
         self,
