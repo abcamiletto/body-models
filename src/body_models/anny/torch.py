@@ -12,6 +12,7 @@ from torch import Tensor
 from body_models import common
 from body_models.anny.backends import torch as torch_backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
+from body_models.anny.constants import ANNY_JOINTS
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -22,6 +23,7 @@ class ANNY(BodyModel, nn.Module):
     """ANNY body model with PyTorch backend."""
 
     kernels = ("torch", "warp")
+    JOINTS = ANNY_JOINTS
 
     def __init__(
         self,

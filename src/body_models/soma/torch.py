@@ -27,6 +27,7 @@ from body_models.soma.backends import torch as torch_backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
+from body_models.soma.constants import SOMA_JOINTS
 
 PathLike = Path | str
 __all__ = ["SOMA"]
@@ -39,6 +40,7 @@ class SOMA(BodyModel, nn.Module):
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
     kernels = ("torch", "warp")
+    JOINTS = SOMA_JOINTS
 
     def __init__(
         self,
