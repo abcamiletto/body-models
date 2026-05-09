@@ -37,6 +37,7 @@ def prepare_identity_from_rest_shape(
     rest_shape_active: Float[Array, "B Va 3"],
     match_warp: bool,
     xp: Any,
+    linear_blend_skinning_fn: Any,
 ) -> PreparedSomaIdentity:
     rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
         xp=xp,
@@ -59,7 +60,7 @@ def prepare_identity_from_rest_shape(
         bind_pose_local=data.bind_pose_local,
         kinematic_fronts=data.topology.kinematic_fronts_full,
         parents_full=data.topology.parents_full,
-        linear_blend_skinning_fn=linear_blend_skinning,
+        linear_blend_skinning_fn=linear_blend_skinning_fn,
     )
     inverse_world_bind_pose = _invert_transforms(xp, world_bind_pose)
     return PreparedSomaIdentity(

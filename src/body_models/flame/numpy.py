@@ -15,8 +15,8 @@ from body_models.flame.constants import FLAME_JOINT_NAMES
 from body_models.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
-Backend = Literal["numpy", "scipy", "numba"]
-FLAVORS = ("numpy", "scipy", "numba")
+Kernel = Literal["numpy", "scipy", "numba"]
+KERNELS = ("numpy", "scipy", "numba")
 
 __all__ = ["FLAME"]
 
@@ -26,23 +26,23 @@ class FLAME(BodyModel):
 
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
-    flavors = FLAVORS
+    kernels = KERNELS
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        backend: Backend = "numpy",
+        kernel: Kernel = "numpy",
     ):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
-        if backend not in FLAVORS:
-            raise ValueError(f"Invalid backend: {backend}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
         self.rotation_type = rotation_type
-        self._kernel = _get_kernel(backend)
+        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path)
         self.weights = load_model_data(resolved_path, simplify=simplify)
@@ -176,15 +176,15 @@ class FLAME(BodyModel):
         }
 
 
-def _get_kernel(backend: Backend):
-    if backend == "numpy":
+def _get_kernel(kernel: Kernel):
+    if kernel == "numpy":
         return numpy_backend
-    if backend == "scipy":
+    if kernel == "scipy":
         return scipy_backend
 
     try:
         from body_models.flame.backends import numba as numba_backend
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use FLAME backend='numba'.") from exc
+        raise ModuleNotFoundError("Install body-models[numba] to use FLAME kernel='numba'.") from exc
 
     return numba_backend

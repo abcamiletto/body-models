@@ -209,6 +209,14 @@ Available backends:
 - `body_models.<model>.numpy` - NumPy
 - `body_models.<model>.jax` - JAX/Flax (differentiable)
 
+Some backends expose implementation kernels for performance-sensitive paths:
+
+```python
+from body_models.smpl.numpy import SMPL
+
+model = SMPL(gender="neutral", kernel="numba")
+```
+
 ## Common Interface
 
 Rigged models inherit from `BodyModel` and share these properties:

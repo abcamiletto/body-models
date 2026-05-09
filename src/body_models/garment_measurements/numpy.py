@@ -15,30 +15,30 @@ from .io import get_model_path, load_model_data
 
 __all__ = ["GarmentMeasurements"]
 
-Backend = Literal["numpy", "numba"]
-FLAVORS = ("numpy", "numba")
+Kernel = Literal["numpy", "numba"]
+KERNELS = ("numpy", "numba")
 
 
 class GarmentMeasurements(BodyModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
-    flavors = FLAVORS
+    kernels = KERNELS
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         *,
         rotation_type: RotationType = "axis_angle",
-        backend: Backend = "numpy",
+        kernel: Kernel = "numpy",
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if backend not in FLAVORS:
-            raise ValueError(f"Invalid backend: {backend}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
 
         self.weights = load_model_data(get_model_path(model_path), dtype=np.float32)
         self.rotation_type = rotation_type
-        self._kernel = _get_kernel(backend)
+        self._kernel = _get_kernel(kernel)
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
@@ -129,13 +129,13 @@ class GarmentMeasurements(BodyModel):
         }
 
 
-def _get_kernel(backend: Backend):
-    if backend == "numpy":
+def _get_kernel(kernel: Kernel):
+    if kernel == "numpy":
         return numpy_backend
 
     try:
         from body_models.garment_measurements.backends import numba as numba_backend
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use GarmentMeasurements backend='numba'.") from exc
+        raise ModuleNotFoundError("Install body-models[numba] to use GarmentMeasurements kernel='numba'.") from exc
 
     return numba_backend

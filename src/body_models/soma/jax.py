@@ -260,7 +260,7 @@ class SOMA(BodyModel):
             scale_params=scale_params,
             xp=jnp,
         )
-        return core.prepare_identity_from_rest_shape(
+        return backend.prepare_identity_from_rest_shape(
             data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,

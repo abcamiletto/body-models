@@ -25,7 +25,8 @@ from body_models.soma import identities
 from body_models.soma.identities import numpy as identity_sources
 
 PathLike = Path | str
-KernelBackend = Literal["numpy", "scipy"]
+Kernel = Literal["numpy", "scipy"]
+KERNELS = ("numpy", "scipy")
 PreparedSomaIdentity = core.PreparedSomaIdentity
 
 __all__ = ["SOMA"]
@@ -37,6 +38,7 @@ class SOMA(BodyModel):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
+    kernels = KERNELS
 
     _kernel: Any
     weights: Any
@@ -49,7 +51,7 @@ class SOMA(BodyModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
-        backend: KernelBackend = "numpy",
+        kernel: Kernel = "numpy",
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -58,13 +60,15 @@ class SOMA(BodyModel):
             )
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
 
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
         self.match_warp = match_warp
-        self._kernel = {"numpy": numpy_backend, "scipy": scipy_backend}[backend]
+        self._kernel = {"numpy": numpy_backend, "scipy": scipy_backend}[kernel]
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 
@@ -282,7 +286,7 @@ class SOMA(BodyModel):
             scale_params=scale_params,
             xp=np,
         )
-        return core.prepare_identity_from_rest_shape(
+        return self._kernel.prepare_identity_from_rest_shape(
             data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,

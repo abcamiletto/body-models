@@ -19,8 +19,8 @@ from body_models.smpl.io import get_model_path, load_model_data
 
 __all__ = ["SMPL"]
 
-Backend = Literal["torch", "warp"]
-FLAVORS = ("torch", "warp")
+Kernel = Literal["torch", "warp"]
+KERNELS = ("torch", "warp")
 
 
 class SMPL(BodyModel, nn.Module):
@@ -28,7 +28,7 @@ class SMPL(BodyModel, nn.Module):
 
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
-    flavors = FLAVORS
+    kernels = KERNELS
 
     def __init__(
         self,
@@ -36,14 +36,14 @@ class SMPL(BodyModel, nn.Module):
         gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        backend: Backend = "torch",
+        kernel: Kernel = "torch",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if backend not in FLAVORS:
-            raise ValueError(f"Invalid backend: {backend}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
         super().__init__()
@@ -51,7 +51,7 @@ class SMPL(BodyModel, nn.Module):
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
-        self._kernel = _get_kernel(backend)
+        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path, gender)
         data = load_model_data(resolved_path, simplify=simplify)
@@ -160,13 +160,13 @@ class SMPL(BodyModel, nn.Module):
         }
 
 
-def _get_kernel(backend: Backend):
-    if backend == "torch":
+def _get_kernel(kernel: Kernel):
+    if kernel == "torch":
         return torch_backend
 
     try:
         from body_models.smpl.backends import warp as warp_backend
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[warp] to use SMPL backend='warp'.") from exc
+        raise ModuleNotFoundError("Install body-models[warp] to use SMPL kernel='warp'.") from exc
 
     return warp_backend

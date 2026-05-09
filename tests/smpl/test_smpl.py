@@ -137,11 +137,11 @@ def test_forward_vertices_numpy(idx: int) -> None:
     np.testing.assert_allclose(verts[0], ref["vertices"], rtol=RTOL, atol=ATOL)
 
 
-@pytest.mark.parametrize("backend", ["scipy", "numba"])
-def test_forward_vertices_numpy_specialized_backends(backend: str) -> None:
+@pytest.mark.parametrize("kernel", ["scipy", "numba"])
+def test_forward_vertices_numpy_specialized_kernels(kernel: str) -> None:
     from body_models.smpl.numpy import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, backend=backend)
+    model = SMPL(model_path=MODEL_PATH, kernel=kernel)
     reference_model = SMPL(model_path=MODEL_PATH)
     params = reference_model.get_rest_pose(batch_size=2)
 
@@ -151,11 +151,11 @@ def test_forward_vertices_numpy_specialized_backends(backend: str) -> None:
     np.testing.assert_allclose(verts, reference, rtol=RTOL, atol=ATOL)
 
 
-def test_forward_vertices_torch_warp_backend() -> None:
+def test_forward_vertices_torch_warp_kernel() -> None:
     pytest.importorskip("warp")
     from body_models.smpl.torch import SMPL
 
-    model = SMPL(model_path=MODEL_PATH, backend="warp")
+    model = SMPL(model_path=MODEL_PATH, kernel="warp")
     reference_model = SMPL(model_path=MODEL_PATH)
     params = reference_model.get_rest_pose(batch_size=2)
 

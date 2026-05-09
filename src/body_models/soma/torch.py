@@ -29,8 +29,8 @@ from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
 
 PathLike = Path | str
-Backend = Literal["torch", "warp"]
-FLAVORS = ("torch", "warp")
+Kernel = Literal["torch", "warp"]
+KERNELS = ("torch", "warp")
 
 __all__ = ["SOMA"]
 
@@ -41,7 +41,7 @@ class SOMA(BodyModel, nn.Module):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
-    flavors = FLAVORS
+    kernels = KERNELS
 
     def __init__(
         self,
@@ -51,7 +51,7 @@ class SOMA(BodyModel, nn.Module):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
-        backend: Backend = "torch",
+        kernel: Kernel = "torch",
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -60,8 +60,8 @@ class SOMA(BodyModel, nn.Module):
             )
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if backend not in FLAVORS:
-            raise ValueError(f"Invalid backend: {backend}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
         super().__init__()
@@ -69,7 +69,7 @@ class SOMA(BodyModel, nn.Module):
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
         self.match_warp = match_warp
-        self._kernel = _get_kernel(backend)
+        self._kernel = _get_kernel(kernel)
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 
@@ -284,7 +284,7 @@ class SOMA(BodyModel, nn.Module):
             scale_params=scale_params,
             xp=torch,
         )
-        return core.prepare_identity_from_rest_shape(
+        return self._kernel.prepare_identity_from_rest_shape(
             data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
@@ -293,13 +293,13 @@ class SOMA(BodyModel, nn.Module):
         )
 
 
-def _get_kernel(backend: Backend):
-    if backend == "torch":
+def _get_kernel(kernel: Kernel):
+    if kernel == "torch":
         return torch_backend
 
     try:
         from body_models.soma.backends import warp as warp_backend
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[warp] to use SOMA backend='warp'.") from exc
+        raise ModuleNotFoundError("Install body-models[warp] to use SOMA kernel='warp'.") from exc
 
     return warp_backend

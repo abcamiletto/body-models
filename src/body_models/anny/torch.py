@@ -17,14 +17,14 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
-Backend = Literal["torch", "warp"]
-FLAVORS = ("torch", "warp")
+Kernel = Literal["torch", "warp"]
+KERNELS = ("torch", "warp")
 
 
 class ANNY(BodyModel, nn.Module):
     """ANNY body model with PyTorch backend."""
 
-    flavors = FLAVORS
+    kernels = KERNELS
 
     def __init__(
         self,
@@ -36,7 +36,7 @@ class ANNY(BodyModel, nn.Module):
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        backend: Backend = "torch",
+        kernel: Kernel = "torch",
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
@@ -46,8 +46,8 @@ class ANNY(BodyModel, nn.Module):
             raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if backend not in FLAVORS:
-            raise ValueError(f"Invalid backend: {backend}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
         super().__init__()
 
         data = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
@@ -55,7 +55,7 @@ class ANNY(BodyModel, nn.Module):
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
-        self._kernel = _get_kernel(backend)
+        self._kernel = _get_kernel(kernel)
         self.phenotype_labels = (
             PHENOTYPE_LABELS if all_phenotypes else [x for x in PHENOTYPE_LABELS if x not in EXCLUDED_PHENOTYPES]
         )
@@ -175,13 +175,13 @@ class ANNY(BodyModel, nn.Module):
         }
 
 
-def _get_kernel(backend: Backend):
-    if backend == "torch":
+def _get_kernel(kernel: Kernel):
+    if kernel == "torch":
         return torch_backend
 
     try:
         from body_models.anny.backends import warp as warp_backend
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[warp] to use ANNY backend='warp'.") from exc
+        raise ModuleNotFoundError("Install body-models[warp] to use ANNY kernel='warp'.") from exc
 
     return warp_backend

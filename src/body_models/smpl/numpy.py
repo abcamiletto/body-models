@@ -15,8 +15,8 @@ from body_models.smpl.backends import scipy as scipy_backend
 from body_models.smpl.constants import SMPL_JOINT_NAMES
 from body_models.smpl.io import get_model_path, load_model_data
 
-Backend = Literal["numpy", "scipy", "numba"]
-FLAVORS = ("numpy", "scipy", "numba")
+Kernel = Literal["numpy", "scipy", "numba"]
+KERNELS = ("numpy", "scipy", "numba")
 
 __all__ = ["SMPL"]
 
@@ -26,7 +26,7 @@ class SMPL(BodyModel):
 
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
-    flavors = FLAVORS
+    kernels = KERNELS
 
     def __init__(
         self,
@@ -34,21 +34,21 @@ class SMPL(BodyModel):
         gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        backend: Backend = "numpy",
+        kernel: Kernel = "numpy",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if backend not in FLAVORS:
-            raise ValueError(f"Invalid backend: {backend}")
+        if kernel not in KERNELS:
+            raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
 
         # Default gender to "neutral" for attribute storage when model_path is given
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
-        self._kernel = _get_kernel(backend)
+        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path, gender)
         self.weights = load_model_data(resolved_path, simplify=simplify)
@@ -154,15 +154,15 @@ class SMPL(BodyModel):
         }
 
 
-def _get_kernel(backend: Backend):
-    if backend == "numpy":
+def _get_kernel(kernel: Kernel):
+    if kernel == "numpy":
         return numpy_backend
-    if backend == "scipy":
+    if kernel == "scipy":
         return scipy_backend
 
     try:
         from body_models.smpl.backends import numba as numba_backend
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use SMPL backend='numba'.") from exc
+        raise ModuleNotFoundError("Install body-models[numba] to use SMPL kernel='numba'.") from exc
 
     return numba_backend

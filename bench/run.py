@@ -5,7 +5,7 @@ Usage:
     uv run bench/run.py -m SMPLX
     uv run bench/run.py -m SMPLX -m SMPL
     uv run bench/run.py --backend numpy
-    uv run bench/run.py -m SMPL --backend numpy --flavor numba
+    uv run bench/run.py -m SMPL --backend numpy --kernel numba
     uv run bench/run.py --backend torch -d cuda
     uv run bench/run.py --method skeleton
     uv run bench/run.py --batch-sizes 512,1024
@@ -65,7 +65,7 @@ class ModelSpec:
     name: str
     numpy: Callable[[str], Any] | None
     torch: Callable[[torch.device], torch.nn.Module] | None
-    flavors: tuple[str, ...] = ("numpy",)
+    kernels: tuple[str, ...] = ("numpy",)
     prepare_identity: bool = False
     vertices_method: str = "forward_vertices"
 
@@ -83,97 +83,102 @@ def torch_model(model: torch.nn.Module, device: torch.device) -> torch.nn.Module
 MODELS = [
     ModelSpec(
         "SMPL",
-        lambda flavor: smpl_numpy.SMPL(gender="neutral", backend=flavor),
+        lambda kernel: smpl_numpy.SMPL(gender="neutral", kernel=kernel),
         lambda d: torch_model(smpl_torch.SMPL(gender="neutral"), d),
-        flavors=smpl_numpy.SMPL.flavors,
+        kernels=smpl_numpy.SMPL.kernels,
     ),
     ModelSpec(
         "SMPLH",
-        lambda flavor: smplh_numpy.SMPLH(gender="neutral", backend=flavor),
+        lambda kernel: smplh_numpy.SMPLH(gender="neutral", kernel=kernel),
         lambda d: torch_model(smplh_torch.SMPLH(gender="neutral"), d),
-        flavors=smplh_numpy.SMPLH.flavors,
+        kernels=smplh_numpy.SMPLH.kernels,
     ),
     ModelSpec(
         "SMPLX",
-        lambda flavor: smplx_numpy.SMPLX(gender="neutral", backend=flavor),
+        lambda kernel: smplx_numpy.SMPLX(gender="neutral", kernel=kernel),
         lambda d: torch_model(smplx_torch.SMPLX(gender="neutral"), d),
-        flavors=smplx_numpy.SMPLX.flavors,
+        kernels=smplx_numpy.SMPLX.kernels,
     ),
     ModelSpec(
         "MANO",
-        lambda flavor: mano_numpy.MANO(side="left", backend=flavor),
+        lambda kernel: mano_numpy.MANO(side="left", kernel=kernel),
         lambda d: torch_model(mano_torch.MANO(side="left"), d),
-        flavors=mano_numpy.MANO.flavors,
+        kernels=mano_numpy.MANO.kernels,
     ),
     ModelSpec(
         "SKEL",
-        lambda flavor: skel_numpy.SKEL(gender="male"),
+        lambda kernel: skel_numpy.SKEL(gender="male"),
         lambda d: torch_model(skel_torch.SKEL(gender="male"), d),
     ),
     ModelSpec(
         "FLAME",
-        lambda flavor: flame_numpy.FLAME(backend=flavor),
+        lambda kernel: flame_numpy.FLAME(kernel=kernel),
         lambda d: torch_model(flame_torch.FLAME(), d),
-        flavors=flame_numpy.FLAME.flavors,
+        kernels=flame_numpy.FLAME.kernels,
     ),
     ModelSpec(
         "ANNY",
-        lambda flavor: anny_numpy.ANNY(backend=flavor),
+        lambda kernel: anny_numpy.ANNY(kernel=kernel),
         lambda d: torch_model(anny_torch.ANNY(), d),
-        flavors=anny_numpy.ANNY.flavors,
+        kernels=anny_numpy.ANNY.kernels,
     ),
-    ModelSpec("MHR", lambda flavor: mhr_numpy.MHR(), lambda d: torch_model(mhr_torch.MHR(), d)),
+    ModelSpec("MHR", lambda kernel: mhr_numpy.MHR(), lambda d: torch_model(mhr_torch.MHR(), d)),
     ModelSpec(
         "BRAINCO",
-        lambda flavor: brainco_numpy.BrainCoHand(side="right"),
+        lambda kernel: brainco_numpy.BrainCoHand(side="right"),
         None,
         vertices_method="forward_links",
     ),
     ModelSpec(
         "G1",
-        lambda flavor: g1_numpy.G1(),
+        lambda kernel: g1_numpy.G1(),
         lambda d: torch_model(g1_torch.G1(), d),
         vertices_method="forward_links",
     ),
     ModelSpec(
         "SOMA",
-        lambda flavor: soma_numpy.SOMA(model_type="soma"),
+        lambda kernel: soma_numpy.SOMA(model_type="soma", kernel=kernel),
         lambda d: torch_model(soma_torch.SOMA(model_type="soma"), d),
+        kernels=soma_numpy.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-ANNY",
-        lambda flavor: soma_numpy.SOMA(model_type="anny"),
+        lambda kernel: soma_numpy.SOMA(model_type="anny", kernel=kernel),
         lambda d: torch_model(soma_torch.SOMA(model_type="anny"), d),
+        kernels=soma_numpy.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-MHR",
-        lambda flavor: soma_numpy.SOMA(model_type="mhr"),
+        lambda kernel: soma_numpy.SOMA(model_type="mhr", kernel=kernel),
         lambda d: torch_model(soma_torch.SOMA(model_type="mhr"), d),
+        kernels=soma_numpy.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-SMPL",
-        lambda flavor: soma_numpy.SOMA(model_type="smpl"),
+        lambda kernel: soma_numpy.SOMA(model_type="smpl", kernel=kernel),
         lambda d: torch_model(soma_torch.SOMA(model_type="smpl"), d),
+        kernels=soma_numpy.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-SMPLX",
-        lambda flavor: soma_numpy.SOMA(model_type="smplx"),
+        lambda kernel: soma_numpy.SOMA(model_type="smplx", kernel=kernel),
         lambda d: torch_model(soma_torch.SOMA(model_type="smplx"), d),
+        kernels=soma_numpy.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "GARMENT-MEASUREMENTS",
-        lambda flavor: garment_measurements_numpy.GarmentMeasurements(backend=flavor),
+        lambda kernel: garment_measurements_numpy.GarmentMeasurements(kernel=kernel),
         lambda d: torch_model(garment_measurements_torch.GarmentMeasurements(), d),
-        flavors=garment_measurements_numpy.GarmentMeasurements.flavors,
+        kernels=garment_measurements_numpy.GarmentMeasurements.kernels,
     ),
     ModelSpec(
         "MYOFULLBODY",
-        lambda flavor: myofullbody_numpy.MyoFullBody(),
+        lambda kernel: myofullbody_numpy.MyoFullBody(),
         lambda d: torch_model(myofullbody_torch.MyoFullBody(), d),
         vertices_method="forward_links",
     ),
@@ -187,14 +192,14 @@ def main() -> None:
     skeleton_batch_sizes = batch_sizes or DEFAULT_SKELETON_BATCH_SIZES
     vertices_batch_sizes = batch_sizes or DEFAULT_VERTICES_BATCH_SIZES
     backends = args.backends or list(BACKENDS)
-    flavors = args.flavors or list(model_flavors())
+    kernels = args.kernels or list(model_kernels())
     devices = parse_devices(args.devices)
     methods = args.methods or ["skeleton", "vertices"]
-    preflight_models(args.models or MODEL_NAMES, backends, flavors)
+    preflight_models(args.models or MODEL_NAMES, backends, kernels)
     results = benchmark_all(
         model_names=args.models or MODEL_NAMES,
         backends=backends,
-        flavors=flavors,
+        kernels=kernels,
         devices=devices,
         methods=methods,
         skeleton_batch_sizes=skeleton_batch_sizes,
@@ -215,7 +220,7 @@ def main() -> None:
         vertices_runs=args.vertices_runs,
         warmup=args.warmup,
         backends=backends,
-        flavors=flavors,
+        kernels=kernels,
         devices=devices,
         methods=methods,
         skeleton_batch_sizes=skeleton_batch_sizes,
@@ -223,7 +228,7 @@ def main() -> None:
     )
 
 
-def preflight_models(model_names: list[str], backends: list[str], flavors: list[str]) -> None:
+def preflight_models(model_names: list[str], backends: list[str], kernels: list[str]) -> None:
     print("Checking model instantiation...")
     wanted = {normalize_model_name(name) for name in model_names}
 
@@ -231,22 +236,22 @@ def preflight_models(model_names: list[str], backends: list[str], flavors: list[
         if spec.name not in wanted or spec.numpy is None or "numpy" not in backends:
             continue
 
-        for flavor in spec.flavors:
-            if flavor not in flavors:
+        for kernel in spec.kernels:
+            if kernel not in kernels:
                 continue
-            spec.numpy(flavor)
-            print(f"  {spec.name} ({flavor})")
+            spec.numpy(kernel)
+            print(f"  {spec.name} ({kernel})")
 
 
-def model_flavors() -> tuple[str, ...]:
-    return tuple(dict.fromkeys(flavor for model in MODELS for flavor in model.flavors))
+def model_kernels() -> tuple[str, ...]:
+    return tuple(dict.fromkeys(kernel for model in MODELS for kernel in model.kernels))
 
 
 def benchmark_all(
     *,
     model_names: list[str],
     backends: list[str],
-    flavors: list[str],
+    kernels: list[str],
     devices: list[torch.device],
     methods: list[str],
     skeleton_batch_sizes: list[int],
@@ -263,13 +268,13 @@ def benchmark_all(
             continue
 
         if "numpy" in backends and spec.numpy is not None:
-            for flavor in spec.flavors:
-                if flavor not in flavors:
+            for kernel in spec.kernels:
+                if kernel not in kernels:
                     continue
-                label = f"{spec.name} ({flavor})"
+                label = f"{spec.name} ({kernel})"
                 result = benchmark_model(
                     label,
-                    spec.numpy(flavor),
+                    spec.numpy(kernel),
                     "numpy",
                     None,
                     spec.prepare_identity,
@@ -400,7 +405,7 @@ def write_markdown(
     vertices_runs: int,
     warmup: int,
     backends: list[str],
-    flavors: list[str],
+    kernels: list[str],
     devices: list[torch.device],
     methods: list[str],
     skeleton_batch_sizes: list[int],
@@ -414,7 +419,7 @@ def write_markdown(
         f"- **Vertices runs per measurement**: {vertices_runs} (outliers removed via IQR)",
         f"- **Warmup runs**: {warmup}",
         f"- **Backends**: {', '.join(backends)}",
-        f"- **Flavors**: {', '.join(flavors)}",
+        f"- **Kernels**: {', '.join(kernels)}",
         f"- **Torch devices**: {torch_devices}",
         f"- **Torch mode**: `torch.compile(mode={TORCH_COMPILE_MODE!r})`",
         f"- **PyTorch version**: {torch.__version__}",
@@ -468,7 +473,7 @@ def synchronize(device: torch.device | None) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    flavors = model_flavors()
+    kernels = model_kernels()
     parser = argparse.ArgumentParser(description="Benchmark body models")
     parser.add_argument(
         "-m",
@@ -486,11 +491,11 @@ def parse_args() -> argparse.Namespace:
         help=f"Backend(s) to benchmark: {', '.join(BACKENDS)} (can repeat). Default: all",
     )
     parser.add_argument(
-        "--flavor",
+        "--kernel",
         action="append",
-        dest="flavors",
-        choices=flavors,
-        help=f"NumPy flavor(s) to benchmark: {', '.join(flavors)} (can repeat). Default: all",
+        dest="kernels",
+        choices=kernels,
+        help=f"NumPy kernel(s) to benchmark: {', '.join(kernels)} (can repeat). Default: all",
     )
     parser.add_argument(
         "-d",
