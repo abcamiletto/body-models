@@ -25,6 +25,7 @@ from body_models.soma.backends import jax as backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import jax as identity_sources
+from body_models.soma.constants import SOMA_JOINTS
 
 PathLike = Path | str
 
@@ -37,6 +38,7 @@ class SOMA(BodyModel):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
+    JOINTS = SOMA_JOINTS
 
     def __init__(
         self,

@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import Any, ClassVar
 
 import numpy as np
 from nanomanifold import SO3
+
+from body_models.constants import Joint
 
 
 class BodyModel(ABC):
@@ -25,6 +28,7 @@ class BodyModel(ABC):
     # (currently MyoFullBody only). Renderers branch on this to draw muscles.
     has_tendons: bool = False
     kernels: ClassVar[tuple[str, ...]] = ("numpy",)
+    JOINTS: ClassVar[Mapping[Joint, str]] = {}
 
     @property
     @abstractmethod
@@ -45,6 +49,20 @@ class BodyModel(ABC):
     @abstractmethod
     def joint_names(self) -> list[str]:
         """Joint names in joint index order."""
+
+    @property
+    def _standard_joints(self) -> Mapping[Joint, str]:
+        return self.JOINTS
+
+    def joint_index(self, joint: Joint) -> int:
+        """Resolve a standard joint to this model's native joint index."""
+        if not isinstance(joint, Joint):
+            raise TypeError("joint_index() expects a body_models.Joint; use joint_names.index(...) for native names.")
+        try:
+            native_name = self._standard_joints[joint]
+        except KeyError as exc:
+            raise KeyError(f"{self.__class__.__name__} has no standard joint {joint.value!r}") from exc
+        return self.joint_names.index(native_name)
 
     @property
     @abstractmethod

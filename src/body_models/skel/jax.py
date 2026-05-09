@@ -11,6 +11,7 @@ from body_models import common
 from body_models.base import BodyModel
 from body_models.skel.backends import jax as backend
 from body_models.skel.io import get_model_path, load_model_data
+from body_models.skel.constants import SKEL_JOINTS
 
 __all__ = ["SKEL"]
 
@@ -21,6 +22,7 @@ class SKEL(BodyModel):
     NUM_BETAS = 10
     NUM_JOINTS = 24
     NUM_POSE_PARAMS = 46
+    JOINTS = SKEL_JOINTS
 
     def __init__(
         self,
