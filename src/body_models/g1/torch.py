@@ -93,6 +93,14 @@ class G1(BodyModel, nn.Module):
         return self.weights.link_face_counts
 
     @property
+    def link_geom_positions(self) -> Float[Tensor, "L 3"]:
+        return self.weights.link_geom_positions
+
+    @property
+    def link_geom_rotations(self) -> Float[Tensor, "L 3 3"]:
+        return self.weights.link_geom_rotations
+
+    @property
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
 

@@ -24,22 +24,22 @@ if not MODEL_FILE.exists():
 def test_load_model_data_has_fbx_skeleton_assets() -> None:
     data = io.load_model_data(MODEL_PATH)
 
-    assert data["components"].shape[:2] == data["mean_vertices"].shape
-    assert data["eigenvalues"].shape == (data["components"].shape[-1],)
-    assert data["faces"].ndim == 2
-    assert data["faces"].shape[1] == 3
-    assert len(data["joint_names"]) == data["parents"].shape[0]
-    assert data["parents"][0] == -1
-    assert data["bind_quats"].shape == (len(data["joint_names"]), 4)
-    assert data["skin_weights"].shape == (data["mean_vertices"].shape[0], len(data["joint_names"]))
-    assert data["mvc_weights"].shape == data["skin_weights"].shape
+    assert data.components.shape[:2] == data.mean_vertices.shape
+    assert data.eigenvalues.shape == (data.components.shape[-1],)
+    assert data.faces.ndim == 2
+    assert data.faces.shape[1] == 3
+    assert len(data.joint_names) == data.parents.shape[0]
+    assert data.parents[0] == -1
+    assert data.bind_quats.shape == (len(data.joint_names), 4)
+    assert data.skin_weights.shape == (data.mean_vertices.shape[0], len(data.joint_names))
+    assert data.mvc_weights.shape == data.skin_weights.shape
 
 
 def test_fbx_rig_is_in_pca_coordinate_frame() -> None:
     data = io.load_model_data(MODEL_PATH)
 
-    mesh_span = np.ptp(data["mean_vertices"], axis=0)
-    joint_positions = data["mvc_weights"].T @ data["mean_vertices"]
+    mesh_span = np.ptp(data.mean_vertices, axis=0)
+    joint_positions = data.mvc_weights.T @ data.mean_vertices
     skeleton_span = np.ptp(joint_positions, axis=0)
 
     assert mesh_span[1] > mesh_span[2]
