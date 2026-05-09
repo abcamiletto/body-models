@@ -143,7 +143,7 @@ class SOMA(BodyModel):
     ) -> Float[jax.Array, "B V 3"]:
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
         return backend.forward_vertices(
             data=self.weights,
             prepared_identity=identity_state,
@@ -170,7 +170,7 @@ class SOMA(BodyModel):
     ) -> Float[jax.Array, "B 77 4 4"]:
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
         return backend.forward_skeleton(
             data=self.weights,
             prepared_identity=identity_state,
@@ -215,9 +215,9 @@ class SOMA(BodyModel):
         *,
         identity: Float[jax.Array, "B|1 I"] | None = None,
         scale_params: Float[jax.Array, "B|1 K"] | None = None,
-        ref: Float[jax.Array, "B ..."],
+        pose: Float[jax.Array, "B ..."],
     ) -> core.PreparedSomaIdentity:
-        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, ref=ref)
+        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, pose=pose)
         return self._prepare_identity_from_inputs(identity, scale_params)
 
     def _identity_inputs(
@@ -225,14 +225,14 @@ class SOMA(BodyModel):
         *,
         identity: Float[jax.Array, "B|1 I"] | None,
         scale_params: Float[jax.Array, "B|1 K"] | None,
-        ref: Float[jax.Array, "B ..."],
+        pose: Float[jax.Array, "B ..."],
     ) -> tuple[Float[jax.Array, "B I"], Float[jax.Array, "B K"] | None]:
-        batch_size = ref.shape[0]
+        batch_size = pose.shape[0]
         if identity is None:
             identity = jnp.full(
                 (batch_size, self.identity_dim),
                 self._default_identity_value,
-                dtype=ref.dtype,
+                dtype=pose.dtype,
             )
         elif identity.shape[0] == 1 and batch_size > 1:
             identity = jnp.broadcast_to(identity, (batch_size, identity.shape[-1]))

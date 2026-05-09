@@ -15,9 +15,6 @@ from body_models.flame.constants import FLAME_JOINT_NAMES
 from body_models.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
-Kernel = Literal["numpy", "scipy", "numba"]
-KERNELS = ("numpy", "scipy", "numba")
-
 __all__ = ["FLAME"]
 
 
@@ -26,20 +23,20 @@ class FLAME(BodyModel):
 
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
-    kernels = KERNELS
+    kernels = ("numpy", "scipy", "numba")
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Kernel = "numpy",
+        kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
         self.rotation_type = rotation_type
         self._kernel = _get_kernel(kernel)
@@ -176,7 +173,7 @@ class FLAME(BodyModel):
         }
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):
     if kernel == "numpy":
         return numpy_backend
     if kernel == "scipy":

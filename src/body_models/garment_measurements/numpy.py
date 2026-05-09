@@ -15,25 +15,22 @@ from .io import get_model_path, load_model_data
 
 __all__ = ["GarmentMeasurements"]
 
-Kernel = Literal["numpy", "numba"]
-KERNELS = ("numpy", "numba")
-
 
 class GarmentMeasurements(BodyModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
-    kernels = KERNELS
+    kernels = ("numpy", "numba")
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         *,
         rotation_type: RotationType = "axis_angle",
-        kernel: Kernel = "numpy",
+        kernel: Literal["numpy", "numba"] = "numpy",
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
 
         self.weights = load_model_data(get_model_path(model_path), dtype=np.float32)
@@ -129,7 +126,7 @@ class GarmentMeasurements(BodyModel):
         }
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["numpy", "numba"]):
     if kernel == "numpy":
         return numpy_backend
 

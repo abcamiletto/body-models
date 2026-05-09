@@ -6,6 +6,7 @@ Usage:
     uv run bench/run.py -m SMPLX -m SMPL
     uv run bench/run.py --backend numpy
     uv run bench/run.py -m SMPL --backend numpy --kernel numba
+    uv run bench/run.py -m SMPL --backend torch --kernel warp -d cuda
     uv run bench/run.py --backend torch -d cuda
     uv run bench/run.py --method skeleton
     uv run bench/run.py --batch-sizes 512,1024
@@ -64,8 +65,9 @@ BACKENDS = ("numpy", "torch")
 class ModelSpec:
     name: str
     numpy: Callable[[str], Any] | None
-    torch: Callable[[torch.device], torch.nn.Module] | None
-    kernels: tuple[str, ...] = ("numpy",)
+    torch: Callable[[str, torch.device], torch.nn.Module] | None
+    numpy_kernels: tuple[str, ...] = ("numpy",)
+    torch_kernels: tuple[str, ...] = ("torch",)
     prepare_identity: bool = False
     vertices_method: str = "forward_vertices"
 
@@ -84,102 +86,113 @@ MODELS = [
     ModelSpec(
         "SMPL",
         lambda kernel: smpl_numpy.SMPL(gender="neutral", kernel=kernel),
-        lambda d: torch_model(smpl_torch.SMPL(gender="neutral"), d),
-        kernels=smpl_numpy.SMPL.kernels,
+        lambda kernel, d: torch_model(smpl_torch.SMPL(gender="neutral", kernel=kernel), d),
+        numpy_kernels=smpl_numpy.SMPL.kernels,
+        torch_kernels=smpl_torch.SMPL.kernels,
     ),
     ModelSpec(
         "SMPLH",
         lambda kernel: smplh_numpy.SMPLH(gender="neutral", kernel=kernel),
-        lambda d: torch_model(smplh_torch.SMPLH(gender="neutral"), d),
-        kernels=smplh_numpy.SMPLH.kernels,
+        lambda kernel, d: torch_model(smplh_torch.SMPLH(gender="neutral", kernel=kernel), d),
+        numpy_kernels=smplh_numpy.SMPLH.kernels,
+        torch_kernels=smplh_torch.SMPLH.kernels,
     ),
     ModelSpec(
         "SMPLX",
         lambda kernel: smplx_numpy.SMPLX(gender="neutral", kernel=kernel),
-        lambda d: torch_model(smplx_torch.SMPLX(gender="neutral"), d),
-        kernels=smplx_numpy.SMPLX.kernels,
+        lambda kernel, d: torch_model(smplx_torch.SMPLX(gender="neutral", kernel=kernel), d),
+        numpy_kernels=smplx_numpy.SMPLX.kernels,
+        torch_kernels=smplx_torch.SMPLX.kernels,
     ),
     ModelSpec(
         "MANO",
         lambda kernel: mano_numpy.MANO(side="left", kernel=kernel),
-        lambda d: torch_model(mano_torch.MANO(side="left"), d),
-        kernels=mano_numpy.MANO.kernels,
+        lambda kernel, d: torch_model(mano_torch.MANO(side="left", kernel=kernel), d),
+        numpy_kernels=mano_numpy.MANO.kernels,
+        torch_kernels=mano_torch.MANO.kernels,
     ),
     ModelSpec(
         "SKEL",
-        lambda kernel: skel_numpy.SKEL(gender="male"),
-        lambda d: torch_model(skel_torch.SKEL(gender="male"), d),
+        lambda _kernel: skel_numpy.SKEL(gender="male"),
+        lambda _kernel, d: torch_model(skel_torch.SKEL(gender="male"), d),
     ),
     ModelSpec(
         "FLAME",
         lambda kernel: flame_numpy.FLAME(kernel=kernel),
-        lambda d: torch_model(flame_torch.FLAME(), d),
-        kernels=flame_numpy.FLAME.kernels,
+        lambda kernel, d: torch_model(flame_torch.FLAME(kernel=kernel), d),
+        numpy_kernels=flame_numpy.FLAME.kernels,
+        torch_kernels=flame_torch.FLAME.kernels,
     ),
     ModelSpec(
         "ANNY",
         lambda kernel: anny_numpy.ANNY(kernel=kernel),
-        lambda d: torch_model(anny_torch.ANNY(), d),
-        kernels=anny_numpy.ANNY.kernels,
+        lambda kernel, d: torch_model(anny_torch.ANNY(kernel=kernel), d),
+        numpy_kernels=anny_numpy.ANNY.kernels,
+        torch_kernels=anny_torch.ANNY.kernels,
     ),
-    ModelSpec("MHR", lambda kernel: mhr_numpy.MHR(), lambda d: torch_model(mhr_torch.MHR(), d)),
+    ModelSpec("MHR", lambda _kernel: mhr_numpy.MHR(), lambda _kernel, d: torch_model(mhr_torch.MHR(), d)),
     ModelSpec(
         "BRAINCO",
-        lambda kernel: brainco_numpy.BrainCoHand(side="right"),
+        lambda _kernel: brainco_numpy.BrainCoHand(side="right"),
         None,
         vertices_method="forward_links",
     ),
     ModelSpec(
         "G1",
-        lambda kernel: g1_numpy.G1(),
-        lambda d: torch_model(g1_torch.G1(), d),
+        lambda _kernel: g1_numpy.G1(),
+        lambda _kernel, d: torch_model(g1_torch.G1(), d),
         vertices_method="forward_links",
     ),
     ModelSpec(
         "SOMA",
         lambda kernel: soma_numpy.SOMA(model_type="soma", kernel=kernel),
-        lambda d: torch_model(soma_torch.SOMA(model_type="soma"), d),
-        kernels=soma_numpy.SOMA.kernels,
+        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="soma", kernel=kernel), d),
+        numpy_kernels=soma_numpy.SOMA.kernels,
+        torch_kernels=soma_torch.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-ANNY",
         lambda kernel: soma_numpy.SOMA(model_type="anny", kernel=kernel),
-        lambda d: torch_model(soma_torch.SOMA(model_type="anny"), d),
-        kernels=soma_numpy.SOMA.kernels,
+        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="anny", kernel=kernel), d),
+        numpy_kernels=soma_numpy.SOMA.kernels,
+        torch_kernels=soma_torch.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-MHR",
         lambda kernel: soma_numpy.SOMA(model_type="mhr", kernel=kernel),
-        lambda d: torch_model(soma_torch.SOMA(model_type="mhr"), d),
-        kernels=soma_numpy.SOMA.kernels,
+        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="mhr", kernel=kernel), d),
+        numpy_kernels=soma_numpy.SOMA.kernels,
+        torch_kernels=soma_torch.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-SMPL",
         lambda kernel: soma_numpy.SOMA(model_type="smpl", kernel=kernel),
-        lambda d: torch_model(soma_torch.SOMA(model_type="smpl"), d),
-        kernels=soma_numpy.SOMA.kernels,
+        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="smpl", kernel=kernel), d),
+        numpy_kernels=soma_numpy.SOMA.kernels,
+        torch_kernels=soma_torch.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "SOMA-SMPLX",
         lambda kernel: soma_numpy.SOMA(model_type="smplx", kernel=kernel),
-        lambda d: torch_model(soma_torch.SOMA(model_type="smplx"), d),
-        kernels=soma_numpy.SOMA.kernels,
+        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="smplx", kernel=kernel), d),
+        numpy_kernels=soma_numpy.SOMA.kernels,
+        torch_kernels=soma_torch.SOMA.kernels,
         prepare_identity=True,
     ),
     ModelSpec(
         "GARMENT-MEASUREMENTS",
         lambda kernel: garment_measurements_numpy.GarmentMeasurements(kernel=kernel),
-        lambda d: torch_model(garment_measurements_torch.GarmentMeasurements(), d),
-        kernels=garment_measurements_numpy.GarmentMeasurements.kernels,
+        lambda _kernel, d: torch_model(garment_measurements_torch.GarmentMeasurements(), d),
+        numpy_kernels=garment_measurements_numpy.GarmentMeasurements.kernels,
     ),
     ModelSpec(
         "MYOFULLBODY",
-        lambda kernel: myofullbody_numpy.MyoFullBody(),
-        lambda d: torch_model(myofullbody_torch.MyoFullBody(), d),
+        lambda _kernel: myofullbody_numpy.MyoFullBody(),
+        lambda _kernel, d: torch_model(myofullbody_torch.MyoFullBody(), d),
         vertices_method="forward_links",
     ),
 ]
@@ -233,18 +246,33 @@ def preflight_models(model_names: list[str], backends: list[str], kernels: list[
     wanted = {normalize_model_name(name) for name in model_names}
 
     for spec in MODELS:
-        if spec.name not in wanted or spec.numpy is None or "numpy" not in backends:
+        if spec.name not in wanted:
             continue
 
-        for kernel in spec.kernels:
-            if kernel not in kernels:
-                continue
-            spec.numpy(kernel)
-            print(f"  {spec.name} ({kernel})")
+        if "numpy" in backends and spec.numpy is not None:
+            for kernel in spec.numpy_kernels:
+                if kernel not in kernels:
+                    continue
+                spec.numpy(kernel)
+                print(f"  {spec.name} (numpy/{kernel})")
+
+        if "torch" in backends and spec.torch is not None:
+            for kernel in spec.torch_kernels:
+                if kernel not in kernels:
+                    continue
+                spec.torch(kernel, torch.device("cpu"))
+                print(f"  {spec.name} (torch/{kernel})")
 
 
 def model_kernels() -> tuple[str, ...]:
-    return tuple(dict.fromkeys(kernel for model in MODELS for kernel in model.kernels))
+    return tuple(
+        dict.fromkeys(
+            kernel
+            for model in MODELS
+            for model_kernels in (model.numpy_kernels, model.torch_kernels)
+            for kernel in model_kernels
+        )
+    )
 
 
 def benchmark_all(
@@ -268,10 +296,10 @@ def benchmark_all(
             continue
 
         if "numpy" in backends and spec.numpy is not None:
-            for kernel in spec.kernels:
+            for kernel in spec.numpy_kernels:
                 if kernel not in kernels:
                     continue
-                label = f"{spec.name} ({kernel})"
+                label = f"{spec.name} (numpy/{kernel})"
                 result = benchmark_model(
                     label,
                     spec.numpy(kernel),
@@ -289,24 +317,27 @@ def benchmark_all(
                 results.append(result)
 
         if "torch" in backends and spec.torch is not None:
-            for device in devices:
-                device_name = "gpu" if device.type == "cuda" else device.type
-                label = f"{spec.name} (torch, {device_name})"
-                result = benchmark_model(
-                    label,
-                    spec.torch(device),
-                    "torch",
-                    device,
-                    False,
-                    spec.vertices_method,
-                    methods,
-                    skeleton_batch_sizes,
-                    vertices_batch_sizes,
-                    skeleton_runs,
-                    vertices_runs,
-                    warmup,
-                )
-                results.append(result)
+            for kernel in spec.torch_kernels:
+                if kernel not in kernels:
+                    continue
+                for device in devices:
+                    device_name = "gpu" if device.type == "cuda" else device.type
+                    label = f"{spec.name} (torch/{kernel}, {device_name})"
+                    result = benchmark_model(
+                        label,
+                        spec.torch(kernel, device),
+                        "torch",
+                        device,
+                        spec.prepare_identity,
+                        spec.vertices_method,
+                        methods,
+                        skeleton_batch_sizes,
+                        vertices_batch_sizes,
+                        skeleton_runs,
+                        vertices_runs,
+                        warmup,
+                    )
+                    results.append(result)
 
     return results
 
@@ -353,10 +384,9 @@ def benchmark_params(model: Any, batch_size: int, prepare_identity: bool = False
     if not prepare_identity:
         return params
 
-    prepared_identity = model.prepare_identity(
-        identity=params.pop("identity", None),
-        scale_params=params.pop("scale_params", None),
-    )
+    identity = params.pop("identity", None)
+    scale_params = params.pop("scale_params", None)
+    prepared_identity = model.prepare_identity(identity=identity, scale_params=scale_params, pose=params["pose"])
     params["prepared_identity"] = prepared_identity
     return params
 
@@ -495,7 +525,7 @@ def parse_args() -> argparse.Namespace:
         action="append",
         dest="kernels",
         choices=kernels,
-        help=f"NumPy kernel(s) to benchmark: {', '.join(kernels)} (can repeat). Default: all",
+        help=f"Kernel(s) to benchmark: {', '.join(kernels)} (can repeat). Default: all",
     )
     parser.add_argument(
         "-d",

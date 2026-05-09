@@ -14,9 +14,6 @@ from body_models.mano.backends import scipy as scipy_backend
 from body_models.mano.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
-Kernel = Literal["numpy", "scipy", "numba"]
-KERNELS = ("numpy", "scipy", "numba")
-
 __all__ = ["MANO"]
 
 
@@ -25,7 +22,7 @@ class MANO(BodyModel):
 
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
-    kernels = KERNELS
+    kernels = ("numpy", "scipy", "numba")
 
     def __init__(
         self,
@@ -34,7 +31,7 @@ class MANO(BodyModel):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Kernel = "numpy",
+        kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
@@ -42,7 +39,7 @@ class MANO(BodyModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
 
         self.side = side if side is not None else "right"
@@ -153,7 +150,7 @@ class MANO(BodyModel):
         }
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):
     if kernel == "numpy":
         return numpy_backend
     if kernel == "scipy":

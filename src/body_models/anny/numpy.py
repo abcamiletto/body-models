@@ -14,14 +14,11 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
-Kernel = Literal["numpy", "numba"]
-KERNELS = ("numpy", "numba")
-
 
 class ANNY(BodyModel):
     """ANNY body model with NumPy backend."""
 
-    kernels = KERNELS
+    kernels = ("numpy", "numba")
 
     def __init__(
         self,
@@ -33,7 +30,7 @@ class ANNY(BodyModel):
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Kernel = "numpy",
+        kernel: Literal["numpy", "numba"] = "numpy",
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
@@ -43,7 +40,7 @@ class ANNY(BodyModel):
             raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
 
         self.weights = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
@@ -164,7 +161,7 @@ class ANNY(BodyModel):
         }
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["numpy", "numba"]):
     if kernel == "numpy":
         return numpy_backend
 

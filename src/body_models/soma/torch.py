@@ -29,9 +29,6 @@ from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
 
 PathLike = Path | str
-Kernel = Literal["torch", "warp"]
-KERNELS = ("torch", "warp")
-
 __all__ = ["SOMA"]
 
 
@@ -41,7 +38,7 @@ class SOMA(BodyModel, nn.Module):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
-    kernels = KERNELS
+    kernels = ("torch", "warp")
 
     def __init__(
         self,
@@ -51,7 +48,7 @@ class SOMA(BodyModel, nn.Module):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
-        kernel: Kernel = "torch",
+        kernel: Literal["torch", "warp"] = "torch",
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -60,7 +57,7 @@ class SOMA(BodyModel, nn.Module):
             )
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
@@ -156,7 +153,7 @@ class SOMA(BodyModel, nn.Module):
     ) -> Float[Tensor, "B V 3"]:
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
         return self._kernel.forward_vertices(
             data=self.weights,
             prepared_identity=identity_state,
@@ -183,7 +180,7 @@ class SOMA(BodyModel, nn.Module):
     ) -> Float[Tensor, "B 77 4 4"]:
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, ref=pose)
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
         return self._kernel.forward_skeleton(
             data=self.weights,
             prepared_identity=identity_state,
@@ -234,9 +231,9 @@ class SOMA(BodyModel, nn.Module):
         *,
         identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
-        ref: Float[Tensor, "B ..."],
+        pose: Float[Tensor, "B ..."],
     ) -> core.PreparedSomaIdentity:
-        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, ref=ref)
+        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, pose=pose)
         return self._prepare_identity_from_inputs(identity, scale_params)
 
     def _identity_inputs(
@@ -244,15 +241,15 @@ class SOMA(BodyModel, nn.Module):
         *,
         identity: Float[Tensor, "B|1 I"] | None,
         scale_params: Float[Tensor, "B|1 K"] | None,
-        ref: Float[Tensor, "B ..."],
+        pose: Float[Tensor, "B ..."],
     ) -> tuple[Float[Tensor, "B I"], Float[Tensor, "B K"] | None]:
-        batch_size = ref.shape[0]
+        batch_size = pose.shape[0]
         if identity is None:
             identity = torch.full(
                 (batch_size, self.identity_dim),
                 self._default_identity_value,
-                device=ref.device,
-                dtype=ref.dtype,
+                device=pose.device,
+                dtype=pose.dtype,
             )
         elif identity.shape[0] == 1 and batch_size > 1:
             identity = torch.broadcast_to(identity, (batch_size, identity.shape[-1]))
@@ -293,7 +290,7 @@ class SOMA(BodyModel, nn.Module):
         )
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["torch", "warp"]):
     if kernel == "torch":
         return torch_backend
 

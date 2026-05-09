@@ -19,16 +19,13 @@ from body_models.smpl.io import get_model_path, load_model_data
 
 __all__ = ["SMPL"]
 
-Kernel = Literal["torch", "warp"]
-KERNELS = ("torch", "warp")
-
 
 class SMPL(BodyModel, nn.Module):
     """SMPL body model with PyTorch backend."""
 
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
-    kernels = KERNELS
+    kernels = ("torch", "warp")
 
     def __init__(
         self,
@@ -36,13 +33,13 @@ class SMPL(BodyModel, nn.Module):
         gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Kernel = "torch",
+        kernel: Literal["torch", "warp"] = "torch",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
@@ -160,7 +157,7 @@ class SMPL(BodyModel, nn.Module):
         }
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["torch", "warp"]):
     if kernel == "torch":
         return torch_backend
 

@@ -119,9 +119,25 @@ def test_torch_warp_kernel_matches_torch(model_path: Path) -> None:
     vertex_indices = [0, 10, 1, 10, 25]
 
     with torch.no_grad():
-        vertices = model.forward_vertices(**params)
-        reference = reference_model.forward_vertices(**params)
-        subset = model.forward_vertices(**params, vertex_indices=vertex_indices)
+        vertices = model.forward_vertices(
+            pose=params["pose"],
+            identity=params["identity"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+        )
+        reference = reference_model.forward_vertices(
+            pose=params["pose"],
+            identity=params["identity"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+        )
+        subset = model.forward_vertices(
+            pose=params["pose"],
+            identity=params["identity"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+            vertex_indices=vertex_indices,
+        )
 
     np.testing.assert_allclose(vertices.numpy(), reference.numpy(), atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(subset.numpy(), reference[:, vertex_indices].numpy(), atol=1e-4, rtol=1e-4)
@@ -133,14 +149,33 @@ def test_torch_prepare_identity_matches_forward(model_path: Path) -> None:
 
     model = SOMA(model_path=model_path)
     params = model.get_rest_pose(batch_size=2)
-    prepared = model.prepare_identity(identity=params["identity"], scale_params=None, ref=params["pose"])
-    pose_params = {key: value for key, value in params.items() if key not in {"identity", "scale_params"}}
+    prepared = model.prepare_identity(identity=params["identity"], scale_params=None, pose=params["pose"])
 
     with torch.no_grad():
-        vertices = model.forward_vertices(**params)
-        prepared_vertices = model.forward_vertices(**pose_params, prepared_identity=prepared)
-        skeleton = model.forward_skeleton(**params)
-        prepared_skeleton = model.forward_skeleton(**pose_params, prepared_identity=prepared)
+        vertices = model.forward_vertices(
+            pose=params["pose"],
+            identity=params["identity"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+        )
+        prepared_vertices = model.forward_vertices(
+            pose=params["pose"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+            prepared_identity=prepared,
+        )
+        skeleton = model.forward_skeleton(
+            pose=params["pose"],
+            identity=params["identity"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+        )
+        prepared_skeleton = model.forward_skeleton(
+            pose=params["pose"],
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+            prepared_identity=prepared,
+        )
 
     np.testing.assert_allclose(prepared_vertices.numpy(), vertices.numpy(), atol=1e-5, rtol=1e-5)
     np.testing.assert_allclose(prepared_skeleton.numpy(), skeleton.numpy(), atol=1e-5, rtol=1e-5)
@@ -151,7 +186,7 @@ def test_numpy_prepare_identity_matches_forward(model_path: Path) -> None:
 
     model = SOMA(model_path=model_path)
     params = model.get_rest_pose(batch_size=4)
-    prepared_identity = model.prepare_identity(identity=params["identity"], batch_size=4)
+    prepared_identity = model.prepare_identity(identity=params["identity"], pose=params["pose"])
 
     vertices = model.forward_vertices(
         pose=params["pose"],
