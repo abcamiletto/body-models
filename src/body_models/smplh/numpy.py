@@ -14,9 +14,6 @@ from body_models.smplh.backends import numpy as numpy_backend
 from body_models.smplh.backends import scipy as scipy_backend
 from body_models.smplh.io import get_model_path, load_model_data
 
-Kernel = Literal["numpy", "scipy", "numba"]
-KERNELS = ("numpy", "scipy", "numba")
-
 __all__ = ["SMPLH"]
 
 
@@ -26,7 +23,7 @@ class SMPLH(BodyModel):
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_JOINTS = 52
-    kernels = KERNELS
+    kernels = ("numpy", "scipy", "numba")
 
     def __init__(
         self,
@@ -35,7 +32,7 @@ class SMPLH(BodyModel):
         flat_hand_mean: bool = True,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Kernel = "numpy",
+        kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
@@ -43,7 +40,7 @@ class SMPLH(BodyModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
 
         self.gender = gender if gender is not None else "neutral"
@@ -165,7 +162,7 @@ class SMPLH(BodyModel):
         }
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):
     if kernel == "numpy":
         return numpy_backend
     if kernel == "scipy":

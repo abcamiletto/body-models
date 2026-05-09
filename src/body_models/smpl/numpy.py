@@ -15,9 +15,6 @@ from body_models.smpl.backends import scipy as scipy_backend
 from body_models.smpl.constants import SMPL_JOINT_NAMES
 from body_models.smpl.io import get_model_path, load_model_data
 
-Kernel = Literal["numpy", "scipy", "numba"]
-KERNELS = ("numpy", "scipy", "numba")
-
 __all__ = ["SMPL"]
 
 
@@ -26,7 +23,7 @@ class SMPL(BodyModel):
 
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
-    kernels = KERNELS
+    kernels = ("numpy", "scipy", "numba")
 
     def __init__(
         self,
@@ -34,13 +31,13 @@ class SMPL(BodyModel):
         gender: Literal["neutral", "male", "female"] | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Kernel = "numpy",
+        kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
@@ -154,7 +151,7 @@ class SMPL(BodyModel):
         }
 
 
-def _get_kernel(kernel: Kernel):
+def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):
     if kernel == "numpy":
         return numpy_backend
     if kernel == "scipy":

@@ -12,7 +12,7 @@ from body_models import common
 from body_models.base import BodyModel
 from nanomanifold import SO3
 
-from body_models.mano.backends import torch as backend
+from body_models.mano.backends import torch as torch_backend
 from body_models.mano.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -24,6 +24,7 @@ class MANO(BodyModel, nn.Module):
 
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
+    kernels = ("torch", "warp")
 
     def __init__(
         self,
@@ -32,17 +33,21 @@ class MANO(BodyModel, nn.Module):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        kernel: Literal["torch", "warp"] = "torch",
     ):
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if kernel not in self.kernels:
+            raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
         super().__init__()
 
         self.side = side if side is not None else "right"
         self.rotation_type = rotation_type
+        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path, side)
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
@@ -97,7 +102,7 @@ class MANO(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
-        return backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
@@ -117,7 +122,7 @@ class MANO(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B 16 4 4"]:
-        return backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
             hand_pose=hand_pose,
@@ -148,3 +153,15 @@ class MANO(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+
+
+def _get_kernel(kernel: Literal["torch", "warp"]):
+    if kernel == "torch":
+        return torch_backend
+
+    try:
+        from body_models.mano.backends import warp as warp_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[warp] to use MANO kernel='warp'.") from exc
+
+    return warp_backend

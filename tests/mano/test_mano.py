@@ -158,6 +158,23 @@ def test_vertex_subset_matches_full_output(backend: str) -> None:
     )
 
 
+def test_torch_warp_kernel_matches_torch() -> None:
+    pytest.importorskip("warp")
+    from body_models.mano.torch import MANO
+
+    model = MANO(model_path=MODEL_PATH, kernel="warp")
+    reference_model = MANO(model_path=MODEL_PATH)
+    params = reference_model.get_rest_pose(batch_size=2)
+
+    with torch.no_grad():
+        vertices = model.forward_vertices(**params)
+        reference = reference_model.forward_vertices(**params)
+        subset = model.forward_vertices(**params, vertex_indices=[0, 10, 1, 10, 25])
+
+    np.testing.assert_allclose(vertices.numpy(), reference.numpy(), rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(subset.numpy(), reference[:, [0, 10, 1, 10, 25]].numpy(), rtol=RTOL, atol=ATOL)
+
+
 def test_simplify() -> None:
     from body_models.mano.torch import MANO
 

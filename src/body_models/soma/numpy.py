@@ -25,8 +25,6 @@ from body_models.soma import identities
 from body_models.soma.identities import numpy as identity_sources
 
 PathLike = Path | str
-Kernel = Literal["numpy", "scipy"]
-KERNELS = ("numpy", "scipy")
 PreparedSomaIdentity = core.PreparedSomaIdentity
 
 __all__ = ["SOMA"]
@@ -38,7 +36,7 @@ class SOMA(BodyModel):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
-    kernels = KERNELS
+    kernels = ("numpy", "scipy")
 
     _kernel: Any
     weights: Any
@@ -51,7 +49,7 @@ class SOMA(BodyModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
-        kernel: Kernel = "numpy",
+        kernel: Literal["numpy", "scipy"] = "numpy",
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -60,7 +58,7 @@ class SOMA(BodyModel):
             )
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in KERNELS:
+        if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
@@ -151,12 +149,7 @@ class SOMA(BodyModel):
     ) -> Float[np.ndarray, "B V 3"]:
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(
-                identity=identity,
-                scale_params=scale_params,
-                batch_size=pose.shape[0],
-                dtype=pose.dtype,
-            )
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
         return self._kernel.forward_vertices(
             data=self.weights,
             prepared_identity=identity_state,
@@ -183,12 +176,7 @@ class SOMA(BodyModel):
     ) -> Float[np.ndarray, "B 77 4 4"]:
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(
-                identity=identity,
-                scale_params=scale_params,
-                batch_size=pose.shape[0],
-                dtype=pose.dtype,
-            )
+            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
         return self._kernel.forward_skeleton(
             data=self.weights,
             prepared_identity=identity_state,
@@ -233,17 +221,9 @@ class SOMA(BodyModel):
         *,
         identity: Float[np.ndarray, "B|1 I"] | None = None,
         scale_params: Float[np.ndarray, "B|1 K"] | None = None,
-        batch_size: int = 1,
-        dtype=np.float32,
+        pose: Float[np.ndarray, "B ..."],
     ) -> PreparedSomaIdentity:
-        if identity is not None:
-            dtype = identity.dtype
-        identity, scale_params = self._identity_inputs(
-            identity=identity,
-            scale_params=scale_params,
-            batch_size=batch_size,
-            dtype=dtype,
-        )
+        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, pose=pose)
         return self._prepare_identity_from_inputs(identity, scale_params)
 
     def _identity_inputs(
@@ -251,14 +231,14 @@ class SOMA(BodyModel):
         *,
         identity: Float[np.ndarray, "B|1 I"] | None,
         scale_params: Float[np.ndarray, "B|1 K"] | None,
-        batch_size: int,
-        dtype: Any,
+        pose: Float[np.ndarray, "B ..."],
     ) -> tuple[Float[np.ndarray, "B I"], Float[np.ndarray, "B K"] | None]:
+        batch_size = pose.shape[0]
         if identity is None:
             identity = np.full(
                 (batch_size, self.identity_dim),
                 self._default_identity_value,
-                dtype=dtype,
+                dtype=pose.dtype,
             )
         elif identity.shape[0] == 1 and batch_size > 1:
             identity = np.broadcast_to(identity, (batch_size, identity.shape[-1]))
@@ -269,7 +249,7 @@ class SOMA(BodyModel):
             return identity, None
 
         if scale_params is None:
-            scale_params = np.zeros((batch_size, self.num_scale_params), dtype=dtype)
+            scale_params = np.zeros((batch_size, self.num_scale_params), dtype=identity.dtype)
         elif scale_params.shape[0] == 1 and batch_size > 1:
             scale_params = np.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
         return identity, scale_params
