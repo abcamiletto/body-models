@@ -89,6 +89,8 @@ def download_model() -> Path:
 def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrWeights:
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
+    if lod != 1:
+        raise ValueError("MHR lod values other than 1 are not supported.")
 
     data = _load_raw_model_data(asset_dir)
     base_vertices = data["base_vertices"]
