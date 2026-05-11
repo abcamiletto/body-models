@@ -27,7 +27,7 @@ from body_models.soma.backends import torch as torch_backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
-from body_models.soma.constants import SOMA_JOINTS
+from body_models.soma.constants import SOMA_APOSE, SOMA_IPOSE, SOMA_JOINTS
 
 PathLike = Path | str
 __all__ = ["SOMA"]
@@ -290,6 +290,42 @@ class SOMA(BodyModel, nn.Module):
             match_warp=self.match_warp,
             xp=torch,
         )
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["pose"]
+        for index, values in SOMA_APOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = body_pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["pose"]
+        for index, values in SOMA_IPOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = body_pose
+        return params
 
 
 def _get_kernel(kernel: Literal["torch", "warp"]):

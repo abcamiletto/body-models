@@ -12,7 +12,7 @@ from torch import Tensor
 from body_models import common
 from body_models.anny.backends import torch as torch_backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
-from body_models.anny.constants import ANNY_JOINTS
+from body_models.anny.constants import ANNY_APOSE, ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -172,6 +172,51 @@ class ANNY(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in ANNY_TPOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
+            pose = common.set(pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = pose
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in ANNY_APOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
+            pose = common.set(pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in ANNY_IPOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
+            pose = common.set(pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = pose
+        return params
 
 
 def _get_kernel(kernel: Literal["torch", "warp"]):

@@ -7,11 +7,12 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
+from .. import common
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import numpy as numpy_backend
 from .io import get_model_path, load_model_data
-from .constants import GARMENT_JOINTS
+from .constants import GARMENT_APOSE, GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
 
 
 __all__ = ["GarmentMeasurements"]
@@ -126,6 +127,48 @@ class GarmentMeasurements(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in GARMENT_TPOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
+            pose = common.set(pose, (slice(None), index), converted, xp=np)
+        params["pose"] = pose
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in GARMENT_APOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
+            pose = common.set(pose, (slice(None), index), converted, xp=np)
+        params["pose"] = pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in GARMENT_IPOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
+            pose = common.set(pose, (slice(None), index), converted, xp=np)
+        params["pose"] = pose
+        return params
 
 
 def _get_kernel(kernel: Literal["numpy", "numba"]):

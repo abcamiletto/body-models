@@ -11,7 +11,7 @@ from body_models import common
 from body_models.base import BodyModel
 from body_models.skel.backends import jax as backend
 from body_models.skel.io import get_model_path, load_model_data
-from body_models.skel.constants import SKEL_JOINTS
+from body_models.skel.constants import SKEL_APOSE, SKEL_IPOSE, SKEL_JOINTS
 
 __all__ = ["SKEL"]
 
@@ -119,3 +119,40 @@ class SKEL(BodyModel):
             "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        # T-pose is the SKEL rest pose.
+        params["pose"] = pose
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for index, value in SKEL_APOSE.items():
+            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
+            pose = common.set(pose, slices, value, xp=jnp)
+        params["pose"] = pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for index, value in SKEL_IPOSE.items():
+            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
+            pose = common.set(pose, slices, value, xp=jnp)
+        params["pose"] = pose
+        return params

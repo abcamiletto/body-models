@@ -14,7 +14,7 @@ from body_models.base import BodyModel
 from body_models.skel.backends import torch as backend
 from body_models.skel.backends import core
 from body_models.skel.io import get_model_path, load_model_data
-from body_models.skel.constants import SKEL_JOINTS
+from body_models.skel.constants import SKEL_APOSE, SKEL_IPOSE, SKEL_JOINTS
 
 __all__ = ["SKEL"]
 
@@ -148,6 +148,43 @@ class SKEL(BodyModel, nn.Module):
             "global_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        # T-pose is the SKEL rest pose.
+        params["pose"] = pose
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for index, value in SKEL_APOSE.items():
+            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
+            pose = common.set(pose, slices, value, xp=torch)
+        params["pose"] = pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for index, value in SKEL_IPOSE.items():
+            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
+            pose = common.set(pose, slices, value, xp=torch)
+        params["pose"] = pose
+        return params
 
     def _forward_full(
         self,

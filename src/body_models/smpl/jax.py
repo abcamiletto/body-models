@@ -13,7 +13,7 @@ from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smpl.backends import jax as backend
-from body_models.smpl.constants import SMPL_JOINT_NAMES, SMPL_JOINTS
+from body_models.smpl.constants import SMPL_APOSE, SMPL_IPOSE, SMPL_JOINT_NAMES, SMPL_JOINTS
 from body_models.smpl.io import get_model_path, load_model_data
 
 
@@ -167,3 +167,36 @@ class SMPL(BodyModel):
             ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, values in SMPL_APOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
+        params["body_pose"] = body_pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, values in SMPL_IPOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
+        params["body_pose"] = body_pose
+        return params

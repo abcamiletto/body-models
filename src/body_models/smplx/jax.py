@@ -14,7 +14,7 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplx.backends import jax as backend
 from body_models.smplx.io import get_model_path, load_model_data
-from body_models.smplx.constants import SMPLX_JOINTS
+from body_models.smplx.constants import SMPLX_APOSE, SMPLX_IPOSE, SMPLX_JOINTS
 
 __all__ = ["SMPLX"]
 
@@ -180,3 +180,70 @@ class SMPLX(BodyModel):
             ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        hands: Literal["open", "rest"] = "rest",
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        if hands == "open":
+            hand_pose = params["hand_pose"]
+            hand_mean = jnp.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
+            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+            axis_angle = template * 0 - hand_mean
+            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
+
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        hands: Literal["open", "rest"] = "rest",
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, values in SMPLX_APOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
+        params["body_pose"] = body_pose
+        if hands == "open":
+            hand_pose = params["hand_pose"]
+            hand_mean = jnp.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
+            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+            axis_angle = template * 0 - hand_mean
+            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
+
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        hands: Literal["open", "rest"] = "rest",
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, values in SMPLX_IPOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
+        params["body_pose"] = body_pose
+        if hands == "open":
+            hand_pose = params["hand_pose"]
+            hand_mean = jnp.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
+            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+            axis_angle = template * 0 - hand_mean
+            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
+
+        return params

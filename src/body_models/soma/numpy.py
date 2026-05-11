@@ -18,12 +18,13 @@ from .io import (
     load_model_data,
     simplify_mesh,
 )
+from body_models import common
 from body_models.soma.backends import numpy as numpy_backend
 from body_models.soma.backends import scipy as scipy_backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import numpy as identity_sources
-from body_models.soma.constants import SOMA_JOINTS
+from body_models.soma.constants import SOMA_APOSE, SOMA_IPOSE, SOMA_JOINTS
 
 PathLike = Path | str
 PreparedSomaIdentity = core.PreparedSomaIdentity
@@ -275,3 +276,37 @@ class SOMA(BodyModel):
             match_warp=self.match_warp,
             xp=np,
         )
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["pose"]
+        for index, values in SOMA_APOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
+        params["pose"] = body_pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["pose"]
+        for index, values in SOMA_IPOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
+        params["pose"] = body_pose
+        return params

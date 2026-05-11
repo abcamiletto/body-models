@@ -45,4 +45,7 @@ SMPL_JOINTS = {
     Joint.RIGHT_FOOT: "right_foot",
 }
 
-__all__ = ["SMPL_JOINT_NAMES", "SMPL_JOINTS"]
+SMPL_APOSE = {15: (0.0, 0.0, -0.55), 16: (0.0, 0.0, 0.55)}
+SMPL_IPOSE = {15: (0.0, 0.0, -1.5), 16: (0.0, 0.0, 1.5)}
+
+__all__ = ["SMPL_JOINT_NAMES", "SMPL_JOINTS", "SMPL_APOSE", "SMPL_IPOSE"]

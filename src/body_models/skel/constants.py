@@ -19,4 +19,7 @@ SKEL_JOINTS = {
 }
 
 
-__all__ = ["SKEL_JOINTS"]
+SKEL_APOSE = {29: 0.55, 39: -0.55}
+SKEL_IPOSE = {29: 1.35, 39: -1.35}
+
+__all__ = ["SKEL_JOINTS", "SKEL_APOSE", "SKEL_IPOSE"]

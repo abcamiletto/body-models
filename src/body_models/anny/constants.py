@@ -49,4 +49,24 @@ ANNY_JOINTS = {
 }
 
 
-__all__ = ["ANNY_JOINTS"]
+ANNY_TPOSE = {
+    "shoulder01.l": (0.0, 0.0, 0.475),
+    "shoulder01.r": (0.0, 0.0, -0.475),
+    "upperarm01.l": (0.0, 0.0, 0.6),
+    "upperarm01.r": (0.0, 0.0, -0.6),
+    "clavicle.l": (0.0, 0.0, -0.225),
+    "clavicle.r": (0.0, 0.0, 0.225),
+    "upperleg01.l": (0.0, 0.0, 0.09),
+    "upperleg01.r": (0.0, 0.0, -0.09),
+    "lowerarm01.l": (-0.75, 0.0, 0.0),
+    "lowerarm01.r": (-0.75, 0.0, 0.0),
+}
+ANNY_APOSE = {}
+ANNY_IPOSE = {
+    "shoulder01.l": (0.0, 0.0, -0.15),
+    "shoulder01.r": (0.0, 0.0, 0.15),
+    "upperarm01.l": (0.0, 0.0, -0.15),
+    "upperarm01.r": (0.0, 0.0, 0.15),
+}
+
+__all__ = ["ANNY_JOINTS", "ANNY_TPOSE", "ANNY_APOSE", "ANNY_IPOSE"]

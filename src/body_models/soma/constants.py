@@ -29,4 +29,7 @@ SOMA_JOINTS = {
 }
 
 
-__all__ = ["SOMA_JOINTS"]
+SOMA_APOSE = {11: (0.0, 0.0, -0.55), 39: (0.0, 0.0, 0.55)}
+SOMA_IPOSE = {12: (0.0, 0.0, -1.5), 40: (0.0, 0.0, 1.5)}
+
+__all__ = ["SOMA_JOINTS", "SOMA_APOSE", "SOMA_IPOSE"]

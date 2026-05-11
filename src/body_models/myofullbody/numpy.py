@@ -5,11 +5,17 @@ from pathlib import Path
 import numpy as np
 from jaxtyping import Float, Int
 
+from body_models import common
 from body_models.base import BodyModel
 from body_models.myofullbody.backends import core
 from body_models.myofullbody.backends import numpy as backend
 from body_models.myofullbody.io import load_model_data
-from body_models.myofullbody.constants import MYOFULLBODY_JOINTS
+from body_models.myofullbody.constants import (
+    MYOFULLBODY_APOSE,
+    MYOFULLBODY_IPOSE,
+    MYOFULLBODY_JOINTS,
+    MYOFULLBODY_TPOSE,
+)
 
 __all__ = ["MyoFullBody"]
 
@@ -184,3 +190,42 @@ class MyoFullBody(BodyModel):
             "global_rotation": np.zeros((batch_size, 3), dtype=dtype),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["body_pose"]
+        for index, value in MYOFULLBODY_TPOSE.items():
+            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
+            pose = common.set(pose, slices, value, xp=np)
+        params["body_pose"] = pose
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["body_pose"]
+        for index, value in MYOFULLBODY_APOSE.items():
+            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
+            pose = common.set(pose, slices, value, xp=np)
+        params["body_pose"] = pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["body_pose"]
+        for index, value in MYOFULLBODY_IPOSE.items():
+            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
+            pose = common.set(pose, slices, value, xp=np)
+        params["body_pose"] = pose
+        return params

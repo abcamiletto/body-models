@@ -6,11 +6,12 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
+from body_models import common
 from body_models.base import BodyModel
 from body_models.g1.backends import core
 from body_models.g1.backends import numpy as backend
 from body_models.g1.io import load_model_data
-from body_models.g1.constants import G1_JOINTS
+from body_models.g1.constants import G1_APOSE, G1_IPOSE, G1_JOINTS, G1_TPOSE
 
 __all__ = ["G1"]
 
@@ -212,3 +213,63 @@ class G1(BodyModel):
             "global_rotation": global_rotation,
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, value in G1_TPOSE.items():
+            if self.rotation_type == "hinge":
+                slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
+                body_pose = common.set(body_pose, slices, value, xp=np)
+            else:
+                template = body_pose[:, index, 0, :] if body_pose.ndim == 4 else body_pose[:, index, :]
+                axis = np.asarray(self.qpos_joint_axes[index], dtype=body_pose.dtype)
+                axis_angle = template * 0 + axis * value
+                converted = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
+                body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
+        params["body_pose"] = body_pose
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, value in G1_APOSE.items():
+            if self.rotation_type == "hinge":
+                slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
+                body_pose = common.set(body_pose, slices, value, xp=np)
+            else:
+                template = body_pose[:, index, 0, :] if body_pose.ndim == 4 else body_pose[:, index, :]
+                axis = np.asarray(self.qpos_joint_axes[index], dtype=body_pose.dtype)
+                axis_angle = template * 0 + axis * value
+                converted = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
+                body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
+        params["body_pose"] = body_pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, value in G1_IPOSE.items():
+            if self.rotation_type == "hinge":
+                slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
+                body_pose = common.set(body_pose, slices, value, xp=np)
+            else:
+                template = body_pose[:, index, 0, :] if body_pose.ndim == 4 else body_pose[:, index, :]
+                axis = np.asarray(self.qpos_joint_axes[index], dtype=body_pose.dtype)
+                axis_angle = template * 0 + axis * value
+                converted = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
+                body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
+        params["body_pose"] = body_pose
+        return params
