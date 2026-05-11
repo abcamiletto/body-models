@@ -49,4 +49,7 @@ SMPLX_JOINTS = {
 }
 
 
-__all__ = ["SMPLX_JOINTS"]
+SMPLX_APOSE = {15: (0.0, 0.0, -0.55), 16: (0.0, 0.0, 0.55)}
+SMPLX_IPOSE = {15: (0.0, 0.0, -1.25), 16: (0.0, 0.0, 1.25)}
+
+__all__ = ["SMPLX_JOINTS", "SMPLX_APOSE", "SMPLX_IPOSE"]

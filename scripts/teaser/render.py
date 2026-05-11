@@ -69,13 +69,26 @@ LABELS = {f: f.upper() for f in PASTELS} | {
 }
 # FLAME is head-only: half-size keeps it in scale with the row.
 SCALES = {"flame": 0.5, "mano": 2.0}
+BODY_POSE_FAMILIES = {
+    "smpl",
+    "smplh",
+    "smplx",
+    "skel",
+    "mhr",
+    "anny",
+    "garment_measurements",
+    "soma",
+    "g1",
+    "myofullbody",
+}
+TPOSE_REST_FAMILIES = {"smpl", "smplh", "smplx", "skel"}
 
 LOADERS = {
     "smpl": lambda: SMPL(gender="neutral"),  # path via body-models config
     "smplh": lambda: SMPLH(gender="neutral"),  # path via body-models config
     "mano": lambda: MANO(side="right"),  # path via body-models config
     "smplx": lambda: SMPLX(gender="neutral"),  # path via body-models config
-    "skel": lambda: SKEL(ASSETS_DIR / "skel/model", "male"),
+    "skel": lambda: SKEL(ASSETS_DIR / "skel/model/skel_male.pkl", "male"),
     "mhr": lambda: MHR(ASSETS_DIR / "mhr/model"),
     "anny": lambda: ANNY(ASSETS_DIR / "anny/model"),
     "flame": lambda: FLAME(ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"),
@@ -85,52 +98,7 @@ LOADERS = {
     "myofullbody": lambda: MyoFullBody(ASSETS_DIR / "myofullbody/model"),
 }
 
-# ── Pose adapters: bring rest poses to a uniform T-pose ──────────────────────
-# (joint_name_lowercase, axis) → axis-angle radians.
-ANNY_POSE_OFFSETS = {
-    ("shoulder01.l", 2): 0.475,
-    ("shoulder01.r", 2): -0.475,
-    ("upperarm01.l", 2): 0.6,
-    ("upperarm01.r", 2): -0.6,
-    ("clavicle.l", 2): -0.225,
-    ("clavicle.r", 2): 0.225,
-    ("upperleg01.l", 2): 0.09,
-    ("upperleg01.r", 2): -0.09,
-    ("lowerarm01.l", 0): -0.75,
-    ("lowerarm01.r", 0): -0.75,
-}
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2 + 0.08
-
-GM_POSE_OFFSETS = {
-    ("upper_arm_l", 2): 0.6,
-    ("upper_arm_r", 2): -0.6,
-    ("clavicle_l", 2): 0.15,
-    ("clavicle_r", 2): -0.15,
-    ("thigh_l", 2): 0.12,
-    ("thigh_r", 2): -0.12,
-}
-
-# G1 hinge body_pose: scalar per qpos joint. 16/23 = shoulder roll abducts the
-# arms; 18/25 = elbow extension straightens the forearms laterally.
-G1_HINGE_OFFSETS = {16: np.pi / 2, 23: -np.pi / 2, 18: 1.0, 25: 1.0}
-
-# MyoFullBody scalar body_pose. Lifting both shoulders to a T-pose: qpos 29 is
-# shoulder_elv_r, 67 is shoulder_elv_l (sideways elevation in the default plane).
-MYOFULLBODY_QPOS_OFFSETS = {29: np.pi / 2, 67: np.pi / 2}
-
-# MHR: rows of [tx, ty, tz, euler_x, euler_y, euler_z, scale] per joint.
-MHR_TARGETS = (
-    ("l_uparm", 4, 0.8),
-    ("r_uparm", 4, 0.8),
-    ("l_lowarm", 4, -0.4),
-    ("r_lowarm", 4, -0.4),
-    ("l_lowarm", 5, -0.6),
-    ("r_lowarm", 5, -0.6),
-    ("l_upleg", 4, 0.12),
-    ("r_upleg", 4, 0.12),
-    ("l_upleg", 5, -0.06),
-    ("r_upleg", 5, -0.06),
-)
 
 
 # ── Top-level pipeline ───────────────────────────────────────────────────────
@@ -140,7 +108,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     print("[1/5] Generating meshes...", flush=True)
-    meshes = [(family, *canonical_mesh(family)) for family in PASTELS]
+    meshes = [(family, *canonical_mesh(family, args.pose)) for family in PASTELS]
 
     print("[2/5] Building scene...", flush=True)
     clear_scene()
@@ -168,53 +136,30 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--width", type=int, default=2200)
     p.add_argument("--height", type=int, default=1200)
     p.add_argument("--denoise", action="store_true")
+    p.add_argument("--pose", choices=("tpose", "apose", "ipose"), default="tpose")
     return p.parse_args()
 
 
 # ── Per-family canonical mesh ────────────────────────────────────────────────
-def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
+def canonical_mesh(family: str, pose_name: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
-    if family in ("smpl", "smplh", "mano", "smplx", "skel", "flame"):
+    use_rest_vertices = family not in BODY_POSE_FAMILIES or (family in TPOSE_REST_FAMILIES and pose_name == "tpose")
+    if use_rest_vertices:
         verts = np.asarray(model.rest_vertices, dtype=np.float32)
     else:
-        params = model.get_rest_pose(batch_size=1)
+        params = canonical_pose_params(model, pose_name)
         if family == "anny":
-            apply_pose_offsets(model, params, ANNY_POSE_OFFSETS)
             params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
-        elif family == "mhr":
-            params["pose"][0] = solve_mhr_pose(model)
-        elif family == "garment_measurements":
-            apply_pose_offsets(model, params, GM_POSE_OFFSETS)
-        elif family == "g1":
-            for qpos_idx, value in G1_HINGE_OFFSETS.items():
-                params["body_pose"][0, qpos_idx, 0] = value
-        elif family == "myofullbody":
-            for qpos_idx, value in MYOFULLBODY_QPOS_OFFSETS.items():
-                params["body_pose"][0, qpos_idx] = value
         verts = np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
     return verts, np.asarray(model.faces, dtype=np.int32)
 
 
-def joint_index(model, name: str) -> int:
-    for i, jn in enumerate(model.joint_names):
-        if jn.lower() == name:
-            return i
-    raise ValueError(f"Joint not found in model: {name!r}")
-
-
-def apply_pose_offsets(model, params, offsets):
-    for (joint_name, axis), value in offsets.items():
-        params["pose"][0, joint_index(model, joint_name), axis] = value
-
-
-def solve_mhr_pose(model) -> np.ndarray:
-    """Least-squares solve for the MHR pose vector that hits the target Euler offsets."""
-    rows = [joint_index(model, j) * 7 + c for j, c, _ in MHR_TARGETS]
-    targets = np.asarray([t for _, _, t in MHR_TARGETS], dtype=np.float64)
-    transform = np.asarray(model.parameter_transform, dtype=np.float64)
-    system = transform[np.asarray(rows), : model.pose_dim]
-    x, *_ = np.linalg.lstsq(system, targets, rcond=1e-4)
-    return x.astype(np.float32)
+def canonical_pose_params(model, pose_name: str):
+    if pose_name == "tpose":
+        return model.get_tpose(batch_size=1)
+    if pose_name == "apose":
+        return model.get_apose(batch_size=1)
+    return model.get_ipose(batch_size=1)
 
 
 # ── Scene construction ──────────────────────────────────────────────────────

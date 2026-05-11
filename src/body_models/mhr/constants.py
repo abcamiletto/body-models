@@ -49,4 +49,24 @@ MHR_JOINTS = {
 }
 
 
-__all__ = ["MHR_JOINTS"]
+MHR_TPOSE_TARGETS = (
+    ("l_uparm", 4, 0.8),
+    ("r_uparm", 4, 0.8),
+    ("l_lowarm", 4, -0.4),
+    ("r_lowarm", 4, -0.4),
+    ("l_lowarm", 5, -0.6),
+    ("r_lowarm", 5, -0.6),
+    ("l_upleg", 4, 0.12),
+    ("r_upleg", 4, 0.12),
+    ("l_upleg", 5, -0.06),
+    ("r_upleg", 5, -0.06),
+)
+MHR_APOSE_TARGETS = ()
+MHR_IPOSE_TARGETS = (
+    ("l_uparm", 4, -0.6),
+    ("r_uparm", 4, -0.6),
+    ("l_lowarm", 4, 0.2),
+    ("r_lowarm", 4, 0.2),
+)
+
+__all__ = ["MHR_JOINTS", "MHR_TPOSE_TARGETS", "MHR_APOSE_TARGETS", "MHR_IPOSE_TARGETS"]

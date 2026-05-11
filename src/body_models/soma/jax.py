@@ -25,7 +25,7 @@ from body_models.soma.backends import jax as backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import jax as identity_sources
-from body_models.soma.constants import SOMA_JOINTS
+from body_models.soma.constants import SOMA_APOSE, SOMA_IPOSE, SOMA_JOINTS
 
 PathLike = Path | str
 
@@ -269,3 +269,37 @@ class SOMA(BodyModel):
             match_warp=self.match_warp,
             xp=jnp,
         )
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["pose"]
+        for index, values in SOMA_APOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
+        params["pose"] = body_pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jax.Array]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["pose"]
+        for index, values in SOMA_IPOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
+        params["pose"] = body_pose
+        return params

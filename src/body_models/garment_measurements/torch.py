@@ -13,7 +13,7 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import torch as backend
 from .io import get_model_path, load_model_data
-from .constants import GARMENT_JOINTS
+from .constants import GARMENT_APOSE, GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
 
 
 __all__ = ["GarmentMeasurements"]
@@ -126,3 +126,48 @@ class GarmentMeasurements(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), dtype=dtype, device=device),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in GARMENT_TPOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
+            pose = common.set(pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = pose
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in GARMENT_APOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
+            pose = common.set(pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        pose = params["pose"]
+        for joint_name, values in GARMENT_IPOSE.items():
+            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
+            pose = common.set(pose, (slice(None), index), converted, xp=torch)
+        params["pose"] = pose
+        return params
