@@ -51,7 +51,8 @@ class BodyModel(ABC):
         """Joint names in joint index order."""
 
     @property
-    def _standard_joints(self) -> Mapping[Joint, str]:
+    def common_joints(self) -> Mapping[Joint, str]:
+        """Common anatomical joints mapped to this model's native joint names."""
         return self.JOINTS
 
     def joint_index(self, joint: Joint) -> int:
@@ -59,7 +60,7 @@ class BodyModel(ABC):
         if not isinstance(joint, Joint):
             raise TypeError("joint_index() expects a body_models.Joint; use joint_names.index(...) for native names.")
         try:
-            native_name = self._standard_joints[joint]
+            native_name = self.common_joints[joint]
         except KeyError as exc:
             raise KeyError(f"{self.__class__.__name__} has no standard joint {joint.value!r}") from exc
         return self.joint_names.index(native_name)

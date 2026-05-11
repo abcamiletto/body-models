@@ -53,7 +53,7 @@ class BrainCoHand(BodyModel, nn.Module):
         return self.weights.joint_names
 
     @property
-    def _standard_joints(self):
+    def common_joints(self):
         return LEFT_BRAINCO_JOINTS if self.side == "left" else RIGHT_BRAINCO_JOINTS
 
     @property
