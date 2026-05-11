@@ -10,7 +10,7 @@ from body_models import common
 from body_models.base import BodyModel
 from body_models.mhr.backends import jax as backend
 from body_models.mhr.io import get_model_path, load_model_data
-from body_models.mhr.constants import MHR_JOINTS
+from body_models.mhr.constants import MHR_IPOSE_TARGETS, MHR_JOINTS, MHR_TPOSE_TARGETS
 
 __all__ = ["MHR"]
 
@@ -114,7 +114,7 @@ class MHR(BodyModel):
             joint_indices=joint_indices,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
+    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
         return {
             "shape": jnp.zeros((1, self.SHAPE_DIM), dtype=dtype),
             "pose": jnp.zeros((batch_size, self.pose_dim), dtype=dtype),
@@ -122,3 +122,46 @@ class MHR(BodyModel):
             "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jnp.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        targets = MHR_TPOSE_TARGETS
+        pose = params["pose"]
+        rows = [
+            next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
+            for joint_name, component, _ in targets
+        ]
+        values = jnp.asarray([value for _, _, value in targets], dtype=pose.dtype)
+        transform = jnp.asarray(self.weights.parameter_transform, dtype=pose.dtype)
+        system = transform[rows, : self.pose_dim]
+        params["pose"] = common.set(pose, (slice(None),), jnp.linalg.pinv(system) @ values, xp=jnp)
+        return params
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jnp.ndarray]:
+        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, jnp.ndarray]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        targets = MHR_IPOSE_TARGETS
+        pose = params["pose"]
+        rows = [
+            next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
+            for joint_name, component, _ in targets
+        ]
+        values = jnp.asarray([value for _, _, value in targets], dtype=pose.dtype)
+        transform = jnp.asarray(self.weights.parameter_transform, dtype=pose.dtype)
+        system = transform[rows, : self.pose_dim]
+        params["pose"] = common.set(pose, (slice(None),), jnp.linalg.pinv(system) @ values, xp=jnp)
+        return params

@@ -112,6 +112,30 @@ class BodyModel(ABC):
             zero-initialized or set to identity poses.
         """
 
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Get parameters for the SMPL-style T-pose."""
+        raise NotImplementedError("Canonical body poses are not defined for this model.")
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Get parameters for the MHR-style A-pose."""
+        raise NotImplementedError("Canonical body poses are not defined for this model.")
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Get parameters for a neutral standing I-pose with arms down."""
+        raise NotImplementedError("Canonical body poses are not defined for this model.")
+
     def to_viser_bones(self, **forward_kwargs: Any) -> dict[str, np.ndarray]:
         """Export parent-relative bone poses for ``viser`` from ``forward_skeleton()`` kwargs."""
         if not forward_kwargs:

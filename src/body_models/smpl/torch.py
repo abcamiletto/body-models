@@ -14,7 +14,7 @@ from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smpl.backends import torch as torch_backend
-from body_models.smpl.constants import SMPL_JOINT_NAMES, SMPL_JOINTS
+from body_models.smpl.constants import SMPL_APOSE, SMPL_IPOSE, SMPL_JOINT_NAMES, SMPL_JOINTS
 from body_models.smpl.io import get_model_path, load_model_data
 
 __all__ = ["SMPL"]
@@ -156,6 +156,41 @@ class SMPL(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+
+    def get_tpose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+
+    def get_apose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, values in SMPL_APOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
+        params["body_pose"] = body_pose
+        return params
+
+    def get_ipose(
+        self,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        body_pose = params["body_pose"]
+        for index, values in SMPL_IPOSE.items():
+            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
+            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
+            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
+        params["body_pose"] = body_pose
+        return params
 
 
 def _get_kernel(kernel: Literal["torch", "warp"]):

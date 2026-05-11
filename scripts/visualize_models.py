@@ -209,7 +209,12 @@ class ModelState:
     changed: bool = True
 
 
-SliderHandle = tuple[viser.GuiInputHandle, float]  # (handle, initial value)
+@dataclass
+class SliderHandle:
+    handle: viser.GuiInputHandle
+    initial: float
+    key: str
+    indices: tuple[int, ...]
 
 
 # ── Slider primitives ────────────────────────────────────────────────────────
@@ -233,7 +238,7 @@ def add_slider(
         state.params[key][indices] = event.target.value
         state.changed = True
 
-    return handle, initial
+    return SliderHandle(handle, initial, key, indices)
 
 
 def betas(server, state, *, key, count, prefix="β", lo=-3.0, hi=3.0, step=0.1, initial=0.0) -> list[SliderHandle]:
@@ -265,8 +270,29 @@ def reset_button(server: viser.ViserServer, handles: list[SliderHandle]) -> None
 
     @btn.on_click
     def _(_):
-        for handle, initial in handles:
-            handle.value = initial
+        for slider in handles:
+            slider.handle.value = slider.initial
+
+
+def pose_buttons(server: viser.ViserServer, state: ModelState, handles: list[SliderHandle]) -> None:
+    with server.gui.add_folder("Canonical Poses"):
+        for label, pose_fn in (
+            ("T-pose", state.model.get_tpose),
+            ("A-pose", state.model.get_apose),
+            ("I-pose", state.model.get_ipose),
+        ):
+            btn = server.gui.add_button(label)
+
+            @btn.on_click
+            def _(_, pose_fn=pose_fn):
+                preset = pose_fn()
+                for key in ("pose", "body_pose", "hand_pose"):
+                    if key in preset and key in state.params:
+                        state.params[key] = preset[key]
+                for slider in handles:
+                    if slider.key in state.params:
+                        slider.handle.value = float(state.params[slider.key][slider.indices])
+                state.changed = True
 
 
 # ── Per-model tab builders ───────────────────────────────────────────────────
@@ -280,6 +306,7 @@ def smpl_tab(server, tabs, state, *, name="SMPL", with_expression=False) -> None
                 handles += betas(server, state, key="expression", count=10, prefix="ψ", lo=-2.0, hi=2.0)
         with server.gui.add_folder("Body Pose"):
             handles += joint_xyz(server, state, key="body_pose", joints=SMPL_POSE_JOINTS)
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 
@@ -311,6 +338,7 @@ def skel_tab(server, tabs, state) -> None:
                 handles.append(
                     add_slider(server, state, label, lo=lo, hi=hi, step=0.05, initial=0.0, key="pose", indices=(0, idx))
                 )
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 
@@ -326,6 +354,7 @@ def anny_tab(server, tabs, state) -> None:
                 )
         with server.gui.add_folder("Pose"):
             handles += joint_xyz(server, state, key="pose", joints=ANNY_POSE_BONES, max_joints=state.model.num_joints)
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 
@@ -336,6 +365,7 @@ def mhr_tab(server, tabs, state) -> None:
             handles += betas(server, state, key="shape", count=10)
         with server.gui.add_folder("Expression"):
             handles += betas(server, state, key="expression", count=15, prefix="ψ", lo=-2.0, hi=2.0)
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 
@@ -360,6 +390,7 @@ def garment_measurements_tab(server, tabs, state) -> None:
             handles += joint_xyz(
                 server, state, key="pose", joints=GARMENT_MEASUREMENTS_POSE_JOINTS, max_joints=state.model.num_joints
             )
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 
@@ -381,6 +412,7 @@ def soma_tab(server, tabs, state) -> None:
             )
         with server.gui.add_folder("Pose"):
             handles += joint_xyz(server, state, key="pose", joints=SOMA_POSE_JOINTS, max_joints=state.model.num_joints)
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 
@@ -408,6 +440,7 @@ def g1_tab(server, tabs, state) -> None:
                         indices=(0, qpos_idx, 0),
                     )
                 )
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 
@@ -434,6 +467,7 @@ def myofullbody_tab(server, tabs, state) -> None:
                         indices=(0, qpos_idx),
                     )
                 )
+        pose_buttons(server, state, handles)
         reset_button(server, handles)
 
 

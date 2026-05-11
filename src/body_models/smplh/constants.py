@@ -90,4 +90,7 @@ SMPLH_JOINTS = SMPL_JOINTS | {
     Joint.RIGHT_PINKY_DIP: "right_pinky3",
 }
 
-__all__ = ["SMPLH_JOINT_NAMES", "SMPLH_JOINTS"]
+SMPLH_APOSE = {15: (0.0, 0.0, -0.55), 16: (0.0, 0.0, 0.55)}
+SMPLH_IPOSE = {15: (0.0, 0.0, -1.5), 16: (0.0, 0.0, 1.5)}
+
+__all__ = ["SMPLH_JOINT_NAMES", "SMPLH_JOINTS", "SMPLH_APOSE", "SMPLH_IPOSE"]

@@ -49,4 +49,18 @@ GARMENT_JOINTS = {
 }
 
 
-__all__ = ["GARMENT_JOINTS"]
+GARMENT_TPOSE = {
+    "upper_arm_l": (0.0, 0.0, 0.6),
+    "upper_arm_r": (0.0, 0.0, -0.6),
+    "clavicle_l": (0.0, 0.0, 0.15),
+    "clavicle_r": (0.0, 0.0, -0.15),
+    "thigh_l": (0.0, 0.0, 0.12),
+    "thigh_r": (0.0, 0.0, -0.12),
+}
+GARMENT_APOSE = {}
+GARMENT_IPOSE = {
+    "upper_arm_l": (0.0, 0.0, -0.35),
+    "upper_arm_r": (0.0, 0.0, 0.35),
+}
+
+__all__ = ["GARMENT_JOINTS", "GARMENT_TPOSE", "GARMENT_APOSE", "GARMENT_IPOSE"]

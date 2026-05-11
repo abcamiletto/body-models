@@ -29,6 +29,8 @@ MODELS = [
     "brainco",
 ]
 BACKENDS = ["torch", "numpy", "jax"]
+BODY_POSE_MODELS = [name for name in MODELS if name not in {"mano", "flame", "brainco"}]
+NON_BODY_POSE_MODELS = ["mano", "flame", "brainco"]
 
 
 def _build_model(model_name: str, backend: str) -> Any:
@@ -99,6 +101,43 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert model.rest_vertices.ndim == 2
     assert model.rest_vertices.shape[0] == model.num_vertices
     assert model.rest_vertices.shape[1] == 3
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("model_name", BODY_POSE_MODELS)
+def test_canonical_pose_methods_match_model_interface(model_name: str, backend: str) -> None:
+    model = _build_model(model_name, backend)
+
+    for pose_fn in (model.get_tpose, model.get_apose, model.get_ipose):
+        params = pose_fn(batch_size=2)
+        skeleton = model.forward_skeleton(**params)
+        vertices = model.forward_vertices(**params)
+
+        assert skeleton.shape[0] == 2
+        assert skeleton.shape[-3:] == (model.num_joints, 4, 4)
+        assert vertices.shape[0] == 2
+        assert vertices.shape[-2:] == (model.num_vertices, 3)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_canonical_pose_methods_validate_hands(backend: str) -> None:
+    model = _build_model("smplh", backend)
+
+    with pytest.raises(ValueError, match="Invalid hands"):
+        model.get_tpose(hands="closed")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("model_name", NON_BODY_POSE_MODELS)
+def test_canonical_pose_methods_reject_hand_and_face_models(model_name: str, backend: str) -> None:
+    model = _build_model(model_name, backend)
+
+    with pytest.raises(NotImplementedError, match="Canonical body poses"):
+        model.get_tpose()
+    with pytest.raises(NotImplementedError, match="Canonical body poses"):
+        model.get_apose()
+    with pytest.raises(NotImplementedError, match="Canonical body poses"):
+        model.get_ipose()
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
