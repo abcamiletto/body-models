@@ -67,7 +67,7 @@ class MANO(BodyModel, nn.Module):
         return self.weights.joint_names
 
     @property
-    def _standard_joints(self):
+    def common_joints(self):
         return LEFT_MANO_JOINTS if self.side == "left" else RIGHT_MANO_JOINTS
 
     @property

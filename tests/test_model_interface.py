@@ -1,5 +1,6 @@
 """Interface contract tests for all model classes/backends."""
 
+from collections.abc import Mapping
 from importlib import import_module
 from typing import Any
 
@@ -8,6 +9,7 @@ import pytest
 from nanomanifold import SO3
 
 import model_assets
+from body_models.constants import Joint
 
 pytestmark = pytest.mark.fast
 
@@ -72,6 +74,9 @@ def test_model_interface_attributes(model_name: str, backend: str) -> None:
     assert isinstance(model.joint_names, list)
     assert len(model.joint_names) == model.num_joints
     assert all(isinstance(name, str) for name in model.joint_names)
+    assert isinstance(model.common_joints, Mapping)
+    assert all(isinstance(joint, Joint) for joint in model.common_joints)
+    assert all(name in model.joint_names for name in model.common_joints.values())
     assert isinstance(model.parents, list)
     assert len(model.parents) == model.num_joints
     assert all(isinstance(parent, int) for parent in model.parents)
