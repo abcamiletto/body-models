@@ -76,7 +76,7 @@ explicit = true
 [tool.ty.src]
 exclude = [
     "tests/",
-    "scripts/teaser/render.py",
+    "scripts/render_teaser.py",
 ]
 
 [tool.ruff]
