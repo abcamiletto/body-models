@@ -43,7 +43,7 @@ from body_models.soma.numpy import SOMA
 
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2
 
-# ── Per-tab joint configurations ─────────────────────────────────────────────
+# ── Slider configurations ────────────────────────────────────────────────────
 SMPL_POSE_JOINTS = [
     ("Spine1", 2),
     ("Spine2", 5),
@@ -195,6 +195,18 @@ JOINT_HIGHLIGHT_COLOR = (255, 210, 35)
 JOINT_MARKER_RADIUS = 0.025
 JOINT_HIGHLIGHT_RADIUS = 0.055
 HAND_JOINT_NAMES = ("thumb", "index", "middle", "ring", "pinky")
+CANONICAL_POSE_MODELS = (
+    "SMPL",
+    "SMPLH",
+    "SMPLX",
+    "SKEL",
+    "ANNY",
+    "MHR",
+    "GarmentMeasurements",
+    "SOMA",
+    "G1",
+    "MyoFullBody",
+)
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -215,6 +227,12 @@ class SliderHandle:
     initial: float
     key: str
     indices: tuple[int, ...]
+
+
+@dataclass
+class ModelControls:
+    folder: viser.GuiFolderHandle
+    sliders: list[SliderHandle]
 
 
 # ── Slider primitives ────────────────────────────────────────────────────────
@@ -274,223 +292,203 @@ def reset_button(server: viser.ViserServer, handles: list[SliderHandle]) -> None
             slider.handle.value = slider.initial
 
 
-def pose_buttons(server: viser.ViserServer, state: ModelState, handles: list[SliderHandle]) -> None:
-    with server.gui.add_folder("Canonical Poses"):
-        for label, pose_fn in (
-            ("T-pose", state.model.get_tpose),
-            ("A-pose", state.model.get_apose),
-            ("I-pose", state.model.get_ipose),
-        ):
-            btn = server.gui.add_button(label)
-
-            @btn.on_click
-            def _(_, pose_fn=pose_fn):
-                preset = pose_fn()
-                for key in ("pose", "body_pose", "hand_pose"):
-                    if key in preset and key in state.params:
-                        state.params[key] = preset[key]
-                for slider in handles:
-                    if slider.key in state.params:
-                        slider.handle.value = float(state.params[slider.key][slider.indices])
-                state.changed = True
+def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -> None:
+    preset = getattr(state.model, f"get_{pose_name}")()
+    for key in ("pose", "body_pose", "hand_pose"):
+        if key in preset and key in state.params:
+            state.params[key] = preset[key]
+    for slider in sliders:
+        if slider.key in state.params:
+            slider.handle.value = float(state.params[slider.key][slider.indices])
+    state.changed = True
 
 
-# ── Per-model tab builders ───────────────────────────────────────────────────
-def smpl_tab(server, tabs, state, *, name="SMPL", with_expression=False) -> None:
+def set_gui_visible(handle: Any, visible: bool) -> None:
+    handle.visible = visible
+    for child in getattr(handle, "_children", {}).values():
+        set_gui_visible(child, visible)
+
+
+def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) -> ModelControls:
     handles: list[SliderHandle] = []
-    with tabs.add_tab(name, viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            handles += betas(server, state, key="shape", count=10)
-        if with_expression:
+    with server.gui.add_folder(name, expand_by_default=True) as folder:
+        if name in {"SMPL", "SMPLH", "SMPLX"}:
+            with server.gui.add_folder("Shape"):
+                handles += betas(server, state, key="shape", count=10)
+            if name == "SMPLX":
+                with server.gui.add_folder("Expression"):
+                    handles += betas(server, state, key="expression", count=10, prefix="ψ", lo=-2.0, hi=2.0)
+            with server.gui.add_folder("Body Pose"):
+                handles += joint_xyz(server, state, key="body_pose", joints=SMPL_POSE_JOINTS)
+
+        elif name == "MANO":
+            with server.gui.add_folder("Shape"):
+                handles += betas(server, state, key="shape", count=10)
+            with server.gui.add_folder("Hand Pose"):
+                handles += joint_xyz(server, state, key="hand_pose", joints=[(f"Joint {i}", i) for i in range(15)])
+
+        elif name == "SKEL":
+            with server.gui.add_folder("Shape"):
+                handles += betas(server, state, key="shape", count=10)
+            with server.gui.add_folder("Pose"):
+                for label, idx, (lo, hi) in SKEL_POSE_DOFS:
+                    handles.append(
+                        add_slider(
+                            server,
+                            state,
+                            label,
+                            lo=lo,
+                            hi=hi,
+                            step=0.05,
+                            initial=0.0,
+                            key="pose",
+                            indices=(0, idx),
+                        )
+                    )
+
+        elif name == "ANNY":
+            with server.gui.add_folder("Phenotype"):
+                for label in ANNY_PHENOTYPE_PARAMS:
+                    handles.append(
+                        add_slider(
+                            server,
+                            state,
+                            label,
+                            lo=0.0,
+                            hi=1.0,
+                            step=0.05,
+                            initial=0.5,
+                            key=label.lower(),
+                            indices=(0,),
+                        )
+                    )
+            with server.gui.add_folder("Pose"):
+                handles += joint_xyz(
+                    server, state, key="pose", joints=ANNY_POSE_BONES, max_joints=state.model.num_joints
+                )
+
+        elif name == "MHR":
+            with server.gui.add_folder("Shape"):
+                handles += betas(server, state, key="shape", count=10)
+            with server.gui.add_folder("Expression"):
+                handles += betas(server, state, key="expression", count=15, prefix="ψ", lo=-2.0, hi=2.0)
+
+        elif name == "FLAME":
+            with server.gui.add_folder("Shape"):
+                handles += betas(server, state, key="shape", count=10)
             with server.gui.add_folder("Expression"):
                 handles += betas(server, state, key="expression", count=10, prefix="ψ", lo=-2.0, hi=2.0)
-        with server.gui.add_folder("Body Pose"):
-            handles += joint_xyz(server, state, key="body_pose", joints=SMPL_POSE_JOINTS)
-        pose_buttons(server, state, handles)
-        reset_button(server, handles)
+            with server.gui.add_folder("Head Pose"):
+                handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
 
-
-def smplx_tab(server, tabs, state) -> None:
-    smpl_tab(server, tabs, state, name="SMPLX", with_expression=True)
-
-
-def smplh_tab(server, tabs, state) -> None:
-    smpl_tab(server, tabs, state, name="SMPLH")
-
-
-def mano_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("MANO", viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            handles += betas(server, state, key="shape", count=10)
-        with server.gui.add_folder("Hand Pose"):
-            handles += joint_xyz(server, state, key="hand_pose", joints=[(f"Joint {i}", i) for i in range(15)])
-        reset_button(server, handles)
-
-
-def skel_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("SKEL", viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            handles += betas(server, state, key="shape", count=10)
-        with server.gui.add_folder("Pose"):
-            for label, idx, (lo, hi) in SKEL_POSE_DOFS:
-                handles.append(
-                    add_slider(server, state, label, lo=lo, hi=hi, step=0.05, initial=0.0, key="pose", indices=(0, idx))
+        elif name == "GarmentMeasurements":
+            with server.gui.add_folder("Shape"):
+                handles += betas(server, state, key="shape", count=state.model.num_shape_components)
+            with server.gui.add_folder("Pose"):
+                handles += joint_xyz(
+                    server,
+                    state,
+                    key="pose",
+                    joints=GARMENT_MEASUREMENTS_POSE_JOINTS,
+                    max_joints=state.model.num_joints,
                 )
-        pose_buttons(server, state, handles)
-        reset_button(server, handles)
 
-
-def anny_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("ANNY", viser.Icon.USER):
-        with server.gui.add_folder("Phenotype"):
-            for label in ANNY_PHENOTYPE_PARAMS:
-                handles.append(
-                    add_slider(
-                        server, state, label, lo=0.0, hi=1.0, step=0.05, initial=0.5, key=label.lower(), indices=(0,)
-                    )
+        elif name == "SOMA":
+            identity_default = float(state.params["identity"][0, 0])
+            with server.gui.add_folder("Identity"):
+                handles += betas(
+                    server,
+                    state,
+                    key="identity",
+                    count=min(10, state.model.identity_dim),
+                    prefix="ι",
+                    lo=-1.0,
+                    hi=1.0,
+                    step=0.05,
+                    initial=identity_default,
                 )
-        with server.gui.add_folder("Pose"):
-            handles += joint_xyz(server, state, key="pose", joints=ANNY_POSE_BONES, max_joints=state.model.num_joints)
-        pose_buttons(server, state, handles)
-        reset_button(server, handles)
+            with server.gui.add_folder("Pose"):
+                handles += joint_xyz(
+                    server, state, key="pose", joints=SOMA_POSE_JOINTS, max_joints=state.model.num_joints
+                )
 
-
-def mhr_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("MHR", viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            handles += betas(server, state, key="shape", count=10)
-        with server.gui.add_folder("Expression"):
-            handles += betas(server, state, key="expression", count=15, prefix="ψ", lo=-2.0, hi=2.0)
-        pose_buttons(server, state, handles)
-        reset_button(server, handles)
-
-
-def flame_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("FLAME", viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            handles += betas(server, state, key="shape", count=10)
-        with server.gui.add_folder("Expression"):
-            handles += betas(server, state, key="expression", count=10, prefix="ψ", lo=-2.0, hi=2.0)
-        with server.gui.add_folder("Head Pose"):
-            handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
-        reset_button(server, handles)
-
-
-def garment_measurements_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("GarmentMeasurements", viser.Icon.USER):
-        with server.gui.add_folder("Shape"):
-            handles += betas(server, state, key="shape", count=state.model.num_shape_components)
-        with server.gui.add_folder("Pose"):
-            handles += joint_xyz(
-                server, state, key="pose", joints=GARMENT_MEASUREMENTS_POSE_JOINTS, max_joints=state.model.num_joints
-            )
-        pose_buttons(server, state, handles)
-        reset_button(server, handles)
-
-
-def soma_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    identity_default = float(state.params["identity"][0, 0])
-    with tabs.add_tab("SOMA", viser.Icon.USER):
-        with server.gui.add_folder("Identity"):
-            handles += betas(
+        elif name == "G1":
+            add_hinge_sliders(
                 server,
                 state,
-                key="identity",
-                count=min(10, state.model.identity_dim),
-                prefix="ι",
-                lo=-1.0,
-                hi=1.0,
-                step=0.05,
-                initial=identity_default,
+                folder_name="Hinge Pose",
+                joints=G1_POSE_JOINTS,
+                limits=state.model.qpos_joint_limits,
+                key="body_pose",
+                index=lambda qpos_idx: (0, qpos_idx, 0),
+                handles=handles,
+                max_qpos=len(state.model.qpos_joint_indices),
             )
-        with server.gui.add_folder("Pose"):
-            handles += joint_xyz(server, state, key="pose", joints=SOMA_POSE_JOINTS, max_joints=state.model.num_joints)
-        pose_buttons(server, state, handles)
+
+        elif name == "MyoFullBody":
+            add_hinge_sliders(
+                server,
+                state,
+                folder_name="Pose",
+                joints=MYOFULLBODY_POSE_JOINTS,
+                limits=cast(Any, state.model).weights.qpos_joint_limits,
+                key="body_pose",
+                index=lambda qpos_idx: (0, qpos_idx),
+                handles=handles,
+                max_qpos=state.model.num_qpos,
+            )
+
+        elif name == "BrainCo":
+            add_hinge_sliders(
+                server,
+                state,
+                folder_name="Hinge Pose",
+                joints=BRAINCO_POSE_JOINTS,
+                limits=state.model.qpos_joint_limits,
+                key="pose",
+                index=lambda qpos_idx: (0, qpos_idx, 0),
+                handles=handles,
+            )
+
+        else:
+            raise ValueError(f"Unhandled model controls: {name}")
+
         reset_button(server, handles)
+    return ModelControls(folder, handles)
 
 
-def g1_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("G1", viser.Icon.USER):
-        with server.gui.add_folder("Hinge Pose"):
-            for label, qpos_idx in G1_POSE_JOINTS:
-                if qpos_idx >= len(state.model.qpos_joint_indices):
-                    continue
-                lo, hi = (float(x) for x in state.model.qpos_joint_limits[qpos_idx])
-                # qpos limits can be ±inf for free joints — clamp to a usable range.
-                if not np.isfinite(lo) or not np.isfinite(hi):
-                    lo, hi = -np.pi, np.pi
-                handles.append(
-                    add_slider(
-                        server,
-                        state,
-                        label,
-                        lo=lo,
-                        hi=hi,
-                        step=0.02,
-                        initial=0.0,
-                        key="body_pose",
-                        indices=(0, qpos_idx, 0),
-                    )
+def add_hinge_sliders(
+    server: viser.ViserServer,
+    state: ModelState,
+    *,
+    folder_name: str,
+    joints,
+    limits,
+    key: str,
+    index,
+    handles: list[SliderHandle],
+    max_qpos: int | None = None,
+) -> None:
+    with server.gui.add_folder(folder_name):
+        for label, qpos_idx in joints:
+            if max_qpos is not None and qpos_idx >= max_qpos:
+                continue
+            lo, hi = (float(x) for x in limits[qpos_idx])
+            if not np.isfinite(lo) or not np.isfinite(hi):
+                lo, hi = -np.pi, np.pi
+            handles.append(
+                add_slider(
+                    server,
+                    state,
+                    label,
+                    lo=lo,
+                    hi=hi,
+                    step=0.02,
+                    initial=0.0,
+                    key=key,
+                    indices=index(qpos_idx),
                 )
-        pose_buttons(server, state, handles)
-        reset_button(server, handles)
-
-
-def myofullbody_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("MyoFullBody", viser.Icon.USER):
-        with server.gui.add_folder("Pose"):
-            for label, qpos_idx in MYOFULLBODY_POSE_JOINTS:
-                if qpos_idx >= state.model.num_qpos:
-                    continue
-                lo, hi = (float(x) for x in cast(Any, state.model).weights.qpos_joint_limits[qpos_idx])
-                if not np.isfinite(lo) or not np.isfinite(hi):
-                    lo, hi = -np.pi, np.pi
-                handles.append(
-                    add_slider(
-                        server,
-                        state,
-                        label,
-                        lo=lo,
-                        hi=hi,
-                        step=0.02,
-                        initial=0.0,
-                        key="body_pose",
-                        indices=(0, qpos_idx),
-                    )
-                )
-        pose_buttons(server, state, handles)
-        reset_button(server, handles)
-
-
-def brainco_tab(server, tabs, state) -> None:
-    handles: list[SliderHandle] = []
-    with tabs.add_tab("BrainCo", viser.Icon.USER):
-        with server.gui.add_folder("Hinge Pose"):
-            for label, qpos_idx in BRAINCO_POSE_JOINTS:
-                lo, hi = (float(x) for x in state.model.qpos_joint_limits[qpos_idx])
-                handles.append(
-                    add_slider(
-                        server,
-                        state,
-                        label,
-                        lo=lo,
-                        hi=hi,
-                        step=0.02,
-                        initial=0.0,
-                        key="pose",
-                        indices=(0, qpos_idx, 0),
-                    )
-                )
-        reset_button(server, handles)
+            )
 
 
 def _joint_label(joint: Joint) -> str:
@@ -525,7 +523,7 @@ def standard_joints_tab(server: viser.ViserServer, tabs, states: dict[str, Model
     visible_joints: set[Joint] = set()
     selected_joint: Joint | None = None
 
-    with tabs.add_tab("Standard Joints", viser.Icon.HAND_CLICK):
+    with tabs.add_tab("Joints", viser.Icon.HAND_CLICK):
         toggle_all = server.gui.add_button("Show all")
         checkboxes = {}
         with server.gui.add_folder("Body", expand_by_default=True):
@@ -615,23 +613,6 @@ def standard_joints_tab(server: viser.ViserServer, tabs, states: dict[str, Model
     return update_markers
 
 
-TAB_BUILDERS = {
-    "SMPL": smpl_tab,
-    "SMPLH": smplh_tab,
-    "MANO": mano_tab,
-    "SMPLX": smplx_tab,
-    "SKEL": skel_tab,
-    "ANNY": anny_tab,
-    "MHR": mhr_tab,
-    "FLAME": flame_tab,
-    "GarmentMeasurements": garment_measurements_tab,
-    "SOMA": soma_tab,
-    "G1": g1_tab,
-    "MyoFullBody": myofullbody_tab,
-    "BrainCo": brainco_tab,
-}
-
-
 # ── Mesh & main loop ─────────────────────────────────────────────────────────
 def triangulate(faces: np.ndarray) -> np.ndarray:
     if faces.shape[1] == 3:
@@ -681,65 +662,34 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
 
 
 def load_models() -> dict[str, BodyModel]:
-    print("Loading SMPL", flush=True)
-    smpl = SMPL(gender="neutral")
-    print("Loading SMPLH", flush=True)
-    smplh = SMPLH(gender="neutral")
-    print("Loading MANO", flush=True)
-    mano = MANO(side="right")
-    print("Loading SMPLX", flush=True)
-    smplx = SMPLX(gender="neutral")
-    print("Loading SKEL", flush=True)
-    skel = SKEL(gender="male")
-    print("Loading ANNY", flush=True)
-    anny = ANNY()
-    print("Loading MHR", flush=True)
-    mhr = MHR()
-    print("Loading FLAME", flush=True)
-    flame = FLAME()
-    print("Loading GarmentMeasurements", flush=True)
-    gm = GarmentMeasurements()
-    print("Loading SOMA", flush=True)
-    soma = SOMA()
-    print("Loading G1", flush=True)
-    # Hinge parametrization: one scalar angle per qpos joint around its intrinsic axis.
-    g1 = G1(rotation_type="hinge")
-    print("Loading MyoFullBody", flush=True)
-    myo = MyoFullBody()
-    print("Loading BrainCo", flush=True)
-    brainco = BrainCoHand(side="right", rotation_type="hinge")
-    models = {
-        "SMPL": smpl,
-        "SMPLH": smplh,
-        "MANO": mano,
-        "SMPLX": smplx,
-        "SKEL": skel,
-        "ANNY": anny,
-        "MHR": mhr,
-        "FLAME": flame,
-        "GarmentMeasurements": gm,
-        "SOMA": soma,
-        "G1": g1,
-        "MyoFullBody": myo,
-        "BrainCo": brainco,
-    }
+    model_specs = (
+        ("SMPL", lambda: SMPL(gender="neutral")),
+        ("SMPLH", lambda: SMPLH(gender="neutral")),
+        ("MANO", lambda: MANO(side="right")),
+        ("SMPLX", lambda: SMPLX(gender="neutral")),
+        ("SKEL", lambda: SKEL(gender="male")),
+        ("ANNY", ANNY),
+        ("MHR", MHR),
+        ("FLAME", FLAME),
+        ("GarmentMeasurements", GarmentMeasurements),
+        ("SOMA", SOMA),
+        ("G1", lambda: G1(rotation_type="hinge")),
+        ("MyoFullBody", MyoFullBody),
+        ("BrainCo", lambda: BrainCoHand(side="right", rotation_type="hinge")),
+    )
+    models = {}
+    for name, make_model in model_specs:
+        print(f"Loading {name}", flush=True)
+        models[name] = make_model()
     for model in models.values():
         cast(Any, model)._visualizer_muscle_segment_indices = _muscle_segment_indices(model)
     return models
 
 
-def main() -> None:
-    server = viser.ViserServer()
-    server.scene.set_up_direction("+y")
-    server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
-    server.gui.configure_theme(control_layout="fixed", control_width="large")
-
-    models = load_models()
-    print(f"Loaded {len(models)} models: {list(models.keys())}", flush=True)
-
+def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
     n = len(models)
     num_rows = (n + GRID_COLS - 1) // GRID_COLS
-    states: dict[str, ModelState] = {}
+    states = {}
     for i, (name, model) in enumerate(models.items()):
         row, col = divmod(i, GRID_COLS)
         row_count = min(GRID_COLS, n - row * GRID_COLS)
@@ -758,17 +708,60 @@ def main() -> None:
             faces=triangulate(np.asarray(model.faces)),
             color=MODEL_COLORS[name],
         )
+    return states
 
-    tabs = server.gui.add_tab_group()
-    for name, state in states.items():
-        TAB_BUILDERS[name](server, tabs, state)
-    update_joint_markers = standard_joints_tab(server, tabs, states)
 
+def add_labels(server: viser.ViserServer, states: dict[str, ModelState]) -> None:
     for name, state in states.items():
         verts = state.model.forward_vertices(**state.params)
         label_position = np.asarray(state.params["global_translation"][0]).copy()
         label_position[1] = float(verts[..., 1].max()) + 0.1
         server.scene.add_label(f"/labels/{name}", text=name, position=label_position)
+
+
+def main() -> None:
+    server = viser.ViserServer()
+    server.scene.set_up_direction("+y")
+    server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
+    server.gui.configure_theme(control_layout="fixed", control_width="large")
+
+    models = load_models()
+    print(f"Loaded {len(models)} models: {list(models.keys())}", flush=True)
+
+    states = init_states(models)
+
+    tabs = server.gui.add_tab_group()
+    selected_model = next(iter(states))
+    with tabs.add_tab("Models", viser.Icon.USER):
+        model_dropdown = server.gui.add_dropdown(
+            "Model",
+            options=tuple(states.keys()),
+            initial_value=selected_model,
+        )
+        controls = {name: add_model_controls(server, name, state) for name, state in states.items()}
+
+    with tabs.add_tab("Poses"):
+        for label, pose_name in (("T-pose", "tpose"), ("A-pose", "apose"), ("I-pose", "ipose")):
+            button = server.gui.add_button(label)
+
+            @button.on_click
+            def _(_, pose_name=pose_name) -> None:
+                for name in CANONICAL_POSE_MODELS:
+                    state = states[name]
+                    apply_pose(state, controls[name].sliders, pose_name)
+
+    def show_model_controls(name: str) -> None:
+        for folder_name, model_controls in controls.items():
+            set_gui_visible(model_controls.folder, folder_name == name)
+
+    show_model_controls(selected_model)
+
+    @model_dropdown.on_update
+    def _(event) -> None:
+        show_model_controls(event.target.value)
+
+    update_joint_markers = standard_joints_tab(server, tabs, states)
+    add_labels(server, states)
 
     print("\nServer running", flush=True)
     while True:
