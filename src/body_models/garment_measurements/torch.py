@@ -67,7 +67,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
 
     @property
     def parents(self) -> list[int]:
-        return self.weights.parents
+        return [int(parent) for parent in self.weights.parents.tolist()]
 
     def forward_vertices(
         self,
