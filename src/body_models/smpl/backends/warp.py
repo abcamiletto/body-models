@@ -8,6 +8,7 @@ import warp as wp
 from jaxtyping import Float
 from nanomanifold import SO3
 from torch import Tensor
+from torch.compiler import disable as disable_compile
 
 from body_models import common
 from body_models.rotations import RotationType
@@ -131,6 +132,7 @@ def forward_skeleton(
     )
 
 
+@disable_compile
 def warp_linear_blend_skinning(
     vertices: Float[Tensor, "B V 3"],
     joints: Float[Tensor, "B J 3"],
@@ -180,6 +182,7 @@ def warp_linear_blend_skinning(
     return output
 
 
+@disable_compile
 def warp_forward_kinematics(
     rotations: Float[Tensor, "B J 3 3"],
     translations: Float[Tensor, "B J 3"],
@@ -211,6 +214,7 @@ def warp_forward_kinematics(
     return output
 
 
+@disable_compile
 def warp_affine_blend_skinning(
     vertices: Float[Tensor, "B V 3"],
     transforms: Float[Tensor, "B J 4 4"],

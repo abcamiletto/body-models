@@ -387,21 +387,17 @@ def _spine_offset(
         theta = angle * t
         # sinc(x) = sin(pi*x) / (pi*x), but numpy uses sinc(x) = sin(pi*x) / (pi*x)
         # We need sin(theta) / theta which is sinc(theta/pi) in numpy terms
-        y = (
-            length
-            * t
-            * xp.where(
-                xp.abs(theta) < 1e-8,
-                xp.ones_like(theta),
-                xp.sin(theta) / theta,
-            )
-        )
+        small = xp.abs(theta) < 1e-8
+        safe_theta = xp.where(small, xp.ones_like(theta), theta)
+        y = length * t * xp.where(small, xp.ones_like(theta), xp.sin(safe_theta) / safe_theta)
         # For the second term: sinc(theta/(2*pi))^2 = (sin(theta/2) / (theta/2))^2
         half_theta = theta / 2
+        small_half = xp.abs(half_theta) < 1e-8
+        safe_half_theta = xp.where(small_half, xp.ones_like(half_theta), half_theta)
         sinc_half = xp.where(
-            xp.abs(half_theta) < 1e-8,
+            small_half,
             xp.ones_like(half_theta),
-            xp.sin(half_theta) / half_theta,
+            xp.sin(safe_half_theta) / safe_half_theta,
         )
         x = 0.5 * length * angle * t**2 * sinc_half**2
         return x, y
