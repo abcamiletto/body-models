@@ -382,25 +382,27 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
 
         elif name == "GarmentMeasurements":
+            model = cast(Any, state.model)
             with server.gui.add_folder("Shape"):
-                handles += betas(server, state, key="shape", count=state.model.num_shape_components)
+                handles += betas(server, state, key="shape", count=model.num_shape_components)
             with server.gui.add_folder("Pose"):
                 handles += joint_xyz(
                     server,
                     state,
                     key="pose",
                     joints=GARMENT_MEASUREMENTS_POSE_JOINTS,
-                    max_joints=state.model.num_joints,
+                    max_joints=model.num_joints,
                 )
 
         elif name == "SOMA":
+            model = cast(Any, state.model)
             identity_default = float(state.params["identity"][0, 0])
             with server.gui.add_folder("Identity"):
                 handles += betas(
                     server,
                     state,
                     key="identity",
-                    count=min(10, state.model.identity_dim),
+                    count=min(10, model.identity_dim),
                     prefix="ι",
                     lo=-1.0,
                     hi=1.0,
@@ -408,43 +410,44 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     initial=identity_default,
                 )
             with server.gui.add_folder("Pose"):
-                handles += joint_xyz(
-                    server, state, key="pose", joints=SOMA_POSE_JOINTS, max_joints=state.model.num_joints
-                )
+                handles += joint_xyz(server, state, key="pose", joints=SOMA_POSE_JOINTS, max_joints=model.num_joints)
 
         elif name == "G1":
+            model = cast(Any, state.model)
             add_hinge_sliders(
                 server,
                 state,
                 folder_name="Hinge Pose",
                 joints=G1_POSE_JOINTS,
-                limits=state.model.qpos_joint_limits,
+                limits=model.qpos_joint_limits,
                 key="body_pose",
                 index=lambda qpos_idx: (0, qpos_idx, 0),
                 handles=handles,
-                max_qpos=len(state.model.qpos_joint_indices),
+                max_qpos=len(model.qpos_joint_indices),
             )
 
         elif name == "MyoFullBody":
+            model = cast(Any, state.model)
             add_hinge_sliders(
                 server,
                 state,
                 folder_name="Pose",
                 joints=MYOFULLBODY_POSE_JOINTS,
-                limits=cast(Any, state.model).weights.qpos_joint_limits,
+                limits=model.weights.qpos_joint_limits,
                 key="body_pose",
                 index=lambda qpos_idx: (0, qpos_idx),
                 handles=handles,
-                max_qpos=state.model.num_qpos,
+                max_qpos=model.num_qpos,
             )
 
         elif name == "BrainCo":
+            model = cast(Any, state.model)
             add_hinge_sliders(
                 server,
                 state,
                 folder_name="Hinge Pose",
                 joints=BRAINCO_POSE_JOINTS,
-                limits=state.model.qpos_joint_limits,
+                limits=model.qpos_joint_limits,
                 key="pose",
                 index=lambda qpos_idx: (0, qpos_idx, 0),
                 handles=handles,
