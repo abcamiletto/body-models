@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env -S uv run --script --python 3.13
 # /// script
 # requires-python = "==3.13.*"  # bpy>=5.1 ships cp313 wheels built against numpy 2.x
 # dependencies = [
@@ -6,7 +6,7 @@
 #   "bpy>=5.1.0",
 # ]
 # [tool.uv.sources]
-# body-models = { path = "../.." }
+# body-models = { path = ".." }
 # ///
 """Render the README body-model lineup directly from the body-models API.
 
@@ -14,10 +14,7 @@ Self-contained PEP 723 script: loads each body model in-process, builds a
 canonical T-pose mesh, and renders the lineup with Cycles via headless ``bpy``.
 
 Usage:
-    uv run scripts/teaser/render.py [--output PATH] [--samples N] [--denoise]
-
-A neighbouring ``.python-version`` pins this script to Python 3.13 (required
-by ``bpy>=5.1``); the repo-root pin of 3.12 stays in effect everywhere else.
+    uv run --python 3.13 scripts/render_teaser.py [--output PATH] [--samples N] [--denoise]
 """
 
 from __future__ import annotations
@@ -44,7 +41,6 @@ from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
 
 # ── Lineup configuration ─────────────────────────────────────────────────────
-ASSETS_DIR = Path(__file__).parent.parent.parent / "tests" / "assets"
 MODEL_HEIGHT = 1.75
 MODEL_GAP = 0.30
 
@@ -69,7 +65,7 @@ LABELS = {f: f.upper() for f in PASTELS} | {
 }
 # FLAME is head-only: half-size keeps it in scale with the row.
 SCALES = {"flame": 0.5, "mano": 2.0}
-BODY_POSE_FAMILIES = {
+TPOSE_FAMILIES = {
     "smpl",
     "smplh",
     "smplx",
@@ -81,21 +77,20 @@ BODY_POSE_FAMILIES = {
     "g1",
     "myofullbody",
 }
-TPOSE_REST_FAMILIES = {"smpl", "smplh", "smplx", "skel"}
 
 LOADERS = {
     "smpl": lambda: SMPL(gender="neutral"),  # path via body-models config
     "smplh": lambda: SMPLH(gender="neutral"),  # path via body-models config
     "mano": lambda: MANO(side="right"),  # path via body-models config
     "smplx": lambda: SMPLX(gender="neutral"),  # path via body-models config
-    "skel": lambda: SKEL(ASSETS_DIR / "skel/model/skel_male.pkl", "male"),
-    "mhr": lambda: MHR(ASSETS_DIR / "mhr/model"),
-    "anny": lambda: ANNY(ASSETS_DIR / "anny/model"),
-    "flame": lambda: FLAME(ASSETS_DIR / "flame/model/FLAME_NEUTRAL.pkl"),
-    "garment_measurements": lambda: GarmentMeasurements(ASSETS_DIR / "garment_measurements/model"),
+    "skel": lambda: SKEL(gender="male"),
+    "mhr": MHR,
+    "anny": ANNY,
+    "flame": FLAME,
+    "garment_measurements": GarmentMeasurements,
     "soma": lambda: SOMA(),
-    "g1": lambda: G1(ASSETS_DIR / "g1/model", rotation_type="hinge"),
-    "myofullbody": lambda: MyoFullBody(ASSETS_DIR / "myofullbody/model"),
+    "g1": lambda: G1(rotation_type="hinge"),
+    "myofullbody": MyoFullBody,
 }
 
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2 + 0.08
@@ -108,7 +103,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     print("[1/5] Generating meshes...", flush=True)
-    meshes = [(family, *canonical_mesh(family, args.pose)) for family in PASTELS]
+    meshes = [(family, *canonical_mesh(family)) for family in PASTELS]
 
     print("[2/5] Building scene...", flush=True)
     clear_scene()
@@ -136,30 +131,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--width", type=int, default=2200)
     p.add_argument("--height", type=int, default=1200)
     p.add_argument("--denoise", action="store_true")
-    p.add_argument("--pose", choices=("tpose", "apose", "ipose"), default="tpose")
     return p.parse_args()
 
 
 # ── Per-family canonical mesh ────────────────────────────────────────────────
-def canonical_mesh(family: str, pose_name: str) -> tuple[np.ndarray, np.ndarray]:
+def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
-    use_rest_vertices = family not in BODY_POSE_FAMILIES or (family in TPOSE_REST_FAMILIES and pose_name == "tpose")
-    if use_rest_vertices:
-        verts = np.asarray(model.rest_vertices, dtype=np.float32)
-    else:
-        params = canonical_pose_params(model, pose_name)
+    if family in TPOSE_FAMILIES:
+        params = model.get_tpose(batch_size=1)
         if family == "anny":
             params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
         verts = np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
+    else:
+        verts = np.asarray(model.rest_vertices, dtype=np.float32)
     return verts, np.asarray(model.faces, dtype=np.int32)
-
-
-def canonical_pose_params(model, pose_name: str):
-    if pose_name == "tpose":
-        return model.get_tpose(batch_size=1)
-    if pose_name == "apose":
-        return model.get_apose(batch_size=1)
-    return model.get_ipose(batch_size=1)
 
 
 # ── Scene construction ──────────────────────────────────────────────────────
