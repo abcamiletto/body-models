@@ -32,7 +32,7 @@ class GarmentMeasurementsWeights:
     eigenvalues: Float[Array, "C"]
     faces: Int[Array, "F 3"]
     joint_names: list[str]
-    parents: list[int]
+    parents: Int[Array, "J"]
     kinematic_fronts: list[Front]
     bind_quats: Float[Array, "J 4"]
     skin_weights: Float[Array, "V J"]
@@ -164,7 +164,7 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
         eigenvalues=eigenvalues,
         faces=faces,
         joint_names=joint_names,
-        parents=parents.astype(int).tolist(),
+        parents=parents,
         kinematic_fronts=compute_kinematic_fronts(parents),
         bind_quats=bind_quats,
         skin_weights=skin_weights,
