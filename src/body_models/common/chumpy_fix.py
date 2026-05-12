@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pickle
+import warnings
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +19,9 @@ __all__ = ["load_model_dict"]
 def load_model_dict(model_path: PathLike) -> dict[str, Any]:
     model_path = Path(model_path)
     if model_path.suffix == ".npz":
-        with np.load(model_path, allow_pickle=True) as data:
-            return {key: data[key] for key in data.files}
+        with _suppress_numpy_align_warning():
+            with np.load(model_path, allow_pickle=True) as data:
+                return {key: data[key] for key in data.files}
     if model_path.suffix == ".pkl":
         return _load_pickle_dict(model_path)
     raise ValueError(f"Expected a .pkl or .npz file, got: {model_path}")
@@ -26,8 +29,20 @@ def load_model_dict(model_path: PathLike) -> dict[str, Any]:
 
 def _load_pickle_dict(model_path: Path) -> dict[str, Any]:
     with open(model_path, "rb") as f:
-        data = _CompatUnpickler(f, encoding="latin1").load()
+        with _suppress_numpy_align_warning():
+            data = _CompatUnpickler(f, encoding="latin1").load()
     return {key: _array_value(value) for key, value in data.items()}
+
+
+@contextmanager
+def _suppress_numpy_align_warning():
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"dtype\(\): align should be passed as Python or NumPy boolean.*",
+            category=np.exceptions.VisibleDeprecationWarning,
+        )
+        yield
 
 
 def _array_value(value: Any) -> Any:
