@@ -15,7 +15,7 @@ __all__ = ["forward_vertices", "forward_skeleton"]
 def forward_vertices(
     weights: GarmentMeasurementsWeights,
     shape: Float[jax.Array, "B C"],
-    pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"] | None = None,
+    pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"],
     global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
     global_translation: Float[jax.Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
@@ -42,7 +42,7 @@ def forward_vertices(
 def forward_skeleton(
     weights: GarmentMeasurementsWeights,
     shape: Float[jax.Array, "B C"],
-    pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"] | None = None,
+    pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"],
     global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
     global_translation: Float[jax.Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,

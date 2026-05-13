@@ -23,7 +23,7 @@ def forward_vertices(
     mvc_weights: Float[Array, "V J"],
     kinematic_fronts: list[Front],
     shape: Float[Array, "B C"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None = None,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
@@ -32,11 +32,8 @@ def forward_vertices(
     xp: Any,
 ) -> Float[Array, "B V 3"]:
     """Evaluate shaped and posed body vertices [B, V, 3]."""
-    if pose is None:
-        batch_shape = shape.shape[:-1]
-    else:
-        num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        batch_shape = pose.shape[: -(num_rot_dims + 1)]
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    batch_shape = pose.shape[: -(num_rot_dims + 1)]
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
     vertices, final_skeleton = forward_unskinned_vertices(
         mean_vertices=mean_vertices,
@@ -75,17 +72,14 @@ def forward_unskinned_vertices(
     mvc_weights: Float[Array, "V J"],
     kinematic_fronts: list[Front],
     shape: Float[Array, "B C"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None = None,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
     xp: Any,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 7"]]:
-    if pose is None:
-        batch_shape = shape.shape[:-1]
-    else:
-        num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        batch_shape = pose.shape[: -(num_rot_dims + 1)]
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    batch_shape = pose.shape[: -(num_rot_dims + 1)]
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
     shaped_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
     bind_skeleton, posed_skeleton = _forward_skeleton_se3(
@@ -128,7 +122,7 @@ def forward_skeleton(
     mvc_weights: Float[Array, "V J"],
     kinematic_fronts: list[Front],
     shape: Float[Array, "B C"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None = None,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
@@ -137,11 +131,8 @@ def forward_skeleton(
     xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space joint transforms [B, J, 4, 4]."""
-    if pose is None:
-        batch_shape = shape.shape[:-1]
-    else:
-        num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        batch_shape = pose.shape[: -(num_rot_dims + 1)]
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    batch_shape = pose.shape[: -(num_rot_dims + 1)]
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
     shaped_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
     _, skeleton = _forward_skeleton_se3(
@@ -191,7 +182,7 @@ def _forward_skeleton_se3(
     bind_quats: Float[Array, "J 4"],
     mvc_weights: Float[Array, "V J"],
     kinematic_fronts: list[Front],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"] | None,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     xp: Any,
 ) -> tuple[Float[Array, "B J 7"], Float[Array, "B J 7"]]:
@@ -206,10 +197,7 @@ def _forward_skeleton_se3(
     bind_local = SE3.from_rt(bind_quats, bind_trans, xp=xp)
     bind_global = _propagate_se3(bind_local, kinematic_fronts, xp=xp)
 
-    if pose is None:
-        pose_quats = SO3.identity_as(bind_quats, batch_dims=bind_quats.shape[:-1], rotation_type="quat", xp=xp)
-    else:
-        pose_quats = SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
+    pose_quats = SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
     posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
     posed_local = SE3.from_rt(posed_quats, bind_trans, xp=xp)
     posed_global = _propagate_se3(posed_local, kinematic_fronts, xp=xp)

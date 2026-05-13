@@ -14,6 +14,7 @@ from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import torch as backend
 from .io import get_model_path, load_model_data
 from .constants import GARMENT_APOSE, GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
+from .pose import pack_pose, unpack_pose
 
 
 __all__ = ["GarmentMeasurements"]
@@ -73,11 +74,15 @@ class GarmentMeasurements(BodyModel, nn.Module):
     def forward_vertices(
         self,
         shape: Float[Tensor, "B C"],
-        pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"] | None = None,
+        body_pose: Float[Tensor, "B 25 N"] | Float[Tensor, "B 25 3 3"],
+        head_pose: Float[Tensor, "B 3 N"] | Float[Tensor, "B 3 3 3"],
+        hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[Tensor, "B V 3"]:
+        pose = pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -91,11 +96,15 @@ class GarmentMeasurements(BodyModel, nn.Module):
     def forward_skeleton(
         self,
         shape: Float[Tensor, "B C"],
-        pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"] | None = None,
+        body_pose: Float[Tensor, "B 25 N"] | Float[Tensor, "B 25 3 3"],
+        head_pose: Float[Tensor, "B 3 N"] | Float[Tensor, "B 3 3 3"],
+        hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Tensor, "B J 4 4"]:
+        pose = pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
@@ -111,14 +120,19 @@ class GarmentMeasurements(BodyModel, nn.Module):
         device = self.weights.mean_vertices.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), dtype=dtype, device=device)
         global_ref = torch.zeros((batch_size,), dtype=dtype, device=device)
+        pose = SO3.identity_as(
+            pose_ref,
+            batch_dims=(batch_size, self.num_joints),
+            rotation_type=self.rotation_type,
+            xp=torch,
+        )
+        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
         return {
             "shape": torch.zeros((1, self.num_shape_components), dtype=dtype, device=device),
-            "pose": SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size, self.num_joints),
-                rotation_type=self.rotation_type,
-                xp=torch,
-            ),
+            "body_pose": body_pose,
+            "head_pose": head_pose,
+            "hand_pose": hand_pose,
+            "pelvis_rotation": pelvis_rotation,
             "global_rotation": SO3.identity_as(
                 global_ref,
                 batch_dims=(batch_size,),
@@ -134,13 +148,17 @@ class GarmentMeasurements(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        pose = pack_pose(
+            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
+        )
         for joint_name, values in GARMENT_TPOSE.items():
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pose"] = pose
+        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = unpack_pose(
+            torch, pose
+        )
         return params
 
     def get_apose(
@@ -149,13 +167,17 @@ class GarmentMeasurements(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        pose = pack_pose(
+            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
+        )
         for joint_name, values in GARMENT_APOSE.items():
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pose"] = pose
+        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = unpack_pose(
+            torch, pose
+        )
         return params
 
     def get_ipose(
@@ -164,11 +186,15 @@ class GarmentMeasurements(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        pose = pack_pose(
+            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
+        )
         for joint_name, values in GARMENT_IPOSE.items():
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pose"] = pose
+        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = unpack_pose(
+            torch, pose
+        )
         return params
