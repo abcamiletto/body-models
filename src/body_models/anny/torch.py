@@ -194,16 +194,24 @@ class ANNY(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = pose_utils.pack_pose(
-            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
+        pose_parts = (
+            params["pelvis_rotation"],
+            params["body_pose"],
+            params["head_pose"],
+            params["hand_pose"],
         )
+        pose = pose_utils.pack_pose(torch, *pose_parts)
         for joint_name, values in ANNY_TPOSE.items():
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = (
-            pose_utils.unpack_pose(torch, pose)
+        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        params.update(
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+            pelvis_rotation=pelvis_rotation,
         )
         return params
 
@@ -220,16 +228,24 @@ class ANNY(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = pose_utils.pack_pose(
-            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
+        pose_parts = (
+            params["pelvis_rotation"],
+            params["body_pose"],
+            params["head_pose"],
+            params["hand_pose"],
         )
+        pose = pose_utils.pack_pose(torch, *pose_parts)
         for joint_name, values in ANNY_IPOSE.items():
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = (
-            pose_utils.unpack_pose(torch, pose)
+        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        params.update(
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+            pelvis_rotation=pelvis_rotation,
         )
         return params
 

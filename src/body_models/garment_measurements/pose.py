@@ -37,7 +37,8 @@ def pack_pose(
         left_hand = hand_pose[..., :15, :]
         right_hand = hand_pose[..., 15:, :]
 
-    return xp.concat([pelvis, spine, head_pose, left_arm, left_hand, right_arm, right_hand, legs], axis=joint_axis)
+    pose_parts = [pelvis, spine, head_pose, left_arm, left_hand, right_arm, right_hand, legs]
+    return xp.concat(pose_parts, axis=joint_axis)
 
 
 def unpack_pose(
@@ -53,20 +54,23 @@ def unpack_pose(
     joint_axis = _joint_axis(pose)
     if joint_axis == -3:
         pelvis_rotation = pose[..., 0, :, :]
-        body_pose = xp.concat(
-            [pose[..., 1:6, :, :], pose[..., 9:15, :, :], pose[..., 30:36, :, :], pose[..., 51:59, :, :]],
-            axis=joint_axis,
-        )
+        body_parts = [
+            pose[..., 1:6, :, :],
+            pose[..., 9:15, :, :],
+            pose[..., 30:36, :, :],
+            pose[..., 51:59, :, :],
+        ]
+        hand_parts = [pose[..., 15:30, :, :], pose[..., 36:51, :, :]]
+        body_pose = xp.concat(body_parts, axis=joint_axis)
         head_pose = pose[..., 6:9, :, :]
-        hand_pose = xp.concat([pose[..., 15:30, :, :], pose[..., 36:51, :, :]], axis=joint_axis)
+        hand_pose = xp.concat(hand_parts, axis=joint_axis)
     else:
         pelvis_rotation = pose[..., 0, :]
-        body_pose = xp.concat(
-            [pose[..., 1:6, :], pose[..., 9:15, :], pose[..., 30:36, :], pose[..., 51:59, :]],
-            axis=joint_axis,
-        )
+        body_parts = [pose[..., 1:6, :], pose[..., 9:15, :], pose[..., 30:36, :], pose[..., 51:59, :]]
+        hand_parts = [pose[..., 15:30, :], pose[..., 36:51, :]]
+        body_pose = xp.concat(body_parts, axis=joint_axis)
         head_pose = pose[..., 6:9, :]
-        hand_pose = xp.concat([pose[..., 15:30, :], pose[..., 36:51, :]], axis=joint_axis)
+        hand_pose = xp.concat(hand_parts, axis=joint_axis)
     return pelvis_rotation, body_pose, head_pose, hand_pose
 
 

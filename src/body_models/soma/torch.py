@@ -321,15 +321,23 @@ class SOMA(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = pack_pose(
-            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
+        pose_parts = (
+            params["pelvis_rotation"],
+            params["body_pose"],
+            params["head_pose"],
+            params["hand_pose"],
         )
+        pose = pack_pose(torch, *pose_parts)
         for index, values in SOMA_APOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = unpack_pose(
-            torch, pose
+        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
+        params.update(
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+            pelvis_rotation=pelvis_rotation,
         )
         return params
 
@@ -339,15 +347,23 @@ class SOMA(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = pack_pose(
-            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
+        pose_parts = (
+            params["pelvis_rotation"],
+            params["body_pose"],
+            params["head_pose"],
+            params["hand_pose"],
         )
+        pose = pack_pose(torch, *pose_parts)
         for index, values in SOMA_IPOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = unpack_pose(
-            torch, pose
+        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
+        params.update(
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+            pelvis_rotation=pelvis_rotation,
         )
         return params
 
