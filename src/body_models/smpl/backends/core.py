@@ -36,11 +36,16 @@ def forward_vertices(
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
-    assert shape.ndim == 2 and shape.shape[1] >= 1
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
         xp = get_namespace(shape)
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
+    batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+
     v_shaped, j_t, T_world = forward_unskinned_vertices(
         xp=xp,
         v_template=v_template,
@@ -86,7 +91,10 @@ def forward_unskinned_vertices(
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B 24 3"], Float[Array, "B 24 4 4"]]:
     if xp is None:
         xp = get_namespace(shape)
-    B = body_pose.shape[0]
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
+    batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
         v_template = v_template[vertex_indices]
@@ -108,9 +116,9 @@ def forward_unskinned_vertices(
         rotation_type=rotation_type,
     )
 
-    eye3 = common.eye_as(pose_matrices, batch_dims=(B, 1), xp=xp)
-    pose_delta = (pose_matrices[:, 1:] - eye3).reshape(B, -1)
-    v_shaped = v_t + (pose_delta @ posedirs).reshape(B, -1, 3)
+    eye3 = common.eye_as(pose_matrices, batch_dims=(*batch_shape, 1), xp=xp)
+    pose_delta = (pose_matrices[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
+    v_shaped = v_t + (pose_delta @ posedirs).reshape(*batch_shape, -1, 3)
     return v_shaped, j_t, T_world
 
 
@@ -132,8 +140,8 @@ def forward_skeleton(
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton joint transforms [B, J, 4, 4]."""
-    assert shape.ndim == 2 and shape.shape[1] >= 1
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
         xp = get_namespace(shape)
@@ -155,6 +163,10 @@ def forward_skeleton(
             pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
             if pairs:
                 active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
+    batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     _, _, _, T_world = _forward_core(
         xp=xp,
@@ -177,7 +189,7 @@ def forward_skeleton(
 
     if global_rotation is None:
         assert global_translation is not None
-        t = T_world[..., :3, 3] + global_translation[:, None]
+        t = T_world[..., :3, 3] + global_translation[..., None, :]
         return common.set(T_world, (..., slice(None, 3), 3), t, xp=xp)
 
     R_world = T_world[..., :3, :3]
@@ -218,18 +230,17 @@ def _forward_core(
     Float[Array, "B J 4 4"],
 ]:
     """Core forward pass."""
-    B = body_pose.shape[0]
-
-    # Broadcast shape if needed
-    if shape.shape[0] == 1 and B > 1:
-        shape = xp.broadcast_to(shape, (B, shape.shape[1]))
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
+    batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     # Build full pose with pelvis rotation
     body_pose_matrices = SO3.convert(body_pose, src=rotation_type, dst="rotmat", xp=xp)
     if pelvis_rotation is None:
         pelvis_matrices = SO3.identity_as(
             body_pose_matrices,
-            batch_dims=(B, 1),
+            batch_dims=(*batch_shape, 1),
             rotation_type="rotmat",
             xp=xp,
         )
@@ -239,8 +250,8 @@ def _forward_core(
             src=rotation_type,
             dst="rotmat",
             xp=xp,
-        )[:, None]
-    pose_matrices = xp.concat([pelvis_matrices, body_pose_matrices], axis=1)
+        )[..., None, :, :]
+    pose_matrices = xp.concat([pelvis_matrices, body_pose_matrices], axis=-3)
 
     # Joint locations from precomputed regression matrices
     j_t = j_template + xp.einsum("...p,jdp->...jd", shape, j_shapedirs[:, :, : shape.shape[-1]])
@@ -250,13 +261,13 @@ def _forward_core(
         v_t = None
     else:
         assert v_template is not None and shapedirs is not None
-        v_t = v_template + xp.einsum("bi,vdi->bvd", shape, shapedirs[:, :, : shape.shape[-1]])
+        v_t = v_template + xp.einsum("...i,vdi->...vd", shape, shapedirs[:, :, : shape.shape[-1]])
 
     # Forward kinematics
     # Build t_local using concatenation
-    j0 = j_t[:, 0:1]  # [B, 1, 3]
-    j_rest = j_t[:, 1:] - j_t[:, parents[1:]]  # [B, J-1, 3]
-    t_local = xp.concat([j0, j_rest], axis=1)  # [B, J, 3]
+    j0 = j_t[..., 0:1, :]
+    j_rest = j_t[..., 1:, :] - j_t[..., parents[1:], :]
+    t_local = xp.concat([j0, j_rest], axis=-2)
 
     T_world = batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts, joint_indices)
 
@@ -314,7 +325,8 @@ def linear_blend_skinning(
     W_R = xp.einsum("vj,...jkl->...vkl", lbs_weights, R_world)
     joint_offsets = t_world - xp.squeeze(R_world @ joints[..., None], axis=-1)
     W_t = xp.einsum("vj,...jk->...vk", lbs_weights, joint_offsets)
-    return xp.squeeze(W_R @ vertices[..., None], axis=-1) + W_t
+    rotated = xp.squeeze(W_R @ vertices[..., None], axis=-1)
+    return rotated + W_t
 
 
 def apply_global_transform(

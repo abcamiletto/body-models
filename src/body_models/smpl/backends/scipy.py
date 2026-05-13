@@ -26,9 +26,9 @@ def sparse_skin(
     t_world = T_world[..., :3, 3]
     t_adjusted = t_world - np.squeeze(R_world @ j_t[..., None], axis=-1)
 
-    num_joints = j_t.shape[-2]
     v_posed = np.empty_like(v_shaped)
-    for batch in range(v_shaped.shape[0]):
+    num_joints = j_t.shape[-2]
+    for batch in np.ndindex(v_shaped.shape[:-2]):
         W_R = lbs_weights @ R_world[batch].reshape(num_joints, 9)
         W_t = lbs_weights @ t_adjusted[batch]
         v_posed[batch] = np.einsum("vij,vj->vi", W_R.reshape(-1, 3, 3), v_shaped[batch]) + W_t

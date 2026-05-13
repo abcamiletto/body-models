@@ -200,15 +200,15 @@ class SKEL(BodyModel, nn.Module):
         Float[Tensor, "B Vs 3"],
     ]:
         weights = self.weights
-        batch_size = pose.shape[0]
+        batch_shape = tuple(pose.shape[:-1])
         dtype = pose.dtype
 
         if global_translation is None:
-            global_translation = torch.zeros((batch_size, 3), device=pose.device, dtype=dtype)
-        if shape.shape[0] == 1 and batch_size > 1:
-            shape = shape.expand(batch_size, -1)
+            global_translation = torch.zeros((*batch_shape, 3), device=pose.device, dtype=dtype)
+        if shape.shape[:-1] == (1,) and batch_shape:
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
-        joints = weights.j_template + torch.einsum("jdi,bi->bjd", weights.j_shapedirs, shape)
+        joints = weights.j_template + torch.einsum("jdi,...i->...jd", weights.j_shapedirs, shape)
         joint_rel = core._compute_J_rel(torch, joints, weights.parent)
         local_transforms = core._compute_local_transforms(
             torch,
@@ -228,19 +228,19 @@ class SKEL(BodyModel, nn.Module):
         )
         transforms = core._propagate_transforms(torch, local_transforms, weights.parents[1:])
 
-        v_shaped = weights.v_template + torch.einsum("vdi,bi->bvd", weights.shapedirs, shape)
+        v_shaped = weights.v_template + torch.einsum("vdi,...i->...vd", weights.shapedirs, shape)
         eye3 = torch.eye(3, device=pose.device, dtype=dtype)
-        smpl_rotations = eye3.expand(batch_size, weights.num_joints_smpl, 3, 3).clone()
-        smpl_rotations[:, core.SMPL_JOINT_MAP] = local_transforms[:, :, :3, :3]
-        pose_feat = (smpl_rotations[:, 1:] - eye3).reshape(batch_size, -1)
-        pose_offsets = (pose_feat @ weights.posedirs).reshape(batch_size, self.num_vertices, 3)
+        smpl_rotations = eye3.expand(*batch_shape, weights.num_joints_smpl, 3, 3).clone()
+        smpl_rotations[..., core.SMPL_JOINT_MAP, :, :] = local_transforms[..., :, :3, :3]
+        pose_feat = (smpl_rotations[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
+        pose_offsets = (pose_feat @ weights.posedirs).reshape(*batch_shape, self.num_vertices, 3)
         v_posed = v_shaped + pose_offsets
 
-        R_joint = transforms[:, :, :3, :3]
-        t_world = transforms[:, :, :3, 3]
+        R_joint = transforms[..., :, :3, :3]
+        t_world = transforms[..., :, :3, 3]
         t_skin = t_world - (R_joint @ joints[..., None]).squeeze(-1)
-        W_R = torch.einsum("vj,bjkl->bvkl", weights.skin_weights, R_joint)
-        W_t = torch.einsum("vj,bjk->bvk", weights.skin_weights, t_skin)
+        W_R = torch.einsum("vj,...jkl->...vkl", weights.skin_weights, R_joint)
+        W_t = torch.einsum("vj,...jk->...vk", weights.skin_weights, t_skin)
         vertices = (W_R @ v_posed[..., None]).squeeze(-1) + W_t
 
         Rk = core._compute_bone_orientation(
@@ -251,11 +251,11 @@ class SKEL(BodyModel, nn.Module):
             child=weights.child,
             fixed_orientation_joints=weights.fixed_orientation_joints,
         )
-        skeleton_vertices = self._compute_skeleton_vertices(batch_size, joints, joint_rel, transforms, Rk, v_shaped)
+        skeleton_vertices = self._compute_skeleton_vertices(joints, joint_rel, transforms, Rk, v_shaped)
 
-        vertices = vertices + global_translation[:, None]
-        skeleton_vertices = skeleton_vertices + global_translation[:, None]
-        joints_out = transforms[:, :, :3, 3] + global_translation[:, None]
+        vertices = vertices + global_translation[..., None, :]
+        skeleton_vertices = skeleton_vertices + global_translation[..., None, :]
+        joints_out = transforms[..., :, :3, 3] + global_translation[..., None, :]
 
         if global_rotation is not None:
             rotation = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=torch)
@@ -267,7 +267,6 @@ class SKEL(BodyModel, nn.Module):
 
     def _compute_skeleton_vertices(
         self,
-        batch_size: int,
         joints: Float[Tensor, "B 24 3"],
         joint_rel: Float[Tensor, "B 24 3"],
         transforms: Float[Tensor, "B 24 4 4"],
@@ -277,51 +276,55 @@ class SKEL(BodyModel, nn.Module):
         weights = self.weights
         device = joints.device
         dtype = joints.dtype
+        batch_shape = tuple(joints.shape[:-2])
         num_joints = self.NUM_JOINTS
 
-        apose_len = weights.apose_t.norm(dim=-1).unsqueeze(0).expand(batch_size, -1)
+        apose_len = weights.apose_t.norm(dim=-1).expand(*batch_shape, -1)
         bone_len = joint_rel.norm(dim=-1)
         scale_ratio = bone_len / apose_len
 
-        bone_scale = torch.ones(batch_size, num_joints, device=device, dtype=dtype)
-        bone_scale[:, weights.non_leaf_joints] = scale_ratio[:, weights.non_leaf_children]
-        bone_scale[:, [16, 21, 12]] = bone_scale[:, [17, 22, 11]]
-        bone_scale[:, 11] = joint_rel[:, 11, 1].abs() / weights.apose_t[11, 1].abs()
+        bone_scale = torch.ones(*batch_shape, num_joints, device=device, dtype=dtype)
+        bone_scale[..., weights.non_leaf_joints] = scale_ratio[..., weights.non_leaf_children]
+        bone_scale[..., [16, 21, 12]] = bone_scale[..., [17, 22, 11]]
+        bone_scale[..., 11] = joint_rel[..., 11, 1].abs() / weights.apose_t[11, 1].abs()
 
-        bone_scale = bone_scale.unsqueeze(-1).expand(-1, -1, 3).clone()
-        v0 = weights.v_template.unsqueeze(0)
+        bone_scale = bone_scale.unsqueeze(-1).expand(*bone_scale.shape, 3).clone()
         for (joint, scale_axis, skin_axis), (v1, v2) in _SCALING_KEYPOINTS.items():
-            scale = (v_shaped[:, v1] - v_shaped[:, v2]) / (v0[:, v1] - v0[:, v2])
-            bone_scale[:, joint, scale_axis] = scale[:, skin_axis]
+            scale = (v_shaped[..., v1, :] - v_shaped[..., v2, :]) / (weights.v_template[v1] - weights.v_template[v2])
+            bone_scale[..., joint, scale_axis] = scale[..., skin_axis]
 
-        s1 = ((v_shaped[:, 3027] - v_shaped[:, 3495]) / (v0[:, 3027] - v0[:, 3495]))[:, 2]
-        s2 = ((v_shaped[:, 3027] - v_shaped[:, 3506]) / (v0[:, 3027] - v0[:, 3506]))[:, 2]
-        bone_scale[:, 12, 0] = torch.min(s1, s2)
-        bone_scale[:, 11, 0] = bone_scale[:, 12, 0]
+        s1 = (
+            (v_shaped[..., 3027, :] - v_shaped[..., 3495, :]) / (weights.v_template[3027] - weights.v_template[3495])
+        )[..., 2]
+        s2 = (
+            (v_shaped[..., 3027, :] - v_shaped[..., 3506, :]) / (weights.v_template[3027] - weights.v_template[3506])
+        )[..., 2]
+        bone_scale[..., 12, 0] = torch.min(s1, s2)
+        bone_scale[..., 11, 0] = bone_scale[..., 12, 0]
 
-        scale_matrices = torch.zeros(batch_size, num_joints, 4, 4, device=device, dtype=dtype)
-        scale_matrices[:, :, 0, 0] = bone_scale[:, :, 0]
-        scale_matrices[:, :, 1, 1] = bone_scale[:, :, 1]
-        scale_matrices[:, :, 2, 2] = bone_scale[:, :, 2]
-        scale_matrices[:, :, 3, 3] = 1
+        scale_matrices = torch.zeros(*batch_shape, num_joints, 4, 4, device=device, dtype=dtype)
+        scale_matrices[..., :, 0, 0] = bone_scale[..., :, 0]
+        scale_matrices[..., :, 1, 1] = bone_scale[..., :, 1]
+        scale_matrices[..., :, 2, 2] = bone_scale[..., :, 2]
+        scale_matrices[..., :, 3, 3] = 1
 
         aligned_transforms = _homog_matrix(bone_orientation, joints.unsqueeze(-1)) @ scale_matrices
         skel_h = torch.cat(
             [weights.skel_v_template, torch.ones(weights.skel_v_template.shape[0], 1, device=device)], -1
         )
-        blend = torch.einsum("vj,bjxy->bvxy", weights.skel_weights_rigid, aligned_transforms)
-        skel_aligned = (blend @ skel_h.unsqueeze(0).unsqueeze(-1)).squeeze(-1)
+        blend = torch.einsum("vj,...jxy->...vxy", weights.skel_weights_rigid, aligned_transforms)
+        skel_aligned = (blend @ skel_h[..., None]).squeeze(-1)
 
-        identity = torch.eye(3, device=device, dtype=dtype).expand(batch_size, num_joints, 3, 3)
+        identity = torch.eye(3, device=device, dtype=dtype).expand(*batch_shape, num_joints, 3, 3)
         inverse_bind = _homog_matrix(identity, -joints.unsqueeze(-1))
         posed_transforms = transforms @ inverse_bind
-        blend = torch.einsum("vj,bjxy->bvxy", weights.skel_weights, posed_transforms)
-        return (blend @ skel_aligned.unsqueeze(-1)).squeeze(-1)[:, :, :3]
+        blend = torch.einsum("vj,...jxy->...vxy", weights.skel_weights, posed_transforms)
+        return (blend @ skel_aligned[..., None]).squeeze(-1)[..., :, :3]
 
 
 def _homog_matrix(R: Float[Tensor, "B J 3 3"], t: Float[Tensor, "B J 3 1"]) -> Float[Tensor, "B J 4 4"]:
-    pad = R.new_tensor([0, 0, 0, 1]).expand(*R.shape[:2], 1, 4)
-    return torch.cat((torch.cat((R, t), -1), pad), 2)
+    pad = R.new_tensor([0, 0, 0, 1]).expand(*R.shape[:-2], 1, 4)
+    return torch.cat((torch.cat((R, t), -1), pad), -2)
 
 
 _SCALING_KEYPOINTS = {

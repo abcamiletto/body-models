@@ -34,6 +34,7 @@ class GarmentMeasurements(BodyModel):
 
         self.weights = common.jaxify(load_model_data(get_model_path(model_path)))
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
 
     @property
     def faces(self) -> Int[jax.Array, "F 3"]:

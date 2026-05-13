@@ -59,17 +59,17 @@ def apply_pose_correctives(
     xp: Any,
 ) -> Float[Array, "B V 3"]:
     correctives = data.correctives
-    batch_size = pose_rot_full.shape[0]
-    x = correctives.corrective_bindpose.swapaxes(-2, -1)[None] @ pose_rot_full
+    batch_shape = pose_rot_full.shape[:-3]
+    x = correctives.corrective_bindpose.swapaxes(-2, -1) @ pose_rot_full
     x = np.asarray(x, copy=True)
-    x[:, :, 0, 0] -= 1.0
-    x[:, :, 1, 1] -= 1.0
-    feat = x[:, :, :, :2].reshape(batch_size, -1)
+    x[..., :, 0, 0] -= 1.0
+    x[..., :, 1, 1] -= 1.0
+    feat = x[..., :, :, :2].reshape(*batch_shape, -1)
 
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
 
-    return xp.asarray(z @ correctives.corrective_W2).reshape(batch_size, data.mean_full.shape[0], 3)
+    return xp.asarray(z @ correctives.corrective_W2).reshape(*batch_shape, data.mean_full.shape[0], 3)
 
 
 def linear_blend_skinning(
@@ -81,8 +81,8 @@ def linear_blend_skinning(
     R = bone_transforms[..., :3, :3]
     t = bone_transforms[..., :3, 3]
     out = xp.empty_like(bind_shape)
-    for batch_index in range(bind_shape.shape[0]):
-        R_blend = xp.asarray(skin_weights @ R[batch_index].reshape(R.shape[1], 9)).reshape(-1, 3, 3)
+    for batch_index in np.ndindex(bind_shape.shape[:-2]):
+        R_blend = xp.asarray(skin_weights @ R[batch_index].reshape(R.shape[-3], 9)).reshape(-1, 3, 3)
         t_blend = xp.asarray(skin_weights @ t[batch_index])
         out[batch_index] = xp.einsum("vik,vk->vi", R_blend, bind_shape[batch_index]) + t_blend
     return out

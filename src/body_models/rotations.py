@@ -11,8 +11,3 @@ VALID_ROTATION_TYPES: tuple[RotationType, ...] = (
     "matrix",
     "rotmat",
 )
-
-
-def is_rotmat_type(rotation_type: RotationType) -> bool:
-    """Return True for 3x3 rotation-matrix representations."""
-    return rotation_type in ("matrix", "rotmat")

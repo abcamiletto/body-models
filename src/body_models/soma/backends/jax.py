@@ -37,17 +37,17 @@ def forward_vertices(*args, **kwargs):
 
 def apply_pose_correctives(data, pose_rot_full, *, xp):
     correctives = data.correctives
-    batch_size = pose_rot_full.shape[0]
-    x = correctives.corrective_bindpose.swapaxes(-2, -1)[None] @ pose_rot_full
-    x = x.at[:, :, 0, 0].add(-1.0)
-    x = x.at[:, :, 1, 1].add(-1.0)
-    feat = x[:, :, :, :2].reshape(batch_size, -1)
+    batch_shape = pose_rot_full.shape[:-3]
+    x = correctives.corrective_bindpose.swapaxes(-2, -1) @ pose_rot_full
+    x = x.at[..., :, 0, 0].add(-1.0)
+    x = x.at[..., :, 1, 1].add(-1.0)
+    feat = x[..., :, :, :2].reshape(*batch_shape, -1)
 
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
 
-    contrib = z[:, correctives.corrective_W2_rows] * correctives.corrective_W2_values[None]
-    out_shape = batch_size, data.mean_full.shape[0] * 3
+    contrib = z[..., correctives.corrective_W2_rows] * correctives.corrective_W2_values
+    out_shape = (*batch_shape, data.mean_full.shape[0] * 3)
     out = xp.zeros(out_shape, dtype=z.dtype)
-    out = out.at[:, correctives.corrective_W2_cols].add(contrib)
-    return out.reshape(batch_size, data.mean_full.shape[0], 3)
+    out = out.at[..., correctives.corrective_W2_cols].add(contrib)
+    return out.reshape(*batch_shape, data.mean_full.shape[0], 3)

@@ -48,6 +48,7 @@ class SMPLH(BodyModel):
 
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path, gender)

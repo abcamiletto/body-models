@@ -5,7 +5,7 @@ from jaxtyping import Float
 from torch import Tensor
 
 from body_models import common
-from body_models.rotations import RotationType, is_rotmat_type
+from body_models.rotations import RotationType
 from body_models.smpl.backends import core as smpl_core
 from body_models.smpl.backends import warp as smpl_warp
 from body_models.smplx.backends import core
@@ -60,7 +60,8 @@ def forward_vertices(
         joint_indices = joint_indices[selected_vertices]
         joint_weights = joint_weights[selected_vertices]
     if expression is None:
-        pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+        num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+        pose_ndim = num_rot_dims + 1
         batch_shape = body_pose.shape[:-pose_ndim]
         expression = torch.zeros((*batch_shape, 10), dtype=shape.dtype, device=shape.device)
 

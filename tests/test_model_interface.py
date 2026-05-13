@@ -9,6 +9,7 @@ import pytest
 from nanomanifold import SO3
 
 import model_assets
+from body_models import common
 from body_models.constants import Joint
 
 pytestmark = pytest.mark.fast
@@ -31,6 +32,11 @@ MODELS = [
 BACKENDS = ["torch", "numpy", "jax"]
 BODY_POSE_MODELS = [name for name in MODELS if name not in {"mano", "flame", "brainco"}]
 NON_BODY_POSE_MODELS = ["mano", "flame", "brainco"]
+LEADING_DIM_BATCH_SHAPES = [
+    (),
+    (2,),
+    (2, 1, 1, 3),
+]
 
 
 def _build_model(model_name: str, backend: str) -> Any:
@@ -60,6 +66,13 @@ def _local_skeleton(model: Any, forward_kwargs: dict[str, Any]) -> np.ndarray:
         if parent_index >= 0:
             local_skeleton[joint_index] = np.linalg.solve(full_skeleton[parent_index], full_skeleton[joint_index])
     return local_skeleton
+
+
+def _reshape_batch(key: str, value: Any, batch_shape: tuple[int, ...], flat_batch: int) -> Any:
+    if flat_batch > 1 and value.shape[0] == 1 and key in {"shape", "identity", "scale_params"}:
+        xp = common.get_namespace(value)
+        value = xp.broadcast_to(value, (flat_batch, *value.shape[1:]))
+    return value.reshape((*batch_shape, *value.shape[1:]))
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -159,6 +172,40 @@ def test_forward_skeleton_joint_indices_matches_full_output(model_name: str, bac
     assert subset_np.shape[-3] == len(joint_indices)
     np.testing.assert_allclose(subset_np[..., :3, :3], expected_np[..., :3, :3], atol=1e-6, rtol=1e-6)
     np.testing.assert_allclose(subset_np[..., :3, 3], expected_np[..., :3, 3], atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("model_name", MODELS)
+def test_forward_accepts_arbitrary_leading_dimensions(
+    model_name: str,
+    backend: str,
+) -> None:
+    model = _build_model(model_name, backend)
+    for batch_shape in LEADING_DIM_BATCH_SHAPES:
+        flat_batch = int(np.prod(batch_shape, dtype=np.int64)) if batch_shape else 1
+
+        flat_params = model.get_rest_pose(batch_size=flat_batch)
+        shaped_params = {key: _reshape_batch(key, value, batch_shape, flat_batch) for key, value in flat_params.items()}
+
+        flat_vertices = model.forward_vertices(**flat_params)
+        flat_skeleton = model.forward_skeleton(**flat_params)
+        shaped_vertices = model.forward_vertices(**shaped_params)
+        shaped_skeleton = model.forward_skeleton(**shaped_params)
+
+        assert shaped_vertices.shape == (*batch_shape, model.num_vertices, 3)
+        assert shaped_skeleton.shape == (*batch_shape, model.num_joints, 4, 4)
+        np.testing.assert_allclose(
+            np.asarray(shaped_vertices).reshape(flat_batch, model.num_vertices, 3),
+            np.asarray(flat_vertices),
+            atol=1e-6,
+            rtol=1e-6,
+        )
+        np.testing.assert_allclose(
+            np.asarray(shaped_skeleton).reshape(flat_batch, model.num_joints, 4, 4),
+            np.asarray(flat_skeleton),
+            atol=1e-6,
+            rtol=1e-6,
+        )
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

@@ -47,15 +47,6 @@ def forward_vertices(
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
-    assert gender.ndim == 1
-    assert age.ndim == 1
-    assert muscle.ndim == 1
-    assert weight.ndim == 1
-    assert height.ndim == 1
-    assert proportions.ndim == 1
-    assert pose.ndim in (3, 4)
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
-
     if xp is None:
         xp = get_namespace(gender)
 
@@ -148,26 +139,27 @@ def forward_unskinned_vertices(
         pose_T=pose_T,
     )
 
-    rest_verts = template_vertices + xp.einsum("bs,svd->bvd", coeffs, blendshapes)
+    rest_verts = template_vertices + xp.einsum("...s,svd->...vd", coeffs, blendshapes)
     return rest_verts, bone_transforms
 
 
 def linear_blend_skinning(
     xp,
-    rest_verts: Float[Array, "B V 3"],
-    bone_transforms: Float[Array, "B J 4 4"],
+    rest_verts: Float[Array, "*batch V 3"],
+    bone_transforms: Float[Array, "*batch J 4 4"],
     lbs_weights: Float[Array, "V J"],
-) -> Float[Array, "B V 3"]:
-    R = bone_transforms[..., :3, :3]  # [B, J, 3, 3]
-    t = bone_transforms[..., :3, 3]  # [B, J, 3]
-    W_R = xp.einsum("vj,bjkl->bvkl", lbs_weights, R)  # [B, V, 3, 3]
-    W_t = xp.einsum("vj,bjk->bvk", lbs_weights, t)  # [B, V, 3]
-    return xp.squeeze(W_R @ rest_verts[..., None], axis=-1) + W_t
+) -> Float[Array, "*batch V 3"]:
+    R = bone_transforms[..., :3, :3]
+    t = bone_transforms[..., :3, 3]
+    W_R = xp.einsum("vj,...jkl->...vkl", lbs_weights, R)
+    W_t = xp.einsum("vj,...jk->...vk", lbs_weights, t)
+    rotated = xp.squeeze(W_R @ rest_verts[..., None], axis=-1)
+    return rotated + W_t
 
 
 def apply_global_transform(
     xp,
-    vertices: Float[Array, "B V 3"],
+    vertices: Float[Array, "*batch V 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     rotation_type: RotationType = "axis_angle",
@@ -178,7 +170,7 @@ def apply_global_transform(
         vertices = (R_global @ vertices.mT).mT
     if global_translation is not None:
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
-        vertices = vertices + global_translation[:, None]
+        vertices = vertices + global_translation[..., None, :]
     return vertices
 
 
@@ -201,14 +193,14 @@ def identity_shape(
         phenotype_mask=phenotype_mask,
         anchors=anchors,
         extrapolate_phenotypes=extrapolate_phenotypes,
-        gender=identity[:, 0],
-        age=identity[:, 1],
-        muscle=identity[:, 2],
-        weight=identity[:, 3],
-        height=identity[:, 4],
-        proportions=identity[:, 5],
+        gender=identity[..., 0],
+        age=identity[..., 1],
+        muscle=identity[..., 2],
+        weight=identity[..., 3],
+        height=identity[..., 4],
+        proportions=identity[..., 5],
     )
-    return template_vertices + xp.einsum("bs,svd->bvd", coeffs, blendshapes)
+    return template_vertices + xp.einsum("...s,svd->...vd", coeffs, blendshapes)
 
 
 def forward_skeleton(
@@ -240,15 +232,6 @@ def forward_skeleton(
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4]."""
-    assert gender.ndim == 1
-    assert age.ndim == 1
-    assert muscle.ndim == 1
-    assert weight.ndim == 1
-    assert height.ndim == 1
-    assert proportions.ndim == 1
-    assert pose.ndim in (3, 4)
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
-
     if xp is None:
         xp = get_namespace(gender)
 
@@ -305,18 +288,16 @@ def forward_skeleton(
     # Global transform
     if global_rotation is not None or global_translation is not None:
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
-        B = bone_poses.shape[0]
-        idx_R = (slice(None), slice(None, 3), slice(None, 3))
-        idx_t = (slice(None), slice(None, 3), 3)
-        G = common.eye_as(transforms, batch_dims=(B,), xp=xp)
+        batch_shape = transforms.shape[:-3]
+        G = common.eye_as(transforms, batch_dims=batch_shape, xp=xp)
         if global_rotation is not None:
             global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
             R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
-            G = common.set(G, idx_R, R_global, copy=False, xp=xp)
+            G = common.set(G, (..., slice(None, 3), slice(None, 3)), R_global, copy=False, xp=xp)
         if global_translation is not None:
             global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
-            G = common.set(G, idx_t, global_translation, copy=False, xp=xp)
-        transforms = G[:, None] @ transforms
+            G = common.set(G, (..., slice(None, 3), 3), global_translation, copy=False, xp=xp)
+        transforms = G[..., None, :, :] @ transforms
     return transforms
 
 
@@ -333,13 +314,13 @@ def _forward_core(
     y_axis: Float[Array, "3"],
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
-    gender: Float[Array, "B"],
-    age: Float[Array, "B"],
-    muscle: Float[Array, "B"],
-    weight: Float[Array, "B"],
-    height: Float[Array, "B"],
-    proportions: Float[Array, "B"],
-    pose_T: Float[Array, "B J 4 4"],
+    gender: Float[Array, "*batch"],
+    age: Float[Array, "*batch"],
+    muscle: Float[Array, "*batch"],
+    weight: Float[Array, "*batch"],
+    height: Float[Array, "*batch"],
+    proportions: Float[Array, "*batch"],
+    pose_T: Float[Array, "*batch J 4 4"],
     joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B S"], Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
     """Core forward: returns (blendshape_coeffs, bone_poses, bone_transforms)."""
@@ -358,21 +339,20 @@ def _forward_core(
     )
 
     # Rest bone poses from blendshapes
-    heads = template_bone_heads + xp.einsum("bs,sjd->bjd", coeffs, bone_heads_blendshapes)
-    tails = template_bone_tails + xp.einsum("bs,sjd->bjd", coeffs, bone_tails_blendshapes)
+    heads = template_bone_heads + xp.einsum("...s,sjd->...jd", coeffs, bone_heads_blendshapes)
+    tails = template_bone_tails + xp.einsum("...s,sjd->...jd", coeffs, bone_tails_blendshapes)
     rest_poses = _bone_poses_from_heads_tails(xp, heads, tails, bone_rolls_rotmat, y_axis, degenerate_rotation)
 
     # Root parameterization
-    root_rest = rest_poses[:, 0]
+    root_rest = rest_poses[..., 0, :, :]
     base_T = _invert_transform(xp, root_rest)
 
-    idx_R = (slice(None), slice(None, 3), slice(None, 3))
     root_rot = xp.zeros_like(root_rest)
-    root_rot = common.set(root_rot, idx_R, root_rest[:, :3, :3], copy=False, xp=xp)
-    root_rot = common.set(root_rot, (slice(None), 3, 3), xp.asarray(1.0, dtype=root_rot.dtype), copy=False, xp=xp)
-    new_root = pose_T[:, 0] @ root_rot
+    root_rot = common.set(root_rot, (..., slice(None, 3), slice(None, 3)), root_rest[..., :3, :3], copy=False, xp=xp)
+    root_rot = common.set(root_rot, (..., 3, 3), xp.asarray(1.0, dtype=root_rot.dtype), copy=False, xp=xp)
+    new_root = pose_T[..., 0, :, :] @ root_rot
     # copy=True handles clone/copy for NumPy/PyTorch, creates new array for JAX
-    delta_T = common.set(pose_T, (slice(None), 0), new_root, copy=True, xp=xp)
+    delta_T = common.set(pose_T, (..., 0, slice(None), slice(None)), new_root, copy=True, xp=xp)
 
     # Forward kinematics
     bone_poses, bone_transforms = _forward_kinematics(
@@ -386,12 +366,12 @@ def _phenotype_to_coeffs(
     phenotype_mask: Float[Array, "S P"],
     anchors: dict[str, Float[Array, "A"]],
     extrapolate_phenotypes: bool,
-    gender: Float[Array, "B"],
-    age: Float[Array, "B"],
-    muscle: Float[Array, "B"],
-    weight: Float[Array, "B"],
-    height: Float[Array, "B"],
-    proportions: Float[Array, "B"],
+    gender: Float[Array, "*batch"],
+    age: Float[Array, "*batch"],
+    muscle: Float[Array, "*batch"],
+    weight: Float[Array, "*batch"],
+    height: Float[Array, "*batch"],
+    proportions: Float[Array, "*batch"],
     cupsize: float = 0.5,
     firmness: float = 0.5,
     african: float = 0.5,
@@ -421,7 +401,7 @@ def _phenotype_to_coeffs(
         n_anchors = anchor_arr.shape[0]
 
         # searchsorted equivalent
-        idx = xp.sum(xp.asarray(val[:, None] >= anchor_arr[None, :], dtype=xp.int32), axis=1)
+        idx = xp.sum(xp.asarray(val[..., None] >= anchor_arr, dtype=xp.int32), axis=-1)
         idx = xp.clip(idx, 1, n_anchors - 1)
 
         # Interpolation alpha
@@ -434,42 +414,40 @@ def _phenotype_to_coeffs(
             alpha = xp.clip(alpha, 0, 1)
 
         # Build weight matrix
-        w = common.zeros_as(phenotype_mask, shape=(val.shape[0], n_anchors), xp=xp)
-        # Scatter 1-alpha at idx-1 and alpha at idx
-        batch_indices = xp.cumsum(xp.ones_like(val, dtype=xp.int32), axis=0) - 1
-        w = common.set(w, (batch_indices, idx_m1), 1 - alpha, copy=True, xp=xp)
-        w = common.set(w, (batch_indices, idx), alpha, copy=False, xp=xp)
+        anchor_indices = xp.arange(n_anchors)
+        w = xp.where(anchor_indices == idx_m1[..., None], 1 - alpha[..., None], 0)
+        w = w + xp.where(anchor_indices == idx[..., None], alpha[..., None], 0)
 
-        weights[name] = {k: w[:, i] for i, k in enumerate(PHENOTYPE_VARIATIONS[name])}
+        weights[name] = {k: w[..., i] for i, k in enumerate(PHENOTYPE_VARIATIONS[name])}
 
     # Race weights (normalized) - convert scalar defaults to batched arrays
     african = xp.full_like(gender, african, dtype=dtype)
     asian = xp.full_like(gender, asian, dtype=dtype)
     caucasian = xp.full_like(gender, caucasian, dtype=dtype)
-    race = xp.stack([african, asian, caucasian], axis=1)
-    race_sum = xp.sum(race, axis=1, keepdims=True)
+    race = xp.stack([african, asian, caucasian], axis=-1)
+    race_sum = xp.sum(race, axis=-1, keepdims=True)
     race_sum = xp.where(race_sum == 0, xp.asarray(1.0, dtype=dtype), race_sum)
     race = race / race_sum
 
     # Stack all phenotype weights
     all_weights = {k: v for d in weights.values() for k, v in d.items()}
-    all_weights.update(african=race[:, 0], asian=race[:, 1], caucasian=race[:, 2])
+    all_weights.update(african=race[..., 0], asian=race[..., 1], caucasian=race[..., 2])
 
     phen_list = []
     for vs in PHENOTYPE_VARIATIONS.values():
         for k in vs:
             phen_list.append(all_weights[k])
-    phens = xp.stack(phen_list, axis=1)
+    phens = xp.stack(phen_list, axis=-1)
 
     # Compute blendshape coefficients via masked product
-    masked = phens[:, None, :] * phenotype_mask[None, :, :]
-    return xp.prod(masked + (1 - phenotype_mask[None, :, :]), axis=-1)
+    masked = phens[..., None, :] * phenotype_mask
+    return xp.prod(masked + (1 - phenotype_mask), axis=-1)
 
 
 def _bone_poses_from_heads_tails(
     xp,
-    heads: Float[Array, "B J 3"],
-    tails: Float[Array, "B J 3"],
+    heads: Float[Array, "*batch J 3"],
+    tails: Float[Array, "*batch J 3"],
     rolls: Float[Array, "J 3 3"],
     y_axis: Float[Array, "3"],
     degen_rot: Float[Array, "3 3"],
@@ -492,11 +470,12 @@ def _bone_poses_from_heads_tails(
     R = xp.where(valid, R, degen_expanded)
     R = R @ rolls
 
-    B, J = R.shape[:2]
+    batch_shape = R.shape[:-3]
+    J = R.shape[-3]
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
-    H = common.zeros_as(R, shape=(B, J, 4, 4), xp=xp)
+    H = common.zeros_as(R, shape=(*batch_shape, J, 4, 4), xp=xp)
     H = common.set(H, idx_R, R, xp=xp)
     H = common.set(H, idx_t, heads, xp=xp)
     H = common.set(H, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
@@ -512,7 +491,8 @@ def _invert_transform(xp, T: Float[Array, "*batch 4 4"]) -> Float[Array, "*batch
     idx_t = (..., slice(None, 3), 3)
     inv = xp.zeros_like(T)
     inv = common.set(inv, idx_R, R_t, xp=xp)
-    inv = common.set(inv, idx_t, -xp.squeeze(R_t @ t[..., None], axis=-1), xp=xp)
+    t_inv = -xp.squeeze(R_t @ t[..., None], axis=-1)
+    inv = common.set(inv, idx_t, t_inv, xp=xp)
     inv = common.set(inv, (..., 3, 3), xp.asarray(1.0, dtype=T.dtype), xp=xp)
     return inv
 
@@ -520,19 +500,19 @@ def _invert_transform(xp, T: Float[Array, "*batch 4 4"]) -> Float[Array, "*batch
 def _forward_kinematics(
     xp,
     fronts: list[Front],
-    rest_poses: Float[Array, "B J 4 4"],
-    delta_T: Float[Array, "B J 4 4"],
-    base_T: Float[Array, "B 4 4"],
+    rest_poses: Float[Array, "*batch J 4 4"],
+    delta_T: Float[Array, "*batch J 4 4"],
+    base_T: Float[Array, "*batch 4 4"],
     joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
     """Parallel forward kinematics (autograd-compatible)."""
-    B, J = rest_poses.shape[:2]
+    J = rest_poses.shape[-3]
 
     T = rest_poses @ delta_T
     rest_inv = _invert_transform(xp, rest_poses)
 
-    poses: list[Float[Array, "B 4 4"] | None] = [None] * J
-    transforms: list[Float[Array, "B 4 4"] | None] = [None] * J
+    poses: list[Float[Array, "*batch 4 4"] | None] = [None] * J
+    transforms: list[Float[Array, "*batch 4 4"] | None] = [None] * J
 
     for joint_ids, parent_ids in fronts:
         roots = [(j, p) for j, p in zip(joint_ids, parent_ids) if p == -1]
@@ -540,28 +520,29 @@ def _forward_kinematics(
 
         if roots:
             root_ids = [j for j, _ in roots]
-            root_poses = base_T[:, None] @ T[:, root_ids]
-            root_transforms = root_poses @ rest_inv[:, root_ids]
+            root_poses = base_T[..., None, :, :] @ T[..., root_ids, :, :]
+            root_transforms = root_poses @ rest_inv[..., root_ids, :, :]
             for idx, joint_id in enumerate(root_ids):
-                poses[joint_id] = root_poses[:, idx]
-                transforms[joint_id] = root_transforms[:, idx]
+                poses[joint_id] = root_poses[..., idx, :, :]
+                transforms[joint_id] = root_transforms[..., idx, :, :]
 
         if children_list:
             child_ids = [j for j, _ in children_list]
             parent_ids_list = [p for _, p in children_list]
-            parent_transforms = xp.stack([transforms[p] for p in parent_ids_list], axis=1)
-            child_poses = parent_transforms @ T[:, child_ids]
-            child_transforms = xp.sum(child_poses[..., :, None] * rest_inv[:, child_ids][..., None, :, :], axis=-2)
+            parent_transforms = xp.stack([transforms[p] for p in parent_ids_list], axis=-3)
+            child_poses = parent_transforms @ T[..., child_ids, :, :]
+            child_rest_inv = rest_inv[..., child_ids, :, :][..., None, :, :]
+            child_transforms = xp.sum(child_poses[..., :, None] * child_rest_inv, axis=-2)
             for idx, joint_id in enumerate(child_ids):
-                poses[joint_id] = child_poses[:, idx]
-                transforms[joint_id] = child_transforms[:, idx]
+                poses[joint_id] = child_poses[..., idx, :, :]
+                transforms[joint_id] = child_transforms[..., idx, :, :]
 
     if joint_indices is None:
-        poses_tensor = xp.stack(poses, axis=1)
-        transforms_tensor = xp.stack(transforms, axis=1)
+        poses_tensor = xp.stack(poses, axis=-3)
+        transforms_tensor = xp.stack(transforms, axis=-3)
     else:
-        poses_tensor = xp.stack([poses[j] for j in joint_indices], axis=1)
-        transforms_tensor = xp.stack([transforms[j] for j in joint_indices], axis=1)
+        poses_tensor = xp.stack([poses[j] for j in joint_indices], axis=-3)
+        transforms_tensor = xp.stack([transforms[j] for j in joint_indices], axis=-3)
     return poses_tensor, transforms_tensor
 
 
@@ -572,10 +553,11 @@ def _pose_to_transform(
 ) -> Float[Array, "B J 4 4"]:
     """Convert per-joint rotations to 4x4 transforms."""
     R = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    B, J = R.shape[:2]
+    batch_shape = R.shape[:-3]
+    J = R.shape[-3]
     dtype = R.dtype
     idx_R = (..., slice(None, 3), slice(None, 3))
-    T = common.zeros_as(R, shape=(B, J, 4, 4), xp=xp)
+    T = common.zeros_as(R, shape=(*batch_shape, J, 4, 4), xp=xp)
     T = common.set(T, idx_R, R, xp=xp)
     T = common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return T
