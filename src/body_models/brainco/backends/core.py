@@ -90,7 +90,8 @@ def forward_skeleton(
         parent_rot = rot_world[parent]
         parent_pos = pos_world[parent]
         rot_world[joint] = parent_rot @ local_rot[..., joint, :, :]
-        pos_world[joint] = parent_pos + xp.squeeze(parent_rot @ local_t[joint][..., None], axis=-1)
+        local_pos = xp.squeeze(parent_rot @ local_t[joint][..., None], axis=-1)
+        pos_world[joint] = parent_pos + local_pos
 
     rot = xp.stack(rot_world, axis=-3)
     trans = xp.stack(pos_world, axis=-2)

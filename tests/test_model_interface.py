@@ -69,9 +69,7 @@ def _local_skeleton(model: Any, forward_kwargs: dict[str, Any]) -> np.ndarray:
 
 
 def _reshape_batch(key: str, value: Any, batch_shape: tuple[int, ...], flat_batch: int) -> Any:
-    if flat_batch > 1 and value.shape[0] == 1:
-        if key not in {"shape", "expression", "identity", "scale_params"}:
-            raise AssertionError(f"{key} should not be broadcast by the shared leading-dim test")
+    if flat_batch > 1 and value.shape[0] == 1 and key in {"shape", "identity", "scale_params"}:
         xp = common.get_namespace(value)
         value = xp.broadcast_to(value, (flat_batch, *value.shape[1:]))
     return value.reshape((*batch_shape, *value.shape[1:]))

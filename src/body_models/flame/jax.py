@@ -35,6 +35,7 @@ class FLAME(BodyModel):
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
 
         resolved_path = get_model_path(model_path)
         weights = load_model_data(resolved_path, simplify=simplify)
@@ -87,22 +88,17 @@ class FLAME(BodyModel):
     def forward_vertices(
         self,
         shape: Float[jax.Array, "B|1 S"],
-        expression: Float[jax.Array, "B E"] | None = None,
+        expression: Float[jax.Array, "B E"],
         pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"] | None = None,
         head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
-        batch_size = shape.shape[0] if shape.ndim > 1 and shape.shape[0] > 1 else 1
-        if pose is not None:
-            batch_size = pose.shape[0]
-        if expression is None:
-            expression = jnp.zeros((batch_size, 100), dtype=jnp.float32)
         if pose is None:
             pose = SO3.identity_as(
                 expression,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             )
@@ -121,22 +117,17 @@ class FLAME(BodyModel):
     def forward_skeleton(
         self,
         shape: Float[jax.Array, "B|1 S"],
-        expression: Float[jax.Array, "B E"] | None = None,
+        expression: Float[jax.Array, "B E"],
         pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"] | None = None,
         head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B 5 4 4"]:
-        batch_size = shape.shape[0] if shape.ndim > 1 and shape.shape[0] > 1 else 1
-        if pose is not None:
-            batch_size = pose.shape[0]
-        if expression is None:
-            expression = jnp.zeros((batch_size, 100), dtype=jnp.float32)
         if pose is None:
             pose = SO3.identity_as(
                 expression,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             )

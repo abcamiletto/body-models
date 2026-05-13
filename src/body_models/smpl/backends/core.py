@@ -8,7 +8,7 @@ from body_models import common
 from body_models.common import get_namespace
 from nanomanifold import SO3
 
-from body_models.rotations import RotationType, is_rotmat_type
+from body_models.rotations import RotationType
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -41,7 +41,8 @@ def forward_vertices(
 
     if xp is None:
         xp = get_namespace(shape)
-    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
@@ -90,7 +91,8 @@ def forward_unskinned_vertices(
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B 24 3"], Float[Array, "B 24 4 4"]]:
     if xp is None:
         xp = get_namespace(shape)
-    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
     if vertex_indices is not None:
@@ -161,7 +163,8 @@ def forward_skeleton(
             pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
             if pairs:
                 active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
-    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
@@ -227,7 +230,8 @@ def _forward_core(
     Float[Array, "B J 4 4"],
 ]:
     """Core forward pass."""
-    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
@@ -321,7 +325,8 @@ def linear_blend_skinning(
     W_R = xp.einsum("vj,...jkl->...vkl", lbs_weights, R_world)
     joint_offsets = t_world - xp.squeeze(R_world @ joints[..., None], axis=-1)
     W_t = xp.einsum("vj,...jk->...vk", lbs_weights, joint_offsets)
-    return xp.squeeze(W_R @ vertices[..., None], axis=-1) + W_t
+    rotated = xp.squeeze(W_R @ vertices[..., None], axis=-1)
+    return rotated + W_t
 
 
 def apply_global_transform(

@@ -9,7 +9,7 @@ from body_models.common import get_namespace
 from body_models.smpl.backends import core as smpl_core
 from nanomanifold import SO3
 
-from body_models.rotations import RotationType, is_rotmat_type
+from body_models.rotations import RotationType
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -50,7 +50,8 @@ def forward_vertices(
         shapedirs = shapedirs[vertex_indices]
         lbs_weights = lbs_weights[vertex_indices]
         posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, vertex_indices].reshape(posedirs.shape[0], -1)
-    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
 
@@ -126,7 +127,8 @@ def forward_skeleton(
             pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
             if pairs:
                 active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
-    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
 
@@ -194,7 +196,8 @@ def _forward_core(
     Float[Array, "*batch J 4 4"],
 ]:
     """Core forward pass."""
-    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    pose_ndim = num_rot_dims + 1
     batch_shape = body_pose.shape[:-pose_ndim]
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 

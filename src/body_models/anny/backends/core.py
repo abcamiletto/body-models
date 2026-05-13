@@ -153,7 +153,8 @@ def linear_blend_skinning(
     t = bone_transforms[..., :3, 3]
     W_R = xp.einsum("vj,...jkl->...vkl", lbs_weights, R)
     W_t = xp.einsum("vj,...jk->...vk", lbs_weights, t)
-    return xp.squeeze(W_R @ rest_verts[..., None], axis=-1) + W_t
+    rotated = xp.squeeze(W_R @ rest_verts[..., None], axis=-1)
+    return rotated + W_t
 
 
 def apply_global_transform(
@@ -490,7 +491,8 @@ def _invert_transform(xp, T: Float[Array, "*batch 4 4"]) -> Float[Array, "*batch
     idx_t = (..., slice(None, 3), 3)
     inv = xp.zeros_like(T)
     inv = common.set(inv, idx_R, R_t, xp=xp)
-    inv = common.set(inv, idx_t, -xp.squeeze(R_t @ t[..., None], axis=-1), xp=xp)
+    t_inv = -xp.squeeze(R_t @ t[..., None], axis=-1)
+    inv = common.set(inv, idx_t, t_inv, xp=xp)
     inv = common.set(inv, (..., 3, 3), xp.asarray(1.0, dtype=T.dtype), xp=xp)
     return inv
 

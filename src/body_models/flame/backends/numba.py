@@ -58,9 +58,10 @@ def forward_vertices(
         rotation_type=rotation_type,
     )
 
-    eye3 = common.eye_as(pose_matrices, batch_dims=(pose.shape[0], 1), xp=np)
-    pose_delta = (pose_matrices[:, 1:] - eye3).reshape(pose.shape[0], -1)
-    v_shaped = v_t + (pose_delta @ posedirs).reshape(pose.shape[0], -1, 3)
+    batch_shape = pose_matrices.shape[:-3]
+    eye3 = common.eye_as(pose_matrices, batch_dims=(*batch_shape, 1), xp=np)
+    pose_delta = (pose_matrices[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
+    v_shaped = v_t + (pose_delta @ posedirs).reshape(*batch_shape, -1, 3)
     return smpl_numba.numba_skin(
         v_shaped,
         j_t,

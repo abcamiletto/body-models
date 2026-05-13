@@ -1,6 +1,5 @@
 """NumPy backend for SOMA model."""
 
-import math
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
@@ -10,7 +9,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, RotationType, is_rotmat_type
+from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
     compute_sparse_skin_weights,
@@ -69,6 +68,7 @@ class SOMA(BodyModel):
 
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.match_warp = match_warp
         self._kernel = {"numpy": numpy_backend, "scipy": scipy_backend}[kernel]
         resolved_path = get_model_path(model_path)
@@ -237,19 +237,16 @@ class SOMA(BodyModel):
         scale_params: Float[np.ndarray, "B|1 K"] | None,
         pose: Float[np.ndarray, "B ..."],
     ) -> tuple[Float[np.ndarray, "B I"], Float[np.ndarray, "B K"] | None]:
-        pose_ndim = 3 if is_rotmat_type(self.rotation_type) else 2
+        pose_ndim = self.num_rot_dims + 1
         batch_shape = tuple(pose.shape[:-pose_ndim])
-        batch_size = math.prod(batch_shape) if batch_shape else 1
         if identity is None:
             identity = np.full(
-                (batch_size, self.identity_dim),
+                (*batch_shape, self.identity_dim),
                 self._default_identity_value,
                 dtype=pose.dtype,
             )
-        else:
-            identity = identity.reshape(-1, identity.shape[-1])
-        if identity.shape[0] == 1 and batch_size > 1:
-            identity = np.broadcast_to(identity, (batch_size, identity.shape[-1]))
+        elif identity.shape[:-1] == (1,) and batch_shape:
+            identity = np.broadcast_to(identity, (*batch_shape, identity.shape[-1]))
 
         if self.num_scale_params is None:
             if scale_params is not None:
@@ -257,11 +254,9 @@ class SOMA(BodyModel):
             return identity, None
 
         if scale_params is None:
-            scale_params = np.zeros((batch_size, self.num_scale_params), dtype=identity.dtype)
-        else:
-            scale_params = scale_params.reshape(-1, scale_params.shape[-1])
-        if scale_params.shape[0] == 1 and batch_size > 1:
-            scale_params = np.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+            scale_params = np.zeros((*batch_shape, self.num_scale_params), dtype=identity.dtype)
+        elif scale_params.shape[:-1] == (1,) and batch_shape:
+            scale_params = np.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
         return identity, scale_params
 
     def _prepare_identity_from_inputs(

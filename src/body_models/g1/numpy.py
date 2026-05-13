@@ -32,6 +32,7 @@ class G1(BodyModel):
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.convention = convention
         self.weights = load_model_data(model_path, convention=convention)
 

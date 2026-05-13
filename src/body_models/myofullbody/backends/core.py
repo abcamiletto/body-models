@@ -114,7 +114,8 @@ def forward_skeleton(
         local_t = xp.broadcast_to(rest_t[j], (*batch_shape, 3))
         start = body_qpos_starts[j]
         for k in range(start, start + body_qpos_counts[j]):
-            local_t = local_t + xp.squeeze(local_rot @ t_q[..., k, :, None], axis=-1)
+            qpos_t = xp.squeeze(local_rot @ t_q[..., k, :, None], axis=-1)
+            local_t = local_t + qpos_t
             local_rot = local_rot @ R_q[..., k, :, :]
 
         if parents[j] < 0:
@@ -124,7 +125,8 @@ def forward_skeleton(
             p_rot = rot_world[parents[j]]
             p_pos = pos_world[parents[j]]
             rot_world[j] = p_rot @ local_rot
-            pos_world[j] = p_pos + xp.squeeze(p_rot @ local_t[..., None], axis=-1)
+            local_pos = xp.squeeze(p_rot @ local_t[..., None], axis=-1)
+            pos_world[j] = p_pos + local_pos
 
     rot = xp.stack(rot_world, axis=-3)
     trans = xp.stack(pos_world, axis=-2)
@@ -191,11 +193,10 @@ def forward_links(
     rotations = []
     translations = []
     for link_idx, joint_idx in enumerate(link_joint_indices):
-        rotations.append(joint_rot[..., joint_idx, :, :] @ geom_rot[link_idx])
-        translations.append(
-            joint_pos[..., joint_idx, :]
-            + xp.squeeze(joint_rot[..., joint_idx, :, :] @ geom_pos[link_idx][..., None], axis=-1)
-        )
+        link_rot = joint_rot[..., joint_idx, :, :]
+        link_pos = xp.squeeze(link_rot @ geom_pos[link_idx][..., None], axis=-1)
+        rotations.append(link_rot @ geom_rot[link_idx])
+        translations.append(joint_pos[..., joint_idx, :] + link_pos)
 
     rot = xp.stack(rotations, axis=-3)
     trans = xp.stack(translations, axis=-2)
@@ -289,8 +290,8 @@ def world_sites(
         xp = get_namespace(skeleton)
     body_T = skeleton[..., xp.asarray(site_body_indices), :, :]
     local = xp.asarray(site_positions, dtype=skeleton.dtype)
-    sites = xp.squeeze(body_T[..., :3, :3] @ local[None, :, :, None], axis=-1) + body_T[..., :3, 3]
-    return sites
+    rotated = xp.squeeze(body_T[..., :3, :3] @ local[None, :, :, None], axis=-1)
+    return rotated + body_T[..., :3, 3]
 
 
 # ----------------------------------------------------------------------------
@@ -379,21 +380,21 @@ def to_mujoco_qpos(
     """
     if xp is None:
         xp = get_namespace(body_pose)
-    B = body_pose.shape[0]
+    batch_shape = body_pose.shape[:-1]
     dtype = body_pose.dtype
     if global_translation is None:
-        global_translation = common.zeros_as(body_pose, shape=(B, 3), xp=xp)
+        global_translation = common.zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)
     if global_rotation is None:
-        rot_mat = common.eye_as(body_pose, batch_dims=(B,), xp=xp)
+        rot_mat = common.eye_as(body_pose, batch_dims=batch_shape, xp=xp)
     else:
         rot_mat = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
 
     coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
     kimodo_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)
     root_t = xp.squeeze(kimodo_to_mujoco @ global_translation[..., None], axis=-1)
-    root_rot_mujoco = kimodo_to_mujoco[None] @ rot_mat @ coord[None]
+    root_rot_mujoco = kimodo_to_mujoco @ rot_mat @ coord
     root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
-    return xp.concat([root_t, root_quat, body_pose], axis=1)
+    return xp.concat([root_t, root_quat, body_pose], axis=-1)
 
 
 def from_mujoco_qpos(
@@ -404,16 +405,16 @@ def from_mujoco_qpos(
     """Split a MuJoCo ``qpos`` into ``body_pose`` + global root parameters."""
     if xp is None:
         xp = get_namespace(qpos)
-    root_t_mj = qpos[:, :3]
-    root_q_mj = qpos[:, 3:7]
-    body_pose = qpos[:, 7:]
+    root_t_mj = qpos[..., :3]
+    root_q_mj = qpos[..., 3:7]
+    body_pose = qpos[..., 7:]
 
     coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=qpos.dtype)
     kimodo_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)
 
     global_translation = xp.squeeze(coord @ root_t_mj[..., None], axis=-1)
     R_mj = SO3.conversions.from_quat_to_rotmat(root_q_mj, convention="wxyz", xp=xp)
-    R_k = coord[None] @ R_mj @ kimodo_to_mujoco[None]
+    R_k = coord @ R_mj @ kimodo_to_mujoco
     global_rotation = SO3.conversions.from_rotmat_to_axis_angle(R_k, xp=xp)
     return {
         "body_pose": body_pose,

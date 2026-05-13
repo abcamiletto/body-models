@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import itertools
 
 import torch
 import warp as wp
@@ -67,21 +68,22 @@ def _forward_unskinned_vertices_with_warp_fk(
     vertex_indices: list[int] | None,
     rotation_type: RotationType,
 ) -> tuple[Float[Tensor, "B V 3"], Float[Tensor, "B 24 3"], Float[Tensor, "B 24 4 4"]]:
-    batch_size = body_pose.shape[0]
-    if shape.shape[0] == 1 and batch_size > 1:
-        shape = torch.broadcast_to(shape, (batch_size, shape.shape[1]))
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    batch_shape = body_pose.shape[: -(num_rot_dims + 1)]
+    if shape.shape[:-1] == (1,) and batch_shape:
+        shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     body_pose_matrices = SO3.convert(body_pose, src=rotation_type, dst="rotmat", xp=torch)
     if pelvis_rotation is None:
         pelvis_matrices = SO3.identity_as(
             body_pose_matrices,
-            batch_dims=(batch_size, 1),
+            batch_dims=(*batch_shape, 1),
             rotation_type="rotmat",
             xp=torch,
         )
     else:
-        pelvis_matrices = SO3.convert(pelvis_rotation, src=rotation_type, dst="rotmat", xp=torch)[:, None]
-    pose_matrices = torch.concat([pelvis_matrices, body_pose_matrices], dim=1)
+        pelvis_matrices = SO3.convert(pelvis_rotation, src=rotation_type, dst="rotmat", xp=torch)[..., None, :, :]
+    pose_matrices = torch.concat([pelvis_matrices, body_pose_matrices], dim=-3)
 
     j_t = weights.j_template + torch.einsum("...p,jdp->...jd", shape, weights.j_shapedirs[:, :, : shape.shape[-1]])
     v_template = weights.v_template
@@ -93,16 +95,16 @@ def _forward_unskinned_vertices_with_warp_fk(
         shapedirs = shapedirs[vertex_indices_tensor]
         posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, vertex_indices_tensor].reshape(posedirs.shape[0], -1)
 
-    v_t = v_template + torch.einsum("bi,vdi->bvd", shape, shapedirs[:, :, : shape.shape[-1]])
+    v_t = v_template + torch.einsum("...i,vdi->...vd", shape, shapedirs[:, :, : shape.shape[-1]])
     t_local = torch.empty_like(j_t)
-    t_local[:, 0] = j_t[:, 0]
-    t_local[:, 1:] = j_t[:, 1:] - j_t[:, weights.parents[1:]]
+    t_local[..., 0, :] = j_t[..., 0, :]
+    t_local[..., 1:, :] = j_t[..., 1:, :] - j_t[..., weights.parents[1:], :]
     parents = torch.as_tensor(weights.parents, device=shape.device, dtype=torch.int32)
     T_world = warp_forward_kinematics(pose_matrices, t_local, parents)
 
-    eye3 = common.eye_as(pose_matrices, batch_dims=(batch_size, 1), xp=torch)
-    pose_delta = (pose_matrices[:, 1:] - eye3).reshape(batch_size, -1)
-    v_shaped = v_t + (pose_delta @ posedirs).reshape(batch_size, -1, 3)
+    eye3 = common.eye_as(pose_matrices, batch_dims=(*batch_shape, 1), xp=torch)
+    pose_delta = (pose_matrices[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
+    v_shaped = v_t + (pose_delta @ posedirs).reshape(*batch_shape, -1, 3)
     return v_shaped, j_t, T_world
 
 
@@ -143,6 +145,16 @@ def warp_linear_blend_skinning(
     _check_warp_inputs(vertices)
     if vertices.requires_grad or transforms.requires_grad or joints.requires_grad:
         raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
+    if vertices.ndim > 3:
+        output = torch.empty_like(vertices)
+        for batch_index in itertools.product(*[range(size) for size in vertices.shape[:-2]]):
+            batch_vertices = vertices[batch_index][None]
+            batch_joints = joints[batch_index][None]
+            batch_transforms = transforms[batch_index][None]
+            output[batch_index] = warp_linear_blend_skinning(
+                batch_vertices, batch_joints, batch_transforms, joint_indices, joint_weights
+            )[0]
+        return output
 
     _init_warp()
     vertices = vertices.contiguous()
@@ -189,6 +201,14 @@ def warp_forward_kinematics(
     parents: Tensor,
 ) -> Float[Tensor, "B J 4 4"]:
     _init_warp()
+    if rotations.ndim > 4:
+        output = torch.empty((*rotations.shape[:-2], 4, 4), device=rotations.device, dtype=rotations.dtype)
+        for batch_index in itertools.product(*[range(size) for size in rotations.shape[:-3]]):
+            batch_rotations = rotations[batch_index][None]
+            batch_translations = translations[batch_index][None]
+            output[batch_index] = warp_forward_kinematics(batch_rotations, batch_translations, parents)[0]
+        return output
+
     rotations = rotations.contiguous()
     translations = translations.contiguous()
     parents = parents.to(device=rotations.device, dtype=torch.int32).contiguous()
@@ -224,6 +244,16 @@ def warp_affine_blend_skinning(
     _check_warp_inputs(vertices)
     if transforms.requires_grad:
         raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
+    if vertices.ndim > 3:
+        output = torch.empty_like(vertices)
+        for batch_index in itertools.product(*[range(size) for size in vertices.shape[:-2]]):
+            batch_vertices = vertices[batch_index][None]
+            batch_transforms = transforms[batch_index][None]
+            output[batch_index] = warp_affine_blend_skinning(
+                batch_vertices, batch_transforms, joint_indices, joint_weights
+            )[0]
+        return output
+
     _init_warp()
     vertices = vertices.contiguous()
     transforms = transforms.contiguous()

@@ -79,8 +79,7 @@ def forward_vertices(
         xp = get_namespace(shape)
     batch_shape = tuple(pose.shape[:-1])
     shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-    if expression is not None:
-        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+    assert expression is None or tuple(expression.shape[:-1]) == batch_shape
 
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
@@ -284,7 +283,8 @@ def _compose_global_trs(
                 r_results[j] = r_results[p] @ r_l[..., j, :, :]
                 s_results[j] = s_results[p] * s_l[..., j, :]
                 r_ps = r_results[p] * s_results[p][..., :, None]
-                t_results[j] = xp.squeeze(r_ps @ t_l[..., j, :, None], axis=-1) + t_results[p]
+                t_ps = xp.squeeze(r_ps @ t_l[..., j, :, None], axis=-1)
+                t_results[j] = t_ps + t_results[p]
 
     if joint_indices is None:
         t_g = xp.stack(t_results, axis=-2)

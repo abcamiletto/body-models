@@ -78,7 +78,8 @@ def forward_skeleton(
         parent_rot = rot_world[parent]
         parent_pos = pos_world[parent]
         rot_world[joint] = parent_rot @ local_rot[..., joint, :, :]
-        pos_world[joint] = parent_pos + xp.squeeze(parent_rot @ local_t[joint][..., None], axis=-1)
+        local_pos = xp.squeeze(parent_rot @ local_t[joint][..., None], axis=-1)
+        pos_world[joint] = parent_pos + local_pos
 
     rot = xp.stack(rot_world, axis=-3)
     trans = xp.stack(pos_world, axis=-2)
@@ -196,11 +197,10 @@ def forward_links(
     rotations = []
     translations = []
     for link_idx, joint_idx in enumerate(link_joint_indices):
-        rotations.append(joint_rot[..., joint_idx, :, :] @ geom_rot[link_idx])
-        translations.append(
-            joint_pos[..., joint_idx, :]
-            + xp.squeeze(joint_rot[..., joint_idx, :, :] @ geom_pos[link_idx][..., None], axis=-1)
-        )
+        link_rot = joint_rot[..., joint_idx, :, :]
+        link_pos = xp.squeeze(link_rot @ geom_pos[link_idx][..., None], axis=-1)
+        rotations.append(link_rot @ geom_rot[link_idx])
+        translations.append(joint_pos[..., joint_idx, :] + link_pos)
 
     rot = xp.stack(rotations, axis=-3)
     trans = xp.stack(translations, axis=-2)
