@@ -1,5 +1,6 @@
 """JAX backend for SOMA model."""
 
+import math
 from dataclasses import replace
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from nanomanifold import SO3
 from body_models import common
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, RotationType
+from ..rotations import VALID_ROTATION_TYPES, RotationType, is_rotmat_type
 from .io import (
     MODEL_TYPE_SPECS,
     compute_sparse_skin_weights,
@@ -229,14 +230,18 @@ class SOMA(BodyModel):
         scale_params: Float[jax.Array, "B|1 K"] | None,
         pose: Float[jax.Array, "B ..."],
     ) -> tuple[Float[jax.Array, "B I"], Float[jax.Array, "B K"] | None]:
-        batch_size = pose.shape[0]
+        pose_ndim = 3 if is_rotmat_type(self.rotation_type) else 2
+        batch_shape = tuple(pose.shape[:-pose_ndim])
+        batch_size = math.prod(batch_shape) if batch_shape else 1
         if identity is None:
             identity = jnp.full(
                 (batch_size, self.identity_dim),
                 self._default_identity_value,
                 dtype=pose.dtype,
             )
-        elif identity.shape[0] == 1 and batch_size > 1:
+        else:
+            identity = identity.reshape(-1, identity.shape[-1])
+        if identity.shape[0] == 1 and batch_size > 1:
             identity = jnp.broadcast_to(identity, (batch_size, identity.shape[-1]))
 
         if self.num_scale_params is None:
@@ -246,7 +251,9 @@ class SOMA(BodyModel):
 
         if scale_params is None:
             scale_params = jnp.zeros((batch_size, self.num_scale_params), dtype=identity.dtype)
-        elif scale_params.shape[0] == 1 and batch_size > 1:
+        else:
+            scale_params = scale_params.reshape(-1, scale_params.shape[-1])
+        if scale_params.shape[0] == 1 and batch_size > 1:
             scale_params = jnp.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
         return identity, scale_params
 

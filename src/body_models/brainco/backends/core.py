@@ -49,26 +49,26 @@ def forward_skeleton(
     axes = xp.asarray(joint_axes, dtype=pose.dtype)
     src_kwargs = {"axes": axes} if rotation_type == "hinge" else {}
     local_joint_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", src_kwargs=src_kwargs, xp=xp)
-    if local_joint_rot.ndim != 4 or local_joint_rot.shape[-2:] != (3, 3):
-        raise ValueError("BrainCo pose must convert to shape [B, Q, 3, 3]")
+    if local_joint_rot.shape[-2:] != (3, 3):
+        raise ValueError("BrainCo pose must convert to shape [..., Q, 3, 3]")
 
-    batch_size = local_joint_rot.shape[0]
+    batch_shape = tuple(local_joint_rot.shape[:-3])
     dtype = local_joint_rot.dtype
     num_joints = len(parents)
     if global_translation is None:
-        global_translation = common.zeros_as(local_joint_rot, shape=(batch_size, 3), xp=xp)
+        global_translation = common.zeros_as(local_joint_rot, shape=(*batch_shape, 3), xp=xp)
 
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
-    local_rot = common.eye_as(local_joint_rot, batch_dims=(batch_size, num_joints), xp=xp)
-    local_rot = common.set(local_rot, (slice(None), joint_indices), local_joint_rot, xp=xp)
+    local_rot = common.eye_as(local_joint_rot, batch_dims=(*batch_shape, num_joints), xp=xp)
+    local_rot = common.set(local_rot, (..., joint_indices, slice(None), slice(None)), local_joint_rot, xp=xp)
     if rotation_type == "hinge" and coupled_joint_indices:
-        driver_pose = pose[:, coupled_driver_indices, 0]
+        driver_pose = pose[..., coupled_driver_indices, 0]
         coeffs = xp.asarray(coupled_polycoef, dtype=dtype)
         coupled_pose = (
-            coeffs[None, :, 0]
-            + coeffs[None, :, 1] * driver_pose
-            + coeffs[None, :, 2] * driver_pose * driver_pose
-            + coeffs[None, :, 3] * driver_pose * driver_pose * driver_pose
+            coeffs[:, 0]
+            + coeffs[:, 1] * driver_pose
+            + coeffs[:, 2] * driver_pose * driver_pose
+            + coeffs[:, 3] * driver_pose * driver_pose * driver_pose
         )
         coupled_rot = SO3.convert(
             coupled_pose[..., None],
@@ -77,37 +77,37 @@ def forward_skeleton(
             src_kwargs={"axes": xp.asarray(coupled_joint_axes, dtype=dtype)},
             xp=xp,
         )
-        local_rot = common.set(local_rot, (slice(None), coupled_joint_indices), coupled_rot, xp=xp)
-    local_rot = rest_rot[None] @ local_rot
+        local_rot = common.set(local_rot, (..., coupled_joint_indices, slice(None), slice(None)), coupled_rot, xp=xp)
+    local_rot = xp.broadcast_to(rest_rot, (*batch_shape, num_joints, 3, 3)) @ local_rot
     local_t = xp.asarray(local_offsets, dtype=dtype)
 
     rot_world: list[Array | None] = [None] * num_joints
     pos_world: list[Array | None] = [None] * num_joints
-    rot_world[0] = local_rot[:, 0]
-    pos_world[0] = common.zeros_as(local_rot, shape=(batch_size, 3), xp=xp)
+    rot_world[0] = local_rot[..., 0, :, :]
+    pos_world[0] = common.zeros_as(local_rot, shape=(*batch_shape, 3), xp=xp)
     for joint in range(1, num_joints):
         parent = parents[joint]
         parent_rot = rot_world[parent]
         parent_pos = pos_world[parent]
-        rot_world[joint] = parent_rot @ local_rot[:, joint]
-        pos_world[joint] = parent_pos + xp.squeeze(parent_rot @ local_t[joint][None, :, None], axis=-1)
+        rot_world[joint] = parent_rot @ local_rot[..., joint, :, :]
+        pos_world[joint] = parent_pos + xp.squeeze(parent_rot @ local_t[joint][..., None], axis=-1)
 
-    rot = xp.stack(rot_world, axis=1)
-    trans = xp.stack(pos_world, axis=1)
+    rot = xp.stack(rot_world, axis=-3)
+    trans = xp.stack(pos_world, axis=-2)
     if global_rotation is not None:
         global_rotation_type = GLOBAL_ROTATION_TYPES[rotation_type]
         global_rot = SO3.convert(global_rotation, src=global_rotation_type, dst="rotmat", xp=xp)
-        rot = global_rot[:, None] @ rot
-        trans = xp.squeeze(global_rot[:, None] @ trans[..., None], axis=-1)
-    trans = trans + global_translation[:, None]
+        rot = global_rot[..., None, :, :] @ rot
+        trans = xp.squeeze(global_rot[..., None, :, :] @ trans[..., None], axis=-1)
+    trans = trans + global_translation[..., None, :]
 
     if skeleton_indices is not None:
         if any(joint < 0 or joint >= num_joints for joint in skeleton_indices):
             raise IndexError(f"skeleton_indices must be in [0, {num_joints})")
-        rot = rot[:, skeleton_indices]
-        trans = trans[:, skeleton_indices]
+        rot = rot[..., skeleton_indices, :, :]
+        trans = trans[..., skeleton_indices, :]
 
-    last_row = common.zeros_as(rot, shape=(batch_size, rot.shape[1], 1, 4), xp=xp)
+    last_row = common.zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
     last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
 
@@ -159,14 +159,14 @@ def forward_links(
     rotations = []
     translations = []
     for link_idx, joint_idx in enumerate(link_joint_indices):
-        rotations.append(joint_rot[:, joint_idx] @ geom_rot[link_idx])
-        translations.append(
-            joint_pos[:, joint_idx] + xp.squeeze(joint_rot[:, joint_idx] @ geom_pos[link_idx][None, :, None], axis=-1)
-        )
+        link_rot = joint_rot[..., joint_idx, :, :]
+        link_pos = xp.squeeze(link_rot @ geom_pos[link_idx][..., None], axis=-1)
+        rotations.append(link_rot @ geom_rot[link_idx])
+        translations.append(joint_pos[..., joint_idx, :] + link_pos)
 
-    rot = xp.stack(rotations, axis=1)
-    trans = xp.stack(translations, axis=1)
-    last_row = common.zeros_as(rot, shape=(rot.shape[0], rot.shape[1], 1, 4), xp=xp)
+    rot = xp.stack(rotations, axis=-3)
+    trans = xp.stack(translations, axis=-2)
+    last_row = common.zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
     last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
     return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
 
@@ -226,12 +226,12 @@ def forward_vertices(
         start = link_vertex_starts[link_idx]
         count = link_vertex_counts[link_idx]
         local_vertices = source_vertices[start : start + count]
-        transformed = xp.squeeze(link_rot[:, link_idx, None] @ local_vertices[None, :, :, None], axis=-1)
-        chunks.append(transformed + link_pos[:, link_idx, None])
+        transformed = xp.squeeze(link_rot[..., link_idx, None, :, :] @ local_vertices[..., None], axis=-1)
+        chunks.append(transformed + link_pos[..., link_idx, None, :])
 
-    out = xp.concat(chunks, axis=1)
+    out = xp.concat(chunks, axis=-2)
     if vertex_indices is not None:
-        out = out[:, xp.asarray(vertex_indices)]
+        out = out[..., xp.asarray(vertex_indices), :]
     return out
 
 

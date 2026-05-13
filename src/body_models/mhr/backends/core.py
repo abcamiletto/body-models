@@ -25,22 +25,22 @@ def apply_pose_correctives(
     if xp is None:
         xp = get_namespace(joint_params)
 
-    B = joint_params.shape[0]
     V = W2.shape[0] // 3
     dtype = joint_params.dtype
 
-    euler = joint_params[:, 2:, 3:6]
+    euler = joint_params[..., 2:, 3:6]
     rot = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz", xp=xp)
     feat = xp.concat([rot[..., 0], rot[..., 1]], axis=-1)
     feat = common.set(feat, (..., 0), feat[..., 0] - 1.0, copy=False, xp=xp)
     feat = common.set(feat, (..., 4), feat[..., 4] - 1.0, copy=False, xp=xp)
 
-    feat_flat = feat.reshape(B, -1)
+    batch_shape = feat.shape[:-2]
+    feat_flat = feat.reshape(*batch_shape, -1)
     h = feat_flat @ W1.T
     h = xp.maximum(h, xp.asarray(0.0, dtype=dtype))
     out = h @ W2.T
 
-    return out.reshape(B, V, 3)
+    return out.reshape(*batch_shape, V, 3)
 
 
 def forward_vertices(
@@ -69,15 +69,18 @@ def forward_vertices(
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
-    assert shape.ndim == 2 and shape.shape[1] == shape_dim
-    assert pose.ndim == 2 and pose.shape[1] == 204
-    assert expression is None or (expression.ndim == 2 and expression.shape[1] == expr_dim)
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+    assert shape.ndim >= 1 and shape.shape[-1] == shape_dim
+    assert pose.ndim >= 1 and pose.shape[-1] == 204
+    assert expression is None or (expression.ndim >= 1 and expression.shape[-1] == expr_dim)
+    assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
+    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
         xp = get_namespace(shape)
-    B = pose.shape[0]
+    batch_shape = tuple(pose.shape[:-1])
+    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+    if expression is not None:
+        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
 
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
@@ -90,14 +93,9 @@ def forward_vertices(
         )
 
     if expression is None:
-        expression = common.zeros_as(shape, shape=(B, expr_dim), xp=xp)
+        expression = common.zeros_as(shape, shape=(*batch_shape, expr_dim), xp=xp)
 
-    if shape.shape[0] == 1 and B > 1:
-        shape = xp.broadcast_to(shape, (B, shape.shape[1]))
-    if expression.shape[0] == 1 and B > 1:
-        expression = xp.broadcast_to(expression, (B, expression.shape[1]))
-
-    coeffs = xp.concat([shape, expression], axis=1)
+    coeffs = xp.concat([shape, expression], axis=-1)
 
     t_g, r_g, s_g, j_p = _forward_skeleton_core(
         xp=xp,
@@ -110,25 +108,25 @@ def forward_vertices(
         shape_dim=shape_dim,
     )
 
-    v_t = base_vertices + xp.einsum("bi,ivk->bvk", coeffs, blendshape_dirs)
+    v_t = base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)
     v_t = v_t + apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp)
 
     lin_g = r_g * s_g[..., None]
-    lin = xp.einsum("bjik,jkl->bjil", lin_g, bind_inv_linear)
-    t = xp.einsum("bjik,jk->bji", lin_g, bind_inv_translation) + t_g
+    lin = xp.einsum("...jik,jkl->...jil", lin_g, bind_inv_linear)
+    t = xp.einsum("...jik,jk->...ji", lin_g, bind_inv_translation) + t_g
 
-    lin = _gather_axis1(xp, lin, skin_indices)
-    t = _gather_axis1(xp, t, skin_indices)
+    lin = _gather_joint_matrices(lin, skin_indices)
+    t = _gather_joint_vectors(t, skin_indices)
 
-    v_transformed = xp.einsum("bvkij,bvj->bvki", lin, v_t) + t
-    verts = xp.sum(v_transformed * skin_weights[None, :, :, None], axis=2)
+    v_transformed = xp.einsum("...vkij,...vj->...vki", lin, v_t) + t
+    verts = xp.sum(v_transformed * skin_weights[:, :, None], axis=2)
     verts = verts * 0.01
 
     if global_rotation is not None:
         R = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
-        verts = xp.einsum("bij,bvj->bvi", R, verts)
+        verts = xp.einsum("...ij,...vj->...vi", R, verts)
     if global_translation is not None:
-        verts = verts + global_translation[:, None]
+        verts = verts + global_translation[..., None, :]
 
     return verts
 
@@ -148,12 +146,13 @@ def forward_skeleton(
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
-    assert pose.ndim == 2 and pose.shape[1] == 204
-    assert global_rotation is None or (global_rotation.ndim == 2 and global_rotation.shape[1] == 3)
-    assert global_translation is None or (global_translation.ndim == 2 and global_translation.shape[1] == 3)
+    assert pose.ndim >= 1 and pose.shape[-1] == 204
+    assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
+    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
         xp = get_namespace(pose)
+    batch_shape = tuple(pose.shape[:-1])
     active_fronts = kinematic_fronts
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
@@ -193,24 +192,23 @@ def forward_skeleton(
     T = _trs_to_transforms(xp, t_g * 0.01, r_g, s_g)
 
     if global_rotation is not None or global_translation is not None:
-        B = T.shape[0]
         dtype = T.dtype
-        idx_R = (slice(None), slice(None, 3), slice(None, 3))
-        idx_t = (slice(None), slice(None, 3), 3)
-        global_T = common.zeros_as(T, shape=(B, 4, 4), xp=xp)
-        global_T = common.set(global_T, (slice(None), 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
+        idx_R = (..., slice(None, 3), slice(None, 3))
+        idx_t = (..., slice(None, 3), 3)
+        global_T = common.zeros_as(T, shape=(*batch_shape, 4, 4), xp=xp)
+        global_T = common.set(global_T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
 
         if global_rotation is not None:
             R_global = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
             global_T = common.set(global_T, idx_R, R_global, xp=xp)
         else:
-            eye3 = common.eye_as(r_g, batch_dims=(B,), xp=xp)
+            eye3 = common.eye_as(r_g, batch_dims=batch_shape, xp=xp)
             global_T = common.set(global_T, idx_R, eye3, xp=xp)
 
         if global_translation is not None:
             global_T = common.set(global_T, idx_t, global_translation, xp=xp)
 
-        T = xp.einsum("bij,bnjk->bnik", global_T, T)
+        T = xp.einsum("...ij,...njk->...nik", global_T, T)
 
     return T
 
@@ -254,10 +252,10 @@ def _pose_to_joint_params(
     shape_dim: int,
 ) -> Float[Array, "B J 7"]:
     """Convert pose vector to per-joint parameters [B, J, 7]."""
-    B = pose.shape[0]
-    pad = common.zeros_as(pose, shape=(B, shape_dim), xp=xp)
-    j_p = xp.einsum("dn,bn->bd", parameter_transform, xp.concat([pose, pad], axis=-1))
-    return j_p.reshape(B, num_joints, 7)
+    batch_shape = pose.shape[:-1]
+    pad = common.zeros_as(pose, shape=(*batch_shape, shape_dim), xp=xp)
+    j_p = xp.einsum("dn,...n->...d", parameter_transform, xp.concat([pose, pad], axis=-1))
+    return j_p.reshape(*batch_shape, num_joints, 7)
 
 
 def _compose_global_trs(
@@ -278,24 +276,24 @@ def _compose_global_trs(
     for joints, parents in kinematic_fronts:
         if parents[0] < 0:
             for j in joints:
-                t_results[j] = t_l[:, j]
-                s_results[j] = s_l[:, j]
-                r_results[j] = r_l[:, j]
+                t_results[j] = t_l[..., j, :]
+                s_results[j] = s_l[..., j, :]
+                r_results[j] = r_l[..., j, :, :]
         else:
             for j, p in zip(joints, parents):
-                r_results[j] = r_results[p] @ r_l[:, j]
-                s_results[j] = s_results[p] * s_l[:, j]
-                r_ps = r_results[p] * s_results[p][:, :, None]
-                t_results[j] = xp.squeeze(r_ps @ t_l[:, j, :, None], axis=-1) + t_results[p]
+                r_results[j] = r_results[p] @ r_l[..., j, :, :]
+                s_results[j] = s_results[p] * s_l[..., j, :]
+                r_ps = r_results[p] * s_results[p][..., :, None]
+                t_results[j] = xp.squeeze(r_ps @ t_l[..., j, :, None], axis=-1) + t_results[p]
 
     if joint_indices is None:
-        t_g = xp.stack(t_results, axis=1)
-        s_g = xp.stack(s_results, axis=1)
-        r_g = xp.stack(r_results, axis=1)
+        t_g = xp.stack(t_results, axis=-2)
+        s_g = xp.stack(s_results, axis=-2)
+        r_g = xp.stack(r_results, axis=-3)
     else:
-        t_g = xp.stack([t_results[j] for j in joint_indices], axis=1)
-        s_g = xp.stack([s_results[j] for j in joint_indices], axis=1)
-        r_g = xp.stack([r_results[j] for j in joint_indices], axis=1)
+        t_g = xp.stack([t_results[j] for j in joint_indices], axis=-2)
+        s_g = xp.stack([s_results[j] for j in joint_indices], axis=-2)
+        r_g = xp.stack([r_results[j] for j in joint_indices], axis=-3)
 
     return t_g, r_g, s_g
 
@@ -307,10 +305,11 @@ def _trs_to_transforms(
     s: Float[Array, "B J 1"],
 ) -> Float[Array, "B J 4 4"]:
     R = r * s[..., None]
-    B, J = t.shape[:2]
+    batch_shape = t.shape[:-2]
+    J = t.shape[-2]
     dtype = t.dtype
 
-    T = common.zeros_as(t, shape=(B, J, 4, 4), xp=xp)
+    T = common.zeros_as(t, shape=(*batch_shape, J, 4, 4), xp=xp)
     idx_R = (..., slice(None, 3), slice(None, 3))
     idx_t = (..., slice(None, 3), 3)
     T = common.set(T, idx_R, R, xp=xp)
@@ -319,10 +318,17 @@ def _trs_to_transforms(
     return T
 
 
-def _gather_axis1(xp, arr: Array, indices: Int[Array, "V K"]) -> Array:
-    B = arr.shape[0]
+def _gather_joint_matrices(arr: Array, indices: Int[Array, "V K"]) -> Array:
     V, K = indices.shape
     flat_indices = indices.reshape(-1)
-    gathered = arr[:, flat_indices]
-    new_shape = (B, V, K) + arr.shape[2:]
+    gathered = arr[..., flat_indices, :, :]
+    new_shape = (*arr.shape[:-3], V, K, *arr.shape[-2:])
+    return gathered.reshape(new_shape)
+
+
+def _gather_joint_vectors(arr: Array, indices: Int[Array, "V K"]) -> Array:
+    V, K = indices.shape
+    flat_indices = indices.reshape(-1)
+    gathered = arr[..., flat_indices, :]
+    new_shape = (*arr.shape[:-2], V, K, arr.shape[-1])
     return gathered.reshape(new_shape)

@@ -1,5 +1,6 @@
 """PyTorch backend for SOMA model."""
 
+import math
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
@@ -14,7 +15,7 @@ from torch import Tensor
 from body_models import common
 
 from ..base import BodyModel
-from ..rotations import VALID_ROTATION_TYPES, RotationType
+from ..rotations import VALID_ROTATION_TYPES, RotationType, is_rotmat_type
 from .io import (
     MODEL_TYPE_SPECS,
     compute_sparse_skin_weights,
@@ -245,7 +246,9 @@ class SOMA(BodyModel, nn.Module):
         scale_params: Float[Tensor, "B|1 K"] | None,
         pose: Float[Tensor, "B ..."],
     ) -> tuple[Float[Tensor, "B I"], Float[Tensor, "B K"] | None]:
-        batch_size = pose.shape[0]
+        pose_ndim = 3 if is_rotmat_type(self.rotation_type) else 2
+        batch_shape = tuple(pose.shape[:-pose_ndim])
+        batch_size = math.prod(batch_shape) if batch_shape else 1
         if identity is None:
             identity = torch.full(
                 (batch_size, self.identity_dim),
@@ -253,7 +256,9 @@ class SOMA(BodyModel, nn.Module):
                 device=pose.device,
                 dtype=pose.dtype,
             )
-        elif identity.shape[0] == 1 and batch_size > 1:
+        else:
+            identity = identity.reshape(-1, identity.shape[-1])
+        if identity.shape[0] == 1 and batch_size > 1:
             identity = torch.broadcast_to(identity, (batch_size, identity.shape[-1]))
 
         if self.num_scale_params is None:
@@ -267,7 +272,9 @@ class SOMA(BodyModel, nn.Module):
                 device=identity.device,
                 dtype=identity.dtype,
             )
-        elif scale_params.shape[0] == 1 and batch_size > 1:
+        else:
+            scale_params = scale_params.reshape(-1, scale_params.shape[-1])
+        if scale_params.shape[0] == 1 and batch_size > 1:
             scale_params = torch.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
         return identity, scale_params
 

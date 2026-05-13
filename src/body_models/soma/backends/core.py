@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,7 +11,7 @@ from nanomanifold import SO3
 
 from ... import common
 from ...common import get_namespace
-from ...rotations import RotationType
+from ...rotations import RotationType, is_rotmat_type
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -115,6 +116,12 @@ def _forward_vertices_with(
     linear_blend_skinning_fn: Any,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
+    batch_shape, batch_size = _pose_batch_shape(pose, rotation_type)
+    pose = pose.reshape(batch_size, *pose.shape[len(batch_shape) :])
+    if global_rotation is not None:
+        global_rotation = global_rotation.reshape(batch_size, *global_rotation.shape[len(batch_shape) :])
+    if global_translation is not None:
+        global_translation = global_translation.reshape(batch_size, 3)
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     topology = data.topology
     pose_rot_full = _orient_pose_rot_full(xp, pose_rot, data.t_pose_world, topology.parents_full)
@@ -148,7 +155,7 @@ def _forward_vertices_with(
     verts = _apply_global_transform_vertices(xp, verts, global_rotation, global_translation, rotation_type)
     if vertex_indices is not None:
         verts = verts[:, xp.asarray(vertex_indices)]
-    return verts
+    return verts.reshape(*batch_shape, *verts.shape[1:])
 
 
 def forward_skeleton(
@@ -164,6 +171,12 @@ def forward_skeleton(
     xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
+    batch_shape, batch_size = _pose_batch_shape(pose, rotation_type)
+    pose = pose.reshape(batch_size, *pose.shape[len(batch_shape) :])
+    if global_rotation is not None:
+        global_rotation = global_rotation.reshape(batch_size, *global_rotation.shape[len(batch_shape) :])
+    if global_translation is not None:
+        global_translation = global_translation.reshape(batch_size, 3)
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     topology = data.topology
     world_bind_pose = prepared_identity.world_bind_pose_fit
@@ -183,7 +196,13 @@ def forward_skeleton(
     public = T_world[:, 1:]
     if joint_indices is not None:
         public = public[:, xp.asarray(joint_indices)]
-    return public
+    return public.reshape(*batch_shape, *public.shape[1:])
+
+
+def _pose_batch_shape(pose: Array, rotation_type: RotationType) -> tuple[tuple[int, ...], int]:
+    pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+    batch_shape = tuple(pose.shape[:-pose_ndim])
+    return batch_shape, math.prod(batch_shape) if batch_shape else 1
 
 
 def fit_rigid_transform(
