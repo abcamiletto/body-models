@@ -13,7 +13,7 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import torch as backend
 from .io import get_model_path, load_model_data
-from .constants import GARMENT_APOSE, GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
+from .constants import GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
 from .pose import pack_pose, unpack_pose
 
 
@@ -166,19 +166,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
         batch_size: int = 1,
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = pack_pose(
-            torch, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
-        )
-        for joint_name, values in GARMENT_APOSE.items():
-            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
-            pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = unpack_pose(
-            torch, pose
-        )
-        return params
+        return self.get_rest_pose(batch_size=batch_size, **kwargs)
 
     def get_ipose(
         self,

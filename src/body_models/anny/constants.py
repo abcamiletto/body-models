@@ -61,7 +61,6 @@ ANNY_TPOSE = {
     "lowerarm01.l": (-0.75, 0.0, 0.0),
     "lowerarm01.r": (-0.75, 0.0, 0.0),
 }
-ANNY_APOSE = {}
 ANNY_IPOSE = {
     "shoulder01.l": (0.0, 0.0, -0.15),
     "shoulder01.r": (0.0, 0.0, 0.15),
@@ -69,4 +68,4 @@ ANNY_IPOSE = {
     "upperarm01.r": (0.0, 0.0, 0.15),
 }
 
-__all__ = ["ANNY_JOINTS", "ANNY_TPOSE", "ANNY_APOSE", "ANNY_IPOSE"]
+__all__ = ["ANNY_JOINTS", "ANNY_TPOSE", "ANNY_IPOSE"]

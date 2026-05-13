@@ -11,7 +11,7 @@ from body_models import common
 from body_models.anny import pose as pose_utils
 from body_models.anny.backends import numpy as numpy_backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
-from body_models.anny.constants import ANNY_APOSE, ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
+from body_models.anny.constants import ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -201,18 +201,7 @@ class ANNY(BodyModel):
         batch_size: int = 1,
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = pose_utils.pack_pose(
-            np, params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"]
-        )
-        for joint_name, values in ANNY_APOSE.items():
-            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
-            pose = common.set(pose, (slice(None), index), converted, xp=np)
-        params["pelvis_rotation"], params["body_pose"], params["head_pose"], params["hand_pose"] = (
-            pose_utils.unpack_pose(np, pose)
-        )
-        return params
+        return self.get_rest_pose(batch_size=batch_size, **kwargs)
 
     def get_ipose(
         self,

@@ -66,7 +66,6 @@ MHR_TPOSE_TARGETS = (
     ("l_upleg", 5, -0.06),
     ("r_upleg", 5, -0.06),
 )
-MHR_APOSE_TARGETS = ()
 MHR_IPOSE_TARGETS = (
     ("l_uparm", 4, -0.6),
     ("r_uparm", 4, -0.6),
@@ -81,6 +80,5 @@ __all__ = [
     "MHR_HAND_POSE_SPLIT",
     "MHR_JOINTS",
     "MHR_TPOSE_TARGETS",
-    "MHR_APOSE_TARGETS",
     "MHR_IPOSE_TARGETS",
 ]
