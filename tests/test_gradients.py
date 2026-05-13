@@ -17,7 +17,11 @@ def test_torch_and_jax_gradients_match_finite_difference(
     torch_instance = torch_model(model_path=model_path, **kwargs)
     torch_instance.double()
     torch_params = torch_instance.get_rest_pose(batch_size=1, dtype=torch.float64)
-    for torch_key in gradient_keys(torch_params):
+    torch_keys = [key for key, value in torch_params.items() if np.asarray(value).size]
+    if "global_translation" in torch_keys:
+        torch_keys.remove("global_translation")
+        torch_keys.insert(0, "global_translation")
+    for torch_key in torch_keys:
         torch_value = torch_params[torch_key].clone().requires_grad_(True)
         torch_params[torch_key] = torch_value
         torch_loss_value = torch_instance.forward_vertices(**torch_params)[..., :8, :].sum()
@@ -27,9 +31,18 @@ def test_torch_and_jax_gradients_match_finite_difference(
     torch_loss_value.backward()
 
     torch_auto = torch_value.grad.reshape(-1)[0].item()
-    torch_numeric = finite_difference(
-        lambda value: torch_loss(torch_instance, torch_params, torch_key, value), torch_value
-    )
+    torch_plus = torch_value.detach().numpy().copy()
+    torch_minus = torch_value.detach().numpy().copy()
+    torch_plus.reshape(-1)[0] += 1e-4
+    torch_minus.reshape(-1)[0] -= 1e-4
+    plus_params = torch_params.copy()
+    minus_params = torch_params.copy()
+    plus_params[torch_key] = torch.as_tensor(torch_plus, dtype=torch_value.dtype)
+    minus_params[torch_key] = torch.as_tensor(torch_minus, dtype=torch_value.dtype)
+    with torch.no_grad():
+        torch_plus_loss = torch_instance.forward_vertices(**plus_params)[..., :8, :].sum().item()
+        torch_minus_loss = torch_instance.forward_vertices(**minus_params)[..., :8, :].sum().item()
+    torch_numeric = (torch_plus_loss - torch_minus_loss) / 2e-4
     np.testing.assert_allclose(torch_auto, torch_numeric, rtol=1e-2, atol=1e-2)
 
     jax = pytest.importorskip("jax")
@@ -48,31 +61,9 @@ def test_torch_and_jax_gradients_match_finite_difference(
         return jax_instance.forward_vertices(**params)[..., :8, :].sum()
 
     jax_auto = np.asarray(jax.grad(jax_loss)(jax_value)).reshape(-1)[0]
-    jax_numeric = finite_difference(lambda value: float(jax_loss(jnp.asarray(value))), jax_value)
+    jax_plus = np.asarray(jax_value).copy()
+    jax_minus = np.asarray(jax_value).copy()
+    jax_plus.reshape(-1)[0] += 1e-4
+    jax_minus.reshape(-1)[0] -= 1e-4
+    jax_numeric = (float(jax_loss(jnp.asarray(jax_plus))) - float(jax_loss(jnp.asarray(jax_minus)))) / 2e-4
     np.testing.assert_allclose(jax_auto, jax_numeric, rtol=1e-2, atol=1e-2)
-
-
-def torch_loss(model, params, key, value) -> float:
-    import torch
-
-    params = params.copy()
-    params[key] = torch.as_tensor(value, dtype=params[key].dtype)
-    with torch.no_grad():
-        return model.forward_vertices(**params)[..., :8, :].sum().item()
-
-
-def gradient_keys(params: dict) -> list[str]:
-    keys = [key for key, value in params.items() if np.asarray(value).size]
-    if "global_translation" in keys:
-        keys.remove("global_translation")
-        keys.insert(0, "global_translation")
-    return keys
-
-
-def finite_difference(loss, value, eps: float = 1e-4) -> float:
-    value = value.detach().numpy() if hasattr(value, "detach") else np.asarray(value)
-    plus = value.copy()
-    minus = value.copy()
-    plus.reshape(-1)[0] += eps
-    minus.reshape(-1)[0] -= eps
-    return (loss(plus) - loss(minus)) / (2 * eps)

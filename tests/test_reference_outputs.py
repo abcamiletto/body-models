@@ -30,7 +30,9 @@ def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, m
     model = numpy_model(model_path=model_path, **kwargs)
     inputs = reference_inputs(name)
     skeleton = model.forward_skeleton(**inputs)
-    expected = reference_skeleton(name)
+    skeleton_outputs = {"anny": "bone_poses.npy", "mhr": "skeleton.npy", "skel": "joints.npy"}
+    filename = skeleton_outputs.get(name, "joints.npy")
+    expected = np.load(model_cases.ASSETS / name / "outputs/0" / filename)
     if name == "mhr":
         skeleton = mhr_native_skeleton(skeleton)
     if name == "skel":
@@ -52,58 +54,49 @@ def reference_inputs(name: str) -> dict[str, np.ndarray]:
     data = json.loads((model_cases.ASSETS / name / "inputs/0.json").read_text())
     if name == "smpl":
         return {
-            "shape": array(data["shape"]),
+            "shape": np.asarray(data["shape"], dtype=np.float32)[None],
             "body_pose": np.asarray(data["body_pose"], dtype=np.float32).reshape(1, 23, 3),
-            "pelvis_rotation": array(data["global_orient"]),
-            "global_translation": array(data["transl"]),
+            "pelvis_rotation": np.asarray(data["global_orient"], dtype=np.float32)[None],
+            "global_translation": np.asarray(data["transl"], dtype=np.float32)[None],
         }
     if name == "smplx":
         hands = np.asarray(data["left_hand_pose"] + data["right_hand_pose"], dtype=np.float32).reshape(1, 30, 3)
         head = np.asarray(data["jaw_pose"] + data["leye_pose"] + data["reye_pose"], dtype=np.float32).reshape(1, 3, 3)
         return {
-            "shape": array(data["shape"]),
+            "shape": np.asarray(data["shape"], dtype=np.float32)[None],
             "body_pose": np.asarray(data["body_pose"], dtype=np.float32).reshape(1, 21, 3),
             "hand_pose": hands,
             "head_pose": head,
-            "expression": array(data["expression"]),
-            "pelvis_rotation": array(data["global_orient"]),
-            "global_translation": array(data["transl"]),
+            "expression": np.asarray(data["expression"], dtype=np.float32)[None],
+            "pelvis_rotation": np.asarray(data["global_orient"], dtype=np.float32)[None],
+            "global_translation": np.asarray(data["transl"], dtype=np.float32)[None],
         }
     if name == "flame":
         pose = data["neck_pose"] + data["jaw_pose"] + data["leye_pose"] + data["reye_pose"]
         return {
-            "shape": array(data["shape"]),
-            "expression": array(data["expression"]),
+            "shape": np.asarray(data["shape"], dtype=np.float32)[None],
+            "expression": np.asarray(data["expression"], dtype=np.float32)[None],
             "pose": np.asarray(pose, dtype=np.float32).reshape(1, 4, 3),
-            "head_rotation": array(data["global_orient"]),
-            "global_translation": array(data["transl"]),
+            "head_rotation": np.asarray(data["global_orient"], dtype=np.float32)[None],
+            "global_translation": np.asarray(data["transl"], dtype=np.float32)[None],
         }
     if name == "skel":
         return {
-            "shape": array(data["shape"]),
-            "pose": array(data["body_pose"]),
-            "global_translation": array(data["trans"]),
+            "shape": np.asarray(data["shape"], dtype=np.float32)[None],
+            "pose": np.asarray(data["body_pose"], dtype=np.float32)[None],
+            "global_translation": np.asarray(data["trans"], dtype=np.float32)[None],
         }
     if name == "mhr":
-        return {"shape": array(data["shape"]), "pose": array(data["pose"]), "expression": array(data["expression"])}
+        return {
+            "shape": np.asarray(data["shape"], dtype=np.float32)[None],
+            "pose": np.asarray(data["pose"], dtype=np.float32)[None],
+            "expression": np.asarray(data["expression"], dtype=np.float32)[None],
+        }
     if name == "anny":
         phenotype = {key: np.asarray([value], dtype=np.float32) for key, value in data["phenotype"].items()}
         rotation = np.asarray(data["pose"], dtype=np.float32)[None, :, :3, :3]
         return {**phenotype, "pose": SO3.conversions.from_rotmat_to_axis_angle(rotation, xp=np)}
     raise AssertionError(name)
-
-
-def reference_skeleton(name: str) -> np.ndarray:
-    output_dir = model_cases.ASSETS / name / "outputs/0"
-    for filename in ("skeleton.npy", "joints.npy", "bone_poses.npy"):
-        path = output_dir / filename
-        if path.exists():
-            return np.load(path)
-    raise AssertionError(f"Missing skeleton reference for {name}")
-
-
-def array(value) -> np.ndarray:
-    return np.asarray(value, dtype=np.float32)[None]
 
 
 def mhr_native_skeleton(skeleton: np.ndarray) -> np.ndarray:
