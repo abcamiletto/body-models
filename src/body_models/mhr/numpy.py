@@ -8,8 +8,15 @@ from jaxtyping import Float, Int
 from body_models import common
 from body_models.base import BodyModel
 from body_models.mhr.backends import numpy as backend
+from body_models.mhr.constants import (
+    MHR_BODY_POSE_DIM,
+    MHR_HAND_POSE_DIM,
+    MHR_IPOSE_TARGETS,
+    MHR_JOINTS,
+    MHR_TPOSE_TARGETS,
+)
 from body_models.mhr.io import get_model_path, load_model_data
-from body_models.mhr.constants import MHR_IPOSE_TARGETS, MHR_JOINTS, MHR_TPOSE_TARGETS
+from body_models.mhr.pose import pack_pose, unpack_pose
 
 __all__ = ["MHR"]
 
@@ -51,6 +58,14 @@ class MHR(BodyModel):
         return self.weights.parameter_transform.shape[1] - self.SHAPE_DIM
 
     @property
+    def body_pose_dim(self) -> int:
+        return MHR_BODY_POSE_DIM
+
+    @property
+    def hand_pose_dim(self) -> int:
+        return MHR_HAND_POSE_DIM
+
+    @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
         return self.weights.base_vertices * 0.01
 
@@ -69,7 +84,8 @@ class MHR(BodyModel):
     def forward_vertices(
         self,
         shape: Float[np.ndarray, "B|1 45"],
-        pose: Float[np.ndarray, "B 204"],
+        body_pose: Float[np.ndarray, "B 100"],
+        hand_pose: Float[np.ndarray, "B 104"],
         expression: Float[np.ndarray, "B 72"] | None = None,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
@@ -78,7 +94,7 @@ class MHR(BodyModel):
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
-            pose=pose,
+            pose=pack_pose(np, body_pose, hand_pose),
             expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -88,7 +104,8 @@ class MHR(BodyModel):
     def forward_skeleton(
         self,
         shape: Float[np.ndarray, "B|1 45"],
-        pose: Float[np.ndarray, "B 204"],
+        body_pose: Float[np.ndarray, "B 100"],
+        hand_pose: Float[np.ndarray, "B 104"],
         expression: Float[np.ndarray, "B 72"] | None = None,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
@@ -97,7 +114,7 @@ class MHR(BodyModel):
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
-            pose=pose,
+            pose=pack_pose(np, body_pose, hand_pose),
             expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -107,7 +124,8 @@ class MHR(BodyModel):
     def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
         return {
             "shape": np.zeros((1, self.SHAPE_DIM), dtype=dtype),
-            "pose": np.zeros((batch_size, self.pose_dim), dtype=dtype),
+            "body_pose": np.zeros((batch_size, self.body_pose_dim), dtype=dtype),
+            "hand_pose": np.zeros((batch_size, self.hand_pose_dim), dtype=dtype),
             "expression": np.zeros((batch_size, self.EXPR_DIM), dtype=dtype),
             "global_rotation": np.zeros((batch_size, 3), dtype=dtype),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
@@ -120,7 +138,7 @@ class MHR(BodyModel):
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         targets = MHR_TPOSE_TARGETS
-        pose = params["pose"]
+        pose = pack_pose(np, params["body_pose"], params["hand_pose"])
         rows = [
             next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
             for joint_name, component, _ in targets
@@ -128,7 +146,8 @@ class MHR(BodyModel):
         values = np.asarray([value for _, _, value in targets], dtype=pose.dtype)
         transform = np.asarray(self.weights.parameter_transform, dtype=pose.dtype)
         system = transform[rows, : self.pose_dim]
-        params["pose"] = common.set(pose, (slice(None),), np.linalg.pinv(system) @ values, xp=np)
+        pose = common.set(pose, (slice(None),), np.linalg.pinv(system) @ values, xp=np)
+        params["body_pose"], params["hand_pose"] = unpack_pose(np, pose)
         return params
 
     def get_apose(
@@ -145,7 +164,7 @@ class MHR(BodyModel):
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         targets = MHR_IPOSE_TARGETS
-        pose = params["pose"]
+        pose = pack_pose(np, params["body_pose"], params["hand_pose"])
         rows = [
             next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
             for joint_name, component, _ in targets
@@ -153,5 +172,6 @@ class MHR(BodyModel):
         values = np.asarray([value for _, _, value in targets], dtype=pose.dtype)
         transform = np.asarray(self.weights.parameter_transform, dtype=pose.dtype)
         system = transform[rows, : self.pose_dim]
-        params["pose"] = common.set(pose, (slice(None),), np.linalg.pinv(system) @ values, xp=np)
+        pose = common.set(pose, (slice(None),), np.linalg.pinv(system) @ values, xp=np)
+        params["body_pose"], params["hand_pose"] = unpack_pose(np, pose)
         return params

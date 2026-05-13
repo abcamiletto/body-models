@@ -1,6 +1,12 @@
 from body_models.constants import Joint
 
 
+MHR_BODY_POSE_DIM = 100
+MHR_HAND_POSE_DIM = 104
+MHR_POSE_DIM = MHR_BODY_POSE_DIM + MHR_HAND_POSE_DIM
+MHR_BODY_POSE_SPLIT = 68
+MHR_HAND_POSE_SPLIT = 54
+
 MHR_JOINTS = {
     Joint.LEFT_SHOULDER: "l_uparm",
     Joint.RIGHT_SHOULDER: "r_uparm",
@@ -69,4 +75,14 @@ MHR_IPOSE_TARGETS = (
     ("r_lowarm", 4, 0.2),
 )
 
-__all__ = ["MHR_JOINTS", "MHR_TPOSE_TARGETS", "MHR_APOSE_TARGETS", "MHR_IPOSE_TARGETS"]
+__all__ = [
+    "MHR_BODY_POSE_DIM",
+    "MHR_HAND_POSE_DIM",
+    "MHR_POSE_DIM",
+    "MHR_BODY_POSE_SPLIT",
+    "MHR_HAND_POSE_SPLIT",
+    "MHR_JOINTS",
+    "MHR_TPOSE_TARGETS",
+    "MHR_APOSE_TARGETS",
+    "MHR_IPOSE_TARGETS",
+]
