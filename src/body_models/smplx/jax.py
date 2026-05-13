@@ -45,6 +45,7 @@ class SMPLX(BodyModel):
 
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
 
         resolved_path = get_model_path(model_path, gender)
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)

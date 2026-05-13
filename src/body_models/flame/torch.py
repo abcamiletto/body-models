@@ -42,6 +42,7 @@ class FLAME(BodyModel, nn.Module):
             raise ValueError("simplify must be >= 1.0")
         super().__init__()
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path)
@@ -95,24 +96,17 @@ class FLAME(BodyModel, nn.Module):
     def forward_vertices(
         self,
         shape: Float[Tensor, "B|1 S"],
-        expression: Float[Tensor, "B E"] | None = None,
+        expression: Float[Tensor, "B E"],
         pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"] | None = None,
         head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
-        batch_size = shape.shape[0] if shape.dim() > 1 and shape.shape[0] > 1 else 1
-        if pose is not None:
-            batch_size = pose.shape[0]
-        if expression is None:
-            expression = torch.zeros(
-                (batch_size, 100), device=self.rest_vertices.device, dtype=self.rest_vertices.dtype
-            )
         if pose is None:
             pose = SO3.identity_as(
                 expression,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             )
@@ -131,24 +125,17 @@ class FLAME(BodyModel, nn.Module):
     def forward_skeleton(
         self,
         shape: Float[Tensor, "B|1 S"],
-        expression: Float[Tensor, "B E"] | None = None,
+        expression: Float[Tensor, "B E"],
         pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"] | None = None,
         head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B 5 4 4"]:
-        batch_size = shape.shape[0] if shape.dim() > 1 and shape.shape[0] > 1 else 1
-        if pose is not None:
-            batch_size = pose.shape[0]
-        if expression is None:
-            expression = torch.zeros(
-                (batch_size, 100), device=self.rest_vertices.device, dtype=self.rest_vertices.dtype
-            )
         if pose is None:
             pose = SO3.identity_as(
                 expression,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             )

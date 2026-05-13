@@ -1,7 +1,6 @@
 """Backend-agnostic SOMA computation."""
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -126,7 +125,7 @@ def _forward_vertices_with(
         inverse_world_bind_pose = prepared_identity.inverse_world_bind_pose
         corrective_offsets = apply_pose_correctives_fn(data, pose_rot_full, xp=xp)
         if data.vertex_map is not None:
-            corrective_offsets = corrective_offsets[:, data.vertex_map]
+            corrective_offsets = corrective_offsets[..., data.vertex_map, :]
         rest_shape_active = rest_shape_active + corrective_offsets
     else:
         world_bind_pose = prepared_identity.world_bind_pose_fit
@@ -147,7 +146,7 @@ def _forward_vertices_with(
     verts = verts_cm * 0.01
     verts = _apply_global_transform_vertices(xp, verts, global_rotation, global_translation, rotation_type)
     if vertex_indices is not None:
-        verts = verts[:, xp.asarray(vertex_indices)]
+        verts = verts[..., xp.asarray(vertex_indices), :]
     return verts
 
 
@@ -180,9 +179,9 @@ def forward_skeleton(
 
     T_world = common.set(T_world_cm, (..., slice(None, 3), 3), T_world_cm[..., :3, 3] * 0.01, xp=xp)
     T_world = _apply_global_transform_transforms(xp, T_world, global_rotation, global_translation, rotation_type)
-    public = T_world[:, 1:]
+    public = T_world[..., 1:, :, :]
     if joint_indices is not None:
-        public = public[:, xp.asarray(joint_indices)]
+        public = public[..., xp.asarray(joint_indices), :, :]
     return public
 
 
@@ -264,23 +263,21 @@ def apply_pose_correctives(
 ) -> Float[Array, "B V 3"]:
     """Compute SOMA pose correctives from oriented local rotations."""
     correctives = data.correctives
-    B = pose_rot_full.shape[0]
-    x = correctives.corrective_bindpose.swapaxes(-2, -1)[None] @ pose_rot_full
-    x = common.set(x, (slice(None), slice(None), 0, 0), x[:, :, 0, 0] - 1.0, copy=False, xp=xp)
-    x = common.set(x, (slice(None), slice(None), 1, 1), x[:, :, 1, 1] - 1.0, copy=False, xp=xp)
-    feat = x[:, :, :, :2].reshape(B, -1)
+    batch_shape = pose_rot_full.shape[:-3]
+    x = correctives.corrective_bindpose.swapaxes(-2, -1) @ pose_rot_full
+    x = common.set(x, (..., 0, 0), x[..., 0, 0] - 1.0, copy=False, xp=xp)
+    x = common.set(x, (..., 1, 1), x[..., 1, 1] - 1.0, copy=False, xp=xp)
+    feat = x[..., :, :, :2].reshape(*batch_shape, -1)
 
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
 
-    contrib = z[:, correctives.corrective_W2_rows] * correctives.corrective_W2_values[None]
-    out_shape = B, data.mean_full.shape[0] * 3
-    out = common.zeros_as(z, shape=out_shape, xp=xp)
-    out = xp.asarray(out, copy=True)
-    batch_index = xp.broadcast_to(xp.arange(B)[:, None], contrib.shape)
-    column_index = xp.broadcast_to(correctives.corrective_W2_cols[None], contrib.shape)
-    xp.add.at(out, (batch_index, column_index), contrib)
-    return out.reshape(B, data.mean_full.shape[0], 3)
+    out = common.zeros_as(z, shape=(*batch_shape, data.mean_full.shape[0] * 3), xp=xp)
+    for row, col, value in zip(
+        correctives.corrective_W2_rows, correctives.corrective_W2_cols, correctives.corrective_W2_values
+    ):
+        out = common.set(out, (..., col), out[..., col] + z[..., row] * value, xp=xp)
+    return out.reshape(*batch_shape, data.mean_full.shape[0], 3)
 
 
 def identity_to_rest_vertices(
@@ -290,8 +287,8 @@ def identity_to_rest_vertices(
     eigenvalues: Float[Array, "S"],
     identity: Float[Array, "B S"],
 ) -> Float[Array, "B V 3"]:
-    coeffs = identity * xp.sqrt(eigenvalues)[None]
-    return mean[None] + xp.einsum("bs,svc->bvc", coeffs, shapedirs)
+    coeffs = identity * xp.sqrt(eigenvalues)
+    return mean + xp.einsum("...s,svc->...vc", coeffs, shapedirs)
 
 
 def apply_rigid_transform(
@@ -320,7 +317,7 @@ def _fit_rest_shape_to_bind_pose(
     rest_shape: Float[Array, "B V 3"],
     match_warp: bool,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
-    joint_positions = xp.einsum("jv,bvc->bjc", joint_regressor, rest_shape)
+    joint_positions = xp.einsum("jv,...vc->...jc", joint_regressor, rest_shape)
     world_bind_pose = _fit_joint_rotations(
         xp=xp,
         bind_shape=bind_shape,
@@ -344,23 +341,23 @@ def _repose_skeleton_to_bind_pose(
     kinematic_fronts: list[Front],
     parents_full: list[int],
 ) -> Float[Array, "B J 4 4"]:
-    B = world_bind_pose_fit.shape[0]
+    batch_shape = world_bind_pose_fit.shape[:-3]
     bind_local_fit = _joint_world_to_local(xp, world_bind_pose_fit, parents_full)
     local_t = bind_local_fit[..., :3, 3]
 
     zeros = xp.asarray(0.0, dtype=local_t.dtype)
-    local_t = common.set(local_t, (slice(None), 1, 0), zeros, copy=False, xp=xp)
-    local_t = common.set(local_t, (slice(None), 1, 2), zeros, copy=False, xp=xp)
+    local_t = common.set(local_t, (..., 1, 0), zeros, copy=False, xp=xp)
+    local_t = common.set(local_t, (..., 1, 2), zeros, copy=False, xp=xp)
 
-    bind_rot = xp.broadcast_to(bind_pose_local[None, :, :3, :3], (B, bind_pose_local.shape[0], 3, 3))
+    bind_rot = xp.broadcast_to(bind_pose_local[:, :3, :3], (*batch_shape, bind_pose_local.shape[0], 3, 3))
     T_local = _build_transform_matrix(xp, bind_rot, local_t)
     T_world = _forward_kinematics(xp, T_local, kinematic_fronts)
 
-    y_shift = xp.amin(T_world[:, :, 1, 3], axis=1)
+    y_shift = xp.amin(T_world[..., :, 1, 3], axis=-1)
     return common.set(
         T_world,
-        (slice(None), slice(None), 1, 3),
-        T_world[:, :, 1, 3] - y_shift[:, None],
+        (..., slice(None), 1, 3),
+        T_world[..., :, 1, 3] - y_shift[..., None],
         xp=xp,
     )
 
@@ -371,12 +368,12 @@ def _orient_pose_rot_full(
     t_pose_world: Float[Array, "Jf 4 4"],
     parents_full: list[int],
 ) -> Float[Array, "B Jf 3 3"]:
-    B = pose_rot.shape[0]
-    root_identity = common.eye_as(pose_rot, batch_dims=(B, 1), xp=xp)
-    pose_rot_full = xp.concat([root_identity, pose_rot], axis=1)
+    batch_shape = pose_rot.shape[:-3]
+    root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
+    pose_rot_full = xp.concat([root_identity, pose_rot], axis=-3)
     orient = t_pose_world[:, :3, :3]
     orient_parent_T = orient[xp.asarray(parents_full)].swapaxes(-2, -1)
-    return orient_parent_T[None] @ pose_rot_full @ orient[None]
+    return orient_parent_T @ pose_rot_full @ orient
 
 
 def _pose_skeleton_from_oriented_pose(
@@ -386,12 +383,11 @@ def _pose_skeleton_from_oriented_pose(
     parents_full: list[int],
     pose_rot_full: Float[Array, "B Jf 3 3"],
 ) -> Float[Array, "B Jf 4 4"]:
-    B = pose_rot_full.shape[0]
     bind_local = _joint_world_to_local(xp, world_bind_pose, parents_full)
     local_t = bind_local[..., :3, 3]
-    if local_t.shape[1] > 1:
-        zeros = common.zeros_as(local_t[:, 1], shape=(B, 3), xp=xp)
-        local_t = common.set(local_t, (slice(None), 1), zeros, copy=False, xp=xp)
+    if local_t.shape[-2] > 1:
+        zeros = common.zeros_as(local_t, shape=(*local_t.shape[:-2], 3), xp=xp)
+        local_t = common.set(local_t, (..., 1, slice(None)), zeros, copy=False, xp=xp)
 
     T_local = _build_transform_matrix(xp, pose_rot_full, local_t)
     return _forward_kinematics(xp, T_local, kinematic_fronts)
@@ -410,11 +406,12 @@ def _fit_joint_rotations(
     target_shape: Float[Array, "B V 3"],
     match_warp: bool,
 ) -> Float[Array, "B J 4 4"]:
-    B, J = joint_positions.shape[:2]
+    batch_shape = joint_positions.shape[:-2]
+    J = joint_positions.shape[-2]
     bind_rot = bind_pose_world[:, :3, :3]
     bind_pos = bind_pose_world[:, :3, 3]
 
-    rotations = [xp.broadcast_to(bind_rot[None, 0], (B, 3, 3))]
+    rotations = [xp.broadcast_to(bind_rot[0], (*batch_shape, 3, 3))]
     for joint_index in range(1, J):
         children = joint_children_full[joint_index]
         if not children:
@@ -426,30 +423,30 @@ def _fit_joint_rotations(
         if skinned_vids:
             skinned_idx = skinned_vertex_indices_full_index[joint_index, : len(skinned_vids)]
             skinned_orig = bind_shape[skinned_idx] - bind_pos[joint_index]
-            skinned_new = target_shape[:, skinned_idx, :] - joint_positions[:, joint_index : joint_index + 1, :]
+            skinned_new = target_shape[..., skinned_idx, :] - joint_positions[..., joint_index : joint_index + 1, :]
             R_init = _align_vectors(
                 xp,
                 skinned_new,
-                skinned_orig[None],
+                skinned_orig,
                 match_warp=match_warp,
             )
         else:
-            R_init = common.eye_as(bind_rot, batch_dims=(B,), xp=xp)
+            R_init = common.eye_as(bind_rot, batch_dims=batch_shape, xp=xp)
 
         child_idx = joint_children_indices_full[joint_index, : len(children)]
         pos_children_orig = bind_pos[child_idx] - bind_pos[joint_index : joint_index + 1]
-        pos_children_orig = xp.einsum("bij,cj->bci", R_init, pos_children_orig)
-        pos_children_new = joint_positions[:, child_idx, :] - joint_positions[:, joint_index : joint_index + 1, :]
+        pos_children_orig = xp.einsum("...ij,cj->...ci", R_init, pos_children_orig)
+        pos_children_new = joint_positions[..., child_idx, :] - joint_positions[..., joint_index : joint_index + 1, :]
         align_rot = _align_vectors(
             xp,
             pos_children_new,
             pos_children_orig,
             match_warp=match_warp,
         )
-        R_joint = align_rot @ R_init @ bind_rot[None, joint_index]
+        R_joint = align_rot @ R_init @ bind_rot[joint_index]
         rotations.append(R_joint)
 
-    R = xp.stack(rotations, axis=1)
+    R = xp.stack(rotations, axis=-3)
     return _build_transform_matrix(xp, R, joint_positions)
 
 
@@ -461,24 +458,24 @@ def _align_vectors(
     match_warp: bool,
 ) -> Float[Array, "B 3 3"]:
     if target.shape[-2] == 1:
-        return _rotation_between_vectors(xp, target[:, 0], source[:, 0])
+        return _rotation_between_vectors(xp, target[..., 0, :], source[..., 0, :])
 
-    H = xp.einsum("bni,bnj->bij", target, source)
+    H = xp.einsum("...ni,...nj->...ij", target, source)
     # SOMALayer's default warp path uses plain covariance; the alternate path adds a virtual normal.
     if not match_warp:
-        p0, p1 = target[:, 0], target[:, 1]
-        q0, q1 = source[:, 0], source[:, 1]
+        p0, p1 = target[..., 0, :], target[..., 1, :]
+        q0, q1 = source[..., 0, :], source[..., 1, :]
         n_target = xp.linalg.cross(p0, p1)
         n_source = xp.linalg.cross(q0, q1)
         len_target = xp.linalg.vector_norm(n_target, axis=-1, keepdims=True)
         len_source = xp.linalg.vector_norm(n_source, axis=-1, keepdims=True)
         scale_target = xp.linalg.vector_norm(p0, axis=-1, keepdims=True) / (len_target + 1e-8)
         scale_source = xp.linalg.vector_norm(q0, axis=-1, keepdims=True) / (len_source + 1e-8)
-        valid = (len_target[:, 0] > 1e-9) & (len_source[:, 0] > 1e-9)
+        valid = (len_target[..., 0] > 1e-9) & (len_source[..., 0] > 1e-9)
         v_target = n_target * scale_target
         v_source = n_source * scale_source
-        virtual = xp.einsum("bi,bj->bij", v_target, v_source)
-        H = xp.where(valid[:, None, None], H + virtual, H)
+        virtual = xp.einsum("...i,...j->...ij", v_target, v_source)
+        H = xp.where(valid[..., None, None], H + virtual, H)
     return _kabsch(xp, H)
 
 
@@ -486,8 +483,8 @@ def _kabsch(xp, H: Float[Array, "B 3 3"]) -> Float[Array, "B 3 3"]:
     U, _, Vh = xp.linalg.svd(H)
     UVt = U @ Vh.swapaxes(-2, -1)
     det_sign = xp.where(_det3(UVt) < 0, xp.asarray(-1.0, dtype=H.dtype), xp.asarray(1.0, dtype=H.dtype))
-    D = common.eye_as(H, batch_dims=(H.shape[0],), xp=xp)
-    D = common.set(D, (slice(None), 2, 2), det_sign, xp=xp)
+    D = common.eye_as(H, batch_dims=H.shape[:-2], xp=xp)
+    D = common.set(D, (..., 2, 2), det_sign, xp=xp)
     return U @ D @ Vh
 
 
@@ -507,19 +504,19 @@ def _rotation_between_vectors(
     cross_norm = xp.linalg.vector_norm(cross, axis=-1, keepdims=True)
     axis = cross / xp.where(cross_norm > 1e-8, cross_norm, xp.ones_like(cross_norm))
 
-    antiparallel = dot[:, 0] < -1.0 + 1e-6
-    basis = common.eye_as(target, batch_dims=(target.shape[0],), xp=xp)
-    x_vec = basis[:, 0]
-    y_vec = basis[:, 1]
-    w = xp.where(xp.abs(source_unit[:, 0:1]) > 0.6, y_vec, x_vec)
+    antiparallel = dot[..., 0] < -1.0 + 1e-6
+    basis = common.eye_as(target, batch_dims=target.shape[:-1], xp=xp)
+    x_vec = basis[..., 0, :]
+    y_vec = basis[..., 1, :]
+    w = xp.where(xp.abs(source_unit[..., 0:1]) > 0.6, y_vec, x_vec)
     antiparallel_axis = xp.linalg.cross(source_unit, w)
     antiparallel_axis_norm = xp.linalg.vector_norm(antiparallel_axis, axis=-1, keepdims=True)
     fallback_norm = xp.ones_like(antiparallel_axis_norm)
     antiparallel_axis_norm = xp.where(antiparallel_axis_norm > 1e-8, antiparallel_axis_norm, fallback_norm)
     antiparallel_axis = antiparallel_axis / antiparallel_axis_norm
-    axis = xp.where(antiparallel[:, None], antiparallel_axis, axis)
+    axis = xp.where(antiparallel[..., None], antiparallel_axis, axis)
 
-    angle = xp.atan2(cross_norm[:, 0], dot[:, 0])
+    angle = xp.atan2(cross_norm[..., 0], dot[..., 0])
     pi = xp.asarray(3.141592653589793, dtype=target.dtype)
     angle = xp.where(antiparallel, pi, angle)
     return SO3.conversions.from_axis_angle_to_rotmat(angle[..., None] * axis, xp=xp)
@@ -527,15 +524,15 @@ def _rotation_between_vectors(
 
 def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
     return (
-        M[:, 0, 0] * (M[:, 1, 1] * M[:, 2, 2] - M[:, 1, 2] * M[:, 2, 1])
-        - M[:, 0, 1] * (M[:, 1, 0] * M[:, 2, 2] - M[:, 1, 2] * M[:, 2, 0])
-        + M[:, 0, 2] * (M[:, 1, 0] * M[:, 2, 1] - M[:, 1, 1] * M[:, 2, 0])
+        M[..., 0, 0] * (M[..., 1, 1] * M[..., 2, 2] - M[..., 1, 2] * M[..., 2, 1])
+        - M[..., 0, 1] * (M[..., 1, 0] * M[..., 2, 2] - M[..., 1, 2] * M[..., 2, 0])
+        + M[..., 0, 2] * (M[..., 1, 0] * M[..., 2, 1] - M[..., 1, 1] * M[..., 2, 0])
     )
 
 
 def _joint_world_to_local(xp, world: Float[Array, "B J 4 4"], parents_full: list[int]) -> Float[Array, "B J 4 4"]:
     inv = _invert_transforms(xp, world)
-    return inv[:, xp.asarray(parents_full)] @ world
+    return inv[..., xp.asarray(parents_full), :, :] @ world
 
 
 def linear_blend_skinning(
@@ -546,9 +543,9 @@ def linear_blend_skinning(
 ) -> Float[Array, "B V 3"]:
     R = bone_transforms[..., :3, :3]
     t = bone_transforms[..., :3, 3]
-    R_blend = xp.einsum("vj,bjik->bvik", skin_weights, R)
-    t_blend = xp.einsum("vj,bji->bvi", skin_weights, t)
-    return xp.einsum("bvik,bvk->bvi", R_blend, bind_shape) + t_blend
+    R_blend = xp.einsum("vj,...jik->...vik", skin_weights, R)
+    t_blend = xp.einsum("vj,...ji->...vi", skin_weights, t)
+    return xp.einsum("...vik,...vk->...vi", R_blend, bind_shape) + t_blend
 
 
 def _invert_transforms(xp, T: Float[Array, "B J 4 4"]) -> Float[Array, "B J 4 4"]:
@@ -572,16 +569,16 @@ def _build_transform_matrix(
 
 
 def _forward_kinematics(xp, T_local: Float[Array, "B J 4 4"], fronts: list[Front]) -> Float[Array, "B J 4 4"]:
-    J = T_local.shape[1]
+    J = T_local.shape[-3]
     world: list[Float[Array, "B 4 4"] | None] = [None] * J
     for joints, parents in fronts:
         if parents[0] < 0:
             for joint in joints:
-                world[joint] = T_local[:, joint]
+                world[joint] = T_local[..., joint, :, :]
             continue
         for joint, parent in zip(joints, parents):
-            world[joint] = world[parent] @ T_local[:, joint]
-    return xp.stack(world, axis=1)
+            world[joint] = world[parent] @ T_local[..., joint, :, :]
+    return xp.stack(world, axis=-3)
 
 
 def _apply_global_transform_vertices(
@@ -593,9 +590,9 @@ def _apply_global_transform_vertices(
 ) -> Float[Array, "B V 3"]:
     if rotation is not None:
         R = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
-        vertices = xp.einsum("bij,bvj->bvi", R, vertices)
+        vertices = xp.squeeze(R[..., None, :, :] @ vertices[..., None], axis=-1)
     if translation is not None:
-        vertices = vertices + translation[:, None]
+        vertices = vertices + translation[..., None, :]
     return vertices
 
 
@@ -609,15 +606,15 @@ def _apply_global_transform_transforms(
     if rotation is None and translation is None:
         return transforms
 
-    B = transforms.shape[0]
-    global_T = common.zeros_as(transforms, shape=(B, 4, 4), xp=xp)
-    global_T = common.set(global_T, (slice(None), 3, 3), xp.asarray(1.0, dtype=transforms.dtype), xp=xp)
+    batch_shape = transforms.shape[:-3]
+    global_T = common.zeros_as(transforms, shape=(*batch_shape, 4, 4), xp=xp)
+    global_T = common.set(global_T, (..., 3, 3), xp.asarray(1.0, dtype=transforms.dtype), xp=xp)
     if rotation is not None:
         R = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
-        global_T = common.set(global_T, (slice(None), slice(None, 3), slice(None, 3)), R, xp=xp)
+        global_T = common.set(global_T, (..., slice(None, 3), slice(None, 3)), R, xp=xp)
     else:
-        eye = common.eye_as(transforms, batch_dims=(B,), xp=xp)
-        global_T = common.set(global_T, (slice(None), slice(None, 3), slice(None, 3)), eye[:, :3, :3], xp=xp)
+        eye = common.eye_as(transforms, batch_dims=batch_shape, xp=xp)
+        global_T = common.set(global_T, (..., slice(None, 3), slice(None, 3)), eye[..., :3, :3], xp=xp)
     if translation is not None:
-        global_T = common.set(global_T, (slice(None), slice(None, 3), 3), translation, xp=xp)
-    return xp.einsum("bij,bnjk->bnik", global_T, transforms)
+        global_T = common.set(global_T, (..., slice(None, 3), 3), translation, xp=xp)
+    return global_T[..., None, :, :] @ transforms

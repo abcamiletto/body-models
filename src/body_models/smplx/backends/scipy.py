@@ -4,7 +4,7 @@ import numpy as np
 from jaxtyping import Float
 
 from body_models import common
-from body_models.rotations import RotationType, is_rotmat_type
+from body_models.rotations import RotationType
 from body_models.smpl.backends import scipy as smpl_scipy
 from body_models.smplx.backends import core
 from body_models.smplx.io import SmplxWeights
@@ -40,7 +40,8 @@ def forward_vertices(
         posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, selected_vertices].reshape(posedirs.shape[0], -1)
         lbs_weights = lbs_weights[selected_vertices]
     if expression is None:
-        pose_ndim = 3 if is_rotmat_type(rotation_type) else 2
+        num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+        pose_ndim = num_rot_dims + 1
         batch_shape = body_pose.shape[:-pose_ndim]
         expression = np.zeros((*batch_shape, 10), dtype=shape.dtype)
 

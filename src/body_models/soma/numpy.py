@@ -68,6 +68,7 @@ class SOMA(BodyModel):
 
         self.model_type = normalized_model_type
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.match_warp = match_warp
         self._kernel = {"numpy": numpy_backend, "scipy": scipy_backend}[kernel]
         resolved_path = get_model_path(model_path)
@@ -236,15 +237,16 @@ class SOMA(BodyModel):
         scale_params: Float[np.ndarray, "B|1 K"] | None,
         pose: Float[np.ndarray, "B ..."],
     ) -> tuple[Float[np.ndarray, "B I"], Float[np.ndarray, "B K"] | None]:
-        batch_size = pose.shape[0]
+        pose_ndim = self.num_rot_dims + 1
+        batch_shape = tuple(pose.shape[:-pose_ndim])
         if identity is None:
             identity = np.full(
-                (batch_size, self.identity_dim),
+                (*batch_shape, self.identity_dim),
                 self._default_identity_value,
                 dtype=pose.dtype,
             )
-        elif identity.shape[0] == 1 and batch_size > 1:
-            identity = np.broadcast_to(identity, (batch_size, identity.shape[-1]))
+        elif identity.shape[:-1] == (1,) and batch_shape:
+            identity = np.broadcast_to(identity, (*batch_shape, identity.shape[-1]))
 
         if self.num_scale_params is None:
             if scale_params is not None:
@@ -252,9 +254,9 @@ class SOMA(BodyModel):
             return identity, None
 
         if scale_params is None:
-            scale_params = np.zeros((batch_size, self.num_scale_params), dtype=identity.dtype)
-        elif scale_params.shape[0] == 1 and batch_size > 1:
-            scale_params = np.broadcast_to(scale_params, (batch_size, scale_params.shape[-1]))
+            scale_params = np.zeros((*batch_shape, self.num_scale_params), dtype=identity.dtype)
+        elif scale_params.shape[:-1] == (1,) and batch_shape:
+            scale_params = np.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
         return identity, scale_params
 
     def _prepare_identity_from_inputs(

@@ -36,6 +36,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
 
         self.weights = common.torchify(load_model_data(get_model_path(model_path), dtype="float32"))
         self.rotation_type = rotation_type
+        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:

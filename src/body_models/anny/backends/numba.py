@@ -58,13 +58,15 @@ def forward_vertices(
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
 
-    vertices = _skin_vertices(
-        rest_verts,
-        bone_transforms[..., :3, :3],
-        bone_transforms[..., :3, 3],
-        joint_indices,
-        joint_weights,
-    )
+    vertices = np.empty_like(rest_verts)
+    for batch in np.ndindex(rest_verts.shape[:-2]):
+        vertices[batch] = _skin_vertices(
+            rest_verts[batch][None],
+            bone_transforms[batch][None, :, :3, :3],
+            bone_transforms[batch][None, :, :3, 3],
+            joint_indices,
+            joint_weights,
+        )[0]
     return core.apply_global_transform(np, vertices, global_rotation, global_translation, rotation_type)
 
 

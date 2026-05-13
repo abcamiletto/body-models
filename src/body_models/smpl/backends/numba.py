@@ -7,7 +7,6 @@ from numba import njit, prange
 from body_models.rotations import RotationType
 from body_models.smpl.backends import core
 from body_models.smpl.io import SmplWeights
-from nanomanifold import SO3
 
 __all__ = ["forward_vertices", "forward_skeleton"]
 
@@ -23,14 +22,18 @@ def numba_skin(
     global_translation=None,
     rotation_type: RotationType = "axis_angle",
 ):
-    v_posed = _skin_vertices(
-        v_shaped,
-        j_t,
-        T_world[..., :3, :3],
-        T_world[..., :3, 3],
-        joint_indices,
-        joint_weights,
-    )
+    v_posed = np.empty_like(v_shaped)
+    R_world = T_world[..., :3, :3]
+    t_world = T_world[..., :3, 3]
+    for batch in np.ndindex(v_shaped.shape[:-2]):
+        v_posed[batch] = _skin_vertices(
+            v_shaped[batch][None],
+            j_t[batch][None],
+            R_world[batch][None],
+            t_world[batch][None],
+            joint_indices,
+            joint_weights,
+        )[0]
     return core.apply_global_transform(np, v_posed, global_rotation, global_translation, rotation_type)
 
 
@@ -88,47 +91,20 @@ def forward_skeleton(
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
 ):
-    B = body_pose.shape[0]
-    if shape.shape[0] == 1 and B > 1:
-        shape = np.broadcast_to(shape, (B, shape.shape[1]))
-
-    body_pose_matrices = SO3.convert(body_pose, src=rotation_type, dst="rotmat", xp=np)
-    if pelvis_rotation is None:
-        pelvis_matrices = SO3.identity_as(
-            body_pose_matrices,
-            batch_dims=(B, 1),
-            rotation_type="rotmat",
-            xp=np,
-        )
-    else:
-        pelvis_matrices = SO3.convert(pelvis_rotation, src=rotation_type, dst="rotmat", xp=np)[:, None]
-
-    pose_matrices = np.concat([pelvis_matrices, body_pose_matrices], axis=1)
-    j_t = weights.j_template + np.einsum("...p,jdp->...jd", shape, weights.j_shapedirs[:, :, : shape.shape[-1]])
-    t_local = np.empty_like(j_t)
-    t_local[:, 0] = j_t[:, 0]
-    t_local[:, 1:] = j_t[:, 1:] - j_t[:, weights.parents[1:]]
-
-    parents = np.asarray(weights.parents, dtype=np.int64)
-    if global_rotation is not None:
-        R_world, t_world = _forward_kinematics(pose_matrices, t_local, parents)
-        R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=np)
-        t_world = (R_global @ t_world.mT).mT
-        R_world = R_global[:, None] @ R_world
-        if global_translation is not None:
-            t_world = t_world + global_translation[:, None]
-        T_world = np.zeros((*R_world.shape[:-2], 4, 4), dtype=R_world.dtype)
-        T_world[..., :3, :3] = R_world
-        T_world[..., :3, 3] = t_world
-        T_world[..., 3, 3] = 1.0
-    else:
-        if global_translation is None:
-            global_translation = np.zeros((B, 3), dtype=t_local.dtype)
-        T_world = _forward_kinematics_matrix(pose_matrices, t_local, parents, global_translation)
-
-    if joint_indices is None:
-        return T_world
-    return T_world[:, joint_indices]
+    return core.forward_skeleton(
+        j_template=weights.j_template,
+        j_shapedirs=weights.j_shapedirs,
+        parents=weights.parents,
+        kinematic_fronts=weights.kinematic_fronts,
+        shape=shape,
+        body_pose=body_pose,
+        pelvis_rotation=pelvis_rotation,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+        joint_indices=joint_indices,
+        rotation_type=rotation_type,
+        xp=np,
+    )
 
 
 @njit(parallel=True, fastmath=True)

@@ -41,9 +41,17 @@ def forward_vertices(
         joint_weights = joint_weights[vertex_indices]
 
     skin_mats = SE3.to_matrix(skeleton, xp=np)
-    vertices = _skin_vertices(vertices, skin_mats[:, :, :3, :3], skin_mats[:, :, :3, 3], joint_indices, joint_weights)
+    skinned = np.empty_like(vertices)
+    for batch in np.ndindex(vertices.shape[:-2]):
+        skinned[batch] = _skin_vertices(
+            vertices[batch][None],
+            skin_mats[batch][None, :, :3, :3],
+            skin_mats[batch][None, :, :3, 3],
+            joint_indices,
+            joint_weights,
+        )[0]
     return core._apply_global_transform(
-        values=vertices,
+        values=skinned,
         global_rotation=global_rotation,
         global_translation=global_translation,
         rotation_type=rotation_type,
