@@ -166,6 +166,12 @@ class SMPLH(BodyModel):
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
+            "global_rotation": SO3.identity_as(
+                pelvis_ref,
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
         if hands == "open":

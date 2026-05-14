@@ -191,6 +191,12 @@ class SMPLX(BodyModel):
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
+            "global_rotation": SO3.identity_as(
+                pelvis_ref,
+                batch_dims=(batch_size,),
+                rotation_type=self.rotation_type,
+                xp=np,
+            ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
         if hands == "open":
