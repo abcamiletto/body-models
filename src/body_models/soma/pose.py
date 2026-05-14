@@ -47,7 +47,7 @@ def unpack_pose(
     Float[Array, "... 5 N"] | Float[Array, "... 5 3 3"],
     Float[Array, "... 48 N"] | Float[Array, "... 48 3 3"],
 ]:
-    """Split the canonical SOMA pose into root, body, head, and hands."""
+    """Split the canonical SOMA pose into global rotation, body, head, and hands."""
     joint_axis = _joint_axis(pose)
     rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
     global_rotation = pose[(..., 0, *rotation_dims)]
