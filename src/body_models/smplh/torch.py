@@ -147,11 +147,11 @@ class SMPLH(BodyModel, nn.Module):
         self,
         batch_size: int = 1,
         dtype=torch.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
         device = self.rest_vertices.device
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         body_pose_ref = torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
         hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
@@ -184,11 +184,11 @@ class SMPLH(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
-        if hands == "open":
-            params["hand_pose"] = self._open_hand_pose(params["hand_pose"])
+        if hands == "flat":
+            params["hand_pose"] = self._flat_hand_pose(params["hand_pose"])
         return params
 
-    def _open_hand_pose(self, hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"]):
+    def _flat_hand_pose(self, hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"]):
         hand_mean = torch.as_tensor(
             self.weights.hand_mean.reshape(-1, 3),
             device=hand_pose.device,
@@ -201,7 +201,7 @@ class SMPLH(BodyModel, nn.Module):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -209,7 +209,7 @@ class SMPLH(BodyModel, nn.Module):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -224,7 +224,7 @@ class SMPLH(BodyModel, nn.Module):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

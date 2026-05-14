@@ -128,10 +128,10 @@ class MHR(BodyModel):
         self,
         batch_size: int = 1,
         dtype=np.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         hand_pose = np.zeros((batch_size, self.hand_pose_dim), dtype=dtype)
         if hands == "rest":
@@ -148,7 +148,7 @@ class MHR(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -168,7 +168,7 @@ class MHR(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -176,7 +176,7 @@ class MHR(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

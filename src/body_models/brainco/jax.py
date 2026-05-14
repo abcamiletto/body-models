@@ -184,10 +184,10 @@ class BrainCoHand(BodyModel):
         self,
         batch_size: int = 1,
         dtype=jnp.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, jax.Array]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         pose_ref = jnp.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
         global_ref = jnp.zeros((batch_size, 3), dtype=dtype)

@@ -149,10 +149,10 @@ class ANNY(BodyModel):
         self,
         batch_size: int = 1,
         dtype=jnp.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, jnp.ndarray]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         pose_ref = jnp.zeros((batch_size,), dtype=dtype)
         pose = SO3.identity_as(
@@ -179,7 +179,7 @@ class ANNY(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -206,7 +206,7 @@ class ANNY(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -214,7 +214,7 @@ class ANNY(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

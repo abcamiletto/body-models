@@ -144,10 +144,10 @@ class SMPLH(BodyModel):
         self,
         batch_size: int = 1,
         dtype=np.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         body_pose_ref = np.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype)
         hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
@@ -180,11 +180,11 @@ class SMPLH(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
-        if hands == "open":
-            params["hand_pose"] = self._open_hand_pose(params["hand_pose"])
+        if hands == "flat":
+            params["hand_pose"] = self._flat_hand_pose(params["hand_pose"])
         return params
 
-    def _open_hand_pose(self, hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"]):
+    def _flat_hand_pose(self, hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"]):
         hand_mean = np.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
         axis_angle = np.zeros_like(template) - hand_mean
@@ -193,7 +193,7 @@ class SMPLH(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -201,7 +201,7 @@ class SMPLH(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -215,7 +215,7 @@ class SMPLH(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

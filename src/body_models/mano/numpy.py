@@ -141,10 +141,10 @@ class MANO(BodyModel):
         self,
         batch_size: int = 1,
         dtype=np.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
         wrist_ref = np.zeros((batch_size, 3), dtype=dtype)
@@ -154,8 +154,8 @@ class MANO(BodyModel):
             rotation_type=self.rotation_type,
             xp=np,
         )
-        if hands == "open":
-            hand_pose = self._open_hand_pose(hand_pose)
+        if hands == "flat":
+            hand_pose = self._flat_hand_pose(hand_pose)
         return {
             "shape": np.zeros((1, 10), dtype=dtype),
             "hand_pose": hand_pose,
@@ -168,7 +168,7 @@ class MANO(BodyModel):
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
 
-    def _open_hand_pose(self, hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"]):
+    def _flat_hand_pose(self, hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"]):
         hand_mean = np.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
         axis_angle = np.zeros_like(template) - hand_mean

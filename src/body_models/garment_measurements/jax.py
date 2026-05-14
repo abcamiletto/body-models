@@ -120,10 +120,10 @@ class GarmentMeasurements(BodyModel):
         self,
         batch_size: int = 1,
         dtype=jnp.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, jax.Array]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         pose_ref = jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype)
         global_ref = jnp.zeros((batch_size,), dtype=dtype)
@@ -154,7 +154,7 @@ class GarmentMeasurements(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -181,7 +181,7 @@ class GarmentMeasurements(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jax.Array]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -189,7 +189,7 @@ class GarmentMeasurements(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

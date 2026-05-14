@@ -161,10 +161,10 @@ class ANNY(BodyModel, nn.Module):
         self,
         batch_size: int = 1,
         dtype: torch.dtype | None = None,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         dtype = dtype or self.weights.template_vertices.dtype
         device = self.weights.template_vertices.device
@@ -193,7 +193,7 @@ class ANNY(BodyModel, nn.Module):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -221,7 +221,7 @@ class ANNY(BodyModel, nn.Module):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -229,7 +229,7 @@ class ANNY(BodyModel, nn.Module):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

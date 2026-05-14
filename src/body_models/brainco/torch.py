@@ -186,10 +186,10 @@ class BrainCoHand(BodyModel, nn.Module):
         self,
         batch_size: int = 1,
         dtype: torch.dtype = torch.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         device = self.weights.vertices.device
         pose_ref = torch.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)

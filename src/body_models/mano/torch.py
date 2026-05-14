@@ -145,10 +145,10 @@ class MANO(BodyModel, nn.Module):
         self,
         batch_size: int = 1,
         dtype: torch.dtype = torch.float32,
-        hands: Literal["open", "rest"] = "rest",
+        hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         device = self.rest_vertices.device
         hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
@@ -159,8 +159,8 @@ class MANO(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
             xp=torch,
         )
-        if hands == "open":
-            hand_pose = self._open_hand_pose(hand_pose)
+        if hands == "flat":
+            hand_pose = self._flat_hand_pose(hand_pose)
         return {
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
             "hand_pose": hand_pose,
@@ -173,7 +173,7 @@ class MANO(BodyModel, nn.Module):
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 
-    def _open_hand_pose(self, hand_pose: Float[Tensor, "B 15 N"] | Float[Tensor, "B 15 3 3"]):
+    def _flat_hand_pose(self, hand_pose: Float[Tensor, "B 15 N"] | Float[Tensor, "B 15 3 3"]):
         hand_mean = torch.as_tensor(
             self.weights.hand_mean.reshape(-1, 3), device=hand_pose.device, dtype=hand_pose.dtype
         )

@@ -218,7 +218,7 @@ class ModelState:
     params: dict[str, np.ndarray]
     faces: np.ndarray
     color: tuple[int, int, int]
-    hands: str = "rest"
+    hands: str = "default"
     mesh_handle: viser.MeshHandle | None = None
     muscle_handle: viser.LineSegmentsHandle | None = None
     changed: bool = True
@@ -793,7 +793,7 @@ def main() -> None:
                     state = states[name]
                     apply_pose(state, controls[name].sliders, pose_name)
 
-        for label, hands in (("Rest hands", "rest"), ("Open hands", "open")):
+        for label, hands in (("Default hands", "default"), ("Flat hands", "flat"), ("Rest hands", "rest")):
             button = server.gui.add_button(label)
 
             @button.on_click
