@@ -194,13 +194,25 @@ class BrainCoHand(BodyModel, nn.Module):
         device = self.weights.vertices.device
         pose_ref = torch.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)
         global_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
-        return {
-            "hand_pose": SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size, len(self.weights.qpos_joint_indices)),
-                rotation_type=self.rotation_type,
+        hand_pose = SO3.identity_as(
+            pose_ref,
+            batch_dims=(batch_size, len(self.weights.qpos_joint_indices)),
+            rotation_type=self.rotation_type,
+            xp=torch,
+        )
+        if hands == "rest":
+            hinge_pose = torch.full(
+                (batch_size, len(self.weights.qpos_joint_indices), 1), 0.65, device=device, dtype=dtype
+            )
+            hand_pose = SO3.convert(
+                hinge_pose,
+                src="hinge",
+                dst=self.rotation_type,
+                src_kwargs={"axes": self.weights.qpos_joint_axes},
                 xp=torch,
-            ),
+            )
+        return {
+            "hand_pose": hand_pose,
             "global_rotation": SO3.identity_as(
                 global_ref,
                 batch_dims=(batch_size,),

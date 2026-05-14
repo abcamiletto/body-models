@@ -166,6 +166,8 @@ class ANNY(BodyModel):
             xp=np,
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(np, pose)
+        if hands == "rest":
+            hand_pose = pose_utils.relaxed_hand_pose(np, hand_pose, self.rotation_type)
         return {
             **{
                 name: np.full((batch_size,), 0.5, dtype=dtype)

@@ -15,7 +15,7 @@ from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import torch as backend
 from .io import get_model_path, load_model_data
 from .constants import GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
-from .pose import pack_pose, unpack_pose
+from .pose import pack_pose, relaxed_hand_pose, unpack_pose
 
 
 __all__ = ["GarmentMeasurements"]
@@ -138,6 +138,8 @@ class GarmentMeasurements(BodyModel, nn.Module):
             xp=torch,
         )
         pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
+        if hands == "rest":
+            hand_pose = relaxed_hand_pose(torch, hand_pose, self.rotation_type)
         return {
             "shape": torch.zeros((1, self.num_shape_components), dtype=dtype, device=device),
             "body_pose": body_pose,

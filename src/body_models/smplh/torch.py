@@ -35,7 +35,7 @@ class SMPLH(BodyModel, nn.Module):
         self,
         model_path: Path | str | None = None,
         gender: Literal["neutral", "male", "female"] | None = None,
-        flat_hand_mean: bool = True,
+        flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         kernel: Literal["torch", "warp"] = "torch",

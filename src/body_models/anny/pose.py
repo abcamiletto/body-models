@@ -3,6 +3,9 @@
 from typing import Any
 
 from jaxtyping import Float
+from nanomanifold import SO3
+
+from body_models import common
 
 Array = Any
 
@@ -65,4 +68,15 @@ def unpack_pose(
     return global_rotation, body_pose, head_pose, hand_pose
 
 
-__all__ = ["pack_pose", "unpack_pose"]
+def relaxed_hand_pose(
+    xp: Any,
+    hand_pose: Float[Array, "... J N"] | Float[Array, "... J 3 3"],
+    rotation_type: str,
+    curl: float = 0.55,
+) -> Float[Array, "... J N"] | Float[Array, "... J 3 3"]:
+    template = hand_pose[..., :, 0, :] if hand_pose.shape[-2:] == (3, 3) else hand_pose
+    axis_angle = common.set(xp.zeros_like(template), (..., 0), xp.asarray(curl, dtype=template.dtype), xp=xp)
+    return SO3.convert(axis_angle, src="axis_angle", dst=rotation_type, xp=xp)
+
+
+__all__ = ["pack_pose", "relaxed_hand_pose", "unpack_pose"]

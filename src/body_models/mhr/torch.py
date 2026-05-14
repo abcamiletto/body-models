@@ -140,10 +140,15 @@ class MHR(BodyModel, nn.Module):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         device = self.rest_vertices.device
+        hand_pose = torch.zeros((batch_size, self.hand_pose_dim), device=device, dtype=dtype)
+        if hands == "rest":
+            hand_pose = common.set(
+                hand_pose, (..., slice(None, 24)), torch.asarray(0.35, device=device, dtype=dtype), xp=torch
+            )
         return {
             "shape": torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype),
             "body_pose": torch.zeros((batch_size, self.body_pose_dim), device=device, dtype=dtype),
-            "hand_pose": torch.zeros((batch_size, self.hand_pose_dim), device=device, dtype=dtype),
+            "hand_pose": hand_pose,
             "expression": torch.zeros((batch_size, self.EXPR_DIM), device=device, dtype=dtype),
             "global_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),

@@ -133,10 +133,13 @@ class MHR(BodyModel):
         if hands not in ("open", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
+        hand_pose = np.zeros((batch_size, self.hand_pose_dim), dtype=dtype)
+        if hands == "rest":
+            hand_pose = common.set(hand_pose, (..., slice(None, 24)), np.asarray(0.35, dtype=dtype), xp=np)
         return {
             "shape": np.zeros((1, self.SHAPE_DIM), dtype=dtype),
             "body_pose": np.zeros((batch_size, self.body_pose_dim), dtype=dtype),
-            "hand_pose": np.zeros((batch_size, self.hand_pose_dim), dtype=dtype),
+            "hand_pose": hand_pose,
             "expression": np.zeros((batch_size, self.EXPR_DIM), dtype=dtype),
             "global_rotation": np.zeros((batch_size, 3), dtype=dtype),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),

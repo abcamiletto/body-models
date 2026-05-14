@@ -145,14 +145,17 @@ class MANO(BodyModel):
 
         hand_pose_ref = jnp.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
         wrist_ref = jnp.zeros((batch_size, 3), dtype=dtype)
+        hand_pose = SO3.identity_as(
+            hand_pose_ref,
+            batch_dims=(batch_size, self.NUM_HAND_JOINTS),
+            rotation_type=self.rotation_type,
+            xp=jnp,
+        )
+        if hands == "open":
+            hand_pose = self._open_hand_pose(hand_pose)
         return {
             "shape": jnp.zeros((1, 10), dtype=dtype),
-            "hand_pose": SO3.identity_as(
-                hand_pose_ref,
-                batch_dims=(batch_size, self.NUM_HAND_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            ),
+            "hand_pose": hand_pose,
             "wrist_rotation": SO3.identity_as(
                 wrist_ref,
                 batch_dims=(batch_size,),
@@ -161,3 +164,9 @@ class MANO(BodyModel):
             ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def _open_hand_pose(self, hand_pose: Float[jax.Array, "B 15 N"] | Float[jax.Array, "B 15 3 3"]):
+        hand_mean = jnp.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
+        template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+        axis_angle = jnp.zeros_like(template) - hand_mean
+        return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)

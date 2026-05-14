@@ -176,6 +176,8 @@ class ANNY(BodyModel, nn.Module):
             xp=torch,
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        if hands == "rest":
+            hand_pose = pose_utils.relaxed_hand_pose(torch, hand_pose, self.rotation_type)
         return {
             **{
                 name: torch.full((batch_size,), 0.5, device=device, dtype=dtype)

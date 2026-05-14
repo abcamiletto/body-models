@@ -143,10 +143,13 @@ class MHR(BodyModel):
         if hands not in ("open", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
+        hand_pose = jnp.zeros((batch_size, self.hand_pose_dim), dtype=dtype)
+        if hands == "rest":
+            hand_pose = common.set(hand_pose, (..., slice(None, 24)), jnp.asarray(0.35, dtype=dtype), xp=jnp)
         return {
             "shape": jnp.zeros((1, self.SHAPE_DIM), dtype=dtype),
             "body_pose": jnp.zeros((batch_size, self.body_pose_dim), dtype=dtype),
-            "hand_pose": jnp.zeros((batch_size, self.hand_pose_dim), dtype=dtype),
+            "hand_pose": hand_pose,
             "expression": jnp.zeros((batch_size, self.EXPR_DIM), dtype=dtype),
             "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),

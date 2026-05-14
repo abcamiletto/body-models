@@ -27,7 +27,7 @@ from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import jax as identity_sources
 from body_models.soma.constants import SOMA_APOSE, SOMA_IPOSE, SOMA_JOINTS
-from body_models.soma.pose import pack_pose, unpack_pose
+from body_models.soma.pose import pack_pose, relaxed_hand_pose, unpack_pose
 
 PathLike = Path | str
 
@@ -211,6 +211,8 @@ class SOMA(BodyModel):
             xp=jnp,
         )
         global_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
+        if hands == "rest":
+            hand_pose = relaxed_hand_pose(jnp, hand_pose, self.rotation_type)
         params = {
             "body_pose": body_pose,
             "head_pose": head_pose,
