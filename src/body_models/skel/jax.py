@@ -125,11 +125,7 @@ class SKEL(BodyModel):
         batch_size: int = 1,
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        # T-pose is the SKEL rest pose.
-        params["body_pose"] = body_pose
-        return params
+        return self.get_rest_pose(batch_size=batch_size, **kwargs)
 
     def get_apose(
         self,
