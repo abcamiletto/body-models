@@ -202,7 +202,7 @@ class SMPLX(BodyModel):
     def _open_hand_pose(self, hand_pose: Float[jax.Array, "B 30 N"] | Float[jax.Array, "B 30 3 3"]):
         hand_mean = jnp.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = template * 0 - hand_mean
+        axis_angle = jnp.zeros_like(template) - hand_mean
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
 
     def get_tpose(

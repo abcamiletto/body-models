@@ -214,7 +214,7 @@ class SMPLX(BodyModel, nn.Module):
             dtype=hand_pose.dtype,
         )
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = template * 0 - hand_mean
+        axis_angle = torch.zeros_like(template) - hand_mean
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
     def get_tpose(
