@@ -104,12 +104,11 @@ class ANNY(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
-        pose = pose_utils.pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.forward_vertices(
             weights=self.weights,
             gender=gender,
@@ -119,7 +118,6 @@ class ANNY(BodyModel, nn.Module):
             height=height,
             proportions=proportions,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
@@ -137,12 +135,11 @@ class ANNY(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B J 4 4"]:
-        pose = pose_utils.pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.forward_skeleton(
             weights=self.weights,
             gender=gender,
@@ -152,7 +149,6 @@ class ANNY(BodyModel, nn.Module):
             height=height,
             proportions=proportions,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
@@ -169,7 +165,7 @@ class ANNY(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
             xp=torch,
         )
-        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
         return {
             **{
                 name: torch.full((batch_size,), 0.5, device=device, dtype=dtype)
@@ -178,13 +174,7 @@ class ANNY(BodyModel, nn.Module):
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
-            "pelvis_rotation": pelvis_rotation,
-            "global_rotation": SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size,),
-                rotation_type=self.rotation_type,
-                xp=torch,
-            ),
+            "global_rotation": global_rotation,
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 
@@ -195,7 +185,7 @@ class ANNY(BodyModel, nn.Module):
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -206,12 +196,12 @@ class ANNY(BodyModel, nn.Module):
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params
 
@@ -229,7 +219,7 @@ class ANNY(BodyModel, nn.Module):
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -240,12 +230,12 @@ class ANNY(BodyModel, nn.Module):
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params
 

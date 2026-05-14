@@ -91,12 +91,11 @@ class ANNY(BodyModel):
         body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
         head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
         hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
-        pelvis_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
-        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jnp.ndarray, "B V 3"]:
-        pose = pose_utils.pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_vertices(
             weights=self.weights,
             gender=gender,
@@ -106,7 +105,6 @@ class ANNY(BodyModel):
             height=height,
             proportions=proportions,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
@@ -124,12 +122,11 @@ class ANNY(BodyModel):
         body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
         head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
         hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
-        pelvis_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
-        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jnp.ndarray, "B J 4 4"]:
-        pose = pose_utils.pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_skeleton(
             weights=self.weights,
             gender=gender,
@@ -139,7 +136,6 @@ class ANNY(BodyModel):
             height=height,
             proportions=proportions,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
@@ -154,7 +150,7 @@ class ANNY(BodyModel):
             rotation_type=self.rotation_type,
             xp=jnp,
         )
-        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
         return {
             **{
                 name: jnp.full((batch_size,), 0.5, dtype=dtype)
@@ -163,13 +159,7 @@ class ANNY(BodyModel):
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
-            "pelvis_rotation": pelvis_rotation,
-            "global_rotation": SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size,),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            ),
+            "global_rotation": global_rotation,
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
 
@@ -180,7 +170,7 @@ class ANNY(BodyModel):
     ) -> dict[str, jnp.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -190,12 +180,12 @@ class ANNY(BodyModel):
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
             pose = common.set(pose, (slice(None), index), converted, xp=jnp)
-        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params
 
@@ -213,7 +203,7 @@ class ANNY(BodyModel):
     ) -> dict[str, jnp.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -223,11 +213,11 @@ class ANNY(BodyModel):
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
             pose = common.set(pose, (slice(None), index), converted, xp=jnp)
-        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params

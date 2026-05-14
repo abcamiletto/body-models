@@ -138,17 +138,16 @@ class SOMA(BodyModel):
         body_pose: Float[jax.Array, "B 23 N"] | Float[jax.Array, "B 23 3 3"],
         head_pose: Float[jax.Array, "B 5 N"] | Float[jax.Array, "B 5 3 3"],
         hand_pose: Float[jax.Array, "B 48 N"] | Float[jax.Array, "B 48 3 3"],
-        pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"],
+        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"],
         *,
         identity: Float[jax.Array, "B|1 I"] | None = None,
         scale_params: Float[jax.Array, "B|1 K"] | None = None,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[jax.Array, "B V 3"]:
-        pose = pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
@@ -156,7 +155,6 @@ class SOMA(BodyModel):
             data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             apply_correctives=apply_correctives,
@@ -169,17 +167,16 @@ class SOMA(BodyModel):
         body_pose: Float[jax.Array, "B 23 N"] | Float[jax.Array, "B 23 3 3"],
         head_pose: Float[jax.Array, "B 5 N"] | Float[jax.Array, "B 5 3 3"],
         hand_pose: Float[jax.Array, "B 48 N"] | Float[jax.Array, "B 48 3 3"],
-        pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"],
+        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"],
         *,
         identity: Float[jax.Array, "B|1 I"] | None = None,
         scale_params: Float[jax.Array, "B|1 K"] | None = None,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[jax.Array, "B 77 4 4"]:
-        pose = pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
@@ -187,7 +184,6 @@ class SOMA(BodyModel):
             data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             apply_correctives=apply_correctives,
@@ -197,25 +193,18 @@ class SOMA(BodyModel):
 
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         pose_ref = jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype)
-        rot_ref = jnp.zeros((batch_size, 3), dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
             batch_dims=(batch_size, self.num_joints),
             rotation_type=self.rotation_type,
             xp=jnp,
         )
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
+        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
         params = {
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
-            "pelvis_rotation": pelvis_rotation,
-            "global_rotation": SO3.identity_as(
-                rot_ref,
-                batch_dims=(batch_size,),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            ),
+            "global_rotation": global_rotation,
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
         params["identity"] = jnp.full(
@@ -301,7 +290,7 @@ class SOMA(BodyModel):
     ) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -310,12 +299,12 @@ class SOMA(BodyModel):
         for index, values in SOMA_APOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
             pose = common.set(pose, (slice(None), index), converted, xp=jnp)
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
+        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params
 
@@ -326,7 +315,7 @@ class SOMA(BodyModel):
     ) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -335,11 +324,11 @@ class SOMA(BodyModel):
         for index, values in SOMA_IPOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
             pose = common.set(pose, (slice(None), index), converted, xp=jnp)
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
+        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params

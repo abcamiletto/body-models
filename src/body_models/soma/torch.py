@@ -148,17 +148,16 @@ class SOMA(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
         head_pose: Float[Tensor, "B 5 N"] | Float[Tensor, "B 5 3 3"],
         hand_pose: Float[Tensor, "B 48 N"] | Float[Tensor, "B 48 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
         identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[Tensor, "B V 3"]:
-        pose = pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
@@ -166,7 +165,6 @@ class SOMA(BodyModel, nn.Module):
             data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             apply_correctives=apply_correctives,
@@ -179,17 +177,16 @@ class SOMA(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
         head_pose: Float[Tensor, "B 5 N"] | Float[Tensor, "B 5 3 3"],
         hand_pose: Float[Tensor, "B 48 N"] | Float[Tensor, "B 48 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
         identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
     ) -> Float[Tensor, "B 77 4 4"]:
-        pose = pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
+        pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
             identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
@@ -197,7 +194,6 @@ class SOMA(BodyModel, nn.Module):
             data=self.weights,
             prepared_identity=identity_state,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             apply_correctives=apply_correctives,
@@ -208,25 +204,18 @@ class SOMA(BodyModel, nn.Module):
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.mean_active.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
-        rot_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
             batch_dims=(batch_size, self.num_joints),
             rotation_type=self.rotation_type,
             xp=torch,
         )
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
+        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
         params = {
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
-            "pelvis_rotation": pelvis_rotation,
-            "global_rotation": SO3.identity_as(
-                rot_ref,
-                batch_dims=(batch_size,),
-                rotation_type=self.rotation_type,
-                xp=torch,
-            ),
+            "global_rotation": global_rotation,
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
         params["identity"] = torch.full(
@@ -322,7 +311,7 @@ class SOMA(BodyModel, nn.Module):
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -332,12 +321,12 @@ class SOMA(BodyModel, nn.Module):
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
+        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params
 
@@ -348,7 +337,7 @@ class SOMA(BodyModel, nn.Module):
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
         pose_parts = (
-            params["pelvis_rotation"],
+            params["global_rotation"],
             params["body_pose"],
             params["head_pose"],
             params["hand_pose"],
@@ -358,12 +347,12 @@ class SOMA(BodyModel, nn.Module):
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
+        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
         params.update(
             body_pose=body_pose,
             head_pose=head_pose,
             hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            global_rotation=global_rotation,
         )
         return params
 

@@ -299,7 +299,7 @@ def reset_button(server: viser.ViserServer, handles: list[SliderHandle]) -> None
 def apply_pose(name: str, state: ModelState, sliders: list[SliderHandle], pose_name: str) -> None:
     pose_fn = getattr(state.model, f"get_{pose_name}")
     preset = pose_fn(hands=state.hands) if name in HAND_PRESET_MODELS else pose_fn()
-    for key in ("body_pose", "head_pose", "hand_pose", "pelvis_rotation"):
+    for key in ("body_pose", "head_pose", "hand_pose", "global_rotation"):
         if key in preset and key in state.params:
             state.params[key] = preset[key]
     for slider in sliders:
