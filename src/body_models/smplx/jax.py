@@ -14,7 +14,7 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplx.backends import jax as backend
 from body_models.smplx.io import get_model_path, load_model_data
-from body_models.smplx.constants import SMPLX_APOSE, SMPLX_IPOSE, SMPLX_JOINTS
+from body_models.smplx.constants import SMPLX_APOSE, SMPLX_HAND_PRESETS, SMPLX_IPOSE, SMPLX_JOINTS
 
 __all__ = ["SMPLX"]
 
@@ -197,14 +197,16 @@ class SMPLX(BodyModel):
             ),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
-        if hands == "flat":
-            params["hand_pose"] = self._flat_hand_pose(params["hand_pose"])
+        if hands != "default":
+            params["hand_pose"] = self._hand_preset(params["hand_pose"], hands)
         return params
 
-    def _flat_hand_pose(self, hand_pose: Float[jax.Array, "B 30 N"] | Float[jax.Array, "B 30 3 3"]):
-        hand_mean = jnp.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
+    def _hand_preset(self, hand_pose: Float[jax.Array, "B 30 N"] | Float[jax.Array, "B 30 3 3"], hands: str):
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = jnp.zeros_like(template) - hand_mean
+        axis_angle = jnp.asarray(SMPLX_HAND_PRESETS[hands], dtype=hand_pose.dtype).reshape(
+            1, self.NUM_HAND_JOINTS, 3
+        )
+        axis_angle = jnp.broadcast_to(axis_angle, template.shape)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
 
     def get_tpose(

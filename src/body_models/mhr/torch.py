@@ -13,6 +13,7 @@ from body_models.base import BodyModel
 from body_models.mhr.backends import torch as backend
 from body_models.mhr.constants import (
     MHR_BODY_POSE_DIM,
+    MHR_HAND_PRESETS,
     MHR_HAND_POSE_DIM,
     MHR_IPOSE_TARGETS,
     MHR_JOINTS,
@@ -141,10 +142,11 @@ class MHR(BodyModel, nn.Module):
 
         device = self.rest_vertices.device
         hand_pose = torch.zeros((batch_size, self.hand_pose_dim), device=device, dtype=dtype)
-        if hands == "rest":
-            hand_pose = common.set(
-                hand_pose, (..., slice(None, 24)), torch.asarray(0.35, device=device, dtype=dtype), xp=torch
+        if hands != "default":
+            hand_pose = torch.asarray(MHR_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
+                1, self.hand_pose_dim
             )
+            hand_pose = torch.broadcast_to(hand_pose, (batch_size, self.hand_pose_dim))
         return {
             "shape": torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype),
             "body_pose": torch.zeros((batch_size, self.body_pose_dim), device=device, dtype=dtype),

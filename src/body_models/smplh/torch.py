@@ -15,7 +15,7 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplh.backends import torch as torch_backend
 from body_models.smplh.io import get_model_path, load_model_data
-from body_models.smplh.constants import SMPLH_APOSE, SMPLH_IPOSE, SMPLH_JOINTS
+from body_models.smplh.constants import SMPLH_APOSE, SMPLH_HAND_PRESETS, SMPLH_IPOSE, SMPLH_JOINTS
 
 __all__ = ["SMPLH"]
 
@@ -184,18 +184,16 @@ class SMPLH(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
-        if hands == "flat":
-            params["hand_pose"] = self._flat_hand_pose(params["hand_pose"])
+        if hands != "default":
+            params["hand_pose"] = self._hand_preset(params["hand_pose"], hands)
         return params
 
-    def _flat_hand_pose(self, hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"]):
-        hand_mean = torch.as_tensor(
-            self.weights.hand_mean.reshape(-1, 3),
-            device=hand_pose.device,
-            dtype=hand_pose.dtype,
-        )
+    def _hand_preset(self, hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"], hands: str):
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = torch.zeros_like(template) - hand_mean
+        axis_angle = torch.as_tensor(SMPLH_HAND_PRESETS[hands], device=hand_pose.device, dtype=hand_pose.dtype).reshape(
+            1, self.NUM_HAND_JOINTS, 3
+        )
+        axis_angle = torch.broadcast_to(axis_angle, template.shape)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
     def get_tpose(

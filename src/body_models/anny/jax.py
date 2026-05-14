@@ -11,7 +11,7 @@ from body_models import common
 from body_models.anny import pose as pose_utils
 from body_models.anny.backends import jax as backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
-from body_models.anny.constants import ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
+from body_models.anny.constants import ANNY_HAND_PRESETS, ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -162,8 +162,10 @@ class ANNY(BodyModel):
             xp=jnp,
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
-        if hands == "rest":
-            hand_pose = pose_utils.relaxed_hand_pose(jnp, hand_pose, self.rotation_type)
+        if hands != "default":
+            axis_angle = jnp.asarray(ANNY_HAND_PRESETS[hands], dtype=dtype).reshape(1, hand_pose.shape[-2], 3)
+            axis_angle = jnp.broadcast_to(axis_angle, hand_pose.shape)
+            hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return {
             **{
                 name: jnp.full((batch_size,), 0.5, dtype=dtype)

@@ -14,7 +14,7 @@ from nanomanifold import SO3
 
 from body_models.mano.backends import torch as torch_backend
 from body_models.mano.io import get_model_path, load_model_data
-from body_models.mano.constants import LEFT_MANO_JOINTS, RIGHT_MANO_JOINTS
+from body_models.mano.constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["MANO"]
@@ -159,8 +159,8 @@ class MANO(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
             xp=torch,
         )
-        if hands == "flat":
-            hand_pose = self._flat_hand_pose(hand_pose)
+        if hands != "default":
+            hand_pose = self._hand_preset(hand_pose, hands)
         return {
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
             "hand_pose": hand_pose,
@@ -173,12 +173,12 @@ class MANO(BodyModel, nn.Module):
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 
-    def _flat_hand_pose(self, hand_pose: Float[Tensor, "B 15 N"] | Float[Tensor, "B 15 3 3"]):
-        hand_mean = torch.as_tensor(
-            self.weights.hand_mean.reshape(-1, 3), device=hand_pose.device, dtype=hand_pose.dtype
-        )
+    def _hand_preset(self, hand_pose: Float[Tensor, "B 15 N"] | Float[Tensor, "B 15 3 3"], hands: str):
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = torch.zeros_like(template) - hand_mean
+        axis_angle = torch.as_tensor(
+            MANO_HAND_PRESETS[self.side][hands], device=hand_pose.device, dtype=hand_pose.dtype
+        ).reshape(1, self.NUM_HAND_JOINTS, 3)
+        axis_angle = torch.broadcast_to(axis_angle, template.shape)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
 
