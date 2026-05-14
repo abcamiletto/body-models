@@ -72,48 +72,50 @@ SKEL_POSE_DOFS = [
 FLAME_POSE_JOINTS = [("Neck", 0), ("Jaw", 1), ("L_Eye", 2), ("R_Eye", 3)]
 
 ANNY_PHENOTYPE_PARAMS = ["Gender", "Age", "Muscle", "Weight", "Height", "Proportions"]
-ANNY_POSE_BONES = [
-    ("Spine", 1),
-    ("Spine1", 2),
-    ("Spine2", 3),
-    ("Neck", 4),
-    ("L Shoulder", 8),
-    ("L Arm", 9),
-    ("R Shoulder", 13),
-    ("R Arm", 14),
-    ("L UpLeg", 18),
-    ("R UpLeg", 23),
-]
-
-GARMENT_MEASUREMENTS_POSE_JOINTS = [
+ANNY_BODY_POSE_BONES = [
+    ("Spine", 0),
     ("Spine1", 1),
     ("Spine2", 2),
-    ("Chest", 3),
-    ("Neck1", 4),
-    ("Head", 6),
-    ("L Clavicle", 9),
-    ("L UpperArm", 10),
-    ("R Clavicle", 30),
-    ("R UpperArm", 31),
-    ("L Thigh", 51),
-    ("R Thigh", 55),
+    ("Neck", 3),
+    ("L Shoulder", 7),
+    ("L Arm", 8),
+    ("R Shoulder", 12),
+    ("R Arm", 13),
+    ("L UpLeg", 17),
+    ("R UpLeg", 22),
 ]
 
-SOMA_POSE_JOINTS = [
-    ("Spine1", 1),
-    ("Spine2", 2),
-    ("Chest", 3),
-    ("Neck1", 4),
-    ("Head", 6),
-    ("L Shoulder", 11),
-    ("L Arm", 12),
-    ("L ForeArm", 13),
-    ("R Shoulder", 39),
-    ("R Arm", 40),
-    ("R ForeArm", 41),
-    ("L Leg", 67),
-    ("R Leg", 72),
+GARMENT_MEASUREMENTS_BODY_POSE_JOINTS = [
+    ("Spine1", 0),
+    ("Spine2", 1),
+    ("Chest", 2),
+    ("Neck1", 3),
+    ("L Clavicle", 5),
+    ("L UpperArm", 6),
+    ("R Clavicle", 11),
+    ("R UpperArm", 12),
+    ("L Thigh", 17),
+    ("R Thigh", 21),
 ]
+
+GARMENT_MEASUREMENTS_HEAD_POSE_JOINTS = [("Head", 0)]
+
+SOMA_BODY_POSE_JOINTS = [
+    ("Spine1", 0),
+    ("Spine2", 1),
+    ("Chest", 2),
+    ("Neck1", 3),
+    ("L Shoulder", 5),
+    ("L Arm", 6),
+    ("L ForeArm", 7),
+    ("R Shoulder", 9),
+    ("R Arm", 10),
+    ("R ForeArm", 11),
+    ("L Leg", 13),
+    ("R Leg", 18),
+]
+
+SOMA_HEAD_POSE_JOINTS = [("Head", 0)]
 
 # qpos joint indices into model.qpos_joint_names. body_pose stores one scalar
 # value per qpos entry (hinge angle or slide displacement); each joint = one slider.
@@ -207,6 +209,7 @@ CANONICAL_POSE_MODELS = (
     "G1",
     "MyoFullBody",
 )
+HAND_PRESET_MODELS = ("SMPLH", "SMPLX")
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -216,6 +219,7 @@ class ModelState:
     params: dict[str, np.ndarray]
     faces: np.ndarray
     color: tuple[int, int, int]
+    hands: str = "rest"
     mesh_handle: viser.MeshHandle | None = None
     muscle_handle: viser.LineSegmentsHandle | None = None
     changed: bool = True
@@ -292,13 +296,24 @@ def reset_button(server: viser.ViserServer, handles: list[SliderHandle]) -> None
             slider.handle.value = slider.initial
 
 
-def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -> None:
-    preset = getattr(state.model, f"get_{pose_name}")()
-    for key in ("pose", "body_pose", "hand_pose"):
+def apply_pose(name: str, state: ModelState, sliders: list[SliderHandle], pose_name: str) -> None:
+    pose_fn = getattr(state.model, f"get_{pose_name}")
+    preset = pose_fn(hands=state.hands) if name in HAND_PRESET_MODELS else pose_fn()
+    for key in ("body_pose", "head_pose", "hand_pose", "pelvis_rotation"):
         if key in preset and key in state.params:
             state.params[key] = preset[key]
     for slider in sliders:
         if slider.key in state.params:
+            slider.handle.value = float(state.params[slider.key][slider.indices])
+    state.changed = True
+
+
+def apply_hands(state: ModelState, sliders: list[SliderHandle], hands: str) -> None:
+    preset = cast(Any, state.model).get_rest_pose(hands=hands)
+    state.hands = hands
+    state.params["hand_pose"] = preset["hand_pose"]
+    for slider in sliders:
+        if slider.key == "hand_pose":
             slider.handle.value = float(state.params[slider.key][slider.indices])
     state.changed = True
 
@@ -341,7 +356,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                             hi=hi,
                             step=0.05,
                             initial=0.0,
-                            key="pose",
+                            key="body_pose",
                             indices=(0, idx),
                         )
                     )
@@ -364,7 +379,11 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     )
             with server.gui.add_folder("Pose"):
                 handles += joint_xyz(
-                    server, state, key="pose", joints=ANNY_POSE_BONES, max_joints=state.model.num_joints
+                    server,
+                    state,
+                    key="body_pose",
+                    joints=ANNY_BODY_POSE_BONES,
+                    max_joints=state.params["body_pose"].shape[1],
                 )
 
         elif name == "MHR":
@@ -385,13 +404,21 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
             model = cast(Any, state.model)
             with server.gui.add_folder("Shape"):
                 handles += betas(server, state, key="shape", count=model.num_shape_components)
-            with server.gui.add_folder("Pose"):
+            with server.gui.add_folder("Body Pose"):
                 handles += joint_xyz(
                     server,
                     state,
-                    key="pose",
-                    joints=GARMENT_MEASUREMENTS_POSE_JOINTS,
-                    max_joints=model.num_joints,
+                    key="body_pose",
+                    joints=GARMENT_MEASUREMENTS_BODY_POSE_JOINTS,
+                    max_joints=state.params["body_pose"].shape[1],
+                )
+            with server.gui.add_folder("Head Pose"):
+                handles += joint_xyz(
+                    server,
+                    state,
+                    key="head_pose",
+                    joints=GARMENT_MEASUREMENTS_HEAD_POSE_JOINTS,
+                    max_joints=state.params["head_pose"].shape[1],
                 )
 
         elif name == "SOMA":
@@ -409,8 +436,22 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     step=0.05,
                     initial=identity_default,
                 )
-            with server.gui.add_folder("Pose"):
-                handles += joint_xyz(server, state, key="pose", joints=SOMA_POSE_JOINTS, max_joints=model.num_joints)
+            with server.gui.add_folder("Body Pose"):
+                handles += joint_xyz(
+                    server,
+                    state,
+                    key="body_pose",
+                    joints=SOMA_BODY_POSE_JOINTS,
+                    max_joints=state.params["body_pose"].shape[1],
+                )
+            with server.gui.add_folder("Head Pose"):
+                handles += joint_xyz(
+                    server,
+                    state,
+                    key="head_pose",
+                    joints=SOMA_HEAD_POSE_JOINTS,
+                    max_joints=state.params["head_pose"].shape[1],
+                )
 
         elif name == "G1":
             model = cast(Any, state.model)
@@ -448,7 +489,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 folder_name="Hinge Pose",
                 joints=BRAINCO_POSE_JOINTS,
                 limits=model.qpos_joint_limits,
-                key="pose",
+                key="hand_pose",
                 index=lambda qpos_idx: (0, qpos_idx, 0),
                 handles=handles,
             )
@@ -751,7 +792,15 @@ def main() -> None:
             def _(_, pose_name=pose_name) -> None:
                 for name in CANONICAL_POSE_MODELS:
                     state = states[name]
-                    apply_pose(state, controls[name].sliders, pose_name)
+                    apply_pose(name, state, controls[name].sliders, pose_name)
+
+        for label, hands in (("Rest hands", "rest"), ("Open hands", "open")):
+            button = server.gui.add_button(label)
+
+            @button.on_click
+            def _(_, hands=hands) -> None:
+                for name in HAND_PRESET_MODELS:
+                    apply_hands(states[name], controls[name].sliders, hands)
 
     def show_model_controls(name: str) -> None:
         for folder_name, model_controls in controls.items():
