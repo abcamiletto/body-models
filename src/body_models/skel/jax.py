@@ -81,7 +81,7 @@ class SKEL(BodyModel):
     def forward_vertices(
         self,
         shape: Float[jax.Array, "B|1 10"],
-        pose: Float[jax.Array, "B 46"],
+        body_pose: Float[jax.Array, "B 46"],
         global_rotation: Float[jax.Array, "B 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
@@ -89,7 +89,7 @@ class SKEL(BodyModel):
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
-            pose=pose,
+            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
@@ -98,7 +98,7 @@ class SKEL(BodyModel):
     def forward_skeleton(
         self,
         shape: Float[jax.Array, "B|1 10"],
-        pose: Float[jax.Array, "B 46"],
+        body_pose: Float[jax.Array, "B 46"],
         global_rotation: Float[jax.Array, "B 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
@@ -106,7 +106,7 @@ class SKEL(BodyModel):
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
-            pose=pose,
+            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
@@ -115,7 +115,7 @@ class SKEL(BodyModel):
     def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
         return {
             "shape": jnp.zeros((1, self.NUM_BETAS), dtype=dtype),
-            "pose": jnp.zeros((batch_size, self.NUM_POSE_PARAMS), dtype=dtype),
+            "body_pose": jnp.zeros((batch_size, self.NUM_POSE_PARAMS), dtype=dtype),
             "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
@@ -126,9 +126,9 @@ class SKEL(BodyModel):
         **kwargs,
     ) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        body_pose = params["body_pose"]
         # T-pose is the SKEL rest pose.
-        params["pose"] = pose
+        params["body_pose"] = body_pose
         return params
 
     def get_apose(
@@ -137,11 +137,11 @@ class SKEL(BodyModel):
         **kwargs,
     ) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        body_pose = params["body_pose"]
         for index, value in SKEL_APOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=jnp)
-        params["pose"] = pose
+            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
+            body_pose = common.set(body_pose, slices, value, xp=jnp)
+        params["body_pose"] = body_pose
         return params
 
     def get_ipose(
@@ -150,9 +150,9 @@ class SKEL(BodyModel):
         **kwargs,
     ) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        body_pose = params["body_pose"]
         for index, value in SKEL_IPOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=jnp)
-        params["pose"] = pose
+            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
+            body_pose = common.set(body_pose, slices, value, xp=jnp)
+        params["body_pose"] = body_pose
         return params

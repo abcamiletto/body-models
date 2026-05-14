@@ -113,14 +113,14 @@ class BrainCoHand(BodyModel, nn.Module):
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
         params = self.get_rest_pose(batch_size=1)
         return self.forward_vertices(
-            pose=params["pose"],
+            hand_pose=params["hand_pose"],
             global_translation=params["global_translation"],
             global_rotation=params["global_rotation"],
         )[0]
 
     def forward_skeleton(
         self,
-        pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -128,7 +128,7 @@ class BrainCoHand(BodyModel, nn.Module):
     ) -> Float[Tensor, "B J 4 4"]:
         return backend.forward_skeleton(
             self.weights,
-            pose,
+            hand_pose,
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
@@ -137,7 +137,7 @@ class BrainCoHand(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -145,7 +145,7 @@ class BrainCoHand(BodyModel, nn.Module):
     ) -> Float[Tensor, "B V 3"]:
         return backend.forward_vertices(
             self.weights,
-            pose,
+            hand_pose,
             global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
@@ -154,14 +154,14 @@ class BrainCoHand(BodyModel, nn.Module):
 
     def forward_links(
         self,
-        pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
     ) -> Float[Tensor, "B L 4 4"]:
         return backend.forward_links(
             self.weights,
-            pose,
+            hand_pose,
             global_translation,
             global_rotation=global_rotation,
             rotation_type=self.rotation_type,
@@ -184,7 +184,7 @@ class BrainCoHand(BodyModel, nn.Module):
         pose_ref = torch.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)
         global_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
         return {
-            "pose": SO3.identity_as(
+            "hand_pose": SO3.identity_as(
                 pose_ref,
                 batch_dims=(batch_size, len(self.weights.qpos_joint_indices)),
                 rotation_type=self.rotation_type,

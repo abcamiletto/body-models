@@ -89,7 +89,7 @@ class SKEL(BodyModel, nn.Module):
     def forward_vertices(
         self,
         shape: Float[Tensor, "B|1 10"],
-        pose: Float[Tensor, "B 46"],
+        body_pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
@@ -97,7 +97,7 @@ class SKEL(BodyModel, nn.Module):
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
-            pose=pose,
+            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
@@ -106,7 +106,7 @@ class SKEL(BodyModel, nn.Module):
     def forward_skeleton(
         self,
         shape: Float[Tensor, "B|1 10"],
-        pose: Float[Tensor, "B 46"],
+        body_pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
@@ -114,7 +114,7 @@ class SKEL(BodyModel, nn.Module):
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
-            pose=pose,
+            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
@@ -123,28 +123,28 @@ class SKEL(BodyModel, nn.Module):
     def forward_skeleton_mesh(
         self,
         shape: Float[Tensor, "B|1 10"],
-        pose: Float[Tensor, "B 46"],
+        body_pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B Vs 3"]:
-        _, _, _, _, skeleton_vertices = self._forward_full(shape, pose, global_rotation, global_translation)
+        _, _, _, _, skeleton_vertices = self._forward_full(shape, body_pose, global_rotation, global_translation)
         return skeleton_vertices + self.weights.feet_offset
 
     def forward_meshes(
         self,
         shape: Float[Tensor, "B|1 10"],
-        pose: Float[Tensor, "B 46"],
+        body_pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> tuple[Float[Tensor, "B V 3"], Float[Tensor, "B Vs 3"]]:
-        vertices, _, _, _, skeleton_vertices = self._forward_full(shape, pose, global_rotation, global_translation)
+        vertices, _, _, _, skeleton_vertices = self._forward_full(shape, body_pose, global_rotation, global_translation)
         return vertices + self.weights.feet_offset, skeleton_vertices + self.weights.feet_offset
 
     def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.v_template.device
         return {
             "shape": torch.zeros((1, self.NUM_BETAS), device=device, dtype=dtype),
-            "pose": torch.zeros((batch_size, self.NUM_POSE_PARAMS), device=device, dtype=dtype),
+            "body_pose": torch.zeros((batch_size, self.NUM_POSE_PARAMS), device=device, dtype=dtype),
             "global_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
@@ -155,9 +155,9 @@ class SKEL(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        body_pose = params["body_pose"]
         # T-pose is the SKEL rest pose.
-        params["pose"] = pose
+        params["body_pose"] = body_pose
         return params
 
     def get_apose(
@@ -166,11 +166,11 @@ class SKEL(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        body_pose = params["body_pose"]
         for index, value in SKEL_APOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=torch)
-        params["pose"] = pose
+            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
+            body_pose = common.set(body_pose, slices, value, xp=torch)
+        params["body_pose"] = body_pose
         return params
 
     def get_ipose(
@@ -179,17 +179,17 @@ class SKEL(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        body_pose = params["body_pose"]
         for index, value in SKEL_IPOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=torch)
-        params["pose"] = pose
+            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
+            body_pose = common.set(body_pose, slices, value, xp=torch)
+        params["body_pose"] = body_pose
         return params
 
     def _forward_full(
         self,
         shape: Float[Tensor, "B 10"],
-        pose: Float[Tensor, "B 46"],
+        body_pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
     ) -> tuple[
@@ -200,11 +200,11 @@ class SKEL(BodyModel, nn.Module):
         Float[Tensor, "B Vs 3"],
     ]:
         weights = self.weights
-        batch_shape = tuple(pose.shape[:-1])
-        dtype = pose.dtype
+        batch_shape = tuple(body_pose.shape[:-1])
+        dtype = body_pose.dtype
 
         if global_translation is None:
-            global_translation = torch.zeros((*batch_shape, 3), device=pose.device, dtype=dtype)
+            global_translation = torch.zeros((*batch_shape, 3), device=body_pose.device, dtype=dtype)
         if shape.shape[:-1] == (1,) and batch_shape:
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
@@ -212,7 +212,7 @@ class SKEL(BodyModel, nn.Module):
         joint_rel = core._compute_J_rel(torch, joints, weights.parent)
         local_transforms = core._compute_local_transforms(
             torch,
-            pose=pose,
+            pose=body_pose,
             J=joints,
             J_rel=joint_rel,
             all_axes=weights.all_axes,
@@ -229,7 +229,7 @@ class SKEL(BodyModel, nn.Module):
         transforms = core._propagate_transforms(torch, local_transforms, weights.parents[1:])
 
         v_shaped = weights.v_template + torch.einsum("vdi,...i->...vd", weights.shapedirs, shape)
-        eye3 = torch.eye(3, device=pose.device, dtype=dtype)
+        eye3 = torch.eye(3, device=body_pose.device, dtype=dtype)
         smpl_rotations = eye3.expand(*batch_shape, weights.num_joints_smpl, 3, 3).clone()
         smpl_rotations[..., core.SMPL_JOINT_MAP, :, :] = local_transforms[..., :, :3, :3]
         pose_feat = (smpl_rotations[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
