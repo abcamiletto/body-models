@@ -20,29 +20,17 @@ def pack_pose(
 ) -> Float[Array, "... 163 N"] | Float[Array, "... 163 3 3"]:
     """Pack separated ANNY pose groups into the canonical 163-joint pose."""
     joint_axis = _joint_axis(body_pose)
-    if joint_axis == -3:
-        pelvis = global_rotation[..., None, :, :]
-        lower_body_and_left_arm = body_pose[..., :54, :, :]
-        right_arm = body_pose[..., 54:61, :, :]
-        neck = body_pose[..., 61:, :, :]
-        left_hand = hand_pose[..., :19, :, :]
-        right_hand = hand_pose[..., 19:, :, :]
-    else:
-        pelvis = global_rotation[..., None, :]
-        lower_body_and_left_arm = body_pose[..., :54, :]
-        right_arm = body_pose[..., 54:61, :]
-        neck = body_pose[..., 61:, :]
-        left_hand = hand_pose[..., :19, :]
-        right_hand = hand_pose[..., 19:, :]
+    rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
+    root = global_rotation[(..., None, *rotation_dims)]
 
     return xp.concat(
         [
-            pelvis,
-            lower_body_and_left_arm,
-            left_hand,
-            right_arm,
-            right_hand,
-            neck,
+            root,
+            body_pose[(..., slice(None, 54), *rotation_dims)],
+            hand_pose[(..., slice(None, 19), *rotation_dims)],
+            body_pose[(..., slice(54, 61), *rotation_dims)],
+            hand_pose[(..., slice(19, None), *rotation_dims)],
+            body_pose[(..., slice(61, None), *rotation_dims)],
             head_pose,
         ],
         axis=joint_axis,
@@ -58,22 +46,22 @@ def unpack_pose(
     Float[Array, "... 60 N"] | Float[Array, "... 60 3 3"],
     Float[Array, "... 38 N"] | Float[Array, "... 38 3 3"],
 ]:
-    """Split the canonical ANNY pose into pelvis, body, head, and hands."""
+    """Split the canonical ANNY pose into root, body, head, and hands."""
     joint_axis = _joint_axis(pose)
-    if joint_axis == -3:
-        global_rotation = pose[..., 0, :, :]
-        body_parts = [pose[..., 1:55, :, :], pose[..., 74:81, :, :], pose[..., 100:103, :, :]]
-        hand_parts = [pose[..., 55:74, :, :], pose[..., 81:100, :, :]]
-        body_pose = xp.concat(body_parts, axis=joint_axis)
-        head_pose = pose[..., 103:163, :, :]
-        hand_pose = xp.concat(hand_parts, axis=joint_axis)
-    else:
-        global_rotation = pose[..., 0, :]
-        body_parts = [pose[..., 1:55, :], pose[..., 74:81, :], pose[..., 100:103, :]]
-        hand_parts = [pose[..., 55:74, :], pose[..., 81:100, :]]
-        body_pose = xp.concat(body_parts, axis=joint_axis)
-        head_pose = pose[..., 103:163, :]
-        hand_pose = xp.concat(hand_parts, axis=joint_axis)
+    rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
+    global_rotation = pose[(..., 0, *rotation_dims)]
+    body_parts = [
+        pose[(..., slice(1, 55), *rotation_dims)],
+        pose[(..., slice(74, 81), *rotation_dims)],
+        pose[(..., slice(100, 103), *rotation_dims)],
+    ]
+    hand_parts = [
+        pose[(..., slice(55, 74), *rotation_dims)],
+        pose[(..., slice(81, 100), *rotation_dims)],
+    ]
+    body_pose = xp.concat(body_parts, axis=joint_axis)
+    head_pose = pose[(..., slice(103, 163), *rotation_dims)]
+    hand_pose = xp.concat(hand_parts, axis=joint_axis)
     return global_rotation, body_pose, head_pose, hand_pose
 
 
