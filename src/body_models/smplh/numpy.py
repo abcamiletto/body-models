@@ -138,11 +138,19 @@ class SMPLH(BodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=np.float32,
+        hands: Literal["open", "rest"] = "rest",
+    ) -> dict[str, np.ndarray]:
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+
         body_pose_ref = np.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype)
         hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
         pelvis_ref = np.zeros((batch_size, 3), dtype=dtype)
-        return {
+        params = {
             "shape": np.zeros((1, 10), dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
@@ -164,6 +172,15 @@ class SMPLH(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+        if hands == "open":
+            params["hand_pose"] = self._open_hand_pose(params["hand_pose"])
+        return params
+
+    def _open_hand_pose(self, hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"]):
+        hand_mean = np.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
+        template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+        axis_angle = template * 0 - hand_mean
+        return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
 
     def get_tpose(
         self,
@@ -171,18 +188,7 @@ class SMPLH(BodyModel):
         hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
-
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        if hands == "open":
-            hand_pose = params["hand_pose"]
-            hand_mean = np.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
-            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-            axis_angle = template * 0 - hand_mean
-            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-
-        return params
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_apose(
         self,
@@ -190,22 +196,12 @@ class SMPLH(BodyModel):
         hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
-
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         body_pose = params["body_pose"]
         for index, values in SMPLH_APOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
             body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
         params["body_pose"] = body_pose
-        if hands == "open":
-            hand_pose = params["hand_pose"]
-            hand_mean = np.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
-            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-            axis_angle = template * 0 - hand_mean
-            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-
         return params
 
     def get_ipose(
@@ -214,22 +210,12 @@ class SMPLH(BodyModel):
         hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
-
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         body_pose = params["body_pose"]
         for index, values in SMPLH_IPOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
             body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
         params["body_pose"] = body_pose
-        if hands == "open":
-            hand_pose = params["hand_pose"]
-            hand_mean = np.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
-            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-            axis_angle = template * 0 - hand_mean
-            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-
         return params
 
 

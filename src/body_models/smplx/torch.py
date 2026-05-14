@@ -154,13 +154,21 @@ class SMPLX(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=torch.float32,
+        hands: Literal["open", "rest"] = "rest",
+    ) -> dict[str, Tensor]:
         device = self.rest_vertices.device
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
+
         body_pose_ref = torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
         hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
         head_pose_ref = torch.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), device=device, dtype=dtype)
         pelvis_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
-        return {
+        params = {
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
@@ -189,6 +197,19 @@ class SMPLX(BodyModel, nn.Module):
             ),
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
+        if hands == "open":
+            params["hand_pose"] = self._open_hand_pose(params["hand_pose"])
+        return params
+
+    def _open_hand_pose(self, hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"]):
+        hand_mean = torch.as_tensor(
+            self.weights.hand_mean.reshape(-1, 3),
+            device=hand_pose.device,
+            dtype=hand_pose.dtype,
+        )
+        template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+        axis_angle = template * 0 - hand_mean
+        return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
     def get_tpose(
         self,
@@ -196,20 +217,7 @@ class SMPLX(BodyModel, nn.Module):
         hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
-
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        if hands == "open":
-            hand_pose = params["hand_pose"]
-            hand_mean = torch.as_tensor(
-                self.weights.hand_mean.reshape(-1, 3), device=hand_pose.device, dtype=hand_pose.dtype
-            )
-            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-            axis_angle = template * 0 - hand_mean
-            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
-
-        return params
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_apose(
         self,
@@ -217,25 +225,13 @@ class SMPLX(BodyModel, nn.Module):
         hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
-
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         body_pose = params["body_pose"]
         for index, values in SMPLX_APOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
             body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
         params["body_pose"] = body_pose
-        if hands == "open":
-            hand_pose = params["hand_pose"]
-            hand_mean = torch.as_tensor(
-                self.weights.hand_mean.reshape(-1, 3), device=hand_pose.device, dtype=hand_pose.dtype
-            )
-            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-            axis_angle = template * 0 - hand_mean
-            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
-
         return params
 
     def get_ipose(
@@ -244,25 +240,13 @@ class SMPLX(BodyModel, nn.Module):
         hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        if hands not in ("open", "rest"):
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
-
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         body_pose = params["body_pose"]
         for index, values in SMPLX_IPOSE.items():
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
             body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
         params["body_pose"] = body_pose
-        if hands == "open":
-            hand_pose = params["hand_pose"]
-            hand_mean = torch.as_tensor(
-                self.weights.hand_mean.reshape(-1, 3), device=hand_pose.device, dtype=hand_pose.dtype
-            )
-            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-            axis_angle = template * 0 - hand_mean
-            params["hand_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
-
         return params
 
 
