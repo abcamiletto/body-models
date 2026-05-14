@@ -209,7 +209,6 @@ CANONICAL_POSE_MODELS = (
     "G1",
     "MyoFullBody",
 )
-HAND_PRESET_MODELS = ("SMPLH", "SMPLX")
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -219,7 +218,6 @@ class ModelState:
     params: dict[str, np.ndarray]
     faces: np.ndarray
     color: tuple[int, int, int]
-    supports_open_hands: bool = False
     hands: str = "rest"
     mesh_handle: viser.MeshHandle | None = None
     muscle_handle: viser.LineSegmentsHandle | None = None
@@ -299,7 +297,7 @@ def reset_button(server: viser.ViserServer, handles: list[SliderHandle]) -> None
 
 def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -> None:
     pose_fn = getattr(state.model, f"get_{pose_name}")
-    preset = pose_fn(hands=state.hands) if state.supports_open_hands else pose_fn()
+    preset = pose_fn(hands=state.hands) if state.model.has_hands else pose_fn()
     for key in ("body_pose", "head_pose", "hand_pose", "global_rotation"):
         if key in preset and key in state.params:
             state.params[key] = preset[key]
@@ -317,12 +315,6 @@ def apply_hands(state: ModelState, sliders: list[SliderHandle], hands: str) -> N
         if slider.key == "hand_pose":
             slider.handle.value = float(state.params[slider.key][slider.indices])
     state.changed = True
-
-
-def supports_open_hands(model: BodyModel) -> bool:
-    weights = getattr(model, "weights", None)
-    hand_mean = getattr(weights, "hand_mean", None)
-    return hand_mean is not None and bool(np.any(np.asarray(hand_mean)))
 
 
 def set_gui_visible(handle: Any, visible: bool) -> None:
@@ -758,7 +750,6 @@ def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
             params=params,
             faces=triangulate(np.asarray(model.faces)),
             color=MODEL_COLORS[name],
-            supports_open_hands=name in HAND_PRESET_MODELS and supports_open_hands(model),
         )
     return states
 
@@ -807,9 +798,9 @@ def main() -> None:
 
             @button.on_click
             def _(_, hands=hands) -> None:
-                for name in HAND_PRESET_MODELS:
-                    if states[name].supports_open_hands:
-                        apply_hands(states[name], controls[name].sliders, hands)
+                for name, state in states.items():
+                    if state.model.has_hands:
+                        apply_hands(state, controls[name].sliders, hands)
 
     def show_model_controls(name: str) -> None:
         for folder_name, model_controls in controls.items():

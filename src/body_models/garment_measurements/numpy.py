@@ -22,6 +22,8 @@ __all__ = ["GarmentMeasurements"]
 class GarmentMeasurements(BodyModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
+    has_hands = True
+
     kernels = ("numpy", "numba")
     JOINTS = GARMENT_JOINTS
 
@@ -122,10 +124,10 @@ class GarmentMeasurements(BodyModel):
         self,
         batch_size: int = 1,
         dtype=np.float32,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
     ) -> dict[str, np.ndarray]:
-        if hands != "rest":
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         pose_ref = np.zeros((batch_size, self.num_joints, 3), dtype=dtype)
         global_ref = np.zeros((batch_size,), dtype=dtype)
@@ -154,7 +156,7 @@ class GarmentMeasurements(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -181,7 +183,7 @@ class GarmentMeasurements(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -189,7 +191,7 @@ class GarmentMeasurements(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

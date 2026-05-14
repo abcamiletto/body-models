@@ -21,6 +21,8 @@ __all__ = ["ANNY"]
 class ANNY(BodyModel):
     """ANNY body model with NumPy backend."""
 
+    has_hands = True
+
     kernels = ("numpy", "numba")
     JOINTS = ANNY_JOINTS
 
@@ -151,10 +153,10 @@ class ANNY(BodyModel):
         self,
         batch_size: int = 1,
         dtype=np.float32,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
     ) -> dict[str, np.ndarray]:
-        if hands != "rest":
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         pose_ref = np.zeros((batch_size,), dtype=dtype)
         pose = SO3.identity_as(
@@ -179,7 +181,7 @@ class ANNY(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -206,7 +208,7 @@ class ANNY(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -214,7 +216,7 @@ class ANNY(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

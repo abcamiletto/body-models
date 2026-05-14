@@ -37,6 +37,8 @@ __all__ = ["SOMA"]
 class SOMA(BodyModel, nn.Module):
     """SOMA body model with PyTorch backend."""
 
+    has_hands = True
+
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
@@ -205,10 +207,10 @@ class SOMA(BodyModel, nn.Module):
         self,
         batch_size: int = 1,
         dtype: torch.dtype = torch.float32,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
     ) -> dict[str, Tensor]:
-        if hands != "rest":
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         device = self.weights.mean_active.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
@@ -307,7 +309,7 @@ class SOMA(BodyModel, nn.Module):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -316,7 +318,7 @@ class SOMA(BodyModel, nn.Module):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -343,7 +345,7 @@ class SOMA(BodyModel, nn.Module):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

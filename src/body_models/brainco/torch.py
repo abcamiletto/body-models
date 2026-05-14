@@ -22,6 +22,8 @@ __all__ = ["BrainCoHand"]
 class BrainCoHand(BodyModel, nn.Module):
     """BrainCo Revo 2 as rigid STL links attached to its MuJoCo hand skeleton."""
 
+    has_hands = True
+
     is_rigid_body = True
 
     def __init__(
@@ -184,10 +186,10 @@ class BrainCoHand(BodyModel, nn.Module):
         self,
         batch_size: int = 1,
         dtype: torch.dtype = torch.float32,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
     ) -> dict[str, Tensor]:
-        if hands != "rest":
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         device = self.weights.vertices.device
         pose_ref = torch.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)

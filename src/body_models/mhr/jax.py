@@ -27,6 +27,8 @@ __all__ = ["MHR"]
 class MHR(BodyModel):
     """MHR body model with JAX backend."""
 
+    has_hands = True
+
     SHAPE_DIM = 45
     EXPR_DIM = 72
     JOINTS = MHR_JOINTS
@@ -136,10 +138,10 @@ class MHR(BodyModel):
         self,
         batch_size: int = 1,
         dtype=jnp.float32,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
     ) -> dict[str, jnp.ndarray]:
-        if hands != "rest":
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         return {
             "shape": jnp.zeros((1, self.SHAPE_DIM), dtype=dtype),
@@ -153,7 +155,7 @@ class MHR(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -173,7 +175,7 @@ class MHR(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
@@ -181,7 +183,7 @@ class MHR(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)

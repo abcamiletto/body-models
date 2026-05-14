@@ -23,6 +23,8 @@ __all__ = ["MANO"]
 class MANO(BodyModel, nn.Module):
     """MANO hand model with PyTorch backend."""
 
+    has_hands = True
+
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
     kernels = ("torch", "warp")
@@ -143,10 +145,10 @@ class MANO(BodyModel, nn.Module):
         self,
         batch_size: int = 1,
         dtype: torch.dtype = torch.float32,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
     ) -> dict[str, Tensor]:
-        if hands != "rest":
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         device = self.rest_vertices.device
         hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)

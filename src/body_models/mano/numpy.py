@@ -21,6 +21,8 @@ __all__ = ["MANO"]
 class MANO(BodyModel):
     """MANO hand model with NumPy backend."""
 
+    has_hands = True
+
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
     kernels = ("numpy", "scipy", "numba")
@@ -139,10 +141,10 @@ class MANO(BodyModel):
         self,
         batch_size: int = 1,
         dtype=np.float32,
-        hands: Literal["rest"] = "rest",
+        hands: Literal["open", "rest"] = "rest",
     ) -> dict[str, np.ndarray]:
-        if hands != "rest":
-            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+        if hands not in ("open", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'open' or 'rest'.")
 
         hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
         wrist_ref = np.zeros((batch_size, 3), dtype=dtype)

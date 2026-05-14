@@ -22,6 +22,8 @@ __all__ = ["SMPLH"]
 class SMPLH(BodyModel):
     """SMPL-H body model with NumPy backend."""
 
+    has_hands = True
+
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_JOINTS = 52
@@ -183,8 +185,6 @@ class SMPLH(BodyModel):
         return params
 
     def _open_hand_pose(self, hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"]):
-        if not np.any(self.weights.hand_mean):
-            raise ValueError("Open hands require a nonzero SMPLH hand mean.")
         hand_mean = np.asarray(self.weights.hand_mean.reshape(-1, 3), dtype=hand_pose.dtype)
         template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
         axis_angle = np.zeros_like(template) - hand_mean
