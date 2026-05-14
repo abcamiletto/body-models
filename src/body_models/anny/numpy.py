@@ -147,7 +147,15 @@ class ANNY(BodyModel):
             extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=np.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, np.ndarray]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         pose_ref = np.zeros((batch_size,), dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
@@ -171,9 +179,10 @@ class ANNY(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],
@@ -197,16 +206,18 @@ class ANNY(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],

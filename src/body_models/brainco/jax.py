@@ -1,6 +1,7 @@
 """JAX backend for the BrainCo Revo 2 robotic hand model."""
 
 from pathlib import Path
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -177,7 +178,15 @@ class BrainCoHand(BodyModel):
             link_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=jnp.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, jax.Array]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         pose_ref = jnp.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
         global_ref = jnp.zeros((batch_size, 3), dtype=dtype)
         return {

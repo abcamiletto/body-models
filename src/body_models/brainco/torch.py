@@ -1,6 +1,7 @@
 """PyTorch backend for the BrainCo Revo 2 robotic hand model."""
 
 from pathlib import Path
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -179,7 +180,15 @@ class BrainCoHand(BodyModel, nn.Module):
             link_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype: torch.dtype = torch.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, Tensor]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         device = self.weights.vertices.device
         pose_ref = torch.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)
         global_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)

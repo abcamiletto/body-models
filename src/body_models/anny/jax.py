@@ -1,6 +1,7 @@
 """JAX frontend for ANNY."""
 
 from pathlib import Path
+from typing import Literal
 
 import jax.numpy as jnp
 from jaxtyping import Float, Int
@@ -142,7 +143,15 @@ class ANNY(BodyModel):
             extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jnp.ndarray]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=jnp.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, jnp.ndarray]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         pose_ref = jnp.zeros((batch_size,), dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
@@ -166,9 +175,10 @@ class ANNY(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],
@@ -192,16 +202,18 @@ class ANNY(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],

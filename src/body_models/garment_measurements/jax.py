@@ -1,6 +1,7 @@
 """JAX backend for the GarmentMeasurements PCA body model."""
 
 from pathlib import Path
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -113,7 +114,15 @@ class GarmentMeasurements(BodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=jnp.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, jax.Array]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         pose_ref = jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype)
         global_ref = jnp.zeros((batch_size,), dtype=dtype)
         pose = SO3.identity_as(
@@ -141,9 +150,10 @@ class GarmentMeasurements(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["pelvis_rotation"],
             params["body_pose"],
@@ -167,16 +177,18 @@ class GarmentMeasurements(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jax.Array]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["pelvis_rotation"],
             params["body_pose"],

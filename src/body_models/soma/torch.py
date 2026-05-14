@@ -201,7 +201,15 @@ class SOMA(BodyModel, nn.Module):
             xp=torch,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype: torch.dtype = torch.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, Tensor]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         device = self.weights.mean_active.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
         pose = SO3.identity_as(
@@ -299,17 +307,19 @@ class SOMA(BodyModel, nn.Module):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         return params
 
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],
@@ -333,9 +343,10 @@ class SOMA(BodyModel, nn.Module):
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],

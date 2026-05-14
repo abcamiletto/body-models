@@ -1,6 +1,7 @@
 """NumPy backend for MHR model."""
 
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -121,7 +122,15 @@ class MHR(BodyModel):
             joint_indices=joint_indices,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=np.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, np.ndarray]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         return {
             "shape": np.zeros((1, self.SHAPE_DIM), dtype=dtype),
             "body_pose": np.zeros((batch_size, self.body_pose_dim), dtype=dtype),
@@ -134,9 +143,10 @@ class MHR(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         targets = MHR_TPOSE_TARGETS
         pose = pack_pose(np, params["body_pose"], params["hand_pose"])
         rows = [
@@ -153,16 +163,18 @@ class MHR(BodyModel):
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         targets = MHR_IPOSE_TARGETS
         pose = pack_pose(np, params["body_pose"], params["hand_pose"])
         rows = [

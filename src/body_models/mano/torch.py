@@ -139,7 +139,15 @@ class MANO(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype: torch.dtype = torch.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, Tensor]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         device = self.rest_vertices.device
         hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
         wrist_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)

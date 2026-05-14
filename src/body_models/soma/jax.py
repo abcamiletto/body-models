@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -191,7 +192,15 @@ class SOMA(BodyModel):
             xp=jnp,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=jnp.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, jax.Array]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         pose_ref = jnp.zeros((batch_size, self.num_joints, 3), dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
@@ -278,17 +287,19 @@ class SOMA(BodyModel):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         return params
 
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],
@@ -311,9 +322,10 @@ class SOMA(BodyModel):
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],

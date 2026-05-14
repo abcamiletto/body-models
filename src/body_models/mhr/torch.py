@@ -1,6 +1,7 @@
 """PyTorch backend for MHR model."""
 
 from pathlib import Path
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -127,7 +128,15 @@ class MHR(BodyModel, nn.Module):
             joint_indices=joint_indices,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype: torch.dtype = torch.float32,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, Tensor]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         device = self.rest_vertices.device
         return {
             "shape": torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype),
@@ -141,9 +150,10 @@ class MHR(BodyModel, nn.Module):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         targets = MHR_TPOSE_TARGETS
         pose = pack_pose(torch, params["body_pose"], params["hand_pose"])
         rows = [
@@ -160,16 +170,18 @@ class MHR(BodyModel, nn.Module):
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         targets = MHR_IPOSE_TARGETS
         pose = pack_pose(torch, params["body_pose"], params["hand_pose"])
         rows = [

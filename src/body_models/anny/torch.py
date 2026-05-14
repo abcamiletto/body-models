@@ -155,7 +155,15 @@ class ANNY(BodyModel, nn.Module):
             extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype | None = None) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype: torch.dtype | None = None,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, Tensor]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         dtype = dtype or self.weights.template_vertices.dtype
         device = self.weights.template_vertices.device
         pose_ref = torch.zeros((batch_size,), device=device, dtype=dtype)
@@ -181,9 +189,10 @@ class ANNY(BodyModel, nn.Module):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],
@@ -208,16 +217,18 @@ class ANNY(BodyModel, nn.Module):
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["global_rotation"],
             params["body_pose"],

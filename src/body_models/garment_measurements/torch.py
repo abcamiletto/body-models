@@ -1,6 +1,7 @@
 """PyTorch backend for the GarmentMeasurements PCA body model."""
 
 from pathlib import Path
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -115,7 +116,15 @@ class GarmentMeasurements(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype | None = None) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype: torch.dtype | None = None,
+        hands: Literal["rest"] = "rest",
+    ) -> dict[str, Tensor]:
+        if hands != "rest":
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'rest'.")
+
         dtype = dtype or self.weights.mean_vertices.dtype
         device = self.weights.mean_vertices.device
         pose_ref = torch.zeros((batch_size, self.num_joints, 3), dtype=dtype, device=device)
@@ -145,9 +154,10 @@ class GarmentMeasurements(BodyModel, nn.Module):
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["pelvis_rotation"],
             params["body_pose"],
@@ -172,16 +182,18 @@ class GarmentMeasurements(BodyModel, nn.Module):
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["rest"] = "rest",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
         pose_parts = (
             params["pelvis_rotation"],
             params["body_pose"],
