@@ -27,8 +27,8 @@ from body_models.soma.backends import torch as torch_backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
-from body_models.soma.constants import SOMA_APOSE, SOMA_IPOSE, SOMA_JOINTS
-from body_models.soma.pose import pack_pose, relaxed_hand_pose, unpack_pose
+from body_models.soma.constants import SOMA_APOSE, SOMA_HAND_PRESETS, SOMA_IPOSE, SOMA_JOINTS
+from body_models.soma.pose import pack_pose, unpack_pose
 
 PathLike = Path | str
 __all__ = ["SOMA"]
@@ -221,8 +221,12 @@ class SOMA(BodyModel, nn.Module):
             xp=torch,
         )
         global_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
-        if hands == "rest":
-            hand_pose = relaxed_hand_pose(torch, hand_pose, self.rotation_type)
+        if hands != "default":
+            axis_angle = torch.asarray(SOMA_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
+                1, hand_pose.shape[-2], 3
+            )
+            axis_angle = torch.broadcast_to(axis_angle, hand_pose.shape)
+            hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         params = {
             "body_pose": body_pose,
             "head_pose": head_pose,
