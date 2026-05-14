@@ -13,8 +13,8 @@ from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import jax as backend
 from .io import get_model_path, load_model_data
-from .constants import GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
-from .pose import pack_pose, relaxed_hand_pose, unpack_pose
+from .constants import GARMENT_HAND_PRESETS, GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
+from .pose import pack_pose, unpack_pose
 
 
 __all__ = ["GarmentMeasurements"]
@@ -134,8 +134,10 @@ class GarmentMeasurements(BodyModel):
             xp=jnp,
         )
         pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(jnp, pose)
-        if hands == "rest":
-            hand_pose = relaxed_hand_pose(jnp, hand_pose, self.rotation_type)
+        if hands != "default":
+            axis_angle = jnp.asarray(GARMENT_HAND_PRESETS[hands], dtype=dtype).reshape(1, hand_pose.shape[-2], 3)
+            axis_angle = jnp.broadcast_to(axis_angle, hand_pose.shape)
+            hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return {
             "shape": jnp.zeros((1, self.num_shape_components), dtype=dtype),
             "body_pose": body_pose,
