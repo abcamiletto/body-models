@@ -40,6 +40,7 @@ class RigData(TypedDict):
     bind_quats: np.ndarray
     joint_positions: np.ndarray
     skin_weights: np.ndarray
+    template_vertices: np.ndarray
 
 
 def main(argv: list[str]) -> None:
@@ -52,7 +53,10 @@ def main(argv: list[str]) -> None:
     mean_vertices, components, eigenvalues = _load_pca(upstream_data / "pca" / "point.pca")
     _, faces = _load_obj(upstream_data / "pca" / "mean.obj")
     rig = _load_fbx_rig(upstream_data / "template" / "male.fbx", mean_vertices.shape[0])
-    mvc_weights = _compute_mvc_weights(mean_vertices, faces, rig["joint_positions"])
+    # MVC weights bind joints to the FBX template mesh (the rig's reference), matching
+    # upstream GarmentMeasurements. Applied at runtime to PCA-deformed vertices, they
+    # produce joint positions that follow the body shape.
+    mvc_weights = _compute_mvc_weights(rig["template_vertices"], faces, rig["joint_positions"])
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
@@ -120,6 +124,9 @@ def _load_fbx_rig(path: Path, num_vertices: int) -> RigData:
     mesh = next((obj for obj in meshes if obj.name in {"skin", "H_DDS_HighResShape"}), meshes[0])
     if len(mesh.data.vertices) != num_vertices:
         raise ValueError(f"FBX mesh has {len(mesh.data.vertices)} vertices, expected {num_vertices}")
+    template_vertices = np.asarray(
+        [(mesh.matrix_world @ v.co)[:] for v in mesh.data.vertices], dtype=np.float64
+    )
 
     armature = armatures[0]
     bones = list(armature.data.bones)
@@ -155,6 +162,7 @@ def _load_fbx_rig(path: Path, num_vertices: int) -> RigData:
         "bind_quats": bind_quats,
         "joint_positions": joint_positions,
         "skin_weights": skin_weights,
+        "template_vertices": template_vertices,
     }
 
 
