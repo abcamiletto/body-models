@@ -187,6 +187,8 @@ class SMPLH(BodyModel, nn.Module):
         return params
 
     def _open_hand_pose(self, hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"]):
+        if not torch.any(self.weights.hand_mean):
+            raise ValueError("Open hands require a nonzero SMPLH hand mean.")
         hand_mean = torch.as_tensor(
             self.weights.hand_mean.reshape(-1, 3),
             device=hand_pose.device,
