@@ -173,18 +173,7 @@ class SMPL(BodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(SMPL_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-        return params
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        axis_angle = np.asarray(SMPL_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
-        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np).copy()
         return params
 
 

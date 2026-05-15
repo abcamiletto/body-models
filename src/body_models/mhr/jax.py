@@ -174,14 +174,3 @@ class MHR(BodyModel):
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs,
-    ) -> dict[str, jnp.ndarray]:
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        body_pose = jnp.asarray(MHR_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params

@@ -13,15 +13,15 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from .. import config
-from ..cache import download_and_extract, get_cache_dir
+from ..cache import HF_DATASET_BASE_URL, download_file, get_cache_dir
 
 PathLike = Path | str
 Array = Any
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
-GARMENT_MEASUREMENTS_URL = "https://github.com/mbotsch/GarmentMeasurements/archive/refs/heads/main.zip"
 PREPROCESSED_FILENAME = "garment_measurements.npz"
+GARMENT_MEASUREMENTS_URL = f"{HF_DATASET_BASE_URL}/garment_measurements/{PREPROCESSED_FILENAME}"
 GENERATOR_PYTHON = "3.11"
 
 
@@ -66,14 +66,10 @@ def validate_path(model_path: PathLike) -> Path:
 
 
 def download_model() -> Path:
-    """Download upstream GarmentMeasurements data assets."""
+    """Download preprocessed GarmentMeasurements data assets."""
     cache_dir = get_cache_dir() / "garment_measurements"
     print(f"Downloading GarmentMeasurements model to {cache_dir}...")
-    download_and_extract(
-        url=GARMENT_MEASUREMENTS_URL,
-        dest=cache_dir,
-        extract_subdir="GarmentMeasurements-main/data/",
-    )
+    download_file(GARMENT_MEASUREMENTS_URL, cache_dir / PREPROCESSED_FILENAME)
     print("Done")
     return cache_dir
 
