@@ -216,15 +216,3 @@ class MyoFullBody(BodyModel, nn.Module):
         )
         params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        body_pose = torch.as_tensor(
-            MYOFULLBODY_BODY_PRESETS["i_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
-        )
-        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params

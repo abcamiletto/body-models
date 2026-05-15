@@ -174,16 +174,3 @@ class MHR(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs,
-    ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        body_pose = torch.as_tensor(
-            MHR_BODY_PRESETS["i_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
-        )
-        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params

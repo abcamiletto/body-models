@@ -130,16 +130,8 @@ class BodyModel(ABC):
         """Get parameters for the MHR-style A-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Get parameters for a neutral standing I-pose with arms down."""
-        raise NotImplementedError("Canonical body poses are not defined for this model.")
-
     def to_viser_bones(self, **forward_kwargs: Any) -> dict[str, np.ndarray]:
-        """Export parent-relative bone poses for ``viser`` from ``forward_skeleton()`` kwargs."""
+        """Export world-space bone poses for ``viser`` from ``forward_skeleton()`` kwargs."""
         if not forward_kwargs:
             forward_kwargs = self.get_rest_pose(batch_dims=(1,))
         if "joint_indices" in forward_kwargs:
@@ -148,17 +140,9 @@ class BodyModel(ABC):
         skeleton = np.asarray(self.forward_skeleton(**forward_kwargs))
         if skeleton.shape[0] != 1:
             raise ValueError(f"to_viser_bones() expects batch size 1, got {skeleton.shape[0]}")
-        if len(self.parents) != self.num_joints:
-            raise ValueError(f"Expected {self.num_joints} joint parents, got {len(self.parents)}")
-
         world = skeleton[0]
-        local = world.copy()
-        for joint_index, parent_index in enumerate(self.parents):
-            if parent_index >= 0:
-                local[joint_index] = np.linalg.solve(world[parent_index], world[joint_index])
-
-        bone_wxyzs = SO3.conversions.from_rotmat_to_quat(local[:, :3, :3], convention="wxyz", xp=np)
-        bone_positions = local[:, :3, 3]
+        bone_wxyzs = SO3.conversions.from_rotmat_to_quat(world[:, :3, :3], convention="wxyz", xp=np)
+        bone_positions = world[:, :3, 3]
         return {"bone_wxyzs": bone_wxyzs, "bone_positions": bone_positions.copy()}
 
     def to_viser_skinned_mesh(self, **forward_kwargs: Any) -> dict[str, np.ndarray]:
@@ -183,6 +167,15 @@ class BodyModel(ABC):
         return {
             "vertices": vertices[0].copy(),
             "faces": faces.copy(),
-            "skin_weights": np.asarray(self.skin_weights).copy(),
+            "skin_weights": _viser_skin_weights(np.asarray(self.skin_weights)),
             **self.to_viser_bones(**forward_kwargs),
         }
+
+
+def _viser_skin_weights(skin_weights: np.ndarray) -> np.ndarray:
+    """Return skin weights in the 4-influence format used by viser."""
+    weights = np.asarray(skin_weights).copy()
+    pruned_indices = np.argsort(weights, axis=-1)[:, :-4]
+    weights[np.arange(weights.shape[0])[:, None], pruned_indices] = 0.0
+    row_sums = weights.sum(axis=-1, keepdims=True)
+    return np.divide(weights, row_sums, out=np.zeros_like(weights), where=row_sums > 0)

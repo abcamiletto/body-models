@@ -201,13 +201,13 @@ class G1(BodyModel):
             batch_dims=(*batch_dims, len(self.weights.qpos_joint_indices)),
             rotation_type=self.rotation_type,
             xp=np,
-        )
+        ).copy()
         global_rotation = SO3.identity_as(
             global_ref,
             batch_dims=batch_dims,
             rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
             xp=np,
-        )
+        ).copy()
         return {
             "body_pose": body_pose,
             "global_rotation": global_rotation,
@@ -222,7 +222,14 @@ class G1(BodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(G1_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
+        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        params["body_pose"] = SO3.convert(
+            axis_angle,
+            src="axis_angle",
+            dst=self.rotation_type,
+            dst_kwargs=dst_kwargs,
+            xp=np,
+        ).copy()
         return params
 
     def get_apose(
@@ -233,16 +240,12 @@ class G1(BodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(G1_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-        return params
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        axis_angle = np.asarray(G1_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
-        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
+        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        params["body_pose"] = SO3.convert(
+            axis_angle,
+            src="axis_angle",
+            dst=self.rotation_type,
+            dst_kwargs=dst_kwargs,
+            xp=np,
+        ).copy()
         return params

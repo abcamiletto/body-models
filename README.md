@@ -311,14 +311,16 @@ body = server.scene.add_mesh_skinned(
 
 # Later, update only the bones from any forward_skeleton() parameter dict.
 bones = model.to_viser_bones(**forward_kwargs)
-body.bone_wxyzs = bones["bone_wxyzs"]
-body.bone_positions = bones["bone_positions"]
+for bone, wxyz, position in zip(body.bones, bones["bone_wxyzs"], bones["bone_positions"]):
+    bone.wxyz = wxyz
+    bone.position = position
 ```
 
 - `forward_kwargs` is the same kwargs dict you would pass to `forward_vertices()` or `forward_skeleton()`.
 - Use `to_viser_skinned_mesh(**forward_kwargs)` when the mesh or bind skeleton changes.
 - Use `to_viser_bones(**forward_kwargs)` when you only want updated bone poses.
 - Both helpers require `batch_dims=(1,)`, the full mesh, and the full joint set.
+- Bone poses are exported in world/model space, matching `viser.SceneApi.add_mesh_skinned()`.
 
 ## Supported Models
 

@@ -215,20 +215,6 @@ class ANNY(BodyModel, nn.Module):
     ) -> dict[str, Tensor]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs,
-    ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        axis_angle = torch.as_tensor(
-            ANNY_BODY_PRESETS["i_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
-        )
-        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
-        return params
-
 
 def _get_kernel(kernel: Literal["torch", "warp"]):
     if kernel == "torch":

@@ -195,7 +195,7 @@ class MyoFullBody(BodyModel):
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(MYOFULLBODY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
+        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()
         return params
 
     def get_apose(
@@ -205,15 +205,5 @@ class MyoFullBody(BodyModel):
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(MYOFULLBODY_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        body_pose = np.asarray(MYOFULLBODY_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
+        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()
         return params

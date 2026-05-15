@@ -226,15 +226,3 @@ class SMPLX(BodyModel):
         axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return params
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs,
-    ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        axis_angle = jnp.asarray(SMPLX_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
-        axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
-        return params
