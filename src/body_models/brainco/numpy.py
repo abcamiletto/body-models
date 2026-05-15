@@ -11,7 +11,7 @@ from body_models.base import BodyModel
 from body_models.brainco.backends import core
 from body_models.brainco.backends import numpy as backend
 from body_models.brainco.io import Side, load_model_data
-from body_models.brainco.constants import LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
+from body_models.brainco.constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
 
 __all__ = ["BrainCoHand"]
 
@@ -187,26 +187,18 @@ class BrainCoHand(BodyModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        pose_ref = np.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
         global_ref = np.zeros((batch_size, 3), dtype=dtype)
-        hand_pose = SO3.identity_as(
-            pose_ref,
-            batch_dims=(batch_size, len(self.weights.qpos_joint_indices)),
-            rotation_type=self.rotation_type,
+        qpos = np.asarray(BRAINCO_HAND_PRESETS[hands], dtype=dtype).reshape(1, -1, 1)
+        qpos = np.repeat(qpos, batch_size, axis=0)
+        axes = self.weights.qpos_joint_axes
+        rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=np)
+        hand_pose = SO3.convert(
+            rotmat,
+            src="rotmat",
+            dst=self.rotation_type,
+            dst_kwargs={"hinge": {"axes": axes}}.get(self.rotation_type, {}),
             xp=np,
         )
-        if hands == "rest":
-            hinge_pose = np.full((batch_size, len(self.weights.qpos_joint_indices), 1), 0.65, dtype=dtype)
-            if self.rotation_type == "hinge":
-                hand_pose = hinge_pose
-            else:
-                hand_pose = SO3.convert(
-                    hinge_pose,
-                    src="hinge",
-                    dst=self.rotation_type,
-                    src_kwargs={"axes": self.weights.qpos_joint_axes},
-                    xp=np,
-                )
         return {
             "hand_pose": hand_pose,
             "global_rotation": SO3.identity_as(

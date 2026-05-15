@@ -139,9 +139,8 @@ class GarmentMeasurements(BodyModel):
         )
         pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(np, pose)
         if hands != "default":
-            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-            axis_angle = np.asarray(GARMENT_HAND_PRESETS[hands], dtype=dtype).reshape(1, template.shape[-2], 3)
-            axis_angle = np.repeat(axis_angle, template.shape[0], axis=0)
+            axis_angle = np.asarray(GARMENT_HAND_PRESETS[hands], dtype=dtype).reshape(1, -1, 3)
+            axis_angle = np.repeat(axis_angle, batch_size, axis=0)
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return {
             "shape": np.zeros((1, self.num_shape_components), dtype=dtype),

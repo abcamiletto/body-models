@@ -152,7 +152,7 @@ class MANO(BodyModel):
             xp=jnp,
         )
         if hands != "default":
-            hand_pose = self._hand_preset(hand_pose, hands)
+            hand_pose = self._hand_preset(batch_size, dtype, hands)
         return {
             "shape": jnp.zeros((1, 10), dtype=dtype),
             "hand_pose": hand_pose,
@@ -165,10 +165,9 @@ class MANO(BodyModel):
             "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
         }
 
-    def _hand_preset(self, hand_pose: Float[jax.Array, "B 15 N"] | Float[jax.Array, "B 15 3 3"], hands: str):
-        template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = jnp.asarray(MANO_HAND_PRESETS[self.side][hands], dtype=hand_pose.dtype).reshape(
+    def _hand_preset(self, batch_size: int, dtype, hands: str):
+        axis_angle = jnp.asarray(MANO_HAND_PRESETS[self.side][hands], dtype=dtype).reshape(
             1, self.NUM_HAND_JOINTS, 3
         )
-        axis_angle = jnp.repeat(axis_angle, template.shape[0], axis=0)
+        axis_angle = jnp.repeat(axis_angle, batch_size, axis=0)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)

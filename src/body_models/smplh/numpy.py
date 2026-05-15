@@ -181,15 +181,14 @@ class SMPLH(BodyModel):
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
         if hands != "default":
-            params["hand_pose"] = self._hand_preset(params["hand_pose"], hands)
+            params["hand_pose"] = self._hand_preset(batch_size, dtype, hands)
         return params
 
-    def _hand_preset(self, hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"], hands: str):
-        template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = np.asarray(SMPLH_HAND_PRESETS[hands], dtype=hand_pose.dtype).reshape(
+    def _hand_preset(self, batch_size: int, dtype, hands: str):
+        axis_angle = np.asarray(SMPLH_HAND_PRESETS[hands], dtype=dtype).reshape(
             1, self.NUM_HAND_JOINTS, 3
         )
-        axis_angle = np.repeat(axis_angle, template.shape[0], axis=0)
+        axis_angle = np.repeat(axis_angle, batch_size, axis=0)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
 
     def get_tpose(

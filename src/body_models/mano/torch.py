@@ -160,7 +160,7 @@ class MANO(BodyModel, nn.Module):
             xp=torch,
         )
         if hands != "default":
-            hand_pose = self._hand_preset(hand_pose, hands)
+            hand_pose = self._hand_preset(batch_size, device, dtype, hands)
         return {
             "shape": torch.zeros((1, 10), device=device, dtype=dtype),
             "hand_pose": hand_pose,
@@ -173,12 +173,11 @@ class MANO(BodyModel, nn.Module):
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 
-    def _hand_preset(self, hand_pose: Float[Tensor, "B 15 N"] | Float[Tensor, "B 15 3 3"], hands: str):
-        template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+    def _hand_preset(self, batch_size: int, device, dtype: torch.dtype, hands: str):
         axis_angle = torch.as_tensor(
-            MANO_HAND_PRESETS[self.side][hands], device=hand_pose.device, dtype=hand_pose.dtype
+            MANO_HAND_PRESETS[self.side][hands], device=device, dtype=dtype
         ).reshape(1, self.NUM_HAND_JOINTS, 3)
-        axis_angle = axis_angle.repeat(template.shape[0], 1, 1)
+        axis_angle = axis_angle.repeat(batch_size, 1, 1)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
 

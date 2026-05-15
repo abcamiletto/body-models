@@ -31,5 +31,10 @@ RIGHT_BRAINCO_JOINTS = {
     Joint.RIGHT_PINKY_DIP: "right_pinky_distal_skel",
 }
 
+BRAINCO_HAND_PRESETS = {
+    "default": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    "flat": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    "rest": (0.65, 0.65, 0.65, 0.65, 0.65, 0.65),
+}
 
-__all__ = ["LEFT_BRAINCO_JOINTS", "RIGHT_BRAINCO_JOINTS"]
+__all__ = ["BRAINCO_HAND_PRESETS", "LEFT_BRAINCO_JOINTS", "RIGHT_BRAINCO_JOINTS"]

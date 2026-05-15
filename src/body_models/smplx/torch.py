@@ -206,15 +206,14 @@ class SMPLX(BodyModel, nn.Module):
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
         if hands != "default":
-            params["hand_pose"] = self._hand_preset(params["hand_pose"], hands)
+            params["hand_pose"] = self._hand_preset(batch_size, device, dtype, hands)
         return params
 
-    def _hand_preset(self, hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"], hands: str):
-        template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
-        axis_angle = torch.as_tensor(SMPLX_HAND_PRESETS[hands], device=hand_pose.device, dtype=hand_pose.dtype).reshape(
+    def _hand_preset(self, batch_size: int, device, dtype: torch.dtype, hands: str):
+        axis_angle = torch.as_tensor(SMPLX_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
             1, self.NUM_HAND_JOINTS, 3
         )
-        axis_angle = axis_angle.repeat(template.shape[0], 1, 1)
+        axis_angle = axis_angle.repeat(batch_size, 1, 1)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
     def get_tpose(
