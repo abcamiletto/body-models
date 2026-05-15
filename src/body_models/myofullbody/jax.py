@@ -209,13 +209,3 @@ class MyoFullBody(BodyModel):
         body_pose = jnp.asarray(MYOFULLBODY_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        body_pose = jnp.asarray(MYOFULLBODY_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params

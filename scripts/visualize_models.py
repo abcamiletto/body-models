@@ -24,6 +24,7 @@ from typing import Any, cast
 
 import numpy as np
 import viser
+from nanomanifold import SO3
 
 from body_models.anny.numpy import ANNY
 from body_models.base import BodyModel
@@ -41,7 +42,9 @@ from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
 
-ANNY_DISPLAY_ROTATION_X = -np.pi / 2
+DISPLAY_GLOBAL_ROTATIONS = {
+    "ANNY": (-np.pi / 2, 0.0, 0.0),
+}
 
 # ── Slider configurations ────────────────────────────────────────────────────
 SMPL_POSE_JOINTS = [
@@ -209,6 +212,7 @@ CANONICAL_POSE_MODELS = (
     "G1",
     "MyoFullBody",
 )
+POSE_PARAM_KEYS = {"body_pose", "head_pose", "hand_pose", "global_rotation", "global_translation"}
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -218,9 +222,14 @@ class ModelState:
     params: dict[str, np.ndarray]
     faces: np.ndarray
     color: tuple[int, int, int]
+    display_global_rotation: np.ndarray | None = None
+    skinned: bool = False
     hands: str = "default"
     mesh_handle: viser.MeshHandle | None = None
+    skinned_mesh_handle: viser.MeshSkinnedHandle | None = None
+    link_mesh_handles: list[viser.MeshHandle] | None = None
     muscle_handle: viser.LineSegmentsHandle | None = None
+    mesh_dirty: bool = True
     changed: bool = True
 
 
@@ -230,6 +239,7 @@ class SliderHandle:
     initial: float
     key: str
     indices: tuple[int, ...]
+    mesh_dirty: bool = False
 
 
 @dataclass
@@ -250,6 +260,7 @@ def add_slider(
     initial: float,
     key: str,
     indices: tuple[int, ...],
+    mesh_dirty: bool = False,
 ) -> SliderHandle:
     """Create a slider that writes ``state.params[key][indices] = value`` on update."""
     handle = server.gui.add_slider(label, min=lo, max=hi, step=step, initial_value=initial)
@@ -257,15 +268,39 @@ def add_slider(
     @handle.on_update
     def _(event):
         state.params[key][indices] = event.target.value
+        state.mesh_dirty |= mesh_dirty
         state.changed = True
 
-    return SliderHandle(handle, initial, key, indices)
+    return SliderHandle(handle, initial, key, indices, mesh_dirty)
 
 
-def betas(server, state, *, key, count, prefix="β", lo=-3.0, hi=3.0, step=0.1, initial=0.0) -> list[SliderHandle]:
+def betas(
+    server,
+    state,
+    *,
+    key,
+    count,
+    prefix="β",
+    lo=-3.0,
+    hi=3.0,
+    step=0.1,
+    initial=0.0,
+    mesh_dirty=True,
+) -> list[SliderHandle]:
     """Indexed sliders writing into ``state.params[key][i]``."""
     return [
-        add_slider(server, state, f"{prefix}{i}", lo=lo, hi=hi, step=step, initial=initial, key=key, indices=(i,))
+        add_slider(
+            server,
+            state,
+            f"{prefix}{i}",
+            lo=lo,
+            hi=hi,
+            step=step,
+            initial=initial,
+            key=key,
+            indices=(i,),
+            mesh_dirty=mesh_dirty,
+        )
         for i in range(count)
     ]
 
@@ -295,14 +330,23 @@ def reset_button(server: viser.ViserServer, handles: list[SliderHandle]) -> None
             slider.handle.value = slider.initial
 
 
+def mutable_params(params: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    return {key: np.asarray(value).copy() for key, value in params.items()}
+
+
 def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -> None:
     pose_fn = getattr(state.model, f"get_{pose_name}")
     preset = pose_fn(hands=state.hands) if state.model.has_hands else pose_fn()
+    updated_keys = set()
     for key in ("body_pose", "head_pose", "hand_pose", "global_rotation"):
         if key in preset and key in state.params:
-            state.params[key] = preset[key]
+            state.params[key] = np.asarray(preset[key]).copy()
+            updated_keys.add(key)
+    if state.display_global_rotation is not None:
+        state.params["global_rotation"] = state.display_global_rotation.copy()
+        updated_keys.add("global_rotation")
     for slider in sliders:
-        if slider.key in state.params:
+        if slider.key in updated_keys:
             slider.handle.value = float(state.params[slider.key][slider.indices])
     state.changed = True
 
@@ -310,7 +354,7 @@ def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -
 def apply_hands(state: ModelState, sliders: list[SliderHandle], hands: str) -> None:
     preset = cast(Any, state.model).get_rest_pose(hands=hands)
     state.hands = hands
-    state.params["hand_pose"] = preset["hand_pose"]
+    state.params["hand_pose"] = np.asarray(preset["hand_pose"]).copy()
     for slider in sliders:
         if slider.key == "hand_pose":
             slider.handle.value = float(state.params[slider.key][slider.indices])
@@ -374,6 +418,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                             initial=0.5,
                             key=label.lower(),
                             indices=(),
+                            mesh_dirty=True,
                         )
                     )
             with server.gui.add_folder("Pose"):
@@ -615,7 +660,7 @@ def standard_joints_tab(server: viser.ViserServer, tabs, states: dict[str, Model
     for name, state in states.items():
         for joint in joint_indices[name]:
             key = (name, joint)
-            marker_path = f"/{name}/standard_joints/{joint.value}"
+            marker_path = f"/joints/{name}/standard/{joint.value}"
             marker = server.scene.add_icosphere(
                 marker_path,
                 radius=JOINT_MARKER_RADIUS,
@@ -624,7 +669,7 @@ def standard_joints_tab(server: viser.ViserServer, tabs, states: dict[str, Model
                 visible=False,
             )
             highlight = server.scene.add_icosphere(
-                f"/{name}/standard_joint_highlights/{joint.value}",
+                f"/joints/{name}/highlights/{joint.value}",
                 radius=JOINT_HIGHLIGHT_RADIUS,
                 color=JOINT_HIGHLIGHT_COLOR,
                 subdivisions=2,
@@ -676,17 +721,103 @@ def _muscle_segment_indices(model: BodyModel) -> np.ndarray | None:
     return np.asarray(segments, dtype=np.int64)
 
 
-def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
-    verts = state.model.forward_vertices(**state.params)
-    if state.mesh_handle is None:
-        state.mesh_handle = server.scene.add_mesh_simple(
-            f"/{name}",
-            vertices=verts,
-            faces=state.faces,
-            color=state.color,
-        )
+def supports_viser_skinning(model: BodyModel) -> bool:
+    if model.is_rigid_body:
+        return False
+    try:
+        np.asarray(model.skin_weights)
+        return True
+    except (AttributeError, NotImplementedError):
+        return False
+
+
+def viser_forward_params(params: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    forward_params = dict(params)
+    forward_params["global_translation"] = np.zeros_like(forward_params["global_translation"])
+    return {key: np.asarray(value)[None] for key, value in forward_params.items()}
+
+
+def skinned_bind_params(state: ModelState) -> dict[str, np.ndarray]:
+    if state.model.has_hands:
+        params = cast(Any, state.model).get_rest_pose(hands=state.hands)
     else:
-        state.mesh_handle.vertices = verts
+        params = state.model.get_rest_pose()
+    params = mutable_params(params)
+    for key, value in state.params.items():
+        if key not in POSE_PARAM_KEYS and key in params:
+            params[key] = np.asarray(value).copy()
+    return params
+
+
+def vec3(value: np.ndarray) -> tuple[float, float, float]:
+    x, y, z = np.asarray(value, dtype=np.float32)
+    return float(x), float(y), float(z)
+
+
+def update_link_meshes(server: viser.ViserServer, name: str, state: ModelState) -> None:
+    model = cast(Any, state.model)
+    if state.link_mesh_handles is None:
+        state.link_mesh_handles = []
+        for index, link_name in enumerate(model.link_names):
+            mesh = model.link_mesh(link_name)
+            handle = server.scene.add_mesh_simple(
+                f"/meshes/{name}/links/{index:02d}",
+                vertices=np.asarray(mesh["vertices"], dtype=np.float32),
+                faces=np.asarray(mesh["faces"]),
+                color=state.color,
+            )
+            state.link_mesh_handles.append(handle)
+
+    links = np.asarray(model.forward_links(**state.params))
+    link_wxyzs = SO3.conversions.from_rotmat_to_quat(links[:, :3, :3], convention="wxyz", xp=np)
+    link_positions = links[:, :3, 3]
+    for handle, wxyz, position in zip(state.link_mesh_handles, link_wxyzs, link_positions):
+        handle.wxyz = wxyz
+        handle.position = vec3(position)
+
+
+def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
+    if state.skinned and (state.skinned_mesh_handle is None or state.mesh_dirty):
+        if state.skinned_mesh_handle is not None:
+            state.skinned_mesh_handle.remove()
+
+        mesh = state.model.to_viser_skinned_mesh(**viser_forward_params(skinned_bind_params(state)))
+        state.skinned_mesh_handle = server.scene.add_mesh_skinned(
+            f"/meshes/{name}",
+            vertices=mesh["vertices"],
+            faces=mesh["faces"],
+            bone_wxyzs=mesh["bone_wxyzs"],
+            bone_positions=mesh["bone_positions"],
+            skin_weights=mesh["skin_weights"],
+            color=state.color,
+            position=vec3(state.params["global_translation"]),
+        )
+        state.mesh_dirty = False
+    if state.skinned:
+        handle = state.skinned_mesh_handle
+        assert handle is not None
+        bones = state.model.to_viser_bones(**viser_forward_params(state.params))
+        handle.position = vec3(state.params["global_translation"])
+        for bone, wxyz, bone_position in zip(
+            handle.bones,
+            bones["bone_wxyzs"],
+            bones["bone_positions"],
+        ):
+            bone.wxyz = wxyz
+            bone.position = vec3(bone_position)
+    elif state.model.is_rigid_body:
+        update_link_meshes(server, name, state)
+    else:
+        vertices = state.model.forward_vertices(**state.params)
+        if state.mesh_handle is None:
+            state.mesh_handle = server.scene.add_mesh_simple(
+                f"/meshes/{name}",
+                vertices=vertices,
+                faces=state.faces,
+                color=state.color,
+            )
+        else:
+            state.mesh_handle.vertices = vertices
 
     muscle_segment_indices = cast(Any, state.model)._visualizer_muscle_segment_indices
     if muscle_segment_indices is not None:
@@ -695,7 +826,7 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
         seg_points = sites[muscle_segment_indices].astype(np.float32)
         if state.muscle_handle is None:
             state.muscle_handle = server.scene.add_line_segments(
-                f"/{name}/muscles",
+                f"/muscles/{name}",
                 points=seg_points,
                 colors=(220, 50, 50),
                 line_width=2.0,
@@ -736,9 +867,11 @@ def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
     for i, (name, model) in enumerate(models.items()):
         row, col = divmod(i, GRID_COLS)
         row_count = min(GRID_COLS, n - row * GRID_COLS)
-        params = model.get_rest_pose()
-        if name == "ANNY":
-            params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
+        params = mutable_params(model.get_rest_pose())
+        display_global_rotation = DISPLAY_GLOBAL_ROTATIONS.get(name)
+        if display_global_rotation is not None:
+            display_global_rotation = np.asarray(display_global_rotation, dtype=params["global_rotation"].dtype)
+            params["global_rotation"] = display_global_rotation.copy()
         verts = model.forward_vertices(**params)
         params["global_translation"] = np.asarray(
             (
@@ -753,6 +886,8 @@ def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
             params=params,
             faces=triangulate(np.asarray(model.faces)),
             color=MODEL_COLORS[name],
+            display_global_rotation=display_global_rotation,
+            skinned=supports_viser_skinning(model),
         )
     return states
 
@@ -787,23 +922,25 @@ def main() -> None:
         controls = {name: add_model_controls(server, name, state) for name, state in states.items()}
 
     with tabs.add_tab("Poses"):
-        for label, pose_name in (("T-pose", "tpose"), ("A-pose", "apose"), ("I-pose", "ipose")):
-            button = server.gui.add_button(label)
+        with server.gui.add_folder("Body"):
+            for label, pose_name in (("T-pose", "tpose"), ("A-pose", "apose")):
+                button = server.gui.add_button(label)
 
-            @button.on_click
-            def _(_, pose_name=pose_name) -> None:
-                for name in CANONICAL_POSE_MODELS:
-                    state = states[name]
-                    apply_pose(state, controls[name].sliders, pose_name)
+                @button.on_click
+                def _(_, pose_name=pose_name) -> None:
+                    for name in CANONICAL_POSE_MODELS:
+                        state = states[name]
+                        apply_pose(state, controls[name].sliders, pose_name)
 
-        for label, hands in (("Default hands", "default"), ("Flat hands", "flat"), ("Rest hands", "rest")):
-            button = server.gui.add_button(label)
+        with server.gui.add_folder("Hands"):
+            for label, hands in (("Default hands", "default"), ("Flat hands", "flat"), ("Rest hands", "rest")):
+                button = server.gui.add_button(label)
 
-            @button.on_click
-            def _(_, hands=hands) -> None:
-                for name, state in states.items():
-                    if state.model.has_hands:
-                        apply_hands(state, controls[name].sliders, hands)
+                @button.on_click
+                def _(_, hands=hands) -> None:
+                    for name, state in states.items():
+                        if state.model.has_hands:
+                            apply_hands(state, controls[name].sliders, hands)
 
     def show_model_controls(name: str) -> None:
         for folder_name, model_controls in controls.items():

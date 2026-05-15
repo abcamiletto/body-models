@@ -282,7 +282,7 @@ def world_sites(
 ) -> Float[Array, "B S 3"]:
     """Apply each site's parent-body world transform to its body-local position.
 
-    ``skeleton`` is the same ``[B, J, 4, 4]`` array produced by
+    ``skeleton`` is the same ``[..., J, 4, 4]`` array produced by
     :func:`forward_skeleton`. This is just a gather + affine transform — no FK
     is recomputed — so muscle visualisation reuses the existing forward pass.
     """
@@ -290,7 +290,7 @@ def world_sites(
         xp = get_namespace(skeleton)
     body_T = skeleton[..., xp.asarray(site_body_indices), :, :]
     local = xp.asarray(site_positions, dtype=skeleton.dtype)
-    rotated = xp.squeeze(body_T[..., :3, :3] @ local[None, :, :, None], axis=-1)
+    rotated = xp.squeeze(body_T[..., :3, :3] @ local[..., None], axis=-1)
     return rotated + body_T[..., :3, 3]
 
 

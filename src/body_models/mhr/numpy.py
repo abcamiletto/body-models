@@ -135,7 +135,7 @@ class MHR(BodyModel):
         hand_pose = np.zeros((*batch_dims, self.hand_pose_dim), dtype=dtype)
         if hands != "default":
             hand_pose = np.asarray(MHR_HAND_PRESETS[hands], dtype=dtype).reshape(self.hand_pose_dim)
-            hand_pose = np.broadcast_to(hand_pose, (*batch_dims, self.hand_pose_dim))
+            hand_pose = np.broadcast_to(hand_pose, (*batch_dims, self.hand_pose_dim)).copy()
         return {
             "shape": np.zeros((*batch_dims, self.SHAPE_DIM), dtype=dtype),
             "body_pose": np.zeros((*batch_dims, self.body_pose_dim), dtype=dtype),
@@ -153,7 +153,7 @@ class MHR(BodyModel):
     ) -> dict[str, np.ndarray]:
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         body_pose = np.asarray(MHR_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
+        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()
         return params
 
     def get_apose(
@@ -163,14 +163,3 @@ class MHR(BodyModel):
         **kwargs,
     ) -> dict[str, np.ndarray]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-
-    def get_ipose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs,
-    ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        body_pose = np.asarray(MHR_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params

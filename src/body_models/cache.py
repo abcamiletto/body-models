@@ -2,7 +2,9 @@ from pathlib import Path
 
 from platformdirs import user_cache_dir
 
-__all__ = ["get_cache_dir", "get_cached_path", "download_and_extract"]
+__all__ = ["get_cache_dir", "get_cached_path", "download_file", "download_and_extract"]
+
+HF_DATASET_BASE_URL = "https://huggingface.co/datasets/abcamiletto/body-models-assets/resolve/main/models_hub"
 
 
 def get_cache_dir() -> Path:
@@ -13,6 +15,23 @@ def get_cache_dir() -> Path:
 def get_cached_path(key: str) -> Path | None:
     """Return the cached path matching key, if present."""
     return next(get_cache_dir().rglob(key), None)
+
+
+def download_file(url: str, dest: Path) -> None:
+    """Download a single file to ``dest``.
+
+    ``HF_TOKEN`` is honored for private Hugging Face dataset assets.
+    """
+    import os
+    import shutil
+    import urllib.request
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(url)
+    if token := os.getenv("HF_TOKEN"):
+        request.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(request) as src, dest.open("wb") as dst:
+        shutil.copyfileobj(src, dst)
 
 
 def download_and_extract(
@@ -29,7 +48,6 @@ def download_and_extract(
             within the zip archive. The subdirectory prefix is stripped.
     """
     import tempfile
-    import urllib.request
     import zipfile
 
     dest.mkdir(parents=True, exist_ok=True)
@@ -38,7 +56,7 @@ def download_and_extract(
         tmp_path = Path(tmp.name)
 
     try:
-        urllib.request.urlretrieve(url, tmp_path)
+        download_file(url, tmp_path)
 
         with zipfile.ZipFile(tmp_path) as zf:
             if extract_subdir is None:
