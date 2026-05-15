@@ -12,7 +12,7 @@ from nanomanifold import SO3
 from body_models.mano.backends import numpy as numpy_backend
 from body_models.mano.backends import scipy as scipy_backend
 from body_models.mano.io import get_model_path, load_model_data
-from body_models.mano.constants import LEFT_MANO_JOINTS, RIGHT_MANO_JOINTS
+from body_models.mano.constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["MANO"]
@@ -20,6 +20,8 @@ __all__ = ["MANO"]
 
 class MANO(BodyModel):
     """MANO hand model with NumPy backend."""
+
+    has_hands = True
 
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
@@ -135,17 +137,28 @@ class MANO(BodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=np.float32,
+        hands: Literal["default", "flat", "rest"] = "default",
+    ) -> dict[str, np.ndarray]:
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
+
         hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
         wrist_ref = np.zeros((batch_size, 3), dtype=dtype)
+        hand_pose = SO3.identity_as(
+            hand_pose_ref,
+            batch_dims=(batch_size, self.NUM_HAND_JOINTS),
+            rotation_type=self.rotation_type,
+            xp=np,
+        )
+        if hands != "default":
+            hand_pose = self._hand_preset(batch_size, dtype, hands)
         return {
             "shape": np.zeros((1, 10), dtype=dtype),
-            "hand_pose": SO3.identity_as(
-                hand_pose_ref,
-                batch_dims=(batch_size, self.NUM_HAND_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=np,
-            ),
+            "hand_pose": hand_pose,
             "wrist_rotation": SO3.identity_as(
                 wrist_ref,
                 batch_dims=(batch_size,),
@@ -154,6 +167,12 @@ class MANO(BodyModel):
             ),
             "global_translation": np.zeros((batch_size, 3), dtype=dtype),
         }
+
+    def _hand_preset(self, batch_size: int, dtype, hands: str):
+        preset = MANO_HAND_PRESETS[self.side][hands]
+        axis_angle = np.asarray(preset, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
+        axis_angle = np.repeat(axis_angle, batch_size, axis=0)
+        return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
 
 
 def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):

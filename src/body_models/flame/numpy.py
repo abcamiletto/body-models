@@ -93,24 +93,17 @@ class FLAME(BodyModel):
         self,
         shape: Float[np.ndarray, "B|1 S"],
         expression: Float[np.ndarray, "B E"],
-        pose: Float[np.ndarray, "B 4 N"] | Float[np.ndarray, "B 4 3 3"] | None = None,
+        head_pose: Float[np.ndarray, "B 4 N"] | Float[np.ndarray, "B 4 3 3"],
         head_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
-        if pose is None:
-            pose = SO3.identity_as(
-                expression,
-                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=np,
-            )
         return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
             expression=expression,
-            pose=pose,
+            pose=head_pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -122,24 +115,17 @@ class FLAME(BodyModel):
         self,
         shape: Float[np.ndarray, "B|1 S"],
         expression: Float[np.ndarray, "B E"],
-        pose: Float[np.ndarray, "B 4 N"] | Float[np.ndarray, "B 4 3 3"] | None = None,
+        head_pose: Float[np.ndarray, "B 4 N"] | Float[np.ndarray, "B 4 3 3"],
         head_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 5 4 4"]:
-        if pose is None:
-            pose = SO3.identity_as(
-                expression,
-                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=np,
-            )
         return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
             expression=expression,
-            pose=pose,
+            pose=head_pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -152,7 +138,7 @@ class FLAME(BodyModel):
         return {
             "shape": np.zeros((1, 300), dtype=dtype),
             "expression": np.zeros((batch_size, 100), dtype=dtype),
-            "pose": SO3.identity_as(
+            "head_pose": SO3.identity_as(
                 ref,
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,

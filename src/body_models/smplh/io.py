@@ -69,7 +69,7 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
     return validate_path(resolved_path)
 
 
-def load_model_data(path: Path, flat_hand_mean: bool = True, simplify: float = 1.0) -> SmplhWeights:
+def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> SmplhWeights:
     """Load SMPL-H model data from .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
@@ -95,13 +95,17 @@ def load_model_data(path: Path, flat_hand_mean: bool = True, simplify: float = 1
 
     if flat_hand_mean:
         hand_mean = np.zeros((2, 45), dtype=np.float32)
-    else:
+    elif "hands_meanl" in data and "hands_meanr" in data:
         hand_mean = np.stack(
             [
                 np.asarray(data["hands_meanl"], dtype=np.float32),
                 np.asarray(data["hands_meanr"], dtype=np.float32),
             ]
         )
+    else:
+        hand_mean = np.zeros((2, 15, 3), dtype=np.float32)
+        hand_mean[:, :, 0] = 0.55
+        hand_mean = hand_mean.reshape(2, 45)
 
     lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
 
