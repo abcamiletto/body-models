@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/body-models-wasm"]
+resolver = "2"
