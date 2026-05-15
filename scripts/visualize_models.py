@@ -238,6 +238,10 @@ class ModelControls:
     sliders: list[SliderHandle]
 
 
+def writable(value: Any) -> Any:
+    return np.array(value, copy=True) if isinstance(value, np.ndarray) else value
+
+
 # ── Slider primitives ────────────────────────────────────────────────────────
 def add_slider(
     server: viser.ViserServer,
@@ -256,6 +260,7 @@ def add_slider(
 
     @handle.on_update
     def _(event):
+        state.params[key] = writable(state.params[key])
         state.params[key][indices] = event.target.value
         state.changed = True
 
@@ -300,7 +305,7 @@ def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -
     preset = pose_fn(hands=state.hands) if state.model.has_hands else pose_fn()
     for key in ("body_pose", "head_pose", "hand_pose", "global_rotation"):
         if key in preset and key in state.params:
-            state.params[key] = preset[key]
+            state.params[key] = writable(preset[key])
     for slider in sliders:
         if slider.key in state.params:
             slider.handle.value = float(state.params[slider.key][slider.indices])
@@ -310,7 +315,7 @@ def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -
 def apply_hands(state: ModelState, sliders: list[SliderHandle], hands: str) -> None:
     preset = cast(Any, state.model).get_rest_pose(hands=hands)
     state.hands = hands
-    state.params["hand_pose"] = preset["hand_pose"]
+    state.params["hand_pose"] = writable(preset["hand_pose"])
     for slider in sliders:
         if slider.key == "hand_pose":
             slider.handle.value = float(state.params[slider.key][slider.indices])
