@@ -1,3 +1,4 @@
+from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
 
@@ -48,21 +49,9 @@ SMPLX_JOINTS = {
     Joint.RIGHT_FOOT: "R_Foot",
 }
 
+_POSES = load_npz("body_models.smplx")
 
-SMPLX_APOSE = {15: (0.0, 0.0, -0.55), 16: (0.0, 0.0, 0.55)}
-SMPLX_IPOSE = {15: (0.0, 0.0, -1.25), 16: (0.0, 0.0, 1.25)}
+SMPLX_BODY_PRESETS = _POSES["body"]
+SMPLX_HAND_PRESETS = _POSES["hand"]
 
-SMPLX_HAND_PRESETS = {
-    "flat": (
-        -0.1, 0.0, 0.4, -0.1, 0.1, 0.8, 0.1, 0.1, 0.2, 0.1, -0.1, 0.5, 0.1, -0.1,
-        0.7, 0.0, 0.1, 0.3, 0.5, 0.2, 0.6, 0.2, 0.1, 0.5, 0.4, 0.1, 0.1, 0.1, 0.1,
-        0.6, 0.3, 0.1, 0.6, 0.2, 0.1, 0.4, -0.9, -0.3, 0.1, 0.5, 0.0, -0.1, -0.5,
-        0.0, 0.3, -0.1, 0.0, -0.4, -0.1, -0.1, -0.8, 0.1, -0.1, -0.2, 0.1, 0.1,
-        -0.5, 0.1, 0.1, -0.7, 0.0, -0.1, -0.3, 0.5, -0.2, -0.6, 0.2, -0.1, -0.5,
-        0.4, -0.1, -0.1, 0.1, -0.1, -0.6, 0.3, -0.1, -0.6, 0.2, -0.1, -0.4, -0.9,
-        0.3, -0.1, 0.5, 0.0, 0.1, -0.5, 0.0, -0.3,
-    ),
-    "rest": (0.0,) * 90,
-}
-
-__all__ = ["SMPLX_JOINTS", "SMPLX_APOSE", "SMPLX_IPOSE", "SMPLX_HAND_PRESETS"]
+__all__ = ["SMPLX_JOINTS", "SMPLX_BODY_PRESETS", "SMPLX_HAND_PRESETS"]

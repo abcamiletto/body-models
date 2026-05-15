@@ -102,12 +102,12 @@ class BodyModel(ABC):
         """
 
     @abstractmethod
-    def get_rest_pose(self, batch_size: int = 1) -> dict[str, Any]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = ()) -> dict[str, Any]:
         """
         Get default rest pose parameters for this model.
 
         Args:
-            batch_size: Number of instances in the batch.
+            batch_dims: Leading batch dimensions.
 
         Returns:
             Dictionary with model-specific parameter keys. All arrays are
@@ -116,7 +116,7 @@ class BodyModel(ABC):
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Get parameters for the SMPL-style T-pose."""
@@ -124,7 +124,7 @@ class BodyModel(ABC):
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Get parameters for the MHR-style A-pose."""
@@ -132,7 +132,7 @@ class BodyModel(ABC):
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Get parameters for a neutral standing I-pose with arms down."""
@@ -141,7 +141,7 @@ class BodyModel(ABC):
     def to_viser_bones(self, **forward_kwargs: Any) -> dict[str, np.ndarray]:
         """Export parent-relative bone poses for ``viser`` from ``forward_skeleton()`` kwargs."""
         if not forward_kwargs:
-            forward_kwargs = self.get_rest_pose(batch_size=1)
+            forward_kwargs = self.get_rest_pose(batch_dims=(1,))
         if "joint_indices" in forward_kwargs:
             raise ValueError("to_viser_bones() requires the full skeleton; do not pass joint_indices.")
 
@@ -164,7 +164,7 @@ class BodyModel(ABC):
     def to_viser_skinned_mesh(self, **forward_kwargs: Any) -> dict[str, np.ndarray]:
         """Export bind-pose mesh data for ``viser`` from ``forward_vertices()`` / ``forward_skeleton()`` kwargs."""
         if not forward_kwargs:
-            forward_kwargs = self.get_rest_pose(batch_size=1)
+            forward_kwargs = self.get_rest_pose(batch_dims=(1,))
         if "vertex_indices" in forward_kwargs:
             raise ValueError("to_viser_skinned_mesh() requires the full mesh; do not pass vertex_indices.")
         if "joint_indices" in forward_kwargs:

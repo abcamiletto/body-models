@@ -139,39 +139,39 @@ class MANO(BodyModel):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
-        wrist_ref = np.zeros((batch_size, 3), dtype=dtype)
+        hand_pose_ref = np.zeros((*batch_dims, self.NUM_HAND_JOINTS, 3), dtype=dtype)
+        wrist_ref = np.zeros((*batch_dims, 3), dtype=dtype)
         hand_pose = SO3.identity_as(
             hand_pose_ref,
-            batch_dims=(batch_size, self.NUM_HAND_JOINTS),
+            batch_dims=(*batch_dims, self.NUM_HAND_JOINTS),
             rotation_type=self.rotation_type,
             xp=np,
         )
         if hands != "default":
-            hand_pose = self._hand_preset(batch_size, dtype, hands)
+            hand_pose = self._hand_preset(batch_dims, dtype, hands)
         return {
-            "shape": np.zeros((1, 10), dtype=dtype),
+            "shape": np.zeros((*batch_dims, 10), dtype=dtype),
             "hand_pose": hand_pose,
             "wrist_rotation": SO3.identity_as(
                 wrist_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
-            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }
 
-    def _hand_preset(self, batch_size: int, dtype, hands: str):
+    def _hand_preset(self, batch_dims: tuple[int, ...], dtype, hands: str):
         preset = MANO_HAND_PRESETS[self.side][hands]
-        axis_angle = np.asarray(preset, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
-        axis_angle = np.repeat(axis_angle, batch_size, axis=0)
+        axis_angle = np.asarray(preset, dtype=dtype).reshape(self.NUM_HAND_JOINTS, 3)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
 
 

@@ -13,10 +13,8 @@ from body_models.myofullbody.backends import core
 from body_models.myofullbody.backends import torch as backend
 from body_models.myofullbody.io import load_model_data
 from body_models.myofullbody.constants import (
-    MYOFULLBODY_APOSE,
-    MYOFULLBODY_IPOSE,
+    MYOFULLBODY_BODY_PRESETS,
     MYOFULLBODY_JOINTS,
-    MYOFULLBODY_TPOSE,
 )
 
 __all__ = ["MyoFullBody"]
@@ -107,8 +105,8 @@ class MyoFullBody(BodyModel, nn.Module):
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        params = self.get_rest_pose(batch_size=1)
-        return self.forward_vertices(**params)[0]
+        params = self.get_rest_pose(batch_dims=())
+        return self.forward_vertices(**params)
 
     def forward_skeleton(
         self,
@@ -187,49 +185,46 @@ class MyoFullBody(BodyModel, nn.Module):
             joint_name=joint_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
         return {
-            "body_pose": torch.zeros((batch_size, self.num_qpos), device=device, dtype=dtype),
-            "global_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "body_pose": torch.zeros((*batch_dims, self.num_qpos), device=device, dtype=dtype),
+            "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["body_pose"]
-        for index, value in MYOFULLBODY_TPOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=torch)
-        params["body_pose"] = pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = torch.as_tensor(
+            MYOFULLBODY_BODY_PRESETS["t_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["body_pose"]
-        for index, value in MYOFULLBODY_APOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=torch)
-        params["body_pose"] = pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = torch.as_tensor(
+            MYOFULLBODY_BODY_PRESETS["a_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["body_pose"]
-        for index, value in MYOFULLBODY_IPOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=torch)
-        params["body_pose"] = pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = torch.as_tensor(
+            MYOFULLBODY_BODY_PRESETS["i_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params

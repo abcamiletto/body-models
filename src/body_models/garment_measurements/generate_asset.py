@@ -124,9 +124,7 @@ def _load_fbx_rig(path: Path, num_vertices: int) -> RigData:
     mesh = next((obj for obj in meshes if obj.name in {"skin", "H_DDS_HighResShape"}), meshes[0])
     if len(mesh.data.vertices) != num_vertices:
         raise ValueError(f"FBX mesh has {len(mesh.data.vertices)} vertices, expected {num_vertices}")
-    template_vertices = np.asarray(
-        [(mesh.matrix_world @ v.co)[:] for v in mesh.data.vertices], dtype=np.float64
-    )
+    template_vertices = np.asarray([(mesh.matrix_world @ v.co)[:] for v in mesh.data.vertices], dtype=np.float64)
 
     armature = armatures[0]
     bones = list(armature.data.bones)

@@ -7,12 +7,11 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from .. import common
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import numpy as numpy_backend
 from .io import get_model_path, load_model_data
-from .constants import GARMENT_HAND_PRESETS, GARMENT_IPOSE, GARMENT_JOINTS, GARMENT_TPOSE
+from .constants import GARMENT_BODY_PRESETS, GARMENT_HAND_PRESETS, GARMENT_JOINTS
 from .pose import pack_pose, unpack_pose
 
 
@@ -122,101 +121,71 @@ class GarmentMeasurements(BodyModel):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        pose_ref = np.zeros((batch_size, self.num_joints, 3), dtype=dtype)
-        global_ref = np.zeros((batch_size,), dtype=dtype)
+        pose_ref = np.zeros((*batch_dims, self.num_joints, 3), dtype=dtype)
+        global_ref = np.zeros((*batch_dims,), dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
-            batch_dims=(batch_size, self.num_joints),
+            batch_dims=(*batch_dims, self.num_joints),
             rotation_type=self.rotation_type,
             xp=np,
         )
         pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(np, pose)
         if hands != "default":
-            axis_angle = np.asarray(GARMENT_HAND_PRESETS[hands], dtype=dtype).reshape(1, -1, 3)
-            axis_angle = np.repeat(axis_angle, batch_size, axis=0)
+            axis_angle = np.asarray(GARMENT_HAND_PRESETS[hands], dtype=dtype).reshape(-1, 3)
+            axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return {
-            "shape": np.zeros((1, self.num_shape_components), dtype=dtype),
+            "shape": np.zeros((*batch_dims, self.num_shape_components), dtype=dtype),
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
             "pelvis_rotation": pelvis_rotation,
             "global_rotation": SO3.identity_as(
                 global_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
-            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        pose_parts = (
-            params["pelvis_rotation"],
-            params["body_pose"],
-            params["head_pose"],
-            params["hand_pose"],
-        )
-        pose = pack_pose(np, *pose_parts)
-        for joint_name, values in GARMENT_TPOSE.items():
-            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
-            pose = common.set(pose, (slice(None), index), converted, xp=np)
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(np, pose)
-        params.update(
-            body_pose=body_pose,
-            head_pose=head_pose,
-            hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
-        )
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = np.asarray(GARMENT_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        pose_parts = (
-            params["pelvis_rotation"],
-            params["body_pose"],
-            params["head_pose"],
-            params["hand_pose"],
-        )
-        pose = pack_pose(np, *pose_parts)
-        for joint_name, values in GARMENT_IPOSE.items():
-            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
-            pose = common.set(pose, (slice(None), index), converted, xp=np)
-        pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(np, pose)
-        params.update(
-            body_pose=body_pose,
-            head_pose=head_pose,
-            hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
-        )
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = np.asarray(GARMENT_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return params
 
 

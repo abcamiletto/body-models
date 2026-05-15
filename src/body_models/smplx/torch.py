@@ -15,7 +15,7 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplx.backends import torch as torch_backend
 from body_models.smplx.io import get_model_path, load_model_data
-from body_models.smplx.constants import SMPLX_APOSE, SMPLX_HAND_PRESETS, SMPLX_IPOSE, SMPLX_JOINTS
+from body_models.smplx.constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
 
 __all__ = ["SMPLX"]
 
@@ -158,7 +158,7 @@ class SMPLX(BodyModel, nn.Module):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype=torch.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
@@ -166,91 +166,93 @@ class SMPLX(BodyModel, nn.Module):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        body_pose_ref = torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
-        hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
-        head_pose_ref = torch.zeros((batch_size, self.NUM_HEAD_JOINTS, 3), device=device, dtype=dtype)
-        pelvis_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
+        body_pose_ref = torch.zeros((*batch_dims, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
+        hand_pose_ref = torch.zeros((*batch_dims, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
+        head_pose_ref = torch.zeros((*batch_dims, self.NUM_HEAD_JOINTS, 3), device=device, dtype=dtype)
+        pelvis_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
         params = {
-            "shape": torch.zeros((1, 10), device=device, dtype=dtype),
+            "shape": torch.zeros((*batch_dims, 10), device=device, dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
-                batch_dims=(batch_size, self.NUM_BODY_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
             "hand_pose": SO3.identity_as(
                 hand_pose_ref,
-                batch_dims=(batch_size, self.NUM_HAND_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_HAND_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
             "head_pose": SO3.identity_as(
                 head_pose_ref,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "expression": torch.zeros((batch_size, 10), device=device, dtype=dtype),
+            "expression": torch.zeros((*batch_dims, 10), device=device, dtype=dtype),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
             "global_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
         if hands != "default":
-            params["hand_pose"] = self._hand_preset(batch_size, device, dtype, hands)
+            params["hand_pose"] = self._hand_preset(batch_dims, device, dtype, hands)
         return params
 
-    def _hand_preset(self, batch_size: int, device, dtype: torch.dtype, hands: str):
+    def _hand_preset(self, batch_dims: tuple[int, ...], device, dtype: torch.dtype, hands: str):
         preset = SMPLX_HAND_PRESETS[hands]
-        axis_angle = torch.as_tensor(preset, device=device, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
-        axis_angle = axis_angle.repeat(batch_size, 1, 1)
+        axis_angle = torch.as_tensor(preset, device=device, dtype=dtype).reshape(self.NUM_HAND_JOINTS, 3)
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPLX_APOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = torch.as_tensor(
+            SMPLX_BODY_PRESETS["a_pose"],
+            device=params["body_pose"].device,
+            dtype=params["body_pose"].dtype,
+        )
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPLX_IPOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = torch.as_tensor(
+            SMPLX_BODY_PRESETS["i_pose"],
+            device=params["body_pose"].device,
+            dtype=params["body_pose"].dtype,
+        )
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return params
 
 

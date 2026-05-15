@@ -49,7 +49,7 @@ def tier2_numpy_forward() -> bool:
         from body_models.anny.numpy import ANNY
 
         model = ANNY()
-        params = model.get_rest_pose(batch_size=2)
+        params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(**params)
         skel = model.forward_skeleton(**params)
         assert verts.shape == (2, model.num_vertices, 3), f"ANNY verts shape: {verts.shape}"
@@ -65,7 +65,7 @@ def tier2_numpy_forward() -> bool:
         from body_models.mhr.numpy import MHR
 
         model = MHR()
-        params = model.get_rest_pose(batch_size=2)
+        params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(**params)
         skel = model.forward_skeleton(**params)
         assert verts.shape == (2, model.num_vertices, 3), f"MHR verts shape: {verts.shape}"
@@ -93,7 +93,7 @@ def tier3_torch_forward() -> bool:
         from body_models.anny.torch import ANNY
 
         model = ANNY().eval()
-        params = model.get_rest_pose(batch_size=2)
+        params = model.get_rest_pose(batch_dims=(2,))
         with torch.no_grad():
             verts = model.forward_vertices(**params)
             skel = model.forward_skeleton(**params)
@@ -109,7 +109,7 @@ def tier3_torch_forward() -> bool:
         from body_models.mhr.torch import MHR
 
         model = MHR().eval()
-        params = model.get_rest_pose(batch_size=2)
+        params = model.get_rest_pose(batch_dims=(2,))
         with torch.no_grad():
             verts = model.forward_vertices(**params)
             skel = model.forward_skeleton(**params)
@@ -138,7 +138,7 @@ def tier4_jax_forward() -> bool:
         from body_models.anny.jax import ANNY
 
         model = ANNY()
-        params = model.get_rest_pose(batch_size=2)
+        params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(**params)
         skel = model.forward_skeleton(**params)
         assert verts.shape == (2, model.num_vertices, 3)
@@ -153,7 +153,7 @@ def tier4_jax_forward() -> bool:
         from body_models.mhr.jax import MHR
 
         model = MHR()
-        params = model.get_rest_pose(batch_size=2)
+        params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(**params)
         skel = model.forward_skeleton(**params)
         assert verts.shape == (2, model.num_vertices, 3)

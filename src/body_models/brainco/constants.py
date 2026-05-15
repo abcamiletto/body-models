@@ -1,3 +1,4 @@
+from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
 
@@ -31,10 +32,11 @@ RIGHT_BRAINCO_JOINTS = {
     Joint.RIGHT_PINKY_DIP: "right_pinky_distal_skel",
 }
 
+_POSES = load_npz("body_models.brainco")
+
 BRAINCO_HAND_PRESETS = {
-    "default": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-    "flat": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-    "rest": (0.65, 0.65, 0.65, 0.65, 0.65, 0.65),
+    "left": _POSES["left"],
+    "right": _POSES["right"],
 }
 
 __all__ = ["BRAINCO_HAND_PRESETS", "LEFT_BRAINCO_JOINTS", "RIGHT_BRAINCO_JOINTS"]

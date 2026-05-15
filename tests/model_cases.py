@@ -45,40 +45,37 @@ from body_models.soma import torch as soma_torch
 ASSETS = Path(__file__).parent / "assets"
 
 MODELS = [
-    ("anny", anny_numpy.ANNY, anny_torch.ANNY, anny_jax.ANNY, ASSETS / "anny/model", {}),
+    ("anny", anny_numpy.ANNY, anny_torch.ANNY, anny_jax.ANNY, {}),
     (
         "brainco",
         brainco_numpy.BrainCoHand,
         brainco_torch.BrainCoHand,
         brainco_jax.BrainCoHand,
-        ASSETS / "brainco/model",
         {"rotation_type": "hinge"},
     ),
-    ("flame", flame_numpy.FLAME, flame_torch.FLAME, flame_jax.FLAME, ASSETS / "flame/model/FLAME_NEUTRAL.pkl", {}),
-    ("g1", g1_numpy.G1, g1_torch.G1, g1_jax.G1, ASSETS / "g1/model", {}),
+    ("flame", flame_numpy.FLAME, flame_torch.FLAME, flame_jax.FLAME, {}),
+    ("g1", g1_numpy.G1, g1_torch.G1, g1_jax.G1, {}),
     (
         "garment_measurements",
         garment_numpy.GarmentMeasurements,
         garment_torch.GarmentMeasurements,
         garment_jax.GarmentMeasurements,
-        ASSETS / "garment_measurements/model/garment_measurements.npz",
         {},
     ),
-    ("mano", mano_numpy.MANO, mano_torch.MANO, mano_jax.MANO, ASSETS / "mano/model/right/MANO_RIGHT.pkl", {}),
-    ("mhr", mhr_numpy.MHR, mhr_torch.MHR, mhr_jax.MHR, ASSETS / "mhr/model", {}),
+    ("mano", mano_numpy.MANO, mano_torch.MANO, mano_jax.MANO, {"side": "right"}),
+    ("mhr", mhr_numpy.MHR, mhr_torch.MHR, mhr_jax.MHR, {}),
     (
         "myofullbody",
         myofullbody_numpy.MyoFullBody,
         myofullbody_torch.MyoFullBody,
         myofullbody_jax.MyoFullBody,
-        ASSETS / "myofullbody/model",
         {},
     ),
-    ("skel", skel_numpy.SKEL, skel_torch.SKEL, skel_jax.SKEL, ASSETS / "skel/model/skel_male.pkl", {"gender": "male"}),
-    ("smpl", smpl_numpy.SMPL, smpl_torch.SMPL, smpl_jax.SMPL, ASSETS / "smpl/model/SMPL_NEUTRAL.npz", {}),
-    ("smplh", smplh_numpy.SMPLH, smplh_torch.SMPLH, smplh_jax.SMPLH, ASSETS / "smplh/model/neutral/model.npz", {}),
-    ("smplx", smplx_numpy.SMPLX, smplx_torch.SMPLX, smplx_jax.SMPLX, ASSETS / "smplx/model/SMPLX_NEUTRAL.npz", {}),
-    ("soma", soma_numpy.SOMA, soma_torch.SOMA, soma_jax.SOMA, ASSETS / "soma/model", {}),
+    ("skel", skel_numpy.SKEL, skel_torch.SKEL, skel_jax.SKEL, {"gender": "male"}),
+    ("smpl", smpl_numpy.SMPL, smpl_torch.SMPL, smpl_jax.SMPL, {"gender": "neutral"}),
+    ("smplh", smplh_numpy.SMPLH, smplh_torch.SMPLH, smplh_jax.SMPLH, {"gender": "neutral"}),
+    ("smplx", smplx_numpy.SMPLX, smplx_torch.SMPLX, smplx_jax.SMPLX, {"gender": "neutral"}),
+    ("soma", soma_numpy.SOMA, soma_torch.SOMA, soma_jax.SOMA, {}),
 ]
 
 REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" / "0.json").exists()]

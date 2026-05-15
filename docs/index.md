@@ -39,7 +39,7 @@ Each model exposes backend modules under `body_models.<model>.torch`, `body_mode
 from body_models.smpl.torch import SMPL
 
 model = SMPL(gender="neutral")
-params = model.get_rest_pose(batch_size=1)
+params = model.get_rest_pose(batch_dims=(1,))
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```

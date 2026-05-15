@@ -14,7 +14,7 @@ from body_models.base import BodyModel
 from body_models.skel.backends import torch as backend
 from body_models.skel.backends import core
 from body_models.skel.io import get_model_path, load_model_data
-from body_models.skel.constants import SKEL_APOSE, SKEL_IPOSE, SKEL_JOINTS
+from body_models.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 
 __all__ = ["SKEL"]
 
@@ -140,46 +140,44 @@ class SKEL(BodyModel, nn.Module):
         vertices, _, _, _, skeleton_vertices = self._forward_full(shape, body_pose, global_rotation, global_translation)
         return vertices + self.weights.feet_offset, skeleton_vertices + self.weights.feet_offset
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.v_template.device
         return {
-            "shape": torch.zeros((1, self.NUM_BETAS), device=device, dtype=dtype),
-            "body_pose": torch.zeros((batch_size, self.NUM_POSE_PARAMS), device=device, dtype=dtype),
-            "global_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "shape": torch.zeros((*batch_dims, self.NUM_BETAS), device=device, dtype=dtype),
+            "body_pose": torch.zeros((*batch_dims, self.NUM_POSE_PARAMS), device=device, dtype=dtype),
+            "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, value in SKEL_APOSE.items():
-            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
-            body_pose = common.set(body_pose, slices, value, xp=torch)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = torch.as_tensor(
+            SKEL_BODY_PRESETS["a_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, value in SKEL_IPOSE.items():
-            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
-            body_pose = common.set(body_pose, slices, value, xp=torch)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = torch.as_tensor(
+            SKEL_BODY_PRESETS["i_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def _forward_full(

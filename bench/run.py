@@ -380,7 +380,7 @@ def benchmark_model(
 
 
 def benchmark_params(model: Any, batch_size: int, prepare_identity: bool = False) -> dict[str, Any]:
-    params = model.get_rest_pose(batch_size=batch_size)
+    params = model.get_rest_pose(batch_dims=(batch_size,))
     if not prepare_identity:
         return params
 
