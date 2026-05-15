@@ -206,7 +206,7 @@ class SMPLX(BodyModel):
         axis_angle = jnp.asarray(SMPLX_HAND_PRESETS[hands], dtype=hand_pose.dtype).reshape(
             1, self.NUM_HAND_JOINTS, 3
         )
-        axis_angle = jnp.broadcast_to(axis_angle, template.shape)
+        axis_angle = jnp.repeat(axis_angle, template.shape[0], axis=0)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
 
     def get_tpose(

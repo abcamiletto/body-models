@@ -193,7 +193,7 @@ class SMPLH(BodyModel, nn.Module):
         axis_angle = torch.as_tensor(SMPLH_HAND_PRESETS[hands], device=hand_pose.device, dtype=hand_pose.dtype).reshape(
             1, self.NUM_HAND_JOINTS, 3
         )
-        axis_angle = torch.broadcast_to(axis_angle, template.shape)
+        axis_angle = axis_angle.repeat(template.shape[0], 1, 1)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
     def get_tpose(

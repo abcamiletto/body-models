@@ -170,5 +170,5 @@ class MANO(BodyModel):
         axis_angle = jnp.asarray(MANO_HAND_PRESETS[self.side][hands], dtype=hand_pose.dtype).reshape(
             1, self.NUM_HAND_JOINTS, 3
         )
-        axis_angle = jnp.broadcast_to(axis_angle, template.shape)
+        axis_angle = jnp.repeat(axis_angle, template.shape[0], axis=0)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)

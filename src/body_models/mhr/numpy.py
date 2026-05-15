@@ -137,7 +137,7 @@ class MHR(BodyModel):
         hand_pose = np.zeros((batch_size, self.hand_pose_dim), dtype=dtype)
         if hands != "default":
             hand_pose = np.asarray(MHR_HAND_PRESETS[hands], dtype=dtype).reshape(1, self.hand_pose_dim)
-            hand_pose = np.broadcast_to(hand_pose, (batch_size, self.hand_pose_dim))
+            hand_pose = np.repeat(hand_pose, batch_size, axis=0)
         return {
             "shape": np.zeros((1, self.SHAPE_DIM), dtype=dtype),
             "body_pose": np.zeros((batch_size, self.body_pose_dim), dtype=dtype),

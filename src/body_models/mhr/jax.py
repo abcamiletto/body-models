@@ -147,7 +147,7 @@ class MHR(BodyModel):
         hand_pose = jnp.zeros((batch_size, self.hand_pose_dim), dtype=dtype)
         if hands != "default":
             hand_pose = jnp.asarray(MHR_HAND_PRESETS[hands], dtype=dtype).reshape(1, self.hand_pose_dim)
-            hand_pose = jnp.broadcast_to(hand_pose, (batch_size, self.hand_pose_dim))
+            hand_pose = jnp.repeat(hand_pose, batch_size, axis=0)
         return {
             "shape": jnp.zeros((1, self.SHAPE_DIM), dtype=dtype),
             "body_pose": jnp.zeros((batch_size, self.body_pose_dim), dtype=dtype),

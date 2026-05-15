@@ -163,8 +163,9 @@ class ANNY(BodyModel):
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
         if hands != "default":
-            axis_angle = jnp.asarray(ANNY_HAND_PRESETS[hands], dtype=dtype).reshape(1, hand_pose.shape[-2], 3)
-            axis_angle = jnp.broadcast_to(axis_angle, hand_pose.shape)
+            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
+            axis_angle = jnp.asarray(ANNY_HAND_PRESETS[hands], dtype=dtype).reshape(1, template.shape[-2], 3)
+            axis_angle = jnp.repeat(axis_angle, template.shape[0], axis=0)
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return {
             **{

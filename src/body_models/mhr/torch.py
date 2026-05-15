@@ -146,7 +146,7 @@ class MHR(BodyModel, nn.Module):
             hand_pose = torch.asarray(MHR_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
                 1, self.hand_pose_dim
             )
-            hand_pose = torch.broadcast_to(hand_pose, (batch_size, self.hand_pose_dim))
+            hand_pose = hand_pose.repeat(batch_size, 1)
         return {
             "shape": torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype),
             "body_pose": torch.zeros((batch_size, self.body_pose_dim), device=device, dtype=dtype),

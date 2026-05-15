@@ -177,10 +177,11 @@ class ANNY(BodyModel, nn.Module):
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
         if hands != "default":
+            template = hand_pose[:, :, 0, :] if hand_pose.ndim == 4 else hand_pose
             axis_angle = torch.asarray(ANNY_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
-                1, hand_pose.shape[-2], 3
+                1, template.shape[-2], 3
             )
-            axis_angle = torch.broadcast_to(axis_angle, hand_pose.shape)
+            axis_angle = axis_angle.repeat(template.shape[0], 1, 1)
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return {
             **{
