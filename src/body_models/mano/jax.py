@@ -166,8 +166,7 @@ class MANO(BodyModel):
         }
 
     def _hand_preset(self, batch_size: int, dtype, hands: str):
-        axis_angle = jnp.asarray(MANO_HAND_PRESETS[self.side][hands], dtype=dtype).reshape(
-            1, self.NUM_HAND_JOINTS, 3
-        )
+        preset = MANO_HAND_PRESETS[self.side][hands]
+        axis_angle = jnp.asarray(preset, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
         axis_angle = jnp.repeat(axis_angle, batch_size, axis=0)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)

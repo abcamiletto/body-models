@@ -192,11 +192,12 @@ class BrainCoHand(BodyModel):
         qpos = np.repeat(qpos, batch_size, axis=0)
         axes = self.weights.qpos_joint_axes
         rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=np)
+        dst_kwargs = {"hinge": {"axes": axes}}.get(self.rotation_type, {})
         hand_pose = SO3.convert(
             rotmat,
             src="rotmat",
             dst=self.rotation_type,
-            dst_kwargs={"hinge": {"axes": axes}}.get(self.rotation_type, {}),
+            dst_kwargs=dst_kwargs,
             xp=np,
         )
         return {

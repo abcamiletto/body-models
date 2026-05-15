@@ -174,9 +174,8 @@ class MANO(BodyModel, nn.Module):
         }
 
     def _hand_preset(self, batch_size: int, device, dtype: torch.dtype, hands: str):
-        axis_angle = torch.as_tensor(
-            MANO_HAND_PRESETS[self.side][hands], device=device, dtype=dtype
-        ).reshape(1, self.NUM_HAND_JOINTS, 3)
+        preset = MANO_HAND_PRESETS[self.side][hands]
+        axis_angle = torch.as_tensor(preset, device=device, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
         axis_angle = axis_angle.repeat(batch_size, 1, 1)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 

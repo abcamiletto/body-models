@@ -143,9 +143,8 @@ class MHR(BodyModel, nn.Module):
         device = self.rest_vertices.device
         hand_pose = torch.zeros((batch_size, self.hand_pose_dim), device=device, dtype=dtype)
         if hands != "default":
-            hand_pose = torch.asarray(MHR_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
-                1, self.hand_pose_dim
-            )
+            preset = MHR_HAND_PRESETS[hands]
+            hand_pose = torch.asarray(preset, device=device, dtype=dtype).reshape(1, self.hand_pose_dim)
             hand_pose = hand_pose.repeat(batch_size, 1)
         return {
             "shape": torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype),

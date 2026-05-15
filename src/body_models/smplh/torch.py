@@ -189,9 +189,8 @@ class SMPLH(BodyModel, nn.Module):
         return params
 
     def _hand_preset(self, batch_size: int, device, dtype: torch.dtype, hands: str):
-        axis_angle = torch.as_tensor(SMPLH_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
-            1, self.NUM_HAND_JOINTS, 3
-        )
+        preset = SMPLH_HAND_PRESETS[hands]
+        axis_angle = torch.as_tensor(preset, device=device, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
         axis_angle = axis_angle.repeat(batch_size, 1, 1)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 

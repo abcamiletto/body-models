@@ -139,9 +139,8 @@ class GarmentMeasurements(BodyModel, nn.Module):
         )
         pelvis_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
         if hands != "default":
-            axis_angle = torch.asarray(GARMENT_HAND_PRESETS[hands], device=device, dtype=dtype).reshape(
-                1, -1, 3
-            )
+            preset = GARMENT_HAND_PRESETS[hands]
+            axis_angle = torch.asarray(preset, device=device, dtype=dtype).reshape(1, -1, 3)
             axis_angle = axis_angle.repeat(batch_size, 1, 1)
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return {

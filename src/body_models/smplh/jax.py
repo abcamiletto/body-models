@@ -181,9 +181,8 @@ class SMPLH(BodyModel):
         return params
 
     def _hand_preset(self, batch_size: int, dtype, hands: str):
-        axis_angle = jnp.asarray(SMPLH_HAND_PRESETS[hands], dtype=dtype).reshape(
-            1, self.NUM_HAND_JOINTS, 3
-        )
+        preset = SMPLH_HAND_PRESETS[hands]
+        axis_angle = jnp.asarray(preset, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
         axis_angle = jnp.repeat(axis_angle, batch_size, axis=0)
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
 
