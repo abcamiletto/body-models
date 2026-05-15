@@ -89,24 +89,17 @@ class FLAME(BodyModel):
         self,
         shape: Float[jax.Array, "B|1 S"],
         expression: Float[jax.Array, "B E"],
-        pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"] | None = None,
+        head_pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"],
         head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
-        if pose is None:
-            pose = SO3.identity_as(
-                expression,
-                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            )
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
             expression=expression,
-            pose=pose,
+            pose=head_pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -118,24 +111,17 @@ class FLAME(BodyModel):
         self,
         shape: Float[jax.Array, "B|1 S"],
         expression: Float[jax.Array, "B E"],
-        pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"] | None = None,
+        head_pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"],
         head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B 5 4 4"]:
-        if pose is None:
-            pose = SO3.identity_as(
-                expression,
-                batch_dims=(*expression.shape[:-1], self.NUM_HEAD_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            )
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
             expression=expression,
-            pose=pose,
+            pose=head_pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -148,7 +134,7 @@ class FLAME(BodyModel):
         return {
             "shape": jnp.zeros((1, 300), dtype=dtype),
             "expression": jnp.zeros((batch_size, 100), dtype=dtype),
-            "pose": SO3.identity_as(
+            "head_pose": SO3.identity_as(
                 ref,
                 batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,

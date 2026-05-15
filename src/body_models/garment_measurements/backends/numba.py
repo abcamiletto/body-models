@@ -15,7 +15,7 @@ __all__ = ["forward_vertices", "forward_skeleton"]
 def forward_vertices(
     weights: GarmentMeasurementsWeights,
     shape: Float[np.ndarray, "B C"],
-    pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"] | None = None,
+    pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
     global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
     global_translation: Float[np.ndarray, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
@@ -62,7 +62,7 @@ def forward_vertices(
 def forward_skeleton(
     weights: GarmentMeasurementsWeights,
     shape: Float[np.ndarray, "B C"],
-    pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"] | None = None,
+    pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
     global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
     global_translation: Float[np.ndarray, "B 3"] | None = None,
     joint_indices: list[int] | None = None,

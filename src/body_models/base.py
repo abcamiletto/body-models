@@ -27,6 +27,8 @@ class BodyModel(ABC):
     # True for models that expose MJCF-style muscle via-points and tendons
     # (currently MyoFullBody only). Renderers branch on this to draw muscles.
     has_tendons: bool = False
+    # True for models that expose a hand_pose parameter and accept hands presets.
+    has_hands: bool = False
     kernels: ClassVar[tuple[str, ...]] = ("numpy",)
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
 

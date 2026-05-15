@@ -1,6 +1,7 @@
 """JAX backend for the BrainCo Revo 2 robotic hand model."""
 
 from pathlib import Path
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -12,13 +13,15 @@ from body_models.base import BodyModel
 from body_models.brainco.backends import core
 from body_models.brainco.backends import jax as backend
 from body_models.brainco.io import Side, load_model_data
-from body_models.brainco.constants import LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
+from body_models.brainco.constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
 
 __all__ = ["BrainCoHand"]
 
 
 class BrainCoHand(BodyModel):
     """BrainCo Revo 2 as rigid STL links attached to its MuJoCo hand skeleton."""
+
+    has_hands = True
 
     is_rigid_body = True
 
@@ -111,14 +114,14 @@ class BrainCoHand(BodyModel):
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
         params = self.get_rest_pose(batch_size=1)
         return self.forward_vertices(
-            pose=params["pose"],
+            hand_pose=params["hand_pose"],
             global_translation=params["global_translation"],
             global_rotation=params["global_rotation"],
         )[0]
 
     def forward_skeleton(
         self,
-        pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
+        hand_pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
@@ -126,7 +129,7 @@ class BrainCoHand(BodyModel):
     ) -> Float[jax.Array, "B J 4 4"]:
         return backend.forward_skeleton(
             self.weights,
-            pose,
+            hand_pose,
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
@@ -135,7 +138,7 @@ class BrainCoHand(BodyModel):
 
     def forward_vertices(
         self,
-        pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
+        hand_pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
@@ -143,7 +146,7 @@ class BrainCoHand(BodyModel):
     ) -> Float[jax.Array, "B V 3"]:
         return backend.forward_vertices(
             self.weights,
-            pose,
+            hand_pose,
             global_translation,
             global_rotation=global_rotation,
             vertex_indices=vertex_indices,
@@ -152,14 +155,14 @@ class BrainCoHand(BodyModel):
 
     def forward_links(
         self,
-        pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
+        hand_pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
     ) -> Float[jax.Array, "B L 4 4"]:
         return backend.forward_links(
             self.weights,
-            pose,
+            hand_pose,
             global_translation,
             global_rotation=global_rotation,
             rotation_type=self.rotation_type,
@@ -177,16 +180,30 @@ class BrainCoHand(BodyModel):
             link_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
-        pose_ref = jnp.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype=jnp.float32,
+        hands: Literal["default", "flat", "rest"] = "default",
+    ) -> dict[str, jax.Array]:
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
+
         global_ref = jnp.zeros((batch_size, 3), dtype=dtype)
+        qpos = jnp.asarray(BRAINCO_HAND_PRESETS[hands], dtype=dtype).reshape(1, -1, 1)
+        qpos = jnp.repeat(qpos, batch_size, axis=0)
+        axes = self.weights.qpos_joint_axes
+        rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=jnp)
+        dst_kwargs = {"hinge": {"axes": axes}}.get(self.rotation_type, {})
+        hand_pose = SO3.convert(
+            rotmat,
+            src="rotmat",
+            dst=self.rotation_type,
+            dst_kwargs=dst_kwargs,
+            xp=jnp,
+        )
         return {
-            "pose": SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size, len(self.weights.qpos_joint_indices)),
-                rotation_type=self.rotation_type,
-                xp=jnp,
-            ),
+            "hand_pose": hand_pose,
             "global_rotation": SO3.identity_as(
                 global_ref,
                 batch_dims=(batch_size,),

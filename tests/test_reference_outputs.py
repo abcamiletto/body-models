@@ -5,6 +5,8 @@ import pytest
 from nanomanifold import SO3
 
 import model_cases
+from body_models.anny import pose as anny_pose
+from body_models.mhr import pose as mhr_pose
 
 
 @pytest.mark.parametrize(
@@ -72,30 +74,41 @@ def reference_inputs(name: str) -> dict[str, np.ndarray]:
             "global_translation": np.asarray(data["transl"], dtype=np.float32)[None],
         }
     if name == "flame":
-        pose = data["neck_pose"] + data["jaw_pose"] + data["leye_pose"] + data["reye_pose"]
+        head_pose = data["neck_pose"] + data["jaw_pose"] + data["leye_pose"] + data["reye_pose"]
         return {
             "shape": np.asarray(data["shape"], dtype=np.float32)[None],
             "expression": np.asarray(data["expression"], dtype=np.float32)[None],
-            "pose": np.asarray(pose, dtype=np.float32).reshape(1, 4, 3),
+            "head_pose": np.asarray(head_pose, dtype=np.float32).reshape(1, 4, 3),
             "head_rotation": np.asarray(data["global_orient"], dtype=np.float32)[None],
             "global_translation": np.asarray(data["transl"], dtype=np.float32)[None],
         }
     if name == "skel":
         return {
             "shape": np.asarray(data["shape"], dtype=np.float32)[None],
-            "pose": np.asarray(data["body_pose"], dtype=np.float32)[None],
+            "body_pose": np.asarray(data["body_pose"], dtype=np.float32)[None],
             "global_translation": np.asarray(data["trans"], dtype=np.float32)[None],
         }
     if name == "mhr":
+        pose = np.asarray(data["pose"], dtype=np.float32)[None]
+        body_pose, hand_pose = mhr_pose.unpack_pose(np, pose)
         return {
             "shape": np.asarray(data["shape"], dtype=np.float32)[None],
-            "pose": np.asarray(data["pose"], dtype=np.float32)[None],
+            "body_pose": body_pose,
+            "hand_pose": hand_pose,
             "expression": np.asarray(data["expression"], dtype=np.float32)[None],
         }
     if name == "anny":
         phenotype = {key: np.asarray([value], dtype=np.float32) for key, value in data["phenotype"].items()}
         rotation = np.asarray(data["pose"], dtype=np.float32)[None, :, :3, :3]
-        return {**phenotype, "pose": SO3.conversions.from_rotmat_to_axis_angle(rotation, xp=np)}
+        pose = SO3.conversions.from_rotmat_to_axis_angle(rotation, xp=np)
+        global_rotation, body_pose, head_pose, hand_pose = anny_pose.unpack_pose(np, pose)
+        return {
+            **phenotype,
+            "body_pose": body_pose,
+            "head_pose": head_pose,
+            "hand_pose": hand_pose,
+            "global_rotation": global_rotation,
+        }
     raise AssertionError(name)
 
 

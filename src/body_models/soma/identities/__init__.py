@@ -9,6 +9,7 @@ from jaxtyping import Float, Int
 
 from ... import common
 from ...anny.backends import core as anny_core
+from ...mhr import pose as mhr_pose
 from ..backends import core
 
 
@@ -76,8 +77,9 @@ def mhr_identity_shape(
         scale_params = common.zeros_as(identity, shape=(*batch_shape, num_scale_params), xp=xp)
     zero_pose = common.zeros_as(identity, shape=(*batch_shape, model.pose_dim), xp=xp)
     zero_pose = common.set(zero_pose, (..., slice(-num_scale_params, None)), scale_params, xp=xp)
+    body_pose, hand_pose = mhr_pose.unpack_pose(xp, zero_pose)
     expression = common.zeros_as(identity, shape=(*batch_shape, model.EXPR_DIM), xp=xp)
-    return model.forward_vertices(shape=identity, pose=zero_pose, expression=expression)
+    return model.forward_vertices(shape=identity, body_pose=body_pose, hand_pose=hand_pose, expression=expression)
 
 
 def anny_identity_shape(

@@ -10,9 +10,10 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from body_models import common
+from body_models.anny import pose as pose_utils
 from body_models.anny.backends import torch as torch_backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
-from body_models.anny.constants import ANNY_APOSE, ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
+from body_models.anny.constants import ANNY_HAND_PRESETS, ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -21,6 +22,8 @@ __all__ = ["ANNY"]
 
 class ANNY(BodyModel, nn.Module):
     """ANNY body model with PyTorch backend."""
+
+    has_hands = True
 
     kernels = ("torch", "warp")
     JOINTS = ANNY_JOINTS
@@ -100,11 +103,14 @@ class ANNY(BodyModel, nn.Module):
         weight: Float[Tensor, "B"],
         height: Float[Tensor, "B"],
         proportions: Float[Tensor, "B"],
-        pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
+        head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
+        hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
+        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.forward_vertices(
             weights=self.weights,
             gender=gender,
@@ -114,7 +120,6 @@ class ANNY(BodyModel, nn.Module):
             height=height,
             proportions=proportions,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
@@ -129,11 +134,14 @@ class ANNY(BodyModel, nn.Module):
         weight: Float[Tensor, "B"],
         height: Float[Tensor, "B"],
         proportions: Float[Tensor, "B"],
-        pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
+        head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
+        hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B J 4 4"]:
+        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.forward_skeleton(
             weights=self.weights,
             gender=gender,
@@ -143,80 +151,110 @@ class ANNY(BodyModel, nn.Module):
             height=height,
             proportions=proportions,
             pose=pose,
-            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype | None = None) -> dict[str, Tensor]:
+    def get_rest_pose(
+        self,
+        batch_size: int = 1,
+        dtype: torch.dtype | None = None,
+        hands: Literal["default", "flat", "rest"] = "default",
+    ) -> dict[str, Tensor]:
+        if hands not in ("default", "flat", "rest"):
+            raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
+
         dtype = dtype or self.weights.template_vertices.dtype
         device = self.weights.template_vertices.device
         pose_ref = torch.zeros((batch_size,), device=device, dtype=dtype)
+        pose = SO3.identity_as(
+            pose_ref,
+            batch_dims=(batch_size, self.num_joints),
+            rotation_type=self.rotation_type,
+            xp=torch,
+        )
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        if hands != "default":
+            preset = ANNY_HAND_PRESETS[hands]
+            axis_angle = torch.asarray(preset, device=device, dtype=dtype).reshape(1, -1, 3)
+            axis_angle = axis_angle.repeat(batch_size, 1, 1)
+            hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return {
             **{
                 name: torch.full((batch_size,), 0.5, device=device, dtype=dtype)
                 for name in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
-            "pose": SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size, self.num_joints),
-                rotation_type=self.rotation_type,
-                xp=torch,
-            ),
-            "global_rotation": SO3.identity_as(
-                pose_ref,
-                batch_dims=(batch_size,),
-                rotation_type=self.rotation_type,
-                xp=torch,
-            ),
+            "body_pose": body_pose,
+            "head_pose": head_pose,
+            "hand_pose": hand_pose,
+            "global_rotation": global_rotation,
             "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
         }
 
     def get_tpose(
         self,
         batch_size: int = 1,
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        pose_parts = (
+            params["global_rotation"],
+            params["body_pose"],
+            params["head_pose"],
+            params["hand_pose"],
+        )
+        pose = pose_utils.pack_pose(torch, *pose_parts)
         for joint_name, values in ANNY_TPOSE.items():
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pose"] = pose
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        params.update(
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+            global_rotation=global_rotation,
+        )
         return params
 
     def get_apose(
         self,
         batch_size: int = 1,
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
-        for joint_name, values in ANNY_APOSE.items():
-            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
-            pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pose"] = pose
-        return params
+        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
 
     def get_ipose(
         self,
         batch_size: int = 1,
+        hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["pose"]
+        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        pose_parts = (
+            params["global_rotation"],
+            params["body_pose"],
+            params["head_pose"],
+            params["hand_pose"],
+        )
+        pose = pose_utils.pack_pose(torch, *pose_parts)
         for joint_name, values in ANNY_IPOSE.items():
             index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
             converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
             converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
             pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        params["pose"] = pose
+        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        params.update(
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+            global_rotation=global_rotation,
+        )
         return params
 
 
