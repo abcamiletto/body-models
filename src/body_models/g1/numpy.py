@@ -6,12 +6,11 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models import common
 from body_models.base import BodyModel
 from body_models.g1.backends import core
 from body_models.g1.backends import numpy as backend
 from body_models.g1.io import load_model_data
-from body_models.g1.constants import G1_APOSE, G1_IPOSE, G1_JOINTS, G1_TPOSE
+from body_models.g1.constants import G1_BODY_PRESETS, G1_JOINTS
 
 __all__ = ["G1"]
 
@@ -110,12 +109,12 @@ class G1(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
-        params = self.get_rest_pose(batch_size=1)
+        params = self.get_rest_pose(batch_dims=())
         return self.forward_vertices(
             body_pose=params["body_pose"],
             global_translation=params["global_translation"],
             global_rotation=params["global_rotation"],
-        )[0]
+        )
 
     def forward_skeleton(
         self,
@@ -194,83 +193,56 @@ class G1(BodyModel):
             joint_name=joint_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
-        pose_ref = np.zeros((batch_size, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
-        global_ref = np.zeros((batch_size, 3), dtype=dtype)
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
+        pose_ref = np.zeros((*batch_dims, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
+        global_ref = np.zeros((*batch_dims, 3), dtype=dtype)
         body_pose = SO3.identity_as(
             pose_ref,
-            batch_dims=(batch_size, len(self.weights.qpos_joint_indices)),
+            batch_dims=(*batch_dims, len(self.weights.qpos_joint_indices)),
             rotation_type=self.rotation_type,
             xp=np,
         )
         global_rotation = SO3.identity_as(
             global_ref,
-            batch_dims=(batch_size,),
+            batch_dims=batch_dims,
             rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
             xp=np,
         )
         return {
             "body_pose": body_pose,
             "global_rotation": global_rotation,
-            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, value in G1_TPOSE.items():
-            if self.rotation_type == "hinge":
-                slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
-                body_pose = common.set(body_pose, slices, value, xp=np)
-            else:
-                template = body_pose[:, index, 0, :] if body_pose.ndim == 4 else body_pose[:, index, :]
-                axis = np.asarray(self.qpos_joint_axes[index], dtype=body_pose.dtype)
-                axis_angle = template * 0 + axis * value
-                converted = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-                body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        axis_angle = np.asarray(G1_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, value in G1_APOSE.items():
-            if self.rotation_type == "hinge":
-                slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
-                body_pose = common.set(body_pose, slices, value, xp=np)
-            else:
-                template = body_pose[:, index, 0, :] if body_pose.ndim == 4 else body_pose[:, index, :]
-                axis = np.asarray(self.qpos_joint_axes[index], dtype=body_pose.dtype)
-                axis_angle = template * 0 + axis * value
-                converted = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-                body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        axis_angle = np.asarray(G1_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, value in G1_IPOSE.items():
-            if self.rotation_type == "hinge":
-                slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
-                body_pose = common.set(body_pose, slices, value, xp=np)
-            else:
-                template = body_pose[:, index, 0, :] if body_pose.ndim == 4 else body_pose[:, index, :]
-                axis = np.asarray(self.qpos_joint_axes[index], dtype=body_pose.dtype)
-                axis_angle = template * 0 + axis * value
-                converted = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-                body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        axis_angle = np.asarray(G1_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return params

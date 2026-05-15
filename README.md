@@ -195,7 +195,7 @@ model = SMPLX(gender="neutral")  # Uses smplx-neutral config key
 model = SMPLX(model_path="/path/to/SMPLX_NEUTRAL.npz")
 
 # Get default parameters
-params = model.get_rest_pose(batch_size=4)
+params = model.get_rest_pose(batch_dims=(4,))
 
 # Generate mesh vertices
 vertices = model.forward_vertices(**params)  # [4, V, 3]
@@ -236,7 +236,7 @@ Rigged models inherit from `BodyModel` and share these properties:
 
 ```python
 # Get zero-initialized parameters (model-specific keys)
-params = model.get_rest_pose(batch_size=1)
+params = model.get_rest_pose(batch_dims=(1,))
 
 # Compute mesh vertices [B, V, 3] in meters
 vertices = model.forward_vertices(**params)
@@ -302,7 +302,7 @@ server = viser.ViserServer()
 server.scene.set_up_direction("+y")
 
 model = SMPLX(gender="neutral")
-forward_kwargs = model.get_rest_pose(batch_size=1)
+forward_kwargs = model.get_rest_pose(batch_dims=(1,))
 
 body = server.scene.add_mesh_skinned(
     "/body",
@@ -318,7 +318,7 @@ body.bone_positions = bones["bone_positions"]
 - `forward_kwargs` is the same kwargs dict you would pass to `forward_vertices()` or `forward_skeleton()`.
 - Use `to_viser_skinned_mesh(**forward_kwargs)` when the mesh or bind skeleton changes.
 - Use `to_viser_bones(**forward_kwargs)` when you only want updated bone poses.
-- Both helpers require `batch_size=1`, the full mesh, and the full joint set.
+- Both helpers require `batch_dims=(1,)`, the full mesh, and the full joint set.
 
 ## Supported Models
 
@@ -476,7 +476,7 @@ from body_models.garment_measurements.torch import GarmentMeasurements  # or .nu
 
 model = GarmentMeasurements()
 
-params = model.get_rest_pose(batch_size=1)
+params = model.get_rest_pose(batch_dims=(1,))
 params["shape"][:, 0] = 0.5
 vertices = model.forward_vertices(
     params["shape"],              # [B, C] PCA weights in standard deviation units
@@ -508,7 +508,7 @@ from body_models.g1.torch import G1
 
 model = G1(rotation_type="rotmat")  # Auto-downloads assets from Hugging Face if unset
 mujoco_model = G1(rotation_type="rotmat", convention="mujoco")
-params = model.get_rest_pose(batch_size=1)
+params = model.get_rest_pose(batch_dims=(1,))
 
 transforms = model.forward_skeleton(**params)  # [B, 34, 4, 4]
 link_transforms = model.forward_links(**params)  # [B, num_links, 4, 4], ordered by model.link_names
@@ -543,7 +543,7 @@ from body_models import myofullbody
 from body_models.myofullbody.torch import MyoFullBody
 
 model = MyoFullBody()  # Auto-downloads MJCF + STLs from GitHub on first use
-params = model.get_rest_pose(batch_size=1)
+params = model.get_rest_pose(batch_dims=(1,))
 
 # body_pose is a flat scalar qpos vector in MJCF order (hinge angles + slide displacements).
 qpos_idx = model.qpos_joint_names.index("hip_flexion_r")

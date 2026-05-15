@@ -13,7 +13,7 @@ from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smpl.backends import jax as backend
-from body_models.smpl.constants import SMPL_APOSE, SMPL_IPOSE, SMPL_JOINT_NAMES, SMPL_JOINTS
+from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS
 from body_models.smpl.io import get_model_path, load_model_data
 
 
@@ -149,61 +149,57 @@ class SMPL(BodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
-        body_pose_ref = jnp.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype)
-        pelvis_ref = jnp.zeros((batch_size, 3), dtype=dtype)
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
+        body_pose_ref = jnp.zeros((*batch_dims, self.NUM_BODY_JOINTS, 3), dtype=dtype)
+        pelvis_ref = jnp.zeros((*batch_dims, 3), dtype=dtype)
         return {
-            "shape": jnp.zeros((1, 10), dtype=dtype),
+            "shape": jnp.zeros((*batch_dims, 10), dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
-                batch_dims=(batch_size, self.NUM_BODY_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
             "global_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, jax.Array]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPL_APOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        axis_angle = jnp.asarray(SMPL_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPL_IPOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=jnp)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        axis_angle = jnp.asarray(SMPL_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return params

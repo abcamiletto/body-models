@@ -14,7 +14,7 @@ from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smpl.backends import torch as torch_backend
-from body_models.smpl.constants import SMPL_APOSE, SMPL_IPOSE, SMPL_JOINT_NAMES, SMPL_JOINTS
+from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS
 from body_models.smpl.io import get_model_path, load_model_data
 
 __all__ = ["SMPL"]
@@ -137,66 +137,64 @@ class SMPL(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.rest_vertices.device
-        body_pose_ref = torch.zeros((batch_size, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
-        pelvis_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
+        body_pose_ref = torch.zeros((*batch_dims, self.NUM_BODY_JOINTS, 3), device=device, dtype=dtype)
+        pelvis_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
         return {
-            "shape": torch.zeros((1, 10), device=device, dtype=dtype),
+            "shape": torch.zeros((*batch_dims, 10), device=device, dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
-                batch_dims=(batch_size, self.NUM_BODY_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
             "global_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPL_APOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        axis_angle = torch.as_tensor(
+            SMPL_BODY_PRESETS["a_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPL_IPOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=body_pose.device, dtype=body_pose.dtype)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=torch)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        axis_angle = torch.as_tensor(
+            SMPL_BODY_PRESETS["i_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return params
 
 

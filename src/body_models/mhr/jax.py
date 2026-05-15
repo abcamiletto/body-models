@@ -14,12 +14,11 @@ from body_models.mhr.constants import (
     MHR_BODY_POSE_DIM,
     MHR_HAND_PRESETS,
     MHR_HAND_POSE_DIM,
-    MHR_IPOSE_TARGETS,
+    MHR_BODY_PRESETS,
     MHR_JOINTS,
-    MHR_TPOSE_TARGETS,
 )
 from body_models.mhr.io import get_model_path, load_model_data
-from body_models.mhr.pose import pack_pose, unpack_pose
+from body_models.mhr.pose import pack_pose
 
 __all__ = ["MHR"]
 
@@ -137,70 +136,52 @@ class MHR(BodyModel):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype=jnp.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, jnp.ndarray]:
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        hand_pose = jnp.zeros((batch_size, self.hand_pose_dim), dtype=dtype)
+        hand_pose = jnp.zeros((*batch_dims, self.hand_pose_dim), dtype=dtype)
         if hands != "default":
-            hand_pose = jnp.asarray(MHR_HAND_PRESETS[hands], dtype=dtype).reshape(1, self.hand_pose_dim)
-            hand_pose = jnp.repeat(hand_pose, batch_size, axis=0)
+            hand_pose = jnp.asarray(MHR_HAND_PRESETS[hands], dtype=dtype).reshape(self.hand_pose_dim)
+            hand_pose = jnp.broadcast_to(hand_pose, (*batch_dims, self.hand_pose_dim))
         return {
-            "shape": jnp.zeros((1, self.SHAPE_DIM), dtype=dtype),
-            "body_pose": jnp.zeros((batch_size, self.body_pose_dim), dtype=dtype),
+            "shape": jnp.zeros((*batch_dims, self.SHAPE_DIM), dtype=dtype),
+            "body_pose": jnp.zeros((*batch_dims, self.body_pose_dim), dtype=dtype),
             "hand_pose": hand_pose,
-            "expression": jnp.zeros((batch_size, self.EXPR_DIM), dtype=dtype),
-            "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
-            "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "expression": jnp.zeros((*batch_dims, self.EXPR_DIM), dtype=dtype),
+            "global_rotation": jnp.zeros((*batch_dims, 3), dtype=dtype),
+            "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        targets = MHR_TPOSE_TARGETS
-        pose = pack_pose(jnp, params["body_pose"], params["hand_pose"])
-        rows = [
-            next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
-            for joint_name, component, _ in targets
-        ]
-        values = jnp.asarray([value for _, _, value in targets], dtype=pose.dtype)
-        transform = jnp.asarray(self.weights.parameter_transform, dtype=pose.dtype)
-        system = transform[rows, : self.pose_dim]
-        pose = common.set(pose, (slice(None),), jnp.linalg.pinv(system) @ values, xp=jnp)
-        params["body_pose"], params["hand_pose"] = unpack_pose(jnp, pose)
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        body_pose = jnp.asarray(MHR_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
+        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        targets = MHR_IPOSE_TARGETS
-        pose = pack_pose(jnp, params["body_pose"], params["hand_pose"])
-        rows = [
-            next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
-            for joint_name, component, _ in targets
-        ]
-        values = jnp.asarray([value for _, _, value in targets], dtype=pose.dtype)
-        transform = jnp.asarray(self.weights.parameter_transform, dtype=pose.dtype)
-        system = transform[rows, : self.pose_dim]
-        pose = common.set(pose, (slice(None),), jnp.linalg.pinv(system) @ values, xp=jnp)
-        params["body_pose"], params["hand_pose"] = unpack_pose(jnp, pose)
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        body_pose = jnp.asarray(MHR_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params

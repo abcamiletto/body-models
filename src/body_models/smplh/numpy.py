@@ -6,7 +6,6 @@ from typing import Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models import common
 from body_models.base import BodyModel
 from nanomanifold import SO3
 
@@ -14,7 +13,7 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplh.backends import numpy as numpy_backend
 from body_models.smplh.backends import scipy as scipy_backend
 from body_models.smplh.io import get_model_path, load_model_data
-from body_models.smplh.constants import SMPLH_APOSE, SMPLH_HAND_PRESETS, SMPLH_IPOSE, SMPLH_JOINTS
+from body_models.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
 
 __all__ = ["SMPLH"]
 
@@ -142,88 +141,84 @@ class SMPLH(BodyModel):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        body_pose_ref = np.zeros((batch_size, self.NUM_BODY_JOINTS, 3), dtype=dtype)
-        hand_pose_ref = np.zeros((batch_size, self.NUM_HAND_JOINTS, 3), dtype=dtype)
-        pelvis_ref = np.zeros((batch_size, 3), dtype=dtype)
+        body_pose_ref = np.zeros((*batch_dims, self.NUM_BODY_JOINTS, 3), dtype=dtype)
+        hand_pose_ref = np.zeros((*batch_dims, self.NUM_HAND_JOINTS, 3), dtype=dtype)
+        pelvis_ref = np.zeros((*batch_dims, 3), dtype=dtype)
         params = {
-            "shape": np.zeros((1, 10), dtype=dtype),
+            "shape": np.zeros((*batch_dims, 10), dtype=dtype),
             "body_pose": SO3.identity_as(
                 body_pose_ref,
-                batch_dims=(batch_size, self.NUM_BODY_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
             "hand_pose": SO3.identity_as(
                 hand_pose_ref,
-                batch_dims=(batch_size, self.NUM_HAND_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_HAND_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
             "pelvis_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
             "global_rotation": SO3.identity_as(
                 pelvis_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=np,
             ),
-            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }
         if hands != "default":
-            params["hand_pose"] = self._hand_preset(batch_size, dtype, hands)
+            params["hand_pose"] = self._hand_preset(batch_dims, dtype, hands)
         return params
 
-    def _hand_preset(self, batch_size: int, dtype, hands: str):
+    def _hand_preset(self, batch_dims: tuple[int, ...], dtype, hands: str):
         preset = SMPLH_HAND_PRESETS[hands]
-        axis_angle = np.asarray(preset, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
-        axis_angle = np.repeat(axis_angle, batch_size, axis=0)
+        axis_angle = np.asarray(preset, dtype=dtype).reshape(self.NUM_HAND_JOINTS, 3)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPLH_APOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = np.asarray(SMPLH_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        body_pose = params["body_pose"]
-        for index, values in SMPLH_IPOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=np)
-            body_pose = common.set(body_pose, (slice(None), index), converted, xp=np)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = np.asarray(SMPLH_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
         return params
 
 

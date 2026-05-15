@@ -11,7 +11,7 @@ from body_models import common
 from body_models.anny import pose as pose_utils
 from body_models.anny.backends import jax as backend
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
-from body_models.anny.constants import ANNY_HAND_PRESETS, ANNY_IPOSE, ANNY_JOINTS, ANNY_TPOSE
+from body_models.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
 from body_models.base import BodyModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -147,95 +147,65 @@ class ANNY(BodyModel):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype=jnp.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, jnp.ndarray]:
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        pose_ref = jnp.zeros((batch_size,), dtype=dtype)
+        pose_ref = jnp.zeros((*batch_dims,), dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
-            batch_dims=(batch_size, self.num_joints),
+            batch_dims=(*batch_dims, self.num_joints),
             rotation_type=self.rotation_type,
             xp=jnp,
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
         if hands != "default":
-            axis_angle = jnp.asarray(ANNY_HAND_PRESETS[hands], dtype=dtype).reshape(1, -1, 3)
-            axis_angle = jnp.repeat(axis_angle, batch_size, axis=0)
+            axis_angle = jnp.asarray(ANNY_HAND_PRESETS[hands], dtype=dtype).reshape(-1, 3)
+            axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return {
             **{
-                name: jnp.full((batch_size,), 0.5, dtype=dtype)
+                name: jnp.full((*batch_dims,), 0.5, dtype=dtype)
                 for name in ["gender", "age", "muscle", "weight", "height", "proportions"]
             },
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
             "global_rotation": global_rotation,
-            "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        pose_parts = (
-            params["global_rotation"],
-            params["body_pose"],
-            params["head_pose"],
-            params["hand_pose"],
-        )
-        pose = pose_utils.pack_pose(jnp, *pose_parts)
-        for joint_name, values in ANNY_TPOSE.items():
-            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
-            pose = common.set(pose, (slice(None), index), converted, xp=jnp)
-        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
-        params.update(
-            body_pose=body_pose,
-            head_pose=head_pose,
-            hand_pose=hand_pose,
-            global_rotation=global_rotation,
-        )
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = jnp.asarray(ANNY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        pose_parts = (
-            params["global_rotation"],
-            params["body_pose"],
-            params["head_pose"],
-            params["hand_pose"],
-        )
-        pose = pose_utils.pack_pose(jnp, *pose_parts)
-        for joint_name, values in ANNY_IPOSE.items():
-            index = next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name)
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=jnp)
-            pose = common.set(pose, (slice(None), index), converted, xp=jnp)
-        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
-        params.update(
-            body_pose=body_pose,
-            head_pose=head_pose,
-            hand_pose=hand_pose,
-            global_rotation=global_rotation,
-        )
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = jnp.asarray(ANNY_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return params

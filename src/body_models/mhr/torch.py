@@ -15,12 +15,11 @@ from body_models.mhr.constants import (
     MHR_BODY_POSE_DIM,
     MHR_HAND_PRESETS,
     MHR_HAND_POSE_DIM,
-    MHR_IPOSE_TARGETS,
+    MHR_BODY_PRESETS,
     MHR_JOINTS,
-    MHR_TPOSE_TARGETS,
 )
 from body_models.mhr.io import get_model_path, load_model_data
-from body_models.mhr.pose import pack_pose, unpack_pose
+from body_models.mhr.pose import pack_pose
 
 __all__ = ["MHR"]
 
@@ -133,7 +132,7 @@ class MHR(BodyModel, nn.Module):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype: torch.dtype = torch.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
@@ -141,64 +140,50 @@ class MHR(BodyModel, nn.Module):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         device = self.rest_vertices.device
-        hand_pose = torch.zeros((batch_size, self.hand_pose_dim), device=device, dtype=dtype)
+        hand_pose = torch.zeros((*batch_dims, self.hand_pose_dim), device=device, dtype=dtype)
         if hands != "default":
             preset = MHR_HAND_PRESETS[hands]
-            hand_pose = torch.asarray(preset, device=device, dtype=dtype).reshape(1, self.hand_pose_dim)
-            hand_pose = hand_pose.repeat(batch_size, 1)
+            hand_pose = torch.asarray(preset, device=device, dtype=dtype).reshape(self.hand_pose_dim)
+            hand_pose = torch.broadcast_to(hand_pose, (*batch_dims, self.hand_pose_dim))
         return {
-            "shape": torch.zeros((1, self.SHAPE_DIM), device=device, dtype=dtype),
-            "body_pose": torch.zeros((batch_size, self.body_pose_dim), device=device, dtype=dtype),
+            "shape": torch.zeros((*batch_dims, self.SHAPE_DIM), device=device, dtype=dtype),
+            "body_pose": torch.zeros((*batch_dims, self.body_pose_dim), device=device, dtype=dtype),
             "hand_pose": hand_pose,
-            "expression": torch.zeros((batch_size, self.EXPR_DIM), device=device, dtype=dtype),
-            "global_rotation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "expression": torch.zeros((*batch_dims, self.EXPR_DIM), device=device, dtype=dtype),
+            "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        targets = MHR_TPOSE_TARGETS
-        pose = pack_pose(torch, params["body_pose"], params["hand_pose"])
-        rows = [
-            next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
-            for joint_name, component, _ in targets
-        ]
-        values = torch.asarray([value for _, _, value in targets], dtype=pose.dtype)
-        transform = torch.asarray(self.weights.parameter_transform, dtype=pose.dtype)
-        system = transform[rows, : self.pose_dim]
-        pose = common.set(pose, (slice(None),), torch.linalg.pinv(system) @ values, xp=torch)
-        params["body_pose"], params["hand_pose"] = unpack_pose(torch, pose)
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        body_pose = torch.as_tensor(
+            MHR_BODY_PRESETS["t_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        targets = MHR_IPOSE_TARGETS
-        pose = pack_pose(torch, params["body_pose"], params["hand_pose"])
-        rows = [
-            next(i for i, name in enumerate(self.joint_names) if name.lower() == joint_name) * 7 + component
-            for joint_name, component, _ in targets
-        ]
-        values = torch.asarray([value for _, _, value in targets], dtype=pose.dtype)
-        transform = torch.asarray(self.weights.parameter_transform, dtype=pose.dtype)
-        system = transform[rows, : self.pose_dim]
-        pose = common.set(pose, (slice(None),), torch.linalg.pinv(system) @ values, xp=torch)
-        params["body_pose"], params["hand_pose"] = unpack_pose(torch, pose)
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        body_pose = torch.as_tensor(
+            MHR_BODY_PRESETS["i_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        )
+        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params

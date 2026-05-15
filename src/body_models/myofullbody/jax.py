@@ -12,10 +12,8 @@ from body_models.myofullbody.backends import core
 from body_models.myofullbody.backends import jax as backend
 from body_models.myofullbody.io import load_model_data
 from body_models.myofullbody.constants import (
-    MYOFULLBODY_APOSE,
-    MYOFULLBODY_IPOSE,
+    MYOFULLBODY_BODY_PRESETS,
     MYOFULLBODY_JOINTS,
-    MYOFULLBODY_TPOSE,
 )
 
 __all__ = ["MyoFullBody"]
@@ -105,8 +103,8 @@ class MyoFullBody(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        params = self.get_rest_pose(batch_size=1)
-        return self.forward_vertices(**params)[0]
+        params = self.get_rest_pose(batch_dims=())
+        return self.forward_vertices(**params)
 
     def forward_skeleton(
         self,
@@ -185,48 +183,39 @@ class MyoFullBody(BodyModel):
             joint_name=joint_name,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
         return {
-            "body_pose": jnp.zeros((batch_size, self.num_qpos), dtype=dtype),
-            "global_rotation": jnp.zeros((batch_size, 3), dtype=dtype),
-            "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "body_pose": jnp.zeros((*batch_dims, self.num_qpos), dtype=dtype),
+            "global_rotation": jnp.zeros((*batch_dims, 3), dtype=dtype),
+            "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["body_pose"]
-        for index, value in MYOFULLBODY_TPOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=jnp)
-        params["body_pose"] = pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = jnp.asarray(MYOFULLBODY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
+        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["body_pose"]
-        for index, value in MYOFULLBODY_APOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=jnp)
-        params["body_pose"] = pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = jnp.asarray(MYOFULLBODY_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
+        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        pose = params["body_pose"]
-        for index, value in MYOFULLBODY_IPOSE.items():
-            slices = (slice(None), index, 0) if pose.ndim == 3 else (slice(None), index)
-            pose = common.set(pose, slices, value, xp=jnp)
-        params["body_pose"] = pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = jnp.asarray(MYOFULLBODY_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params

@@ -9,11 +9,9 @@ from body_models.anny import pose as anny_pose
 from body_models.mhr import pose as mhr_pose
 
 
-@pytest.mark.parametrize(
-    ("name", "numpy_model", "_torch_model", "_jax_model", "model_path", "kwargs"), model_cases.REFERENCE_MODELS
-)
-def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, model_path, kwargs) -> None:
-    model = numpy_model(model_path=model_path, **kwargs)
+@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
+def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
+    model = numpy_model(**kwargs)
     inputs = reference_inputs(name)
     vertices = model.forward_vertices(**inputs)
     if name == "mhr":
@@ -25,11 +23,9 @@ def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, m
     np.testing.assert_allclose(vertices[0], expected, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(
-    ("name", "numpy_model", "_torch_model", "_jax_model", "model_path", "kwargs"), model_cases.REFERENCE_MODELS
-)
-def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, model_path, kwargs) -> None:
-    model = numpy_model(model_path=model_path, **kwargs)
+@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
+def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
+    model = numpy_model(**kwargs)
     inputs = reference_inputs(name)
     skeleton = model.forward_skeleton(**inputs)
     skeleton_outputs = {"anny": "bone_poses.npy", "mhr": "skeleton.npy", "skel": "joints.npy"}
