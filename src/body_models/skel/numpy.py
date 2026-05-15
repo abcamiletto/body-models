@@ -6,11 +6,10 @@ from typing import Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models import common
 from body_models.base import BodyModel
 from body_models.skel.backends import numpy as backend
 from body_models.skel.io import get_model_path, load_model_data
-from body_models.skel.constants import SKEL_APOSE, SKEL_IPOSE, SKEL_JOINTS
+from body_models.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 
 __all__ = ["SKEL"]
 
@@ -110,43 +109,37 @@ class SKEL(BodyModel):
             joint_indices=joint_indices,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=np.float32) -> dict[str, np.ndarray]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
         return {
-            "shape": np.zeros((1, self.NUM_BETAS), dtype=dtype),
-            "body_pose": np.zeros((batch_size, self.NUM_POSE_PARAMS), dtype=dtype),
-            "global_rotation": np.zeros((batch_size, 3), dtype=dtype),
-            "global_translation": np.zeros((batch_size, 3), dtype=dtype),
+            "shape": np.zeros((*batch_dims, self.NUM_BETAS), dtype=dtype),
+            "body_pose": np.zeros((*batch_dims, self.NUM_POSE_PARAMS), dtype=dtype),
+            "global_rotation": np.zeros((*batch_dims, 3), dtype=dtype),
+            "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        return self.get_rest_pose(batch_size=batch_size, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, value in SKEL_APOSE.items():
-            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
-            body_pose = common.set(body_pose, slices, value, xp=np)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = np.asarray(SKEL_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
+        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        params = self.get_rest_pose(batch_size=batch_size, **kwargs)
-        body_pose = params["body_pose"]
-        for index, value in SKEL_IPOSE.items():
-            slices = (slice(None), index, 0) if body_pose.ndim == 3 else (slice(None), index)
-            body_pose = common.set(body_pose, slices, value, xp=np)
-        params["body_pose"] = body_pose
+        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        body_pose = np.asarray(SKEL_BODY_PRESETS["i_pose"], dtype=params["body_pose"].dtype)
+        params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
         return params

@@ -3,6 +3,7 @@
 from typing import Any
 
 from jaxtyping import Float
+
 Array = Any
 
 

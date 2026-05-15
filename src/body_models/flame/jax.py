@@ -129,18 +129,18 @@ class FLAME(BodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=jnp.float32) -> dict[str, jax.Array]:
-        ref = jnp.zeros((batch_size, 100), dtype=dtype)
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
+        ref = jnp.zeros((*batch_dims, 100), dtype=dtype)
         return {
-            "shape": jnp.zeros((1, 300), dtype=dtype),
-            "expression": jnp.zeros((batch_size, 100), dtype=dtype),
+            "shape": jnp.zeros((*batch_dims, 300), dtype=dtype),
+            "expression": jnp.zeros((*batch_dims, 100), dtype=dtype),
             "head_pose": SO3.identity_as(
                 ref,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
-            "head_rotation": SO3.identity_as(ref, batch_dims=(batch_size,), rotation_type=self.rotation_type, xp=jnp),
-            "global_rotation": SO3.identity_as(ref, batch_dims=(batch_size,), rotation_type=self.rotation_type, xp=jnp),
-            "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "head_rotation": SO3.identity_as(ref, batch_dims=batch_dims, rotation_type=self.rotation_type, xp=jnp),
+            "global_rotation": SO3.identity_as(ref, batch_dims=batch_dims, rotation_type=self.rotation_type, xp=jnp),
+            "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }

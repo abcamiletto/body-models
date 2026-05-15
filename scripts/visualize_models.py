@@ -263,15 +263,15 @@ def add_slider(
 
 
 def betas(server, state, *, key, count, prefix="β", lo=-3.0, hi=3.0, step=0.1, initial=0.0) -> list[SliderHandle]:
-    """Indexed sliders writing into ``state.params[key][0, i]``."""
+    """Indexed sliders writing into ``state.params[key][i]``."""
     return [
-        add_slider(server, state, f"{prefix}{i}", lo=lo, hi=hi, step=step, initial=initial, key=key, indices=(0, i))
+        add_slider(server, state, f"{prefix}{i}", lo=lo, hi=hi, step=step, initial=initial, key=key, indices=(i,))
         for i in range(count)
     ]
 
 
 def joint_xyz(server, state, *, key, joints, lo=-1.5, hi=1.5, step=0.05, max_joints=None) -> list[SliderHandle]:
-    """X/Y/Z axis-angle sliders per joint, writing into ``state.params[key][0, joint, axis]``."""
+    """X/Y/Z axis-angle sliders per joint, writing into ``state.params[key][joint, axis]``."""
     handles: list[SliderHandle] = []
     for name, idx in joints:
         if max_joints is not None and idx >= max_joints:
@@ -279,7 +279,7 @@ def joint_xyz(server, state, *, key, joints, lo=-1.5, hi=1.5, step=0.05, max_joi
         for ax, axn in enumerate("XYZ"):
             handles.append(
                 add_slider(
-                    server, state, f"{name} {axn}", lo=lo, hi=hi, step=step, initial=0.0, key=key, indices=(0, idx, ax)
+                    server, state, f"{name} {axn}", lo=lo, hi=hi, step=step, initial=0.0, key=key, indices=(idx, ax)
                 )
             )
     return handles
@@ -356,7 +356,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                             step=0.05,
                             initial=0.0,
                             key="body_pose",
-                            indices=(0, idx),
+                            indices=(idx,),
                         )
                     )
 
@@ -373,7 +373,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                             step=0.05,
                             initial=0.5,
                             key=label.lower(),
-                            indices=(0,),
+                            indices=(),
                         )
                     )
             with server.gui.add_folder("Pose"):
@@ -382,7 +382,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     state,
                     key="body_pose",
                     joints=ANNY_BODY_POSE_BONES,
-                    max_joints=state.params["body_pose"].shape[1],
+                    max_joints=state.params["body_pose"].shape[0],
                 )
 
         elif name == "MHR":
@@ -409,7 +409,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     state,
                     key="body_pose",
                     joints=GARMENT_MEASUREMENTS_BODY_POSE_JOINTS,
-                    max_joints=state.params["body_pose"].shape[1],
+                    max_joints=state.params["body_pose"].shape[0],
                 )
             with server.gui.add_folder("Head Pose"):
                 handles += joint_xyz(
@@ -417,12 +417,12 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     state,
                     key="head_pose",
                     joints=GARMENT_MEASUREMENTS_HEAD_POSE_JOINTS,
-                    max_joints=state.params["head_pose"].shape[1],
+                    max_joints=state.params["head_pose"].shape[0],
                 )
 
         elif name == "SOMA":
             model = cast(Any, state.model)
-            identity_default = float(state.params["identity"][0, 0])
+            identity_default = float(state.params["identity"][0])
             with server.gui.add_folder("Identity"):
                 handles += betas(
                     server,
@@ -441,7 +441,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     state,
                     key="body_pose",
                     joints=SOMA_BODY_POSE_JOINTS,
-                    max_joints=state.params["body_pose"].shape[1],
+                    max_joints=state.params["body_pose"].shape[0],
                 )
             with server.gui.add_folder("Head Pose"):
                 handles += joint_xyz(
@@ -449,7 +449,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     state,
                     key="head_pose",
                     joints=SOMA_HEAD_POSE_JOINTS,
-                    max_joints=state.params["head_pose"].shape[1],
+                    max_joints=state.params["head_pose"].shape[0],
                 )
 
         elif name == "G1":
@@ -461,7 +461,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 joints=G1_POSE_JOINTS,
                 limits=model.qpos_joint_limits,
                 key="body_pose",
-                index=lambda qpos_idx: (0, qpos_idx, 0),
+                index=lambda qpos_idx: (qpos_idx, 0),
                 handles=handles,
                 max_qpos=len(model.qpos_joint_indices),
             )
@@ -475,7 +475,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 joints=MYOFULLBODY_POSE_JOINTS,
                 limits=model.weights.qpos_joint_limits,
                 key="body_pose",
-                index=lambda qpos_idx: (0, qpos_idx),
+                index=lambda qpos_idx: (qpos_idx,),
                 handles=handles,
                 max_qpos=model.num_qpos,
             )
@@ -489,7 +489,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 joints=BRAINCO_POSE_JOINTS,
                 limits=model.qpos_joint_limits,
                 key="hand_pose",
-                index=lambda qpos_idx: (0, qpos_idx, 0),
+                index=lambda qpos_idx: (qpos_idx, 0),
                 handles=handles,
             )
 
@@ -646,7 +646,7 @@ def standard_joints_tab(server: viser.ViserServer, tabs, states: dict[str, Model
     def update_markers() -> None:
         for name, state in states.items():
             skeleton = state.model.forward_skeleton(**state.params)
-            joint_positions = np.asarray(skeleton[0, :, :3, 3], dtype=np.float32)
+            joint_positions = np.asarray(skeleton[:, :3, 3], dtype=np.float32)
             for joint, joint_index in joint_indices[name].items():
                 position = joint_positions[joint_index]
                 markers[(name, joint)].position = position
@@ -677,7 +677,7 @@ def _muscle_segment_indices(model: BodyModel) -> np.ndarray | None:
 
 
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
-    verts = state.model.forward_vertices(**state.params)[0]
+    verts = state.model.forward_vertices(**state.params)
     if state.mesh_handle is None:
         state.mesh_handle = server.scene.add_mesh_simple(
             f"/{name}",
@@ -691,7 +691,7 @@ def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None
     muscle_segment_indices = cast(Any, state.model)._visualizer_muscle_segment_indices
     if muscle_segment_indices is not None:
         skeleton = state.model.forward_skeleton(**state.params)
-        sites = np.asarray(cast(Any, state.model).world_sites(skeleton))[0]
+        sites = np.asarray(cast(Any, state.model).world_sites(skeleton))
         seg_points = sites[muscle_segment_indices].astype(np.float32)
         if state.muscle_handle is None:
             state.muscle_handle = server.scene.add_line_segments(
@@ -738,12 +738,15 @@ def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
         row_count = min(GRID_COLS, n - row * GRID_COLS)
         params = model.get_rest_pose()
         if name == "ANNY":
-            params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
+            params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
         verts = model.forward_vertices(**params)
-        params["global_translation"][0] = (
-            (col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
-            -float(verts[..., 1].min()),
-            (row - 0.5 * (num_rows - 1)) * GRID_SPACING_Z,
+        params["global_translation"] = np.asarray(
+            (
+                (col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
+                -float(verts[..., 1].min()),
+                (row - 0.5 * (num_rows - 1)) * GRID_SPACING_Z,
+            ),
+            dtype=params["global_translation"].dtype,
         )
         states[name] = ModelState(
             model=model,
@@ -757,7 +760,7 @@ def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
 def add_labels(server: viser.ViserServer, states: dict[str, ModelState]) -> None:
     for name, state in states.items():
         verts = state.model.forward_vertices(**state.params)
-        label_position = np.asarray(state.params["global_translation"][0]).copy()
+        label_position = np.asarray(state.params["global_translation"]).copy()
         label_position[1] = float(verts[..., 1].max()) + 0.1
         server.scene.add_label(f"/labels/{name}", text=name, position=label_position)
 

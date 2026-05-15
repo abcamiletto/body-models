@@ -118,7 +118,7 @@ def forward_vertices(
     t = _gather_joint_vectors(t, skin_indices)
 
     v_transformed = xp.einsum("...vkij,...vj->...vki", lin, v_t) + t
-    verts = xp.sum(v_transformed * skin_weights[:, :, None], axis=2)
+    verts = xp.sum(v_transformed * skin_weights[:, :, None], axis=-2)
     verts = verts * 0.01
 
     if global_rotation is not None:

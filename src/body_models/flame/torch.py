@@ -137,23 +137,21 @@ class FLAME(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def get_rest_pose(self, batch_size: int = 1, dtype=torch.float32) -> dict[str, Tensor]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=torch.float32) -> dict[str, Tensor]:
         device = self.rest_vertices.device
-        ref = torch.zeros((batch_size, 100), device=device, dtype=dtype)
+        ref = torch.zeros((*batch_dims, 100), device=device, dtype=dtype)
         return {
-            "shape": torch.zeros((1, 300), device=device, dtype=dtype),
-            "expression": torch.zeros((batch_size, 100), device=device, dtype=dtype),
+            "shape": torch.zeros((*batch_dims, 300), device=device, dtype=dtype),
+            "expression": torch.zeros((*batch_dims, 100), device=device, dtype=dtype),
             "head_pose": SO3.identity_as(
                 ref,
-                batch_dims=(batch_size, self.NUM_HEAD_JOINTS),
+                batch_dims=(*batch_dims, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "head_rotation": SO3.identity_as(ref, batch_dims=(batch_size,), rotation_type=self.rotation_type, xp=torch),
-            "global_rotation": SO3.identity_as(
-                ref, batch_dims=(batch_size,), rotation_type=self.rotation_type, xp=torch
-            ),
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "head_rotation": SO3.identity_as(ref, batch_dims=batch_dims, rotation_type=self.rotation_type, xp=torch),
+            "global_rotation": SO3.identity_as(ref, batch_dims=batch_dims, rotation_type=self.rotation_type, xp=torch),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
 

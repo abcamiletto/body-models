@@ -138,10 +138,10 @@ def parse_args() -> argparse.Namespace:
 def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
     if family in TPOSE_FAMILIES:
-        params = model.get_tpose(batch_size=1)
+        params = model.get_tpose()
         if family == "anny":
-            params["global_rotation"][0, 0] = ANNY_DISPLAY_ROTATION_X
-        verts = np.asarray(model.forward_vertices(**params)[0], dtype=np.float32)
+            params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
+        verts = np.asarray(model.forward_vertices(**params), dtype=np.float32)
     else:
         verts = np.asarray(model.rest_vertices, dtype=np.float32)
     return verts, np.asarray(model.faces, dtype=np.int32)

@@ -4,19 +4,12 @@ import pytest
 import model_cases
 
 
-@pytest.mark.parametrize(
-    ("name", "_numpy_model", "torch_model", "jax_model", "model_path", "kwargs"), model_cases.MODELS
-)
-def test_torch_and_jax_gradients_match_finite_difference(
-    name, _numpy_model, torch_model, jax_model, model_path, kwargs
-) -> None:
-    if not model_path.exists():
-        pytest.skip(f"Missing model asset: {model_path}")
-
+@pytest.mark.parametrize(("name", "_numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.MODELS)
+def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, torch_model, jax_model, kwargs) -> None:
     torch = pytest.importorskip("torch")
-    torch_instance = torch_model(model_path=model_path, **kwargs)
+    torch_instance = torch_model(**kwargs)
     torch_instance.double()
-    torch_params = torch_instance.get_rest_pose(batch_size=1, dtype=torch.float64)
+    torch_params = torch_instance.get_rest_pose(batch_dims=(), dtype=torch.float64)
     torch_keys = [key for key, value in torch_params.items() if np.asarray(value).size]
     if "global_translation" in torch_keys:
         torch_keys.remove("global_translation")
@@ -50,8 +43,8 @@ def test_torch_and_jax_gradients_match_finite_difference(
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
 
-    jax_instance = jax_model(model_path=model_path, **kwargs)
-    jax_params = jax_instance.get_rest_pose(batch_size=1, dtype=jnp.float64)
+    jax_instance = jax_model(**kwargs)
+    jax_params = jax_instance.get_rest_pose(batch_dims=(), dtype=jnp.float64)
     jax_key = torch_key
     jax_value = jax_params[jax_key]
 

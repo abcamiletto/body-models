@@ -143,7 +143,7 @@ class MANO(BodyModel, nn.Module):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype: torch.dtype = torch.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
@@ -151,32 +151,32 @@ class MANO(BodyModel, nn.Module):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         device = self.rest_vertices.device
-        hand_pose_ref = torch.zeros((batch_size, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
-        wrist_ref = torch.zeros((batch_size, 3), device=device, dtype=dtype)
+        hand_pose_ref = torch.zeros((*batch_dims, self.NUM_HAND_JOINTS, 3), device=device, dtype=dtype)
+        wrist_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
         hand_pose = SO3.identity_as(
             hand_pose_ref,
-            batch_dims=(batch_size, self.NUM_HAND_JOINTS),
+            batch_dims=(*batch_dims, self.NUM_HAND_JOINTS),
             rotation_type=self.rotation_type,
             xp=torch,
         )
         if hands != "default":
-            hand_pose = self._hand_preset(batch_size, device, dtype, hands)
+            hand_pose = self._hand_preset(batch_dims, device, dtype, hands)
         return {
-            "shape": torch.zeros((1, 10), device=device, dtype=dtype),
+            "shape": torch.zeros((*batch_dims, 10), device=device, dtype=dtype),
             "hand_pose": hand_pose,
             "wrist_rotation": SO3.identity_as(
                 wrist_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
-    def _hand_preset(self, batch_size: int, device, dtype: torch.dtype, hands: str):
+    def _hand_preset(self, batch_dims: tuple[int, ...], device, dtype: torch.dtype, hands: str):
         preset = MANO_HAND_PRESETS[self.side][hands]
-        axis_angle = torch.as_tensor(preset, device=device, dtype=dtype).reshape(1, self.NUM_HAND_JOINTS, 3)
-        axis_angle = axis_angle.repeat(batch_size, 1, 1)
+        axis_angle = torch.as_tensor(preset, device=device, dtype=dtype).reshape(self.NUM_HAND_JOINTS, 3)
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
 
 

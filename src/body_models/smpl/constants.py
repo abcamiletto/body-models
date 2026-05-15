@@ -1,3 +1,4 @@
+from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
 
@@ -45,7 +46,8 @@ SMPL_JOINTS = {
     Joint.RIGHT_FOOT: "right_foot",
 }
 
-SMPL_APOSE = {15: (0.0, 0.0, -0.55), 16: (0.0, 0.0, 0.55)}
-SMPL_IPOSE = {15: (0.0, 0.0, -1.5), 16: (0.0, 0.0, 1.5)}
+_POSES = load_npz("body_models.smpl")
 
-__all__ = ["SMPL_JOINT_NAMES", "SMPL_JOINTS", "SMPL_APOSE", "SMPL_IPOSE"]
+SMPL_BODY_PRESETS = _POSES["body"]
+
+__all__ = ["SMPL_JOINT_NAMES", "SMPL_JOINTS", "SMPL_BODY_PRESETS"]

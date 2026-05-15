@@ -27,7 +27,7 @@ from body_models.soma.backends import torch as torch_backend
 from body_models.soma.backends import core
 from body_models.soma import identities
 from body_models.soma.identities import torch as identity_sources
-from body_models.soma.constants import SOMA_APOSE, SOMA_HAND_PRESETS, SOMA_IPOSE, SOMA_JOINTS
+from body_models.soma.constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
 from body_models.soma.pose import pack_pose, unpack_pose
 
 PathLike = Path | str
@@ -205,7 +205,7 @@ class SOMA(BodyModel, nn.Module):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype: torch.dtype = torch.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, Tensor]:
@@ -213,28 +213,28 @@ class SOMA(BodyModel, nn.Module):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         device = self.weights.mean_active.device
-        pose_ref = torch.zeros((batch_size, self.num_joints, 3), device=device, dtype=dtype)
+        pose_ref = torch.zeros((*batch_dims, self.num_joints, 3), device=device, dtype=dtype)
         pose = SO3.identity_as(
             pose_ref,
-            batch_dims=(batch_size, self.num_joints),
+            batch_dims=(*batch_dims, self.num_joints),
             rotation_type=self.rotation_type,
             xp=torch,
         )
         global_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
         if hands != "default":
             preset = SOMA_HAND_PRESETS[hands]
-            axis_angle = torch.asarray(preset, device=device, dtype=dtype).reshape(1, -1, 3)
-            axis_angle = axis_angle.repeat(batch_size, 1, 1)
+            axis_angle = torch.asarray(preset, device=device, dtype=dtype).reshape(-1, 3)
+            axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         params = {
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
             "global_rotation": global_rotation,
-            "global_translation": torch.zeros((batch_size, 3), device=device, dtype=dtype),
+            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
         params["identity"] = torch.full(
-            (1, self.identity_dim),
+            (*batch_dims, self.identity_dim),
             self._default_identity_value,
             device=device,
             dtype=dtype,
@@ -313,65 +313,43 @@ class SOMA(BodyModel, nn.Module):
 
     def get_tpose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         return params
 
     def get_apose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        pose_parts = (
-            params["global_rotation"],
-            params["body_pose"],
-            params["head_pose"],
-            params["hand_pose"],
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = torch.as_tensor(
+            SOMA_BODY_PRESETS["a_pose"],
+            device=params["body_pose"].device,
+            dtype=params["body_pose"].dtype,
         )
-        pose = pack_pose(torch, *pose_parts)
-        for index, values in SOMA_APOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
-            pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
-        params.update(
-            body_pose=body_pose,
-            head_pose=head_pose,
-            hand_pose=hand_pose,
-            global_rotation=global_rotation,
-        )
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return params
 
     def get_ipose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_size=batch_size, hands=hands, **kwargs)
-        pose_parts = (
-            params["global_rotation"],
-            params["body_pose"],
-            params["head_pose"],
-            params["hand_pose"],
+        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        axis_angle = torch.as_tensor(
+            SOMA_BODY_PRESETS["i_pose"],
+            device=params["body_pose"].device,
+            dtype=params["body_pose"].dtype,
         )
-        pose = pack_pose(torch, *pose_parts)
-        for index, values in SOMA_IPOSE.items():
-            converted = SO3.convert(values, src="axis_angle", dst=self.rotation_type, xp=torch)
-            converted = torch.as_tensor(converted, device=pose.device, dtype=pose.dtype)
-            pose = common.set(pose, (slice(None), index), converted, xp=torch)
-        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(torch, pose)
-        params.update(
-            body_pose=body_pose,
-            head_pose=head_pose,
-            hand_pose=hand_pose,
-            global_rotation=global_rotation,
-        )
+        axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return params
 
 

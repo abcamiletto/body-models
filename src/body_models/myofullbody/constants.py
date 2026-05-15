@@ -1,3 +1,4 @@
+from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
 
@@ -47,8 +48,8 @@ MYOFULLBODY_JOINTS = {
 }
 
 
-MYOFULLBODY_TPOSE = {29: 1.5707963267948966, 67: 1.5707963267948966}
-MYOFULLBODY_APOSE = {29: 0.75, 67: 0.75}
-MYOFULLBODY_IPOSE = {}
+_POSES = load_npz("body_models.myofullbody")
 
-__all__ = ["MYOFULLBODY_JOINTS", "MYOFULLBODY_TPOSE", "MYOFULLBODY_APOSE", "MYOFULLBODY_IPOSE"]
+MYOFULLBODY_BODY_PRESETS = _POSES["body"]
+
+__all__ = ["MYOFULLBODY_JOINTS", "MYOFULLBODY_BODY_PRESETS"]

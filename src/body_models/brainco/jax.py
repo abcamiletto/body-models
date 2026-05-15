@@ -112,12 +112,12 @@ class BrainCoHand(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        params = self.get_rest_pose(batch_size=1)
+        params = self.get_rest_pose(batch_dims=())
         return self.forward_vertices(
             hand_pose=params["hand_pose"],
             global_translation=params["global_translation"],
             global_rotation=params["global_rotation"],
-        )[0]
+        )
 
     def forward_skeleton(
         self,
@@ -182,16 +182,18 @@ class BrainCoHand(BodyModel):
 
     def get_rest_pose(
         self,
-        batch_size: int = 1,
+        batch_dims: tuple[int, ...] = (),
         dtype=jnp.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, jax.Array]:
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        global_ref = jnp.zeros((batch_size, 3), dtype=dtype)
-        qpos = jnp.asarray(BRAINCO_HAND_PRESETS[hands], dtype=dtype).reshape(1, -1, 1)
-        qpos = jnp.repeat(qpos, batch_size, axis=0)
+        global_ref = jnp.zeros((*batch_dims, 3), dtype=dtype)
+        qpos = jnp.zeros((len(self.weights.qpos_joint_indices), 1), dtype=dtype)
+        if hands != "default":
+            qpos = jnp.asarray(BRAINCO_HAND_PRESETS[self.side][hands], dtype=dtype).reshape(-1, 1)
+        qpos = jnp.broadcast_to(qpos, (*batch_dims, *qpos.shape))
         axes = self.weights.qpos_joint_axes
         rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=jnp)
         dst_kwargs = {"hinge": {"axes": axes}}.get(self.rotation_type, {})
@@ -206,9 +208,9 @@ class BrainCoHand(BodyModel):
             "hand_pose": hand_pose,
             "global_rotation": SO3.identity_as(
                 global_ref,
-                batch_dims=(batch_size,),
+                batch_dims=batch_dims,
                 rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
                 xp=jnp,
             ),
-            "global_translation": jnp.zeros((batch_size, 3), dtype=dtype),
+            "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
