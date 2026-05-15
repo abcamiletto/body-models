@@ -199,13 +199,16 @@ class BrainCoHand(BodyModel):
         )
         if hands == "rest":
             hinge_pose = jnp.full((batch_size, len(self.weights.qpos_joint_indices), 1), 0.65, dtype=dtype)
-            hand_pose = SO3.convert(
-                hinge_pose,
-                src="hinge",
-                dst=self.rotation_type,
-                src_kwargs={"axes": self.weights.qpos_joint_axes},
-                xp=jnp,
-            )
+            if self.rotation_type == "hinge":
+                hand_pose = hinge_pose
+            else:
+                hand_pose = SO3.convert(
+                    hinge_pose,
+                    src="hinge",
+                    dst=self.rotation_type,
+                    src_kwargs={"axes": self.weights.qpos_joint_axes},
+                    xp=jnp,
+                )
         return {
             "hand_pose": hand_pose,
             "global_rotation": SO3.identity_as(
