@@ -54,6 +54,8 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Extras:
+      - viser Plugin: extras/viser-plugin.md
   - Models:
       - Full Bodies:
           - SMPL: models/smpl.md
