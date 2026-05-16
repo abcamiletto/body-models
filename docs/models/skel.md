@@ -2,12 +2,25 @@
 
 SKEL is a human body model with anatomically motivated skeletal articulation.
 
-Download SKEL from the official registration site, then configure the asset directory:
+## Setup
+
+SKEL requires registration at https://skel.is.tue.mpg.de/.
 
 ```bash
-body-models set skel /path/to/skel_models_v1.1
+body-models download skel
 ```
 
+Manual paths can also be configured per gender:
+
+```bash
+body-models set skel-male /path/to/skel_male.pkl
+body-models set skel-female /path/to/skel_female.pkl
+```
+
+## Notes
+
 SKEL supports `male` and `female` genders.
+
+## API
 
 ::: body_models.skel.numpy.SKEL
