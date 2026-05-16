@@ -29,7 +29,9 @@ uv add "body-models[jax]"
 | [MHR](models/mhr.md) | expressive full body | auto-download |
 | [SOMA](models/soma.md) | skinned body from SOMA-X assets | auto-download |
 | [GarmentMeasurements](models/garment-measurements.md) | PCA body for garment measurements | auto-download |
+| [BrainCo](models/brainco.md) | BrainCo Revo 2 robotic hand | auto-download |
 | [G1](models/g1.md) | Unitree G1 rigid links | auto-download |
+| [MyoFullBody](models/myofullbody.md) | MuJoCo-derived musculoskeletal full body | auto-download |
 
 ## Common Usage
 
@@ -44,4 +46,4 @@ vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
-Rigged models share `faces`, `num_vertices`, `num_joints`, `joint_names`, `skin_weights`, `rest_vertices`, `forward_vertices`, `forward_skeleton`, and `get_rest_pose`.
+Skinned models share `faces`, `num_vertices`, `num_joints`, `joint_names`, `skin_weights`, `rest_vertices`, `forward_vertices`, `forward_skeleton`, and `get_rest_pose`. Rigid articulated models expose link metadata and `forward_links` instead of skinning weights.
