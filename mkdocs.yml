@@ -67,5 +67,6 @@ nav:
       - GarmentMeasurements: models/garment-measurements.md
       - BrainCo: models/brainco.md
       - G1: models/g1.md
+      - MyoFullBody: models/myofullbody.md
 
 strict: true
