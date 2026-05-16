@@ -1,4 +1,5 @@
 site_name: body-models
+site_url: https://abcamiletto.github.io/body-models/
 site_author: Andrea Boscolo Camiletto
 site_description: Multi-backend parametric body models for NumPy, PyTorch, and JAX
 repo_name: body-models
