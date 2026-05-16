@@ -6,6 +6,8 @@ A unified library for body models.
 
 Provides a shared interface across SMPL, SMPL-H, MANO, SMPL-X, SKEL, FLAME, ANNY, MHR, SOMA, GarmentMeasurements, G1, and MyoFullBody models with PyTorch, NumPy, and JAX backends.
 
+Documentation: https://abcamiletto.github.io/body-models/
+
 ## Features
 
 - **Multi-backend**: PyTorch, NumPy, and JAX
