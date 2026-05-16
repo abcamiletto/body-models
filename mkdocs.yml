@@ -55,18 +55,23 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Models:
-      - SMPL: models/smpl.md
-      - SMPL-H: models/smplh.md
-      - MANO: models/mano.md
-      - SMPL-X: models/smplx.md
-      - FLAME: models/flame.md
-      - SKEL: models/skel.md
-      - ANNY: models/anny.md
-      - MHR: models/mhr.md
-      - SOMA: models/soma.md
-      - GarmentMeasurements: models/garment-measurements.md
-      - BrainCo: models/brainco.md
-      - G1: models/g1.md
-      - MyoFullBody: models/myofullbody.md
+      - Full Bodies:
+          - SMPL: models/smpl.md
+          - SMPL-H: models/smplh.md
+          - SMPL-X: models/smplx.md
+          - ANNY: models/anny.md
+          - MHR: models/mhr.md
+          - SOMA: models/soma.md
+          - GarmentMeasurements: models/garment-measurements.md
+      - Anatomicals:
+          - SKEL: models/skel.md
+          - MyoFullBody: models/myofullbody.md
+      - Heads:
+          - FLAME: models/flame.md
+      - Hands:
+          - MANO: models/mano.md
+      - Robots:
+          - BrainCo: models/brainco.md
+          - G1: models/g1.md
 
 strict: true

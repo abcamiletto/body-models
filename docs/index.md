@@ -17,21 +17,43 @@ uv add "body-models[jax]"
 
 ## Supported Models
 
+### Full Bodies
+
 | Model | Scope | Setup |
 | --- | --- | --- |
 | [SMPL](models/smpl.md) | body | registration required |
 | [SMPL-H](models/smplh.md) | body and hands | registration required |
-| [MANO](models/mano.md) | hand | registration required |
 | [SMPL-X](models/smplx.md) | body, hands, face | registration required |
-| [FLAME](models/flame.md) | head and face | registration required |
-| [SKEL](models/skel.md) | body with anatomical skeleton | registration required |
 | [ANNY](models/anny.md) | phenotype-driven body | auto-download |
 | [MHR](models/mhr.md) | expressive full body | auto-download |
 | [SOMA](models/soma.md) | skinned body from SOMA-X assets | auto-download |
 | [GarmentMeasurements](models/garment-measurements.md) | PCA body for garment measurements | auto-download |
+
+### Anatomicals
+
+| Model | Scope | Setup |
+| --- | --- | --- |
+| [SKEL](models/skel.md) | body with anatomical skeleton | registration required |
+| [MyoFullBody](models/myofullbody.md) | MuJoCo-derived musculoskeletal full body | auto-download |
+
+### Heads
+
+| Model | Scope | Setup |
+| --- | --- | --- |
+| [FLAME](models/flame.md) | head and face | registration required |
+
+### Hands
+
+| Model | Scope | Setup |
+| --- | --- | --- |
+| [MANO](models/mano.md) | hand | registration required |
+
+### Robots
+
+| Model | Scope | Setup |
+| --- | --- | --- |
 | [BrainCo](models/brainco.md) | BrainCo Revo 2 robotic hand | auto-download |
 | [G1](models/g1.md) | Unitree G1 rigid links | auto-download |
-| [MyoFullBody](models/myofullbody.md) | MuJoCo-derived musculoskeletal full body | auto-download |
 
 ## Common Usage
 
