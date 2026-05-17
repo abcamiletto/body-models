@@ -20,12 +20,20 @@ server = viser.ViserServer()
 
 # Add a skinned body model and a clickable skeleton for the same SMPL instance.
 model = SMPL(gender="neutral")
-skeleton = vp.add_skeleton(server.scene, "/smpl/skeleton", model)
+rest_pose = model.get_rest_pose()
+rest_joints = model.forward_skeleton(**rest_pose)[:, :3, 3]
+skeleton = vp.add_skeleton(
+    server.scene,
+    "/smpl/skeleton",
+    rest_joints,
+    model.parents,
+    joint_names=model.joint_names,
+)
 body = vp.add_body_model(server.scene, "/smpl", model)
 
 # Update both handles from the same model pose.
 posed = model.get_apose()
-skeleton.skeleton = model.forward_skeleton(**posed)
+skeleton.joint_positions = model.forward_skeleton(**posed)[:, :3, 3]
 body.set_pose(body_pose=posed["body_pose"], global_translation=posed["global_translation"])
 
 # Rigid articulated models use one mesh per link instead of skinning weights.
@@ -38,7 +46,7 @@ rigid_body.set_pose(body_pose=robot_pose["body_pose"])
 rigid_body.position = (1.0, 0.0, 0.0)
 ```
 
-`vp.add_skeleton()` renders joint positions and clickable parent-child cylinder bones from `forward_skeleton()`.
+`vp.add_skeleton()` renders joint positions and clickable parent-child cylinder bones from a parent list.
 
 `vp.add_body_model()` renders non-rigid models as skinned meshes.
 
