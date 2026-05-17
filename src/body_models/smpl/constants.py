@@ -50,4 +50,8 @@ _POSES = load_npz("body_models.smpl")
 
 SMPL_BODY_PRESETS = _POSES["body"]
 
-__all__ = ["SMPL_JOINT_NAMES", "SMPL_JOINTS", "SMPL_BODY_PRESETS"]
+SMPL_KINEMATIC_ROTATIONS = {0: ("pelvis_rotation", None)} | {
+    i: ("body_pose", i - 1) for i in range(1, len(SMPL_JOINT_NAMES))
+}
+
+__all__ = ["SMPL_JOINT_NAMES", "SMPL_JOINTS", "SMPL_BODY_PRESETS", "SMPL_KINEMATIC_ROTATIONS"]

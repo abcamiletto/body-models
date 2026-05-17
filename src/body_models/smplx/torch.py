@@ -15,7 +15,7 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplx.backends import torch as torch_backend
 from body_models.smplx.io import get_model_path, load_model_data
-from body_models.smplx.constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
+from body_models.smplx.constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS, SMPLX_KINEMATIC_ROTATIONS
 
 __all__ = ["SMPLX"]
 
@@ -31,6 +31,7 @@ class SMPLX(BodyModel, nn.Module):
     NUM_JOINTS = 55
     kernels = ("torch", "warp")
     JOINTS = SMPLX_JOINTS
+    KINEMATIC_ROTATIONS = SMPLX_KINEMATIC_ROTATIONS
 
     def __init__(
         self,

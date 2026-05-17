@@ -49,6 +49,7 @@ rigid_body.position = (1.0, 0.0, 0.0)
 `vp.add_skeleton()` renders joint positions and clickable parent-child cylinder bones from a parent list.
 
 `vp.add_body_model()` renders non-rigid models as skinned meshes.
+Pass `joint_handles=True` to add transform controls for editable joints exposed by `model.kinematic_chain`.
 
 `vp.add_rigid_body_model()` renders rigid articulated models from `forward_links()` and one static mesh per link.
 

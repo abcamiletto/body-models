@@ -11,7 +11,7 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.flame.backends import jax as backend
-from body_models.flame.constants import FLAME_JOINT_NAMES
+from body_models.flame.constants import FLAME_JOINT_NAMES, FLAME_KINEMATIC_ROTATIONS
 from body_models.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -23,6 +23,7 @@ class FLAME(BodyModel):
 
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
+    KINEMATIC_ROTATIONS = FLAME_KINEMATIC_ROTATIONS
 
     def __init__(
         self,

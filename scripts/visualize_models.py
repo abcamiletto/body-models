@@ -729,10 +729,38 @@ def update_body_handle(server: viser.ViserServer, name: str, state: ModelState) 
         if state.model.is_rigid_body:
             state.body_handle = vp.add_rigid_body_model(server.scene, mesh_path, state.model, color=state.color)
         else:
-            state.body_handle = vp.add_body_model(server.scene, mesh_path, state.model, color=state.color)
+            state.body_handle = vp.add_body_model(
+                server.scene,
+                mesh_path,
+                state.model,
+                color=state.color,
+                joint_handles=any(joint.rotation_parameter is not None for joint in state.model.kinematic_chain),
+            )
 
     handle = state.body_handle
     handle.set_pose(**state.params)
+
+
+def sync_joint_handle_pose(state: ModelState, sliders: list[SliderHandle]) -> bool:
+    if not isinstance(state.body_handle, vp.ViserBodyModelHandle):
+        return False
+    if not state.body_handle.joint_handles:
+        return False
+
+    pose_keys = {joint.rotation_parameter for joint in state.model.kinematic_chain}
+    changed_keys = []
+    for key in pose_keys:
+        assert key is not None
+        pose_value = state.body_handle.pose[key]
+        if np.array_equal(state.params[key], pose_value):
+            continue
+        state.params[key] = pose_value.copy()
+        changed_keys.append(key)
+
+    for slider in sliders:
+        if slider.key in changed_keys:
+            slider.handle.value = float(state.params[slider.key][slider.indices])
+    return bool(changed_keys)
 
 
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:
@@ -876,6 +904,8 @@ def main() -> None:
         time.sleep(0.02)
         markers_changed = False
         for name, state in states.items():
+            if sync_joint_handle_pose(state, controls[name].sliders):
+                markers_changed = True
             if state.changed:
                 state.changed = False
                 update_mesh(server, name, state)

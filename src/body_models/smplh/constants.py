@@ -96,4 +96,12 @@ _POSES = load_npz("body_models.smplh")
 SMPLH_BODY_PRESETS = _POSES["body"]
 SMPLH_HAND_PRESETS = _POSES["hand"]
 
-__all__ = ["SMPLH_JOINT_NAMES", "SMPLH_JOINTS", "SMPLH_BODY_PRESETS", "SMPLH_HAND_PRESETS"]
+SMPLH_KINEMATIC_ROTATIONS = {0: ("pelvis_rotation", None)} | {i: ("body_pose", i - 1) for i in range(1, 22)}
+
+__all__ = [
+    "SMPLH_JOINT_NAMES",
+    "SMPLH_JOINTS",
+    "SMPLH_BODY_PRESETS",
+    "SMPLH_HAND_PRESETS",
+    "SMPLH_KINEMATIC_ROTATIONS",
+]

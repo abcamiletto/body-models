@@ -13,7 +13,7 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplh.backends import numpy as numpy_backend
 from body_models.smplh.backends import scipy as scipy_backend
 from body_models.smplh.io import get_model_path, load_model_data
-from body_models.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
+from body_models.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS, SMPLH_KINEMATIC_ROTATIONS
 
 __all__ = ["SMPLH"]
 
@@ -28,6 +28,7 @@ class SMPLH(BodyModel):
     NUM_JOINTS = 52
     kernels = ("numpy", "scipy", "numba")
     JOINTS = SMPLH_JOINTS
+    KINEMATIC_ROTATIONS = SMPLH_KINEMATIC_ROTATIONS
 
     def __init__(
         self,
