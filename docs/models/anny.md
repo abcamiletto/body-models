@@ -7,6 +7,7 @@ ANNY is a phenotype-driven body model with configurable rig and topology variant
 ANNY downloads automatically on first use. To prefetch and save the path:
 
 ```bash
+# Download the ANNY assets and store their path in the body-models config.
 body-models download anny
 ```
 

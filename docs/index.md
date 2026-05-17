@@ -5,12 +5,14 @@
 ## Install
 
 ```bash
+# Install the core package with the NumPy backend.
 uv add body-models
 ```
 
 Install optional differentiable backends when needed:
 
 ```bash
+# Add PyTorch or JAX support only when your project needs it.
 uv add "body-models[torch]"
 uv add "body-models[jax]"
 ```
@@ -62,8 +64,13 @@ Each model exposes backend modules under `body_models.<model>.torch`, `body_mode
 ```python
 from body_models.smpl.torch import SMPL
 
+# Load the neutral SMPL model from the configured model path.
 model = SMPL(gender="neutral")
+
+# Start from a batched rest pose.
 params = model.get_rest_pose(batch_dims=(1,))
+
+# Evaluate the mesh vertices and skeleton transforms with the same parameters.
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
