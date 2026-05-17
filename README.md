@@ -22,11 +22,12 @@ Documentation: https://abcamiletto.github.io/body-models/
 uv add body-models
 ```
 
-Install optional differentiable backends when needed:
+Install optional extras when needed:
 
 ```bash
 uv add "body-models[torch]"
 uv add "body-models[jax]"
+uv add "body-models[viser]"
 ```
 
 ## Quick Start
