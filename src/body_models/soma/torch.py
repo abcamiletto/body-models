@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -13,7 +13,7 @@ from torch import Tensor
 
 from body_models import common
 
-from ..base import BodyModel
+from ..base import BodyModel, ViserBones
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
@@ -116,6 +116,7 @@ class SOMA(BodyModel, nn.Module):
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
             self._identity_source = identity_sources.create_identity_source(self.model_type, transfer_data)
+        self._prepared_identity_cache = core.PreparedSomaIdentityCache()
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -158,11 +159,17 @@ class SOMA(BodyModel, nn.Module):
         vertex_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
+        cache_prepared_identity: bool = False,
     ) -> Float[Tensor, "B V 3"]:
         pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
+            identity_state = self.prepare_identity(
+                identity=identity,
+                scale_params=scale_params,
+                pose=pose,
+                cache=cache_prepared_identity,
+            )
         return self._kernel.forward_vertices(
             data=self.weights,
             prepared_identity=identity_state,
@@ -187,11 +194,17 @@ class SOMA(BodyModel, nn.Module):
         joint_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
+        cache_prepared_identity: bool = False,
     ) -> Float[Tensor, "B 77 4 4"]:
         pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
-            identity_state = self.prepare_identity(identity=identity, scale_params=scale_params, pose=pose)
+            identity_state = self.prepare_identity(
+                identity=identity,
+                scale_params=scale_params,
+                pose=pose,
+                cache=cache_prepared_identity,
+            )
         return self._kernel.forward_skeleton(
             data=self.weights,
             prepared_identity=identity_state,
@@ -253,9 +266,33 @@ class SOMA(BodyModel, nn.Module):
         identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
         pose: Float[Tensor, "B ..."],
+        cache: bool = False,
     ) -> core.PreparedSomaIdentity:
         identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, pose=pose)
-        return self._prepare_identity_from_inputs(identity, scale_params)
+        return core.prepare_identity_with_cache(
+            self._prepared_identity_cache,
+            identity,
+            scale_params,
+            self._prepare_identity_from_inputs,
+            torch.equal,
+            lambda tensor: tensor.clone(),
+            use_cache=cache,
+        )
+
+    def to_viser_bones(self, **forward_kwargs: Any) -> ViserBones:
+        if not forward_kwargs:
+            forward_kwargs = self.get_rest_pose()
+        forward_kwargs = dict(forward_kwargs)
+        if "joint_indices" in forward_kwargs:
+            raise ValueError("to_viser_bones() requires the full skeleton; do not pass joint_indices.")
+
+        forward_kwargs["cache_prepared_identity"] = True
+        skeleton = np.asarray(self.forward_skeleton(**forward_kwargs).detach().cpu())
+        if skeleton.ndim != 3 or skeleton.shape[-2:] != (4, 4):
+            raise ValueError(f"to_viser_bones() expects unbatched skeleton shape (N, 4, 4), got {skeleton.shape}")
+        bone_wxyzs = SO3.conversions.from_rotmat_to_quat(skeleton[:, :3, :3], convention="wxyz", xp=np)
+        bone_positions = skeleton[:, :3, 3]
+        return {"bone_wxyzs": bone_wxyzs, "bone_positions": bone_positions.copy()}
 
     def _identity_inputs(
         self,
