@@ -113,9 +113,16 @@ class ViserRigidBodyModelHandle:
         self._apply_pose()
 
     def set_pose(self, **forward_kwargs: Float[np.ndarray, "..."] | np.ndarray) -> None:
+        changed = False
         for name, value in forward_kwargs.items():
             assert name in self.pose, f"{self.model_name} does not support {name!r}."
-            self.pose[name] = np.asarray(value)
+            value = np.asarray(value)
+            if np.array_equal(self.pose[name], value):
+                continue
+            self.pose[name] = value.copy()
+            changed = True
+        if not changed:
+            return
         self._apply_pose()
 
     def _apply_pose(self) -> None:

@@ -146,10 +146,17 @@ class ViserBodyModelHandle:
 
     def set_pose(self, **forward_kwargs: Float[np.ndarray, "..."] | np.ndarray) -> None:
         rebuild_mesh = False
+        changed = False
         for name, value in forward_kwargs.items():
             assert name in self.pose, f"{self.model_name} does not support {name!r}."
-            self.pose[name] = np.asarray(value)
+            value = np.asarray(value)
+            if np.array_equal(self.pose[name], value):
+                continue
+            self.pose[name] = value.copy()
+            changed = True
             rebuild_mesh = rebuild_mesh or name not in self.model.POSE_PARAMETER_NAMES
+        if not changed:
+            return
         self._apply_pose(rebuild_mesh=rebuild_mesh)
 
     def _apply_pose(self, *, rebuild_mesh: bool = False) -> None:
