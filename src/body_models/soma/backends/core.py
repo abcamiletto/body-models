@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any
 
 from jaxtyping import Float, Int
@@ -25,8 +26,37 @@ class PreparedSomaIdentity:
     inverse_world_bind_pose: Float[Array, "B Jf 4 4"]
 
 
+@dataclass
+class PreparedSomaIdentityCache:
+    prepared_identity: PreparedSomaIdentity | None = None
+    identity: Array | None = None
+    scale_params: Array | None = None
+
+
 def prepare_data(soma_weights: Any) -> Any:
     return soma_weights
+
+
+def prepare_identity_with_cache(
+    cache: PreparedSomaIdentityCache,
+    identity: Array,
+    scale_params: Array | None,
+    prepare_identity: Callable[[Array, Array | None], PreparedSomaIdentity],
+    same_array: Callable[[Array, Array], bool],
+    copy_array: Callable[[Array], Array],
+    *,
+    use_cache: bool,
+) -> PreparedSomaIdentity:
+    if not use_cache:
+        return prepare_identity(identity, scale_params)
+
+    if cache.prepared_identity is not None and _same_identity_inputs(cache, identity, scale_params, same_array):
+        return cache.prepared_identity
+
+    cache.prepared_identity = prepare_identity(identity, scale_params)
+    cache.identity = copy_array(identity)
+    cache.scale_params = None if scale_params is None else copy_array(scale_params)
+    return cache.prepared_identity
 
 
 def prepare_identity_from_rest_shape(
@@ -70,6 +100,22 @@ def prepare_identity_from_rest_shape(
         world_bind_pose,
         inverse_world_bind_pose,
     )
+
+
+def _same_identity_inputs(
+    cache: PreparedSomaIdentityCache,
+    identity: Array,
+    scale_params: Array | None,
+    same_array: Callable[[Array, Array], bool],
+) -> bool:
+    assert cache.identity is not None
+    if not same_array(cache.identity, identity):
+        return False
+    if scale_params is None:
+        return cache.scale_params is None
+    if cache.scale_params is None:
+        return False
+    return same_array(cache.scale_params, scale_params)
 
 
 def forward_vertices(
