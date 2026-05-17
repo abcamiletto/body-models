@@ -732,22 +732,7 @@ def update_body_handle(server: viser.ViserServer, name: str, state: ModelState) 
             state.body_handle = vp.add_body_model(server.scene, mesh_path, state.model, color=state.color)
 
     handle = state.body_handle
-    params = state.params
-    if isinstance(handle, vp.ViserBodyModelHandle):
-        if "shape" in params:
-            handle.shape = np.asarray(params["shape"])
-        if "head_pose" in params:
-            handle.head_pose = np.asarray(params["head_pose"])
-        if "expression" in params:
-            handle.expression = np.asarray(params["expression"])
-    if "body_pose" in params:
-        handle.body_pose = np.asarray(params["body_pose"])
-    if "hand_pose" in params:
-        handle.hand_pose = np.asarray(params["hand_pose"])
-    if "global_rotation" in params:
-        handle.global_rotation = np.asarray(params["global_rotation"])
-    if "global_translation" in params:
-        handle.global_translation = np.asarray(params["global_translation"])
+    handle.set_pose(**state.params)
 
 
 def update_mesh(server: viser.ViserServer, name: str, state: ModelState) -> None:

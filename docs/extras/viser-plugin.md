@@ -16,13 +16,12 @@ body = vp.add_body_model(server.scene, "/smpl", model)
 
 posed = model.get_apose()
 skeleton.skeleton = model.forward_skeleton(**posed)
-body.body_pose = posed["body_pose"]
-body.global_translation = posed["global_translation"]
+body.set_pose(body_pose=posed["body_pose"], global_translation=posed["global_translation"])
 
 robot = G1()
-robot_params = robot.get_rest_pose()
+robot_pose = robot.get_rest_pose()
 rigid_body = vp.add_rigid_body_model(server.scene, "/g1", robot)
-rigid_body.body_pose = robot_params["body_pose"]
+rigid_body.set_pose(body_pose=robot_pose["body_pose"])
 rigid_body.position = (1.0, 0.0, 0.0)
 ```
 
@@ -32,6 +31,6 @@ rigid_body.position = (1.0, 0.0, 0.0)
 
 `vp.add_rigid_body_model()` renders rigid articulated models from `forward_links()` and one static mesh per link.
 
-The returned handles follow `viser` conventions: scene transforms such as `position`, `wxyz`, and `visible` are assignable properties, and resources are removed with `remove()`. Body handles expose common model parameters as explicit assignable attributes. Non-rigid body handles support `shape`, `body_pose`, `hand_pose`, `head_pose`, `expression`, `global_rotation`, and `global_translation`; rigid body handles support `body_pose`, `hand_pose`, `global_rotation`, and `global_translation`.
+The returned handles follow `viser` conventions: scene transforms such as `position`, `wxyz`, and `visible` are assignable properties, and resources are removed with `remove()`. Body handles expose common model parameters as explicit assignable attributes and accept bulk pose updates with `set_pose(**forward_kwargs)`. Non-rigid body handles support `shape`, `body_pose`, `hand_pose`, `head_pose`, `expression`, `global_rotation`, and `global_translation`; rigid body handles support `body_pose`, `hand_pose`, `global_rotation`, and `global_translation`.
 
 ::: body_models.extras.viser_plugin
