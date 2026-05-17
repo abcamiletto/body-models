@@ -25,13 +25,13 @@ class ViserBodyModelHandle:
     def __init__(
         self,
         model: BodyModel,
-        params: dict[str, Float[np.ndarray, "..."]],
+        pose: dict[str, Float[np.ndarray, "..."]],
         root_frame: viser.FrameHandle,
         mesh: viser.MeshSkinnedHandle,
     ) -> None:
         self.model = model
         self.model_name = model.__class__.__name__
-        self._params = params
+        self.pose = pose
         self.root_frame = root_frame
         self.mesh = mesh
 
@@ -69,85 +69,93 @@ class ViserBodyModelHandle:
 
     @property
     def shape(self) -> Float[np.ndarray, "..."]:
-        assert "shape" in self._params, f"{self.model_name} does not support 'shape'."
-        return self._params["shape"]
+        assert "shape" in self.pose, f"{self.model_name} does not support 'shape'."
+        return self.pose["shape"]
 
     @shape.setter
     def shape(self, value: Float[np.ndarray, "..."] | np.ndarray) -> None:
-        assert "shape" in self._params, f"{self.model_name} does not support 'shape'."
-        self._params["shape"] = np.asarray(value)
-        self._apply_params(rebuild_mesh=True)
+        assert "shape" in self.pose, f"{self.model_name} does not support 'shape'."
+        self.pose["shape"] = np.asarray(value)
+        self._apply_pose(rebuild_mesh=True)
 
     @property
     def body_pose(self) -> Float[np.ndarray, "..."]:
-        assert "body_pose" in self._params, f"{self.model_name} does not support 'body_pose'."
-        return self._params["body_pose"]
+        assert "body_pose" in self.pose, f"{self.model_name} does not support 'body_pose'."
+        return self.pose["body_pose"]
 
     @body_pose.setter
     def body_pose(self, value: Float[np.ndarray, "..."] | np.ndarray) -> None:
-        assert "body_pose" in self._params, f"{self.model_name} does not support 'body_pose'."
-        self._params["body_pose"] = np.asarray(value)
-        self._apply_params(rebuild_mesh=False)
+        assert "body_pose" in self.pose, f"{self.model_name} does not support 'body_pose'."
+        self.pose["body_pose"] = np.asarray(value)
+        self._apply_pose(rebuild_mesh=False)
 
     @property
     def hand_pose(self) -> Float[np.ndarray, "..."]:
-        assert "hand_pose" in self._params, f"{self.model_name} does not support 'hand_pose'."
-        return self._params["hand_pose"]
+        assert "hand_pose" in self.pose, f"{self.model_name} does not support 'hand_pose'."
+        return self.pose["hand_pose"]
 
     @hand_pose.setter
     def hand_pose(self, value: Float[np.ndarray, "..."] | np.ndarray) -> None:
-        assert "hand_pose" in self._params, f"{self.model_name} does not support 'hand_pose'."
-        self._params["hand_pose"] = np.asarray(value)
-        self._apply_params(rebuild_mesh=False)
+        assert "hand_pose" in self.pose, f"{self.model_name} does not support 'hand_pose'."
+        self.pose["hand_pose"] = np.asarray(value)
+        self._apply_pose(rebuild_mesh=False)
 
     @property
     def head_pose(self) -> Float[np.ndarray, "..."]:
-        assert "head_pose" in self._params, f"{self.model_name} does not support 'head_pose'."
-        return self._params["head_pose"]
+        assert "head_pose" in self.pose, f"{self.model_name} does not support 'head_pose'."
+        return self.pose["head_pose"]
 
     @head_pose.setter
     def head_pose(self, value: Float[np.ndarray, "..."] | np.ndarray) -> None:
-        assert "head_pose" in self._params, f"{self.model_name} does not support 'head_pose'."
-        self._params["head_pose"] = np.asarray(value)
-        self._apply_params(rebuild_mesh=False)
+        assert "head_pose" in self.pose, f"{self.model_name} does not support 'head_pose'."
+        self.pose["head_pose"] = np.asarray(value)
+        self._apply_pose(rebuild_mesh=False)
 
     @property
     def expression(self) -> Float[np.ndarray, "..."]:
-        assert "expression" in self._params, f"{self.model_name} does not support 'expression'."
-        return self._params["expression"]
+        assert "expression" in self.pose, f"{self.model_name} does not support 'expression'."
+        return self.pose["expression"]
 
     @expression.setter
     def expression(self, value: Float[np.ndarray, "..."] | np.ndarray) -> None:
-        assert "expression" in self._params, f"{self.model_name} does not support 'expression'."
-        self._params["expression"] = np.asarray(value)
-        self._apply_params(rebuild_mesh=True)
+        assert "expression" in self.pose, f"{self.model_name} does not support 'expression'."
+        self.pose["expression"] = np.asarray(value)
+        self._apply_pose(rebuild_mesh=True)
 
     @property
     def global_rotation(self) -> Float[np.ndarray, "..."]:
-        assert "global_rotation" in self._params, f"{self.model_name} does not support 'global_rotation'."
-        return self._params["global_rotation"]
+        assert "global_rotation" in self.pose, f"{self.model_name} does not support 'global_rotation'."
+        return self.pose["global_rotation"]
 
     @global_rotation.setter
     def global_rotation(self, value: Float[np.ndarray, "..."] | np.ndarray) -> None:
-        assert "global_rotation" in self._params, f"{self.model_name} does not support 'global_rotation'."
-        self._params["global_rotation"] = np.asarray(value)
-        self._apply_params(rebuild_mesh=False)
+        assert "global_rotation" in self.pose, f"{self.model_name} does not support 'global_rotation'."
+        self.pose["global_rotation"] = np.asarray(value)
+        self._apply_pose(rebuild_mesh=False)
 
     @property
     def global_translation(self) -> Float[np.ndarray, "..."]:
-        assert "global_translation" in self._params, f"{self.model_name} does not support 'global_translation'."
-        return self._params["global_translation"]
+        assert "global_translation" in self.pose, f"{self.model_name} does not support 'global_translation'."
+        return self.pose["global_translation"]
 
     @global_translation.setter
     def global_translation(self, value: Float[np.ndarray, "..."] | np.ndarray) -> None:
-        assert "global_translation" in self._params, f"{self.model_name} does not support 'global_translation'."
-        self._params["global_translation"] = np.asarray(value)
-        self._apply_params(rebuild_mesh=False)
+        assert "global_translation" in self.pose, f"{self.model_name} does not support 'global_translation'."
+        self.pose["global_translation"] = np.asarray(value)
+        self._apply_pose(rebuild_mesh=False)
 
-    def _apply_params(self, *, rebuild_mesh: bool = False) -> None:
+    def set_pose(self, **forward_kwargs: Float[np.ndarray, "..."] | np.ndarray) -> None:
+        rebuild_mesh = False
+        for name, value in forward_kwargs.items():
+            assert name in self.pose, f"{self.model_name} does not support {name!r}."
+            self.pose[name] = np.asarray(value)
+            rebuild_mesh = rebuild_mesh or name not in self.model.POSE_PARAMETER_NAMES
+        self._apply_pose(rebuild_mesh=rebuild_mesh)
+
+    def _apply_pose(self, *, rebuild_mesh: bool = False) -> None:
         if rebuild_mesh:
-            self.mesh.vertices = self.model.to_viser_skinned_mesh(**self._params)["vertices"]
-        bones = self.model.to_viser_bones(**self._params)
+            self.mesh.vertices = self.model.to_viser_skinned_mesh(**self.pose)["vertices"]
+        bones = self.model.to_viser_bones(**self.pose)
         for bone, wxyz, position in zip(
             self.mesh.bones,
             bones["bone_wxyzs"],
@@ -172,9 +180,9 @@ def add_body_model(
     if model.is_rigid_body:
         raise ValueError("add_body_model() only supports non-rigid models.")
 
-    params = model.get_rest_pose()
+    pose = model.get_rest_pose()
     root = scene.add_frame(name, show_axes=False)
-    mesh = model.to_viser_skinned_mesh(**params)
+    mesh = model.to_viser_skinned_mesh(**pose)
     mesh_path = f"{name}/mesh"
     mesh_handle = scene.add_mesh_skinned(
         mesh_path,
@@ -185,4 +193,4 @@ def add_body_model(
         skin_weights=mesh["skin_weights"],
         color=color,
     )
-    return ViserBodyModelHandle(model, params, root, mesh_handle)
+    return ViserBodyModelHandle(model, pose, root, mesh_handle)
