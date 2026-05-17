@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from jaxtyping import Float, Int
+from jaxtyping import Float
+
+from body_models.base import BodyModel
 
 if TYPE_CHECKING:
     import viser
@@ -25,16 +27,14 @@ class ViserSkeletonHandle:
         root_frame: viser.FrameHandle,
         parent_tree: list[tuple[int, int]],
         bones: list[viser.CylinderHandle],
-        joint_positions: Float[np.ndarray, "N 3"],
+        skeleton: Float[np.ndarray, "N 4 4"],
         joints: list[viser.IcosphereHandle],
-        joint_names: tuple[str, ...],
     ) -> None:
         self.root_frame = root_frame
         self.parent_tree = parent_tree
         self.bones = bones
-        self._joint_positions = joint_positions
+        self._skeleton = skeleton
         self.joints = joints
-        self.joint_names = joint_names
 
     @property
     def name(self) -> str:
@@ -73,16 +73,17 @@ class ViserSkeletonHandle:
             handle.visible = value
 
     @property
-    def joint_positions(self) -> Float[np.ndarray, "N 3"]:
-        return self._joint_positions
+    def skeleton(self) -> Float[np.ndarray, "N 4 4"]:
+        return self._skeleton
 
-    @joint_positions.setter
-    def joint_positions(self, value: Float[np.ndarray, "N 3"]) -> None:
-        self._joint_positions = np.asarray(value)
-        for handle, position in zip(self.joints, self._joint_positions):
+    @skeleton.setter
+    def skeleton(self, value: Float[np.ndarray, "N 4 4"]) -> None:
+        self._skeleton = np.asarray(value)
+        positions = self._skeleton[:, :3, 3]
+        for handle, position in zip(self.joints, positions):
             handle.position = position
         for handle, (parent, child) in zip(self.bones, self.parent_tree):
-            position, wxyz, height = _cylinder_between(self._joint_positions[parent], self._joint_positions[child])
+            position, wxyz, height = _cylinder_between(positions[parent], positions[child])
             handle.position = position
             handle.wxyz = wxyz
             handle.height = height
@@ -98,25 +99,24 @@ class ViserSkeletonHandle:
 def add_skeleton(
     scene: viser.SceneApi,
     name: str,
-    joint_positions: Float[np.ndarray, "N 3"],
-    parents: Int[np.ndarray, "N"] | list[int] | tuple[int, ...],
+    model: BodyModel,
     *,
-    joint_names: tuple[str, ...] | None = None,
     color: tuple[float, float, float] = (120, 180, 255),
     joint_color: tuple[float, float, float] = (255, 255, 255),
     bone_radius: float = 0.006,
     joint_radius: float = 0.015,
 ) -> ViserSkeletonHandle:
-    """Add a clickable skeleton to a ``viser`` scene."""
-    joint_positions = np.asarray(joint_positions)
-    parents = [int(parent) for parent in parents]
-    joint_names = joint_names or tuple(f"joint_{index}" for index in range(len(joint_positions)))
+    """Add a model skeleton to a ``viser`` scene."""
+    params = model.get_rest_pose()
+    skeleton = np.asarray(model.forward_skeleton(**params))
+    positions = skeleton[:, :3, 3]
+    parents = [int(parent) for parent in model.parents]
     parent_tree = [(parent, index) for index, parent in enumerate(parents) if parent >= 0]
     root = scene.add_frame(name, show_axes=False)
 
     bones = []
     for index, (parent, child) in enumerate(parent_tree):
-        position, wxyz, height = _cylinder_between(joint_positions[parent], joint_positions[child])
+        position, wxyz, height = _cylinder_between(positions[parent], positions[child])
         bones.append(
             scene.add_cylinder(
                 f"{name}/bones/{index:03d}",
@@ -129,7 +129,7 @@ def add_skeleton(
         )
 
     joints = []
-    for index, position in enumerate(joint_positions):
+    for index, position in enumerate(positions):
         joints.append(
             scene.add_icosphere(
                 f"{name}/joints/{index:03d}",
@@ -143,12 +143,12 @@ def add_skeleton(
         @joint.on_click
         def _(event, joint_index=index) -> None:
             event.client.add_notification(
-                title=f"Joint: {joint_names[joint_index]}",
+                title=f"Joint: {model.joint_names[joint_index]}",
                 body="",
                 auto_close_seconds=3,
             )
 
-    return ViserSkeletonHandle(root, parent_tree, bones, joint_positions, joints, joint_names)
+    return ViserSkeletonHandle(root, parent_tree, bones, skeleton, joints)
 
 
 def _cylinder_between(
