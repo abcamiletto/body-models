@@ -2,6 +2,12 @@
 
 `body_models.extras.viser_plugin` provides small composite handles for rendering body models in `viser`.
 
+Install the optional dependency before using it:
+
+```bash
+uv add "body-models[viser]"
+```
+
 ```python
 import viser
 from body_models.extras import viser_plugin as vp

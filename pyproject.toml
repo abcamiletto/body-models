@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.11.1"
+version = "0.11.2"
 description = "Multi-backend parametric body models (SMPL, SMPLH, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements, BrainCo, G1) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
@@ -35,6 +35,9 @@ numba = [
 ]
 warp = [
     "warp-lang>=1.12.0",
+]
+viser = [
+    "viser>=1.0.21",
 ]
 
 [build-system]
