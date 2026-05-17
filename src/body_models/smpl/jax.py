@@ -13,7 +13,7 @@ from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smpl.backends import jax as backend
-from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS
+from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS, SMPL_KINEMATIC_ROTATIONS
 from body_models.smpl.io import get_model_path, load_model_data
 
 
@@ -27,6 +27,7 @@ class SMPL(BodyModel):
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
     JOINTS = SMPL_JOINTS
+    KINEMATIC_ROTATIONS = SMPL_KINEMATIC_ROTATIONS
 
     def __init__(
         self,

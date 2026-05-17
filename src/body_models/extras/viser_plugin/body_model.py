@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from jaxtyping import Float
 
-from body_models.base import BodyModel
+from body_models.base import BodyModel, KinematicJoint
+from nanomanifold import SO3
 
 if TYPE_CHECKING:
     import viser
@@ -34,6 +35,8 @@ class ViserBodyModelHandle:
         self.pose = pose
         self.root_frame = root_frame
         self.mesh = mesh
+        self.joint_handles: dict[int, viser.TransformControlsHandle] = {}
+        self._syncing_joint_handles = False
 
     @property
     def name(self) -> str:
@@ -170,8 +173,41 @@ class ViserBodyModelHandle:
         ):
             bone.wxyz = wxyz
             bone.position = position
+        self._sync_joint_handles_from_pose()
+
+    def _sync_joint_handles_from_pose(self) -> None:
+        if not self.joint_handles:
+            return
+
+        self._syncing_joint_handles = True
+        skeleton = np.asarray(self.model.forward_skeleton(**self.pose))
+        local = _local_joint_transforms(skeleton, self.model.parents)
+        local_wxyzs = SO3.conversions.from_rotmat_to_quat(local[:, :3, :3], convention="wxyz", xp=np)
+        for joint_index, handle in self.joint_handles.items():
+            handle.wxyz = local_wxyzs[joint_index]
+            handle.position = local[joint_index, :3, 3]
+        self._syncing_joint_handles = False
+
+    def _set_joint_pose_from_handle(self, joint: KinematicJoint, wxyz: np.ndarray) -> None:
+        if self._syncing_joint_handles:
+            return
+        assert joint.rotation_parameter is not None
+
+        rotmat = SO3.conversions.from_quat_to_rotmat(wxyz, convention="wxyz", xp=np)
+        axis_angle = SO3.conversions.from_rotmat_to_axis_angle(rotmat, xp=np)
+        rotation = SO3.convert(axis_angle, src="axis_angle", dst=getattr(self.model, "rotation_type"), xp=np)
+        if joint.rotation_index is None:
+            self.pose[joint.rotation_parameter] = rotation
+        else:
+            rotations = self.pose[joint.rotation_parameter].copy()
+            rotations[joint.rotation_index] = rotation
+            self.pose[joint.rotation_parameter] = rotations
+
+        self._apply_pose(rebuild_mesh=False)
 
     def remove(self) -> None:
+        for handle in self.joint_handles.values():
+            handle.remove()
         self.mesh.remove()
         self.root_frame.remove()
 
@@ -182,6 +218,7 @@ def add_body_model(
     model: BodyModel,
     *,
     color: tuple[float, float, float] = (180, 180, 180),
+    joint_handles: bool = False,
 ) -> ViserBodyModelHandle:
     """Add a non-rigid body model to a ``viser`` scene."""
     if model.is_rigid_body:
@@ -200,4 +237,45 @@ def add_body_model(
         skin_weights=mesh["skin_weights"],
         color=color,
     )
-    return ViserBodyModelHandle(model, pose, root, mesh_handle)
+    handle = ViserBodyModelHandle(model, pose, root, mesh_handle)
+    if joint_handles:
+        local = _local_joint_transforms(np.asarray(model.forward_skeleton(**pose)), model.parents)
+        local_wxyzs = SO3.conversions.from_rotmat_to_quat(local[:, :3, :3], convention="wxyz", xp=np)
+
+        prefixed_joint_names: list[str] = []
+        for joint_index, joint in enumerate(model.kinematic_chain):
+            joint_name = joint.name
+            prefixed_joint_name = f"{joint_index}_{joint_name}"
+            if joint_index > 0:
+                prefixed_joint_name = f"{prefixed_joint_names[joint.parent]}/{prefixed_joint_name}"
+            prefixed_joint_names.append(prefixed_joint_name)
+            if joint.rotation_parameter is None:
+                continue
+
+            controls = scene.add_transform_controls(
+                f"{name}/joint_handles/{prefixed_joint_name}",
+                wxyz=local_wxyzs[joint_index],
+                position=local[joint_index, :3, 3],
+                depth_test=False,
+                scale=0.2,
+                disable_axes=True,
+                disable_sliders=True,
+            )
+            handle.joint_handles[joint_index] = controls
+
+            @controls.on_update
+            def _(_, joint=joint, controls=controls) -> None:
+                handle._set_joint_pose_from_handle(joint, np.asarray(controls.wxyz))
+
+    return handle
+
+
+def _local_joint_transforms(
+    world: Float[np.ndarray, "J 4 4"],
+    parents: list[int],
+) -> Float[np.ndarray, "J 4 4"]:
+    local = world.copy()
+    for i, parent in enumerate(parents):
+        if parent >= 0:
+            local[i] = np.linalg.inv(world[parent]) @ world[i]
+    return local

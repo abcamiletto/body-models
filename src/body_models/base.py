@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, ClassVar, TypedDict
 
 import numpy as np
@@ -7,6 +8,16 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models.constants import Joint
+
+
+@dataclass(frozen=True)
+class KinematicJoint:
+    """Joint metadata and optional local rotation parameter binding."""
+
+    name: str
+    parent: int
+    rotation_parameter: str | None = None
+    rotation_index: int | None = None
 
 
 class ViserBones(TypedDict):
@@ -45,6 +56,7 @@ class BodyModel(ABC):
     has_hands: bool = False
     kernels: ClassVar[tuple[str, ...]] = ("numpy",)
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
+    KINEMATIC_ROTATIONS: ClassVar[Mapping[int, tuple[str, int | None]]] = {}
     POSE_PARAMETER_NAMES: ClassVar[frozenset[str]] = frozenset(
         {
             "body_pose",
@@ -92,6 +104,16 @@ class BodyModel(ABC):
         except KeyError as exc:
             raise KeyError(f"{self.__class__.__name__} has no standard joint {joint.value!r}") from exc
         return self.joint_names.index(native_name)
+
+    @property
+    def kinematic_chain(self) -> tuple[KinematicJoint, ...]:
+        """Joint hierarchy metadata in skeleton index order."""
+        return tuple(
+            KinematicJoint(name, parent, *self.KINEMATIC_ROTATIONS[index])
+            if index in self.KINEMATIC_ROTATIONS
+            else KinematicJoint(name, parent)
+            for index, (name, parent) in enumerate(zip(self.joint_names, self.parents))
+        )
 
     @property
     @abstractmethod
