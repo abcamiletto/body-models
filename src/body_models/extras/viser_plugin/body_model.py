@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from jaxtyping import Float
+from nanomanifold import SO3
 
 from body_models.base import BodyModel
 
@@ -161,13 +162,12 @@ class ViserBodyModelHandle:
 
     def _apply_pose(self, *, rebuild_mesh: bool = False) -> None:
         if rebuild_mesh:
-            self.mesh.vertices = self.model.to_viser_skinned_mesh(**self.pose)["vertices"]
-        bones = self.model.to_viser_bones(**self.pose)
-        for bone, wxyz, position in zip(
-            self.mesh.bones,
-            bones["bone_wxyzs"],
-            bones["bone_positions"],
-        ):
+            bind_pose = self.model.get_bind_params(**self.pose)
+            self.mesh.vertices = _bind_vertices(self.model, bind_pose)
+
+        pose = dict(self.pose)
+        bone_wxyzs, bone_positions = _bone_poses(self.model, pose)
+        for bone, wxyz, position in zip(self.mesh.bones, bone_wxyzs, bone_positions):
             bone.wxyz = wxyz
             bone.position = position
 
@@ -189,15 +189,74 @@ def add_body_model(
 
     pose = model.get_rest_pose()
     root = scene.add_frame(name, show_axes=False)
-    mesh = model.to_viser_skinned_mesh(**pose)
+    bind_pose = model.get_bind_params(**pose)
+    bone_wxyzs, bone_positions = _bone_poses(model, bind_pose)
     mesh_path = f"{name}/mesh"
     mesh_handle = scene.add_mesh_skinned(
         mesh_path,
-        vertices=mesh["vertices"],
-        faces=mesh["faces"],
-        bone_wxyzs=mesh["bone_wxyzs"],
-        bone_positions=mesh["bone_positions"],
-        skin_weights=mesh["skin_weights"],
+        vertices=_bind_vertices(model, bind_pose),
+        faces=_triangular_faces(model),
+        bone_wxyzs=bone_wxyzs,
+        bone_positions=bone_positions,
+        skin_weights=_viser_skin_weights(_numpy_array(model.skin_weights)),
         color=color,
     )
     return ViserBodyModelHandle(model, pose, root, mesh_handle)
+
+
+def _bone_poses(
+    model: BodyModel,
+    forward_kwargs: dict[str, object],
+) -> tuple[Float[np.ndarray, "J 4"], Float[np.ndarray, "J 3"]]:
+    if "joint_indices" in forward_kwargs:
+        raise ValueError("add_body_model() requires the full skeleton; do not pass joint_indices.")
+
+    skeleton = _numpy_array(model.forward_skeleton(**forward_kwargs))
+    if skeleton.ndim != 3 or skeleton.shape[-2:] != (4, 4):
+        raise ValueError(f"add_body_model() expects unbatched skeleton shape (N, 4, 4), got {skeleton.shape}.")
+
+    bone_wxyzs = SO3.conversions.from_rotmat_to_quat(skeleton[:, :3, :3], convention="wxyz", xp=np)
+    bone_positions = skeleton[:, :3, 3].copy()
+    return bone_wxyzs, bone_positions
+
+
+def _bind_vertices(
+    model: BodyModel,
+    forward_kwargs: dict[str, object],
+) -> Float[np.ndarray, "V 3"]:
+    if "vertex_indices" in forward_kwargs:
+        raise ValueError("add_body_model() requires the full mesh; do not pass vertex_indices.")
+
+    vertices = _numpy_array(model.forward_vertices(**forward_kwargs))
+    if vertices.ndim != 2 or vertices.shape[-1] != 3:
+        raise ValueError(f"add_body_model() expects unbatched vertices shape (N, 3), got {vertices.shape}.")
+    return vertices.copy()
+
+
+def _triangular_faces(model: BodyModel) -> np.ndarray:
+    faces = _numpy_array(model.faces)
+    if faces.shape[1] == 4:
+        triangles_a = faces[:, [0, 1, 2]]
+        triangles_b = faces[:, [0, 2, 3]]
+        return np.concatenate([triangles_a, triangles_b], axis=0)
+    if faces.shape[1] != 3:
+        raise ValueError(f"Expected triangular or quad faces, got shape {faces.shape}.")
+    return faces.copy()
+
+
+def _viser_skin_weights(skin_weights: Float[np.ndarray, "V J"]) -> Float[np.ndarray, "V J"]:
+    weights = np.asarray(skin_weights).copy()
+    pruned_indices = np.argsort(weights, axis=-1)[:, :-4]
+    weights[np.arange(weights.shape[0])[:, None], pruned_indices] = 0.0
+    row_sums = weights.sum(axis=-1, keepdims=True)
+    return np.divide(weights, row_sums, out=np.zeros_like(weights), where=row_sums > 0)
+
+
+def _numpy_array(array: object) -> np.ndarray:
+    detach = getattr(array, "detach", None)
+    if callable(detach):
+        array = detach()
+    cpu = getattr(array, "cpu", None)
+    if callable(cpu):
+        array = cpu()
+    return np.asarray(array)

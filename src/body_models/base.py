@@ -1,25 +1,8 @@
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from typing import Any, ClassVar, TypedDict
-
-import numpy as np
-from jaxtyping import Float, Int
-from nanomanifold import SO3
+from typing import Any, ClassVar
 
 from body_models.constants import Joint
-
-
-class ViserBones(TypedDict):
-    bone_wxyzs: Float[np.ndarray, "J 4"]
-    bone_positions: Float[np.ndarray, "J 3"]
-
-
-class ViserSkinnedMesh(TypedDict):
-    vertices: Float[np.ndarray, "V 3"]
-    faces: Int[np.ndarray, "F 3"]
-    skin_weights: Float[np.ndarray, "V J"]
-    bone_wxyzs: Float[np.ndarray, "J 4"]
-    bone_positions: Float[np.ndarray, "J 3"]
 
 
 class BodyModel(ABC):
@@ -34,9 +17,8 @@ class BodyModel(ABC):
     """
 
     parents: list[int]
-    # True for models whose meshes are rigidly attached to bodies (no LBS skin
-    # weights), e.g. G1 and MyoFullBody. Used to gate skin_weights / viser
-    # skinned-mesh exports without sniffing for NotImplementedError.
+    # True for models whose meshes are rigidly attached to bodies, e.g. G1 and
+    # MyoFullBody.
     is_rigid_body: bool = False
     # True for models that expose MJCF-style muscle via-points and tendons
     # (currently MyoFullBody only). Renderers branch on this to draw muscles.
@@ -166,56 +148,3 @@ class BodyModel(ABC):
             if name in bind_params and name not in self.POSE_PARAMETER_NAMES:
                 bind_params[name] = value
         return bind_params
-
-    def to_viser_bones(self, **forward_kwargs: Any) -> ViserBones:
-        """Export world-space bone poses for ``viser`` from ``forward_skeleton()`` kwargs."""
-        if not forward_kwargs:
-            forward_kwargs = self.get_rest_pose()
-        if "joint_indices" in forward_kwargs:
-            raise ValueError("to_viser_bones() requires the full skeleton; do not pass joint_indices.")
-
-        skeleton = np.asarray(self.forward_skeleton(**forward_kwargs))
-        if skeleton.ndim != 3 or skeleton.shape[-2:] != (4, 4):
-            raise ValueError(f"to_viser_bones() expects unbatched skeleton shape (N, 4, 4), got {skeleton.shape}")
-        world = skeleton
-        bone_wxyzs = SO3.conversions.from_rotmat_to_quat(world[:, :3, :3], convention="wxyz", xp=np)
-        bone_positions = world[:, :3, 3]
-        return {"bone_wxyzs": bone_wxyzs, "bone_positions": bone_positions.copy()}
-
-    def to_viser_skinned_mesh(self, **forward_kwargs: Any) -> ViserSkinnedMesh:
-        """Export bind-pose mesh data for ``viser`` from ``forward_vertices()`` / ``forward_skeleton()`` kwargs."""
-        if not forward_kwargs:
-            forward_kwargs = self.get_rest_pose()
-        if "vertex_indices" in forward_kwargs:
-            raise ValueError("to_viser_skinned_mesh() requires the full mesh; do not pass vertex_indices.")
-        if "joint_indices" in forward_kwargs:
-            raise ValueError("to_viser_skinned_mesh() requires the full skeleton; do not pass joint_indices.")
-
-        bind_kwargs = self.get_bind_params(**forward_kwargs)
-        vertices = np.asarray(self.forward_vertices(**bind_kwargs))
-        if vertices.ndim != 2 or vertices.shape[-1] != 3:
-            raise ValueError(f"to_viser_skinned_mesh() expects unbatched vertices shape (N, 3), got {vertices.shape}")
-
-        faces = np.asarray(self.faces)
-        if faces.shape[1] == 4:
-            faces = np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
-        elif faces.shape[1] != 3:
-            raise ValueError(f"Expected triangular or quad faces, got shape {faces.shape}")
-
-        bones = self.to_viser_bones(**bind_kwargs)
-        return {
-            "vertices": vertices.copy(),
-            "faces": faces.copy(),
-            "skin_weights": _viser_skin_weights(np.asarray(self.skin_weights)),
-            "bone_wxyzs": bones["bone_wxyzs"],
-            "bone_positions": bones["bone_positions"],
-        }
-
-
-def _viser_skin_weights(skin_weights: Float[np.ndarray, "V J"]) -> Float[np.ndarray, "V J"]:
-    """Return skin weights in the 4-influence format used by viser."""
-    weights = np.asarray(skin_weights).copy()
-    pruned_indices = np.argsort(weights, axis=-1)[:, :-4]
-    weights[np.arange(weights.shape[0])[:, None], pruned_indices] = 0.0
-    row_sums = weights.sum(axis=-1, keepdims=True)
-    return np.divide(weights, row_sums, out=np.zeros_like(weights), where=row_sums > 0)
