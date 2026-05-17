@@ -54,8 +54,6 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Extras:
-      - viser Plugin: extras/viser-plugin.md
   - Models:
       - Full Bodies:
           - SMPL: models/smpl.md
@@ -75,5 +73,7 @@ nav:
       - Robots:
           - BrainCo: models/brainco.md
           - G1: models/g1.md
+  - Extras:
+      - viser: extras/viser-plugin.md
 
 strict: true
