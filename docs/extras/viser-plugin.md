@@ -1,4 +1,4 @@
-# viser Plugin
+# viser
 
 `body_models.extras.viser_plugin` provides small composite handles for rendering body models in `viser`.
 
