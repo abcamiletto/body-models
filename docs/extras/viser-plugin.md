@@ -5,6 +5,7 @@
 Install the optional dependency before using it:
 
 ```bash
+# Install the optional viser dependency for the visualization helpers.
 uv add "body-models[viser]"
 ```
 
@@ -14,20 +15,26 @@ from body_models.extras import viser_plugin as vp
 from body_models.g1.numpy import G1
 from body_models.smpl.numpy import SMPL
 
+# Create a viser server and keep all objects in its scene tree.
 server = viser.ViserServer()
 
+# Add a skinned body model and a clickable skeleton for the same SMPL instance.
 model = SMPL(gender="neutral")
 skeleton = vp.add_skeleton(server.scene, "/smpl/skeleton", model)
 body = vp.add_body_model(server.scene, "/smpl", model)
 
+# Update both handles from the same model pose.
 posed = model.get_apose()
 skeleton.skeleton = model.forward_skeleton(**posed)
 body.set_pose(body_pose=posed["body_pose"], global_translation=posed["global_translation"])
 
+# Rigid articulated models use one mesh per link instead of skinning weights.
 robot = G1()
 robot_pose = robot.get_rest_pose()
 rigid_body = vp.add_rigid_body_model(server.scene, "/g1", robot)
 rigid_body.set_pose(body_pose=robot_pose["body_pose"])
+
+# Scene transform properties follow viser handle conventions.
 rigid_body.position = (1.0, 0.0, 0.0)
 ```
 

@@ -7,6 +7,7 @@ MyoFullBody is a MuJoCo-derived musculoskeletal full-body model from `amathislab
 MyoFullBody downloads automatically on first use. To prefetch and save the path:
 
 ```bash
+# Download the MyoFullBody MJCF and referenced mesh assets.
 body-models download myofullbody
 ```
 
@@ -17,11 +18,16 @@ When passed manually, `model_path` should contain `body/myofullbody.xml` and the
 ```python
 from body_models.myofullbody.numpy import MyoFullBody
 
+# Load the rigid articulated model and start from its bundled A-pose.
 model = MyoFullBody()
 params = model.get_apose(batch_dims=(1,))
+
+# Evaluate the concatenated link meshes, body-frame skeleton, and link transforms.
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 links = model.forward_links(**params)
+
+# Lift MuJoCo site positions from local body frames into world coordinates.
 sites = model.world_sites(skeleton)
 ```
 

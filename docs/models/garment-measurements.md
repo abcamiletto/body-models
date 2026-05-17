@@ -8,6 +8,7 @@ GarmentMeasurements downloads its preprocessed asset from
 `https://huggingface.co/datasets/abcamiletto/body-models-assets` on first use. To prefetch and save the path:
 
 ```bash
+# Download the preprocessed GarmentMeasurements body-model asset.
 body-models download garment-measurements
 ```
 

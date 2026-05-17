@@ -7,6 +7,7 @@ SOMA provides a native implementation for SOMA-X assets with identity, pose, and
 SOMA downloads automatically on first use. To prefetch and save the path:
 
 ```bash
+# Download the SOMA-X asset used by the native SOMA implementation.
 body-models download soma
 ```
 
