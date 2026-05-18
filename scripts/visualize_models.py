@@ -765,7 +765,7 @@ def load_models() -> dict[str, BodyModel]:
         ("MHR", MHR),
         ("FLAME", FLAME),
         ("GarmentMeasurements", GarmentMeasurements),
-        ("SOMA", SOMA),
+        ("SOMA", lambda: SOMA(cache_identity=True)),
         ("G1", lambda: G1(rotation_type="hinge")),
         ("MyoFullBody", MyoFullBody),
         ("BrainCo", lambda: BrainCoHand(side="right", rotation_type="hinge")),
