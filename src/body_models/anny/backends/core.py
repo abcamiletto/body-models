@@ -414,7 +414,7 @@ def _phenotype_to_coeffs(
             alpha = xp.clip(alpha, 0, 1)
 
         # Build weight matrix
-        anchor_indices = xp.arange(n_anchors)
+        anchor_indices = xp.cumsum(xp.ones_like(anchor_arr, dtype=idx.dtype), axis=0) - 1
         w = xp.where(anchor_indices == idx_m1[..., None], 1 - alpha[..., None], 0)
         w = w + xp.where(anchor_indices == idx[..., None], alpha[..., None], 0)
 
@@ -426,7 +426,7 @@ def _phenotype_to_coeffs(
     caucasian = xp.full_like(gender, caucasian, dtype=dtype)
     race = xp.stack([african, asian, caucasian], axis=-1)
     race_sum = xp.sum(race, axis=-1, keepdims=True)
-    race_sum = xp.where(race_sum == 0, xp.asarray(1.0, dtype=dtype), race_sum)
+    race_sum = xp.where(race_sum == 0, xp.ones_like(race_sum), race_sum)
     race = race / race_sum
 
     # Stack all phenotype weights
