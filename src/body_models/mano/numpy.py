@@ -106,6 +106,7 @@ class MANO(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -126,6 +127,7 @@ class MANO(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 16 4 4"]:
+        """Evaluate world-space joint transforms."""
         return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
@@ -143,6 +145,7 @@ class MANO(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 

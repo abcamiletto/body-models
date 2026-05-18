@@ -159,6 +159,7 @@ class SOMA(BodyModel):
         prepared_identity: PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         pose = pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
@@ -196,6 +197,7 @@ class SOMA(BodyModel):
         prepared_identity: PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
     ) -> Float[np.ndarray, "B 77 4 4"]:
+        """Evaluate world-space joint transforms."""
         pose = pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
@@ -224,6 +226,7 @@ class SOMA(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
@@ -329,6 +332,7 @@ class SOMA(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         return params
 
@@ -338,6 +342,7 @@ class SOMA(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = np.asarray(SOMA_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
