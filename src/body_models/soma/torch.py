@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 import torch
@@ -13,7 +13,7 @@ from torch import Tensor
 
 from body_models import common
 
-from ..base import BodyModel, ViserBones
+from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
@@ -53,6 +53,7 @@ class SOMA(BodyModel, nn.Module):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
+        cache_identity: bool = False,
         kernel: Literal["torch", "warp"] = "torch",
     ) -> None:
         normalized_model_type = model_type.lower()
@@ -72,6 +73,7 @@ class SOMA(BodyModel, nn.Module):
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.match_warp = match_warp
+        self.cache_identity = cache_identity
         self._kernel = _get_kernel(kernel)
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
@@ -159,16 +161,18 @@ class SOMA(BodyModel, nn.Module):
         vertex_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
-        cache_prepared_identity: bool = False,
+        cache_identity: bool | None = None,
     ) -> Float[Tensor, "B V 3"]:
         pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
+            if cache_identity is None:
+                cache_identity = self.cache_identity
             identity_state = self.prepare_identity(
                 identity=identity,
                 scale_params=scale_params,
                 pose=pose,
-                cache=cache_prepared_identity,
+                cache=cache_identity,
             )
         return self._kernel.forward_vertices(
             data=self.weights,
@@ -194,16 +198,18 @@ class SOMA(BodyModel, nn.Module):
         joint_indices=None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
-        cache_prepared_identity: bool = False,
+        cache_identity: bool | None = None,
     ) -> Float[Tensor, "B 77 4 4"]:
         pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
+            if cache_identity is None:
+                cache_identity = self.cache_identity
             identity_state = self.prepare_identity(
                 identity=identity,
                 scale_params=scale_params,
                 pose=pose,
-                cache=cache_prepared_identity,
+                cache=cache_identity,
             )
         return self._kernel.forward_skeleton(
             data=self.weights,
@@ -278,21 +284,6 @@ class SOMA(BodyModel, nn.Module):
             lambda tensor: tensor.clone(),
             use_cache=cache,
         )
-
-    def to_viser_bones(self, **forward_kwargs: Any) -> ViserBones:
-        if not forward_kwargs:
-            forward_kwargs = self.get_rest_pose()
-        forward_kwargs = dict(forward_kwargs)
-        if "joint_indices" in forward_kwargs:
-            raise ValueError("to_viser_bones() requires the full skeleton; do not pass joint_indices.")
-
-        forward_kwargs["cache_prepared_identity"] = True
-        skeleton = np.asarray(self.forward_skeleton(**forward_kwargs).detach().cpu())
-        if skeleton.ndim != 3 or skeleton.shape[-2:] != (4, 4):
-            raise ValueError(f"to_viser_bones() expects unbatched skeleton shape (N, 4, 4), got {skeleton.shape}")
-        bone_wxyzs = SO3.conversions.from_rotmat_to_quat(skeleton[:, :3, :3], convention="wxyz", xp=np)
-        bone_positions = skeleton[:, :3, 3]
-        return {"bone_wxyzs": bone_wxyzs, "bone_positions": bone_positions.copy()}
 
     def _identity_inputs(
         self,
