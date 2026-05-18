@@ -112,6 +112,7 @@ class MyoFullBody(BodyModel):
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B J 4 4"]:
+        """Evaluate world-space joint transforms."""
         return backend.forward_skeleton(
             weights=self.weights,
             body_pose=body_pose,
@@ -128,6 +129,7 @@ class MyoFullBody(BodyModel):
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return backend.forward_vertices(
             weights=self.weights,
             body_pose=body_pose,
@@ -143,6 +145,7 @@ class MyoFullBody(BodyModel):
         *,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B L 4 4"]:
+        """Evaluate world-space rigid link transforms."""
         return backend.forward_links(
             weights=self.weights,
             body_pose=body_pose,
@@ -182,6 +185,7 @@ class MyoFullBody(BodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         return {
             "body_pose": np.zeros((*batch_dims, self.num_qpos), dtype=dtype),
             "global_rotation": np.zeros((*batch_dims, 3), dtype=dtype),
@@ -193,6 +197,7 @@ class MyoFullBody(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(MYOFULLBODY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()
@@ -203,6 +208,7 @@ class MyoFullBody(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(MYOFULLBODY_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()

@@ -112,6 +112,7 @@ class SMPLX(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -138,6 +139,7 @@ class SMPLX(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 55 4 4"]:
+        """Evaluate world-space joint transforms."""
         return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
@@ -158,6 +160,7 @@ class SMPLX(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
@@ -216,6 +219,7 @@ class SMPLX(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
     def get_apose(
@@ -224,6 +228,7 @@ class SMPLX(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = np.asarray(SMPLX_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))

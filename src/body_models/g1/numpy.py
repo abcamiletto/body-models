@@ -124,6 +124,7 @@ class G1(BodyModel):
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B J 4 4"]:
+        """Evaluate world-space joint transforms."""
         return backend.forward_skeleton(
             self.weights,
             body_pose,
@@ -141,6 +142,7 @@ class G1(BodyModel):
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return backend.forward_vertices(
             self.weights,
             body_pose,
@@ -157,6 +159,7 @@ class G1(BodyModel):
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
     ) -> Float[np.ndarray, "B L 4 4"]:
+        """Evaluate world-space rigid link transforms."""
         return backend.forward_links(
             self.weights,
             body_pose,
@@ -194,6 +197,7 @@ class G1(BodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         pose_ref = np.zeros((*batch_dims, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
         global_ref = np.zeros((*batch_dims, 3), dtype=dtype)
         body_pose = SO3.identity_as(
@@ -219,6 +223,7 @@ class G1(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(G1_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
@@ -237,6 +242,7 @@ class G1(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(G1_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))

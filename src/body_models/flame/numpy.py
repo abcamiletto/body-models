@@ -99,6 +99,7 @@ class FLAME(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -121,6 +122,7 @@ class FLAME(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 5 4 4"]:
+        """Evaluate world-space joint transforms."""
         return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
@@ -134,6 +136,7 @@ class FLAME(BodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         ref = np.zeros((*batch_dims, 100), dtype=dtype)
         return {
             "shape": np.zeros((*batch_dims, 300), dtype=dtype),

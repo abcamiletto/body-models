@@ -101,6 +101,7 @@ class SMPL(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -121,6 +122,7 @@ class SMPL(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
+        """Evaluate world-space joint transforms."""
         return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,
@@ -133,6 +135,7 @@ class SMPL(BodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         body_pose_ref = np.zeros((*batch_dims, self.NUM_BODY_JOINTS, 3), dtype=dtype)
         pelvis_ref = np.zeros((*batch_dims, 3), dtype=dtype)
         return {
@@ -163,6 +166,7 @@ class SMPL(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
     def get_apose(
@@ -170,6 +174,7 @@ class SMPL(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(SMPL_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))

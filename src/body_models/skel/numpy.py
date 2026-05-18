@@ -83,6 +83,7 @@ class SKEL(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -100,6 +101,7 @@ class SKEL(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
+        """Evaluate world-space joint transforms."""
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
@@ -110,6 +112,7 @@ class SKEL(BodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         return {
             "shape": np.zeros((*batch_dims, self.NUM_BETAS), dtype=dtype),
             "body_pose": np.zeros((*batch_dims, self.NUM_POSE_PARAMS), dtype=dtype),
@@ -122,6 +125,7 @@ class SKEL(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
     def get_apose(
@@ -129,6 +133,7 @@ class SKEL(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(SKEL_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()

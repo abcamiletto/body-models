@@ -125,6 +125,7 @@ class BrainCoHand(BodyModel):
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B J 4 4"]:
+        """Evaluate world-space joint transforms."""
         return backend.forward_skeleton(
             self.weights,
             hand_pose,
@@ -142,6 +143,7 @@ class BrainCoHand(BodyModel):
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Evaluate posed mesh vertices."""
         return backend.forward_vertices(
             self.weights,
             hand_pose,
@@ -158,6 +160,7 @@ class BrainCoHand(BodyModel):
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
     ) -> Float[np.ndarray, "B L 4 4"]:
+        """Evaluate world-space rigid link transforms."""
         return backend.forward_links(
             self.weights,
             hand_pose,
@@ -184,6 +187,7 @@ class BrainCoHand(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
+        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
