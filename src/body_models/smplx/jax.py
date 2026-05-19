@@ -1,7 +1,7 @@
 """JAX backend for SMPL-X model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import jax
 import jax.numpy as jnp
@@ -116,7 +116,7 @@ class SMPLX(BodyModel):
         pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
     ) -> Float[jax.Array, "B V 3"]:
         """Compute posed mesh vertices.
 
@@ -158,7 +158,7 @@ class SMPLX(BodyModel):
         pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
     ) -> Float[jax.Array, "B 55 4 4"]:
         """Compute posed joint transforms.
 

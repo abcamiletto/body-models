@@ -1,7 +1,7 @@
 """PyTorch frontend for ANNY."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -120,7 +120,7 @@ class ANNY(BodyModel, nn.Module):
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute posed mesh vertices.
 
@@ -170,7 +170,7 @@ class ANNY(BodyModel, nn.Module):
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
     ) -> Float[Tensor, "B J 4 4"]:
         """Compute posed joint transforms.
 

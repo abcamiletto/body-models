@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -169,7 +169,7 @@ class SOMA(BodyModel, nn.Module):
         identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
@@ -224,7 +224,7 @@ class SOMA(BodyModel, nn.Module):
         identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
