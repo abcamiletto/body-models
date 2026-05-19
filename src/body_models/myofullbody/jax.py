@@ -1,6 +1,7 @@
 """JAX backend for the MyoFullBody musculoskeletal model."""
 
 from pathlib import Path
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -117,7 +118,7 @@ class MyoFullBody(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
     ) -> Float[jax.Array, "B J 4 4"]:
         """Compute posed joint transforms.
 
@@ -144,7 +145,7 @@ class MyoFullBody(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
     ) -> Float[jax.Array, "B V 3"]:
         """Compute posed mesh vertices.
 

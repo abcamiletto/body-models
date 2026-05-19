@@ -1,7 +1,7 @@
 """PyTorch backend for SKEL model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -99,7 +99,7 @@ class SKEL(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute posed mesh vertices.
 
@@ -128,7 +128,7 @@ class SKEL(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 46"],
         global_rotation: Float[Tensor, "B 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
     ) -> Float[Tensor, "B 24 4 4"]:
         """Compute posed joint transforms.
 

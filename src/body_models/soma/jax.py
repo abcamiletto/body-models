@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import jax
 import jax.numpy as jnp
@@ -159,7 +159,7 @@ class SOMA(BodyModel):
         identity: Float[jax.Array, "B|1 I"] | None = None,
         scale_params: Float[jax.Array, "B|1 K"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
@@ -214,7 +214,7 @@ class SOMA(BodyModel):
         identity: Float[jax.Array, "B|1 I"] | None = None,
         scale_params: Float[jax.Array, "B|1 K"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
         apply_correctives: bool = True,
         prepared_identity: core.PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
