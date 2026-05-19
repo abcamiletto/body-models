@@ -1,7 +1,7 @@
 """PyTorch backend for SMPL model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -113,7 +113,7 @@ class SMPL(BodyModel, nn.Module):
         pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute posed mesh vertices.
 
@@ -146,7 +146,7 @@ class SMPL(BodyModel, nn.Module):
         pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
     ) -> Float[Tensor, "B 24 4 4"]:
         """Compute posed joint transforms.
 
