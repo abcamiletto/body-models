@@ -32,6 +32,13 @@ class BrainCoHand(BodyModel):
         side: Side = "right",
         rotation_type: core.RotationType = "rotmat",
     ) -> None:
+        """Initialize the BrainCoHand model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            side: Hand side to load.
+            rotation_type: Rotation representation expected by pose inputs.
+        """
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
@@ -127,6 +134,17 @@ class BrainCoHand(BodyModel):
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            hand_pose: Local hand joint rotations.
+            global_translation: Global model translation.
+            global_rotation: Global model rotation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return backend.forward_skeleton(
             self.weights,
             hand_pose,
@@ -144,6 +162,17 @@ class BrainCoHand(BodyModel):
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            hand_pose: Local hand joint rotations.
+            global_translation: Global model translation.
+            global_rotation: Global model rotation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return backend.forward_vertices(
             self.weights,
             hand_pose,

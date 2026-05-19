@@ -33,6 +33,13 @@ class SKEL(BodyModel, nn.Module):
         gender: Literal["male", "female"] | None = None,
         simplify: float = 1.0,
     ):
+        """Initialize the SKEL model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            gender: Model gender variant to load.
+            simplify: Mesh simplification factor to apply while loading.
+        """
         if gender not in {"male", "female"}:
             raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
         assert simplify >= 1.0
@@ -94,6 +101,18 @@ class SKEL(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -111,6 +130,18 @@ class SKEL(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B 24 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,

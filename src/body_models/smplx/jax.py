@@ -38,6 +38,15 @@ class SMPLX(BodyModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
     ):
+        """Initialize the SMPLX model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            gender: Model gender variant to load.
+            flat_hand_mean: Whether to use a flat hand as the pose mean.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+        """
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
@@ -109,6 +118,22 @@ class SMPLX(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            hand_pose: Local hand joint rotations.
+            head_pose: Local head and facial joint rotations.
+            expression: Facial expression coefficients.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -135,6 +160,22 @@ class SMPLX(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B 55 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            hand_pose: Local hand joint rotations.
+            head_pose: Local head and facial joint rotations.
+            expression: Facial expression coefficients.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,

@@ -36,6 +36,15 @@ class SMPL(BodyModel, nn.Module):
         rotation_type: RotationType = "axis_angle",
         kernel: Literal["torch", "warp"] = "torch",
     ):
+        """Initialize the SMPL model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            gender: Model gender variant to load.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
+        """
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
@@ -106,6 +115,19 @@ class SMPL(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[Tensor, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -126,6 +148,19 @@ class SMPL(BodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[Tensor, "B 24 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,

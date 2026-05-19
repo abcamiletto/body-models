@@ -57,6 +57,17 @@ class SOMA(BodyModel):
         cache_identity: bool = False,
         kernel: Literal["numpy", "scipy"] = "numpy",
     ) -> None:
+        """Initialize the SOMA model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            model_type: SOMA identity/model variant to load.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+            match_warp: Whether to match Warp backend numerical conventions.
+            cache_identity: Whether to cache prepared identity state between calls.
+            kernel: Backend kernel used for forward evaluation.
+        """
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
             raise ValueError(
@@ -159,6 +170,24 @@ class SOMA(BodyModel):
         prepared_identity: PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            global_rotation: Global model rotation.
+            identity: Identity coefficients.
+            scale_params: Per-part scale parameters.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+            apply_correctives: Whether to apply pose and identity correctives.
+            prepared_identity: Precomputed identity state to reuse for this call.
+            cache_identity: Whether to cache prepared identity state between calls.
+
+        Returns:
+            Posed vertex positions.
+        """
         pose = pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:
@@ -196,6 +225,24 @@ class SOMA(BodyModel):
         prepared_identity: PreparedSomaIdentity | None = None,
         cache_identity: bool | None = None,
     ) -> Float[np.ndarray, "B 77 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            global_rotation: Global model rotation.
+            identity: Identity coefficients.
+            scale_params: Per-part scale parameters.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+            apply_correctives: Whether to apply pose and identity correctives.
+            prepared_identity: Precomputed identity state to reuse for this call.
+            cache_identity: Whether to cache prepared identity state between calls.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         pose = pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
         identity_state = prepared_identity
         if identity_state is None:

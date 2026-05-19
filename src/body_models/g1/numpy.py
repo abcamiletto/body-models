@@ -28,6 +28,13 @@ class G1(BodyModel):
         rotation_type: core.RotationType = "rotmat",
         convention: core.Convention = "soma",
     ) -> None:
+        """Initialize the G1 model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            rotation_type: Rotation representation expected by pose inputs.
+            convention: Skeleton convention used when loading rigid model data.
+        """
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
@@ -124,6 +131,17 @@ class G1(BodyModel):
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            body_pose: Local body joint rotations.
+            global_translation: Global model translation.
+            global_rotation: Global model rotation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return backend.forward_skeleton(
             self.weights,
             body_pose,
@@ -141,6 +159,17 @@ class G1(BodyModel):
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            body_pose: Local body joint rotations.
+            global_translation: Global model translation.
+            global_rotation: Global model rotation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return backend.forward_vertices(
             self.weights,
             body_pose,
