@@ -33,6 +33,12 @@ class GarmentMeasurements(BodyModel):
         *,
         rotation_type: RotationType = "axis_angle",
     ) -> None:
+        """Initialize the GarmentMeasurements model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            rotation_type: Rotation representation expected by pose inputs.
+        """
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
 
@@ -83,6 +89,21 @@ class GarmentMeasurements(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         pose = pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_vertices(
             weights=self.weights,
@@ -105,6 +126,21 @@ class GarmentMeasurements(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         pose = pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_skeleton(
             weights=self.weights,

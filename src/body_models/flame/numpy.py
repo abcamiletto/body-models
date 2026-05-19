@@ -32,6 +32,14 @@ class FLAME(BodyModel):
         rotation_type: RotationType = "axis_angle",
         kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
+        """Initialize the FLAME model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
+        """
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
@@ -99,6 +107,20 @@ class FLAME(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[np.ndarray, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            expression: Facial expression coefficients.
+            head_pose: Local head and facial joint rotations.
+            head_rotation: Root head rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return self._kernel.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -121,6 +143,20 @@ class FLAME(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[np.ndarray, "B 5 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            expression: Facial expression coefficients.
+            head_pose: Local head and facial joint rotations.
+            head_rotation: Root head rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return self._kernel.forward_skeleton(
             weights=self.weights,
             shape=shape,

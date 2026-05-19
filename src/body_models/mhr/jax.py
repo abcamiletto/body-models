@@ -40,6 +40,13 @@ class MHR(BodyModel):
         lod: int = 1,
         simplify: float = 1.0,
     ) -> None:
+        """Initialize the MHR model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            lod: Level-of-detail variant to load.
+            simplify: Mesh simplification factor to apply while loading.
+        """
         self.weights = common.jaxify(load_model_data(get_model_path(model_path), lod=lod, simplify=simplify))
 
     def tree_flatten(self):
@@ -104,6 +111,20 @@ class MHR(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jax.Array, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            hand_pose: Local hand joint rotations.
+            expression: Facial expression coefficients.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return backend.forward_vertices(
             weights=self.weights,
             shape=shape,
@@ -124,6 +145,20 @@ class MHR(BodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jax.Array, "B J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            hand_pose: Local hand joint rotations.
+            expression: Facial expression coefficients.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return backend.forward_skeleton(
             weights=self.weights,
             shape=shape,
