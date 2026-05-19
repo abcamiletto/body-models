@@ -36,6 +36,17 @@ class ANNY(BodyModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
     ) -> None:
+        """Initialize the ANNY model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            rig: Rig variant to load.
+            topology: Mesh topology variant to load.
+            all_phenotypes: Whether to expose the full phenotype control set.
+            extrapolate_phenotypes: Whether phenotype values may extend beyond the trained range.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+        """
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
         if topology not in ("default", "makehuman"):
@@ -98,6 +109,25 @@ class ANNY(BodyModel):
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         vertex_indices=None,
     ) -> Float[jnp.ndarray, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            gender: Gender phenotype value.
+            age: Age phenotype value.
+            muscle: Muscle phenotype value.
+            weight: Weight phenotype value.
+            height: Height phenotype value.
+            proportions: Body proportion phenotype value.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_vertices(
             weights=self.weights,
@@ -129,6 +159,25 @@ class ANNY(BodyModel):
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         joint_indices=None,
     ) -> Float[jnp.ndarray, "B J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            gender: Gender phenotype value.
+            age: Age phenotype value.
+            muscle: Muscle phenotype value.
+            weight: Weight phenotype value.
+            height: Height phenotype value.
+            proportions: Body proportion phenotype value.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         return backend.forward_skeleton(
             weights=self.weights,
