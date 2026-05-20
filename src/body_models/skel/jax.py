@@ -10,6 +10,7 @@ from jaxtyping import Float, Int
 from body_models import common
 from body_models.base import BodyModel
 from body_models.skel.backends import jax as backend
+from body_models.skel.backends.core import SkelIdentity
 from body_models.skel.io import get_model_path, load_model_data
 from body_models.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 
@@ -87,12 +88,14 @@ class SKEL(BodyModel):
 
     def forward_vertices(
         self,
-        shape: Float[jax.Array, "B|1 10"],
-        body_pose: Float[jax.Array, "B 46"],
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
-        global_translation: Float[jax.Array, "B 3"] | None = None,
+        body_pose: Float[jax.Array, "*batch 46"],
+        global_rotation: Float[jax.Array, "*batch 3"] | None = None,
+        global_translation: Float[jax.Array, "*batch 3"] | None = None,
         vertex_indices: Any | None = None,
-    ) -> Float[jax.Array, "B V 3"]:
+        *,
+        shape: Float[jax.Array, "*batch 10"] | None = None,
+        identity: SkelIdentity | None = None,
+    ) -> Float[jax.Array, "*batch V 3"]:
         """Compute posed mesh vertices.
 
         Args:
@@ -105,23 +108,30 @@ class SKEL(BodyModel):
         Returns:
             Posed vertex positions.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
         return backend.forward_vertices(
             weights=self.weights,
-            shape=shape,
             pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
+            **identity,
         )
 
     def forward_skeleton(
         self,
-        shape: Float[jax.Array, "B|1 10"],
-        body_pose: Float[jax.Array, "B 46"],
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
-        global_translation: Float[jax.Array, "B 3"] | None = None,
+        body_pose: Float[jax.Array, "*batch 46"],
+        global_rotation: Float[jax.Array, "*batch 3"] | None = None,
+        global_translation: Float[jax.Array, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
-    ) -> Float[jax.Array, "B 24 4 4"]:
+        *,
+        shape: Float[jax.Array, "*batch 10"] | None = None,
+        identity: SkelIdentity | None = None,
+    ) -> Float[jax.Array, "*batch 24 4 4"]:
         """Compute posed joint transforms.
 
         Args:
@@ -134,14 +144,27 @@ class SKEL(BodyModel):
         Returns:
             Joint transforms in the model hierarchy.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            shape=shape,
             pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
+            **identity,
         )
+
+    def prepare_identity(
+        self,
+        shape: Float[jax.Array, "*batch 10"],
+        skip_vertices: bool = False,
+    ) -> SkelIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
         return {

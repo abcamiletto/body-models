@@ -10,6 +10,7 @@ from nanomanifold import SO3
 from body_models import common
 from body_models.anny import pose as pose_utils
 from body_models.anny.backends import jax as backend
+from body_models.anny.backends.core import AnnyIdentity
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
 from body_models.base import BodyModel
@@ -96,102 +97,100 @@ class ANNY(BodyModel):
 
     def forward_vertices(
         self,
-        gender: Float[jnp.ndarray, "B"],
-        age: Float[jnp.ndarray, "B"],
-        muscle: Float[jnp.ndarray, "B"],
-        weight: Float[jnp.ndarray, "B"],
-        height: Float[jnp.ndarray, "B"],
-        proportions: Float[jnp.ndarray, "B"],
         body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
         head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
         hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
         global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         vertex_indices: Any | None = None,
+        *,
+        shape: Float[jnp.ndarray, "*batch 6"] | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[jnp.ndarray, "B V 3"]:
         """Compute posed mesh vertices.
 
         Args:
-            gender: Gender phenotype value.
-            age: Age phenotype value.
-            muscle: Muscle phenotype value.
-            weight: Weight phenotype value.
-            height: Height phenotype value.
-            proportions: Body proportion phenotype value.
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
+            shape: Packed phenotype controls.
+            identity: Optional output from :meth:`prepare_identity`.
 
         Returns:
             Posed vertex positions.
         """
         pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            identity = self.prepare_identity(jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1])))
         return backend.forward_vertices(
             weights=self.weights,
-            gender=gender,
-            age=age,
-            muscle=muscle,
-            weight=weight,
-            height=height,
-            proportions=proportions,
             pose=pose,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
+            **identity,
         )
 
     def forward_skeleton(
         self,
-        gender: Float[jnp.ndarray, "B"],
-        age: Float[jnp.ndarray, "B"],
-        muscle: Float[jnp.ndarray, "B"],
-        weight: Float[jnp.ndarray, "B"],
-        height: Float[jnp.ndarray, "B"],
-        proportions: Float[jnp.ndarray, "B"],
         body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
         head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
         hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
         global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         joint_indices: Any | None = None,
+        *,
+        shape: Float[jnp.ndarray, "*batch 6"] | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[jnp.ndarray, "B J 4 4"]:
         """Compute posed joint transforms.
 
         Args:
-            gender: Gender phenotype value.
-            age: Age phenotype value.
-            muscle: Muscle phenotype value.
-            weight: Weight phenotype value.
-            height: Height phenotype value.
-            proportions: Body proportion phenotype value.
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
+            shape: Packed phenotype controls.
+            identity: Optional output from :meth:`prepare_identity`.
 
         Returns:
             Joint transforms in the model hierarchy.
         """
         pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            gender=gender,
-            age=age,
-            muscle=muscle,
-            weight=weight,
-            height=height,
-            proportions=proportions,
             pose=pose,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
+            **identity,
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[jnp.ndarray, "*batch 6"],
+        skip_vertices: bool = False,
+    ) -> AnnyIdentity:
+        """Precompute phenotype-dependent state for repeated forward passes."""
+        return backend.prepare_identity(
+            self.weights,
+            shape,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(
@@ -216,10 +215,7 @@ class ANNY(BodyModel):
             axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=jnp)
         return {
-            **{
-                name: jnp.full((*batch_dims,), 0.5, dtype=dtype)
-                for name in ["gender", "age", "muscle", "weight", "height", "proportions"]
-            },
+            "shape": jnp.full((*batch_dims, 6), 0.5, dtype=dtype),
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,

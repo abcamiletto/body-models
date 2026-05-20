@@ -8,14 +8,14 @@ __all__ = [
     "forward_skeleton",
     "forward_vertices",
     "linear_blend_skinning",
-    "PreparedSomaIdentity",
+    "SomaIdentity",
     "prepare_identity_from_rest_shape",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = core.forward_skeleton
 linear_blend_skinning = core.linear_blend_skinning
-PreparedSomaIdentity = core.PreparedSomaIdentity
+SomaIdentity = core.SomaIdentity
 
 
 def prepare_identity_from_rest_shape(*args, **kwargs):
