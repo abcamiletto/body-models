@@ -12,6 +12,7 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.flame.backends import jax as backend
+from body_models.flame.backends.core import FlameIdentity
 from body_models.flame.constants import FLAME_JOINT_NAMES
 from body_models.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -95,75 +96,100 @@ class FLAME(BodyModel):
 
     def forward_vertices(
         self,
-        shape: Float[jax.Array, "B|1 S"],
-        expression: Float[jax.Array, "B E"],
         head_pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"],
         head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         vertex_indices: Any | None = None,
+        *,
+        shape: Float[jax.Array, "*batch S"] | None = None,
+        expression: Float[jax.Array, "*batch E"] | None = None,
+        identity: FlameIdentity | None = None,
     ) -> Float[jax.Array, "B V 3"]:
         """Compute posed mesh vertices.
 
         Args:
-            shape: Shape coefficients.
-            expression: Facial expression coefficients.
             head_pose: Local head and facial joint rotations.
             head_rotation: Root head rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
+            shape: Shape coefficients.
+            expression: Facial expression coefficients.
+            identity: Optional output from :meth:`prepare_identity`.
 
         Returns:
             Posed vertex positions.
         """
+        if identity is None:
+            assert shape is not None and expression is not None
+            batch_shape = tuple(head_pose.shape[: -(self.num_rot_dims + 1)])
+            shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression)
         return backend.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            expression=expression,
             pose=head_pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            **identity,
         )
 
     def forward_skeleton(
         self,
-        shape: Float[jax.Array, "B|1 S"],
-        expression: Float[jax.Array, "B E"],
         head_pose: Float[jax.Array, "B 4 N"] | Float[jax.Array, "B 4 3 3"],
         head_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         global_translation: Float[jax.Array, "B 3"] | None = None,
         joint_indices: Any | None = None,
+        *,
+        shape: Float[jax.Array, "*batch S"] | None = None,
+        expression: Float[jax.Array, "*batch E"] | None = None,
+        identity: FlameIdentity | None = None,
     ) -> Float[jax.Array, "B 5 4 4"]:
         """Compute posed joint transforms.
 
         Args:
-            shape: Shape coefficients.
-            expression: Facial expression coefficients.
             head_pose: Local head and facial joint rotations.
             head_rotation: Root head rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
+            shape: Shape coefficients.
+            expression: Facial expression coefficients.
+            identity: Optional output from :meth:`prepare_identity`.
 
         Returns:
             Joint transforms in the model hierarchy.
         """
+        if identity is None:
+            assert shape is not None and expression is not None
+            batch_shape = tuple(head_pose.shape[: -(self.num_rot_dims + 1)])
+            shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            expression=expression,
             pose=head_pose,
             head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            **identity,
         )
+
+    def prepare_identity(
+        self,
+        shape: Float[jax.Array, "*batch S"],
+        expression: Float[jax.Array, "*batch E"],
+        skip_vertices: bool = False,
+    ) -> FlameIdentity:
+        """Precompute shape/expression-dependent state for repeated forward passes."""
+        return backend.prepare_identity(self.weights, shape, expression, skip_vertices=skip_vertices)
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
         ref = jnp.zeros((*batch_dims, 100), dtype=dtype)

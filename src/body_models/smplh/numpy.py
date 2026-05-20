@@ -10,6 +10,7 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
+from body_models.smplh.backends.core import SmplhIdentity
 from body_models.smplh.backends import numpy as numpy_backend
 from body_models.smplh.backends import scipy as scipy_backend
 from body_models.smplh.io import get_model_path, load_model_data
@@ -107,14 +108,16 @@ class SMPLH(BodyModel):
 
     def forward_vertices(
         self,
-        shape: Float[np.ndarray, "B|1 10"],
-        body_pose: Float[np.ndarray, "B 21 N"] | Float[np.ndarray, "B 21 3 3"],
-        hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"],
-        pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        body_pose: Float[np.ndarray, "*batch 21 N"] | Float[np.ndarray, "*batch 21 3 3"],
+        hand_pose: Float[np.ndarray, "*batch 30 N"] | Float[np.ndarray, "*batch 30 3 3"],
+        pelvis_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
         vertex_indices: Any | None = None,
-    ) -> Float[np.ndarray, "B V 3"]:
+        *,
+        shape: Float[np.ndarray, "*batch 10"] | None = None,
+        identity: SmplhIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch V 3"]:
         """Compute posed mesh vertices.
 
         Args:
@@ -129,9 +132,13 @@ class SMPLH(BodyModel):
         Returns:
             Posed vertex positions.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
         return self._kernel.forward_vertices(
             weights=self.weights,
-            shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
             pelvis_rotation=pelvis_rotation,
@@ -139,18 +146,21 @@ class SMPLH(BodyModel):
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            **identity,
         )
 
     def forward_skeleton(
         self,
-        shape: Float[np.ndarray, "B|1 10"],
-        body_pose: Float[np.ndarray, "B 21 N"] | Float[np.ndarray, "B 21 3 3"],
-        hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"],
-        pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        body_pose: Float[np.ndarray, "*batch 21 N"] | Float[np.ndarray, "*batch 21 3 3"],
+        hand_pose: Float[np.ndarray, "*batch 30 N"] | Float[np.ndarray, "*batch 30 3 3"],
+        pelvis_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
-    ) -> Float[np.ndarray, "B 52 4 4"]:
+        *,
+        shape: Float[np.ndarray, "*batch 10"] | None = None,
+        identity: SmplhIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch 52 4 4"]:
         """Compute posed joint transforms.
 
         Args:
@@ -165,9 +175,13 @@ class SMPLH(BodyModel):
         Returns:
             Joint transforms in the model hierarchy.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
             pelvis_rotation=pelvis_rotation,
@@ -175,7 +189,16 @@ class SMPLH(BodyModel):
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            **identity,
         )
+
+    def prepare_identity(
+        self,
+        shape: Float[np.ndarray, "*batch 10"],
+        skip_vertices: bool = False,
+    ) -> SmplhIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
 
     def get_rest_pose(
         self,

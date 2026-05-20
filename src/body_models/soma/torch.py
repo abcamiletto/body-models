@@ -53,7 +53,6 @@ class SOMA(BodyModel, nn.Module):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
-        cache_identity: bool = False,
         kernel: Literal["torch", "warp"] = "torch",
     ) -> None:
         """Initialize the SOMA model.
@@ -64,7 +63,6 @@ class SOMA(BodyModel, nn.Module):
             simplify: Mesh simplification factor to apply while loading.
             rotation_type: Rotation representation expected by pose inputs.
             match_warp: Whether to match Warp backend numerical conventions.
-            cache_identity: Whether to cache prepared identity state between calls.
             kernel: Backend kernel used for forward evaluation.
         """
         normalized_model_type = model_type.lower()
@@ -84,7 +82,6 @@ class SOMA(BodyModel, nn.Module):
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.match_warp = match_warp
-        self.cache_identity = cache_identity
         self._kernel = _get_kernel(kernel)
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
@@ -129,7 +126,6 @@ class SOMA(BodyModel, nn.Module):
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, self.model_type)
             self._identity_source = identity_sources.create_identity_source(self.model_type, transfer_data)
-        self._prepared_identity_cache = core.PreparedSomaIdentityCache()
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -166,13 +162,12 @@ class SOMA(BodyModel, nn.Module):
         hand_pose: Float[Tensor, "B 48 N"] | Float[Tensor, "B 48 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
-        identity: Float[Tensor, "B|1 I"] | None = None,
+        shape: Float[Tensor, "*batch I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
+        identity: core.SomaIdentity | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices: Any | None = None,
         apply_correctives: bool = True,
-        prepared_identity: core.PreparedSomaIdentity | None = None,
-        cache_identity: bool | None = None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute posed mesh vertices.
 
@@ -181,36 +176,32 @@ class SOMA(BodyModel, nn.Module):
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
             global_rotation: Global model rotation.
-            identity: Identity coefficients.
+            shape: Identity coefficients.
             scale_params: Per-part scale parameters.
+            identity: Optional output from :meth:`prepare_identity`.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
             apply_correctives: Whether to apply pose and identity correctives.
-            prepared_identity: Precomputed identity state to reuse for this call.
-            cache_identity: Whether to cache prepared identity state between calls.
 
         Returns:
             Posed vertex positions.
         """
         pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
-        identity_state = prepared_identity
-        if identity_state is None:
-            if cache_identity is None:
-                cache_identity = self.cache_identity
-            identity_state = self.prepare_identity(
-                identity=identity,
-                scale_params=scale_params,
-                pose=pose,
-                cache=cache_identity,
-            )
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            if scale_params is not None:
+                scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
+            identity = self.prepare_identity(shape, scale_params=scale_params)
         return self._kernel.forward_vertices(
             data=self.weights,
-            prepared_identity=identity_state,
             pose=pose,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
+            **identity,
             xp=torch,
         )
 
@@ -221,13 +212,12 @@ class SOMA(BodyModel, nn.Module):
         hand_pose: Float[Tensor, "B 48 N"] | Float[Tensor, "B 48 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
-        identity: Float[Tensor, "B|1 I"] | None = None,
+        shape: Float[Tensor, "*batch I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
+        identity: core.SomaIdentity | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices: Any | None = None,
         apply_correctives: bool = True,
-        prepared_identity: core.PreparedSomaIdentity | None = None,
-        cache_identity: bool | None = None,
     ) -> Float[Tensor, "B 77 4 4"]:
         """Compute posed joint transforms.
 
@@ -236,36 +226,32 @@ class SOMA(BodyModel, nn.Module):
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
             global_rotation: Global model rotation.
-            identity: Identity coefficients.
+            shape: Identity coefficients.
             scale_params: Per-part scale parameters.
+            identity: Optional output from :meth:`prepare_identity`.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
             apply_correctives: Whether to apply pose and identity correctives.
-            prepared_identity: Precomputed identity state to reuse for this call.
-            cache_identity: Whether to cache prepared identity state between calls.
 
         Returns:
             Joint transforms in the model hierarchy.
         """
         pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
-        identity_state = prepared_identity
-        if identity_state is None:
-            if cache_identity is None:
-                cache_identity = self.cache_identity
-            identity_state = self.prepare_identity(
-                identity=identity,
-                scale_params=scale_params,
-                pose=pose,
-                cache=cache_identity,
-            )
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            if scale_params is not None:
+                scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
+            identity = self.prepare_identity(shape, scale_params=scale_params)
         return self._kernel.forward_skeleton(
             data=self.weights,
-            prepared_identity=identity_state,
             pose=pose,
             global_translation=global_translation,
             joint_indices=joint_indices,
             apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
+            **identity,
             xp=torch,
         )
 
@@ -299,7 +285,7 @@ class SOMA(BodyModel, nn.Module):
             "global_rotation": global_rotation,
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
-        params["identity"] = torch.full(
+        params["shape"] = torch.full(
             (*batch_dims, self.identity_dim),
             self._default_identity_value,
             device=device,
@@ -307,7 +293,7 @@ class SOMA(BodyModel, nn.Module):
         )
         if self.num_scale_params is not None:
             params["scale_params"] = torch.zeros(
-                (1, self.num_scale_params),
+                (*batch_dims, self.num_scale_params),
                 device=device,
                 dtype=dtype,
             )
@@ -315,66 +301,30 @@ class SOMA(BodyModel, nn.Module):
 
     def prepare_identity(
         self,
+        shape: Float[Tensor, "*batch I"],
         *,
-        identity: Float[Tensor, "B|1 I"] | None = None,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
-        pose: Float[Tensor, "B ..."],
-        cache: bool = False,
-    ) -> core.PreparedSomaIdentity:
-        identity, scale_params = self._identity_inputs(identity=identity, scale_params=scale_params, pose=pose)
-        return core.prepare_identity_with_cache(
-            self._prepared_identity_cache,
-            identity,
-            scale_params,
-            self._prepare_identity_from_inputs,
-            torch.equal,
-            lambda tensor: tensor.clone(),
-            use_cache=cache,
-        )
-
-    def _identity_inputs(
-        self,
-        *,
-        identity: Float[Tensor, "B|1 I"] | None,
-        scale_params: Float[Tensor, "B|1 K"] | None,
-        pose: Float[Tensor, "B ..."],
-    ) -> tuple[Float[Tensor, "B I"], Float[Tensor, "B K"] | None]:
-        pose_ndim = self.num_rot_dims + 1
-        batch_shape = tuple(pose.shape[:-pose_ndim])
-        if identity is None:
-            identity = torch.full(
-                (*batch_shape, self.identity_dim),
-                self._default_identity_value,
-                device=pose.device,
-                dtype=pose.dtype,
-            )
-        elif identity.shape[:-1] == (1,) and batch_shape:
-            identity = torch.broadcast_to(identity, (*batch_shape, identity.shape[-1]))
-
+    ) -> core.SomaIdentity:
+        """Precompute identity-dependent SOMA state for repeated forward passes."""
         if self.num_scale_params is None:
-            if scale_params is not None:
-                raise ValueError("scale_params is only supported for SOMA model_type='mhr'.")
-            return identity, None
-
-        if scale_params is None:
+            scale_params = None
+        elif scale_params is None:
             scale_params = torch.zeros(
-                (*batch_shape, self.num_scale_params),
-                device=identity.device,
-                dtype=identity.dtype,
+                (*shape.shape[:-1], self.num_scale_params),
+                device=shape.device,
+                dtype=shape.dtype,
             )
-        elif scale_params.shape[:-1] == (1,) and batch_shape:
-            scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-        return identity, scale_params
+        return self._prepare_identity_from_inputs(shape, scale_params)
 
     def _prepare_identity_from_inputs(
         self,
-        identity: Float[Tensor, "B I"],
+        shape: Float[Tensor, "B I"],
         scale_params: Float[Tensor, "B K"] | None,
-    ) -> core.PreparedSomaIdentity:
+    ) -> core.SomaIdentity:
         rest_shape_full, rest_shape_active = identities.rest_shapes(
             data=self.weights,
             identity_source=self._identity_source,
-            identity=identity,
+            identity=shape,
             scale_params=scale_params,
             xp=torch,
         )

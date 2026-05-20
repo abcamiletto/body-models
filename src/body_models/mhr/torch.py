@@ -11,6 +11,7 @@ from torch import Tensor
 from body_models import common
 from body_models.base import BodyModel
 from body_models.mhr.backends import torch as backend
+from body_models.mhr.backends.core import MhrIdentity
 from body_models.mhr.constants import (
     MHR_BODY_POSE_DIM,
     MHR_HAND_PRESETS,
@@ -99,14 +100,16 @@ class MHR(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        shape: Float[Tensor, "B|1 45"],
-        body_pose: Float[Tensor, "B 100"],
-        hand_pose: Float[Tensor, "B 104"],
-        expression: Float[Tensor, "B 72"] | None = None,
-        global_rotation: Float[Tensor, "B 3"] | None = None,
-        global_translation: Float[Tensor, "B 3"] | None = None,
+        body_pose: Float[Tensor, "*batch 100"],
+        hand_pose: Float[Tensor, "*batch 104"],
+        expression: Float[Tensor, "*batch 72"] | None = None,
+        global_rotation: Float[Tensor, "*batch 3"] | None = None,
+        global_translation: Float[Tensor, "*batch 3"] | None = None,
         vertex_indices: Any | None = None,
-    ) -> Float[Tensor, "B V 3"]:
+        *,
+        shape: Float[Tensor, "*batch 45"] | None = None,
+        identity: MhrIdentity | None = None,
+    ) -> Float[Tensor, "*batch V 3"]:
         """Compute posed mesh vertices.
 
         Args:
@@ -121,26 +124,34 @@ class MHR(BodyModel, nn.Module):
         Returns:
             Posed vertex positions.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            if expression is not None:
+                expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression=expression)
         return backend.forward_vertices(
             weights=self.weights,
-            shape=shape,
             pose=pack_pose(torch, body_pose, hand_pose),
-            expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
+            **identity,
         )
 
     def forward_skeleton(
         self,
-        shape: Float[Tensor, "B|1 45"],
-        body_pose: Float[Tensor, "B 100"],
-        hand_pose: Float[Tensor, "B 104"],
-        expression: Float[Tensor, "B 72"] | None = None,
-        global_rotation: Float[Tensor, "B 3"] | None = None,
-        global_translation: Float[Tensor, "B 3"] | None = None,
+        body_pose: Float[Tensor, "*batch 100"],
+        hand_pose: Float[Tensor, "*batch 104"],
+        expression: Float[Tensor, "*batch 72"] | None = None,
+        global_rotation: Float[Tensor, "*batch 3"] | None = None,
+        global_translation: Float[Tensor, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
-    ) -> Float[Tensor, "B J 4 4"]:
+        *,
+        shape: Float[Tensor, "*batch 45"] | None = None,
+        identity: MhrIdentity | None = None,
+    ) -> Float[Tensor, "*batch J 4 4"]:
         """Compute posed joint transforms.
 
         Args:
@@ -155,15 +166,30 @@ class MHR(BodyModel, nn.Module):
         Returns:
             Joint transforms in the model hierarchy.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            if expression is not None:
+                expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            shape=shape,
             pose=pack_pose(torch, body_pose, hand_pose),
-            expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
+            **identity,
         )
+
+    def prepare_identity(
+        self,
+        shape: Float[Tensor, "*batch 45"],
+        expression: Float[Tensor, "*batch 72"] | None = None,
+        skip_vertices: bool = False,
+    ) -> MhrIdentity:
+        """Precompute shape- and expression-dependent state for repeated forward passes."""
+        return backend.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
 
     def get_rest_pose(
         self,

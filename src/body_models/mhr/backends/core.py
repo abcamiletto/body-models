@@ -1,7 +1,7 @@
 """Backend-agnostic MHR computation."""
 
 import math
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -13,6 +13,12 @@ Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 _LN2 = math.log(2)
+
+
+class MhrIdentity(TypedDict):
+    """Shape- and expression-dependent MHR state returned by ``prepare_identity``."""
+
+    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
 
 
 def apply_pose_correctives(
@@ -59,42 +65,30 @@ def forward_vertices(
     num_joints: int,
     shape_dim: int,
     expr_dim: int,
-    shape: Float[Array, "B 45"],
     pose: Float[Array, "B 204"],
-    expression: Float[Array, "B 72"] | None = None,
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     *,
+    rest_vertices: Float[Array, "*batch V 3"],
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
-    assert shape.ndim >= 1 and shape.shape[-1] == shape_dim
     assert pose.ndim >= 1 and pose.shape[-1] == 204
-    assert expression is None or (expression.ndim >= 1 and expression.shape[-1] == expr_dim)
     assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
-        xp = get_namespace(shape)
-    batch_shape = tuple(pose.shape[:-1])
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-    assert expression is None or tuple(expression.shape[:-1]) == batch_shape
+        xp = get_namespace(pose)
 
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
-        base_vertices = base_vertices[vertex_indices]
-        blendshape_dirs = blendshape_dirs[:, vertex_indices]
+        rest_vertices = rest_vertices[..., vertex_indices, :]
         skin_weights = skin_weights[vertex_indices]
         skin_indices = skin_indices[vertex_indices]
         corrective_W2 = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])[vertex_indices].reshape(
             -1, corrective_W2.shape[-1]
         )
-
-    if expression is None:
-        expression = common.zeros_as(shape, shape=(*batch_shape, expr_dim), xp=xp)
-
-    coeffs = xp.concat([shape, expression], axis=-1)
 
     t_g, r_g, s_g, j_p = _forward_skeleton_core(
         xp=xp,
@@ -107,7 +101,7 @@ def forward_vertices(
         shape_dim=shape_dim,
     )
 
-    v_t = base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)
+    v_t = rest_vertices
     v_t = v_t + apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp)
 
     lin_g = r_g * s_g[..., None]
@@ -142,6 +136,7 @@ def forward_skeleton(
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     *,
+    rest_vertices: Float[Array, "*batch V 3"] | None = None,
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
@@ -210,6 +205,28 @@ def forward_skeleton(
         T = xp.einsum("...ij,...njk->...nik", global_T, T)
 
     return T
+
+
+def prepare_identity(
+    *,
+    xp,
+    base_vertices: Float[Array, "V 3"] | None,
+    blendshape_dirs: Float[Array, "117 V 3"] | None,
+    shape: Float[Array, "*batch 45"],
+    expression: Float[Array, "*batch 72"] | None = None,
+    expr_dim: int = 72,
+    skip_vertices: bool = False,
+) -> MhrIdentity:
+    """Precompute shape- and expression-dependent MHR state for repeated forward passes."""
+    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    identity: MhrIdentity = {}
+    if not skip_vertices:
+        assert base_vertices is not None and blendshape_dirs is not None
+        if expression is None:
+            expression = common.zeros_as(shape, shape=(*shape.shape[:-1], expr_dim), xp=xp)
+        coeffs = xp.concat([shape, expression], axis=-1)
+        identity["rest_vertices"] = base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)
+    return identity
 
 
 def _forward_skeleton_core(

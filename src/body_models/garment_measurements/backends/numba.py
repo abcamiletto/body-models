@@ -9,19 +9,14 @@ from body_models.garment_measurements.backends import core
 from body_models.garment_measurements.io import GarmentMeasurementsWeights
 from body_models.rotations import RotationType
 
-__all__ = ["forward_vertices", "forward_skeleton"]
 
-
-def forward_vertices(
+def prepare_identity(
     weights: GarmentMeasurementsWeights,
-    shape: Float[np.ndarray, "B C"],
-    pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
-    global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-    global_translation: Float[np.ndarray, "B 3"] | None = None,
-    vertex_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
-):
-    vertices, skeleton = core.forward_unskinned_vertices(
+    shape: Float[np.ndarray, "*batch C"],
+    skip_vertices: bool = False,
+) -> core.GarmentMeasurementsIdentity:
+    return core.prepare_identity(
+        xp=np,
         mean_vertices=weights.mean_vertices,
         components=weights.components,
         eigenvalues=weights.eigenvalues,
@@ -29,9 +24,34 @@ def forward_vertices(
         mvc_weights=weights.mvc_weights,
         kinematic_fronts=weights.kinematic_fronts,
         shape=shape,
+        skip_vertices=skip_vertices,
+    )
+
+
+__all__ = ["forward_vertices", "forward_skeleton", "prepare_identity"]
+
+
+def forward_vertices(
+    weights: GarmentMeasurementsWeights,
+    pose: Float[np.ndarray, "*batch J N"] | Float[np.ndarray, "*batch J 3 3"],
+    global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+    global_translation: Float[np.ndarray, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
+    *,
+    rest_vertices: Float[np.ndarray, "*batch V 3"],
+    bind_skeleton: Float[np.ndarray, "*batch J 7"],
+    local_bind_translations: Float[np.ndarray, "*batch J 3"],
+):
+    vertices, skeleton = core.forward_unskinned_vertices(
+        bind_quats=weights.bind_quats,
+        kinematic_fronts=weights.kinematic_fronts,
         pose=pose,
         vertex_indices=vertex_indices,
         rotation_type=rotation_type,
+        rest_vertices=rest_vertices,
+        bind_skeleton=bind_skeleton,
+        local_bind_translations=local_bind_translations,
         xp=np,
     )
     joint_indices = weights.skin_joint_indices
@@ -61,12 +81,15 @@ def forward_vertices(
 
 def forward_skeleton(
     weights: GarmentMeasurementsWeights,
-    shape: Float[np.ndarray, "B C"],
-    pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
+    pose: Float[np.ndarray, "*batch J N"] | Float[np.ndarray, "*batch J 3 3"],
     global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
     global_translation: Float[np.ndarray, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
+    *,
+    rest_vertices: Float[np.ndarray, "*batch V 3"] | None = None,
+    bind_skeleton: Float[np.ndarray, "*batch J 7"],
+    local_bind_translations: Float[np.ndarray, "*batch J 3"],
 ):
     return core.forward_skeleton(
         mean_vertices=weights.mean_vertices,
@@ -75,12 +98,14 @@ def forward_skeleton(
         bind_quats=weights.bind_quats,
         mvc_weights=weights.mvc_weights,
         kinematic_fronts=weights.kinematic_fronts,
-        shape=shape,
         pose=pose,
         global_rotation=global_rotation,
         global_translation=global_translation,
         joint_indices=joint_indices,
         rotation_type=rotation_type,
+        rest_vertices=rest_vertices,
+        bind_skeleton=bind_skeleton,
+        local_bind_translations=local_bind_translations,
         xp=np,
     )
 
