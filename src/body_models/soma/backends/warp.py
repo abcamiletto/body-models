@@ -10,14 +10,14 @@ __all__ = [
     "forward_skeleton",
     "forward_vertices",
     "linear_blend_skinning",
-    "PreparedSomaIdentity",
+    "SomaIdentity",
     "prepare_identity_from_rest_shape",
 ]
 
 fit_rigid_transform = core.fit_rigid_transform
 forward_skeleton = torch_backend.forward_skeleton
 apply_pose_correctives = torch_backend.apply_pose_correctives
-PreparedSomaIdentity = core.PreparedSomaIdentity
+SomaIdentity = core.SomaIdentity
 
 
 def prepare_identity_from_rest_shape(*args, **kwargs):

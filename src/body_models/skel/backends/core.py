@@ -5,7 +5,7 @@ The torch.py backend adds forward_skeleton_mesh on top of this core computation.
 """
 
 import math
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -25,18 +25,27 @@ NUM_POSE_PARAMS = 46
 NUM_BETAS = 10
 
 
+class SkelIdentity(TypedDict):
+    """Shape-dependent SKEL state returned by ``prepare_identity``."""
+
+    rest_joints: Float[Array, "*batch 24 3"]
+    local_joint_offsets: Float[Array, "*batch 24 3"]
+    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+
+
 def forward_vertices(
     weights: SkelWeights,
-    shape: Float[Array, "B 10"],
-    pose: Float[Array, "B 46"],
-    global_rotation: Float[Array, "B 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
+    pose: Float[Array, "*batch 46"],
+    global_rotation: Float[Array, "*batch 3"] | None = None,
+    global_translation: Float[Array, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
     *,
+    rest_joints: Float[Array, "*batch 24 3"],
+    local_joint_offsets: Float[Array, "*batch 24 3"],
+    rest_vertices: Float[Array, "*batch V 3"],
     xp: Any = None,
-) -> Float[Array, "B V 3"]:
+) -> Float[Array, "*batch V 3"]:
     """Compute mesh vertices [B, V, 3]."""
-    assert shape.ndim >= 1 and shape.shape[-1] >= 1
     assert pose.ndim >= 1 and pose.shape[-1] == NUM_POSE_PARAMS
     assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
@@ -44,33 +53,26 @@ def forward_vertices(
     if xp is None:
         xp = get_namespace(pose)
     batch_shape = tuple(pose.shape[:-1])
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
-    v_template = weights.v_template
-    shapedirs = weights.shapedirs
     posedirs = weights.posedirs
     skin_weights = weights.skin_weights
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
-        v_template = v_template[vertex_indices]
-        shapedirs = shapedirs[vertex_indices]
+        rest_vertices = rest_vertices[..., vertex_indices, :]
         skin_weights = skin_weights[vertex_indices]
         posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, vertex_indices].reshape(posedirs.shape[0], -1)
 
-    Nv = v_template.shape[0]
+    Nv = rest_vertices.shape[-2]
 
     if global_translation is None:
         global_translation = common.zeros_as(pose, shape=(*batch_shape, 3), xp=xp)
-
-    J = weights.j_template + xp.einsum("jdi,...i->...jd", weights.j_shapedirs, shape)
-    J_rel = _compute_J_rel(xp, J, weights.parent)
 
     # Forward kinematics
     G_local = _compute_local_transforms(
         xp=xp,
         pose=pose,
-        J=J,
-        J_rel=J_rel,
+        J=rest_joints,
+        J_rel=local_joint_offsets,
         all_axes=weights.all_axes,
         rotation_indices=weights.rotation_indices,
         apose_R=weights.apose_R,
@@ -84,9 +86,6 @@ def forward_vertices(
     )
     G = _propagate_transforms(xp, G_local, weights.parents[1:])
 
-    # Shape blend shapes (simplified mesh for output)
-    v_shaped = v_template + xp.einsum("vdi,...i->...vd", shapedirs, shape)
-
     # Pose blend shapes (SMPL-compatible)
     eye3 = common.eye_as(weights.apose_R, batch_dims=(*batch_shape, 1), xp=xp)
     R_smpl = xp.broadcast_to(eye3, (*batch_shape, weights.num_joints_smpl, 3, 3))
@@ -96,12 +95,12 @@ def forward_vertices(
     )
     pose_feat = (R_smpl[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
     pose_offsets = (pose_feat @ posedirs).reshape(*batch_shape, Nv, 3)
-    v_posed = v_shaped + pose_offsets
+    v_posed = rest_vertices + pose_offsets
 
     # Skin LBS (optimized: separate R and t, avoid homogeneous coordinates)
     R_joint = G[..., :3, :3]
     t_world = G[..., :3, 3]
-    t_skin = t_world - xp.squeeze(R_joint @ J[..., None], axis=-1)  # [B, J, 3]
+    t_skin = t_world - xp.squeeze(R_joint @ rest_joints[..., None], axis=-1)  # [B, J, 3]
 
     W_R = xp.einsum("vj,...jkl->...vkl", skin_weights, R_joint)
     W_t = xp.einsum("vj,...jk->...vk", skin_weights, t_skin)
@@ -118,16 +117,17 @@ def forward_vertices(
 
 def forward_skeleton(
     weights: SkelWeights,
-    shape: Float[Array, "B 10"],
-    pose: Float[Array, "B 46"],
-    global_rotation: Float[Array, "B 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
+    pose: Float[Array, "*batch 46"],
+    global_rotation: Float[Array, "*batch 3"] | None = None,
+    global_translation: Float[Array, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
     *,
+    rest_joints: Float[Array, "*batch 24 3"],
+    local_joint_offsets: Float[Array, "*batch 24 3"],
+    rest_vertices: Float[Array, "*batch V 3"] | None = None,
     xp: Any = None,
-) -> Float[Array, "B 24 4 4"]:
+) -> Float[Array, "*batch 24 4 4"]:
     """Compute skeleton joint transforms [B, 24, 4, 4]."""
-    assert shape.ndim >= 1 and shape.shape[-1] >= 1
     assert pose.ndim >= 1 and pose.shape[-1] == NUM_POSE_PARAMS
     assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
@@ -135,7 +135,6 @@ def forward_skeleton(
     if xp is None:
         xp = get_namespace(pose)
     batch_shape = tuple(pose.shape[:-1])
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
     dtype = pose.dtype
 
     if global_translation is None:
@@ -154,15 +153,12 @@ def forward_skeleton(
                 active_joints.add(cur)
                 cur = full_parents[cur]
 
-    J = weights.j_template + xp.einsum("jdi,...i->...jd", weights.j_shapedirs, shape)
-    J_rel = _compute_J_rel(xp, J, weights.parent)
-
     # Forward kinematics
     G_local = _compute_local_transforms(
         xp=xp,
         pose=pose,
-        J=J,
-        J_rel=J_rel,
+        J=rest_joints,
+        J_rel=local_joint_offsets,
         all_axes=weights.all_axes,
         rotation_indices=weights.rotation_indices,
         apose_R=weights.apose_R,
@@ -195,6 +191,27 @@ def forward_skeleton(
     last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     G = xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
     return G
+
+
+def prepare_identity(
+    weights: SkelWeights,
+    shape: Float[Array, "*batch 10"],
+    skip_vertices: bool = False,
+    *,
+    xp: Any = None,
+) -> SkelIdentity:
+    """Precompute shape-dependent SKEL state for repeated forward passes."""
+    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    if xp is None:
+        xp = get_namespace(shape)
+    joints = weights.j_template + xp.einsum("jdi,...i->...jd", weights.j_shapedirs, shape)
+    identity: SkelIdentity = {
+        "rest_joints": joints,
+        "local_joint_offsets": _compute_J_rel(xp, joints, weights.parent),
+    }
+    if not skip_vertices:
+        identity["rest_vertices"] = weights.v_template + xp.einsum("vdi,...i->...vd", weights.shapedirs, shape)
+    return identity
 
 
 def _compute_J_rel(

@@ -269,10 +269,9 @@ def prepare_identity(
     }
     if not skip_vertices:
         assert v_template is not None and shapedirs is not None
-        identity["rest_vertices"] = v_template + xp.einsum(
-            "...i,vdi->...vd", shape, shapedirs[:, :, : shape.shape[-1]]
-        )
+        identity["rest_vertices"] = v_template + xp.einsum("...i,vdi->...vd", shape, shapedirs[:, :, : shape.shape[-1]])
     return identity
+
 
 def batched_forward_kinematics(
     xp,

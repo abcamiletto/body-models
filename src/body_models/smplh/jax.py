@@ -13,6 +13,7 @@ from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplh.backends import jax as backend
+from body_models.smplh.backends.core import SmplhIdentity
 from body_models.smplh.io import get_model_path, load_model_data
 from body_models.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
 
@@ -103,14 +104,16 @@ class SMPLH(BodyModel):
 
     def forward_vertices(
         self,
-        shape: Float[jax.Array, "B|1 10"],
-        body_pose: Float[jax.Array, "B 21 N"] | Float[jax.Array, "B 21 3 3"],
-        hand_pose: Float[jax.Array, "B 30 N"] | Float[jax.Array, "B 30 3 3"],
-        pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        global_translation: Float[jax.Array, "B 3"] | None = None,
+        body_pose: Float[jax.Array, "*batch 21 N"] | Float[jax.Array, "*batch 21 3 3"],
+        hand_pose: Float[jax.Array, "*batch 30 N"] | Float[jax.Array, "*batch 30 3 3"],
+        pelvis_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
+        global_translation: Float[jax.Array, "*batch 3"] | None = None,
         vertex_indices: Any | None = None,
-    ) -> Float[jax.Array, "B V 3"]:
+        *,
+        shape: Float[jax.Array, "*batch 10"] | None = None,
+        identity: SmplhIdentity | None = None,
+    ) -> Float[jax.Array, "*batch V 3"]:
         """Compute posed mesh vertices.
 
         Args:
@@ -125,9 +128,13 @@ class SMPLH(BodyModel):
         Returns:
             Posed vertex positions.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
         return backend.forward_vertices(
             weights=self.weights,
-            shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
             pelvis_rotation=pelvis_rotation,
@@ -135,18 +142,21 @@ class SMPLH(BodyModel):
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            **identity,
         )
 
     def forward_skeleton(
         self,
-        shape: Float[jax.Array, "B|1 10"],
-        body_pose: Float[jax.Array, "B 21 N"] | Float[jax.Array, "B 21 3 3"],
-        hand_pose: Float[jax.Array, "B 30 N"] | Float[jax.Array, "B 30 3 3"],
-        pelvis_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        global_translation: Float[jax.Array, "B 3"] | None = None,
+        body_pose: Float[jax.Array, "*batch 21 N"] | Float[jax.Array, "*batch 21 3 3"],
+        hand_pose: Float[jax.Array, "*batch 30 N"] | Float[jax.Array, "*batch 30 3 3"],
+        pelvis_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
+        global_translation: Float[jax.Array, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
-    ) -> Float[jax.Array, "B 52 4 4"]:
+        *,
+        shape: Float[jax.Array, "*batch 10"] | None = None,
+        identity: SmplhIdentity | None = None,
+    ) -> Float[jax.Array, "*batch 52 4 4"]:
         """Compute posed joint transforms.
 
         Args:
@@ -161,9 +171,13 @@ class SMPLH(BodyModel):
         Returns:
             Joint transforms in the model hierarchy.
         """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            shape=shape,
             body_pose=body_pose,
             hand_pose=hand_pose,
             pelvis_rotation=pelvis_rotation,
@@ -171,7 +185,16 @@ class SMPLH(BodyModel):
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            **identity,
         )
+
+    def prepare_identity(
+        self,
+        shape: Float[jax.Array, "*batch 10"],
+        skip_vertices: bool = False,
+    ) -> SmplhIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
 
     def get_rest_pose(
         self,

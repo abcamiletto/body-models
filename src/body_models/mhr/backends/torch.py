@@ -4,21 +4,39 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
+from body_models.mhr.backends.core import MhrIdentity
 from body_models.mhr.backends.core import forward_skeleton as _forward_skeleton
 from body_models.mhr.backends.core import forward_vertices as _forward_vertices
+from body_models.mhr.backends.core import prepare_identity as _prepare_identity
 from body_models.mhr.io import MhrWeights
 
-__all__ = ["forward_vertices", "forward_skeleton"]
+__all__ = ["forward_vertices", "forward_skeleton", "prepare_identity"]
+
+
+def prepare_identity(
+    weights: MhrWeights,
+    shape: Float[Tensor, "*batch 45"],
+    expression: Float[Tensor, "*batch 72"] | None = None,
+    skip_vertices: bool = False,
+) -> MhrIdentity:
+    return _prepare_identity(
+        xp=torch,
+        base_vertices=weights.base_vertices,
+        blendshape_dirs=weights.blendshape_dirs,
+        shape=shape,
+        expression=expression,
+        skip_vertices=skip_vertices,
+    )
 
 
 def forward_vertices(
     weights: MhrWeights,
-    shape: Float[Tensor, "B 45"],
-    pose: Float[Tensor, "B 204"],
-    expression: Float[Tensor, "B 72"] | None = None,
+    pose: Float[Tensor, "*batch 204"],
     global_rotation: Float[Tensor, "B 3"] | None = None,
     global_translation: Float[Tensor, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
+    *,
+    rest_vertices: Float[Tensor, "*batch V 3"],
 ):
     return _forward_vertices(
         base_vertices=weights.base_vertices,
@@ -34,26 +52,25 @@ def forward_vertices(
         num_joints=len(weights.parents),
         shape_dim=45,
         expr_dim=72,
-        shape=shape,
         pose=pose,
-        expression=expression,
         global_rotation=global_rotation,
         global_translation=global_translation,
         vertex_indices=vertex_indices,
         corrective_W1=weights.corrective_W1,
         corrective_W2=weights.corrective_W2,
+        rest_vertices=rest_vertices,
         xp=torch,
     )
 
 
 def forward_skeleton(
     weights: MhrWeights,
-    shape: Float[Tensor, "B 45"],
-    pose: Float[Tensor, "B 204"],
-    expression: Float[Tensor, "B 72"] | None = None,
+    pose: Float[Tensor, "*batch 204"],
     global_rotation: Float[Tensor, "B 3"] | None = None,
     global_translation: Float[Tensor, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
+    *,
+    rest_vertices: Float[Tensor, "*batch V 3"] | None = None,
 ):
     return _forward_skeleton(
         joint_offsets=weights.joint_offsets,

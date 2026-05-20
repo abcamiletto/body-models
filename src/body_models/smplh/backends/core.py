@@ -1,6 +1,6 @@
 """Backend-agnostic SMPL-H computation."""
 
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from jaxtyping import Float
 
@@ -15,6 +15,14 @@ Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
+class SmplhIdentity(TypedDict):
+    """Shape-dependent SMPL-H state returned by ``prepare_identity``."""
+
+    rest_joints: Float[Array, "*batch J 3"]
+    local_joint_offsets: Float[Array, "*batch J 3"]
+    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+
+
 def forward_vertices(
     # Model data
     v_template: Float[Array, "V 3"],
@@ -26,28 +34,27 @@ def forward_vertices(
     parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
-    # Inputs
-    shape: Float[Array, "B 10"],
-    body_pose: Float[Array, "B 21 N"] | Float[Array, "B 21 3 3"],
-    hand_pose: Float[Array, "B 30 N"] | Float[Array, "B 30 3 3"],
-    pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
+    body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
+    hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+    pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+    global_translation: Float[Array, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
+    rest_joints: Float[Array, "*batch J 3"],
+    local_joint_offsets: Float[Array, "*batch J 3"],
+    rest_vertices: Float[Array, "*batch V 3"],
     xp: Any = None,
-) -> Float[Array, "B V 3"]:
+) -> Float[Array, "*batch V 3"]:
     """Compute mesh vertices [B, V, 3]."""
-    assert shape.ndim >= 1 and shape.shape[-1] >= 1
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
-        xp = get_namespace(shape)
+        xp = get_namespace(body_pose)
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
-        v_template = v_template[vertex_indices]
-        shapedirs = shapedirs[vertex_indices]
+        rest_vertices = rest_vertices[..., vertex_indices, :]
         lbs_weights = lbs_weights[vertex_indices]
         posedirs = posedirs.reshape(posedirs.shape[0], -1, 3)[:, vertex_indices].reshape(posedirs.shape[0], -1)
     num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
@@ -55,23 +62,18 @@ def forward_vertices(
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
 
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-
     v_t, j_t, pose_matrices, T_world = _forward_core(
         xp=xp,
-        v_template=v_template,
-        shapedirs=shapedirs,
-        j_template=j_template,
-        j_shapedirs=j_shapedirs,
-        parents=parents,
         kinematic_fronts=kinematic_fronts,
         hand_mean=hand_mean,
-        shape=shape,
         body_pose=body_pose,
         hand_pose=hand_pose,
         pelvis_rotation=pelvis_rotation,
         skeleton_only=False,
         rotation_type=rotation_type,
+        rest_joints=rest_joints,
+        local_joint_offsets=local_joint_offsets,
+        rest_vertices=rest_vertices,
     )
     assert v_t is not None
 
@@ -91,24 +93,23 @@ def forward_skeleton(
     parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
-    # Inputs
-    shape: Float[Array, "B 10"],
-    body_pose: Float[Array, "B 21 N"] | Float[Array, "B 21 3 3"],
-    hand_pose: Float[Array, "B 30 N"] | Float[Array, "B 30 3 3"],
-    pelvis_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
+    body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
+    hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+    pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+    global_translation: Float[Array, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
+    rest_joints: Float[Array, "*batch J 3"],
+    local_joint_offsets: Float[Array, "*batch J 3"],
     xp: Any = None,
-) -> Float[Array, "B J 4 4"]:
+) -> Float[Array, "*batch J 4 4"]:
     """Compute skeleton joint transforms [B, J, 4, 4]."""
-    assert shape.ndim >= 1 and shape.shape[-1] >= 1
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
-        xp = get_namespace(shape)
+        xp = get_namespace(body_pose)
     active_fronts = kinematic_fronts
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
@@ -132,24 +133,18 @@ def forward_skeleton(
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
 
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-
     _, _, _, T_world = _forward_core(
         xp=xp,
-        v_template=None,
-        shapedirs=None,
-        j_template=j_template,
-        j_shapedirs=j_shapedirs,
-        parents=parents,
         kinematic_fronts=active_fronts,
         hand_mean=hand_mean,
-        shape=shape,
         body_pose=body_pose,
         hand_pose=hand_pose,
         pelvis_rotation=pelvis_rotation,
         skeleton_only=True,
         joint_indices=joint_indices,
         rotation_type=rotation_type,
+        rest_joints=rest_joints,
+        local_joint_offsets=local_joint_offsets,
     )
 
     # Extract R and t from T_world
@@ -175,19 +170,16 @@ def forward_skeleton(
 
 def _forward_core(
     xp,
-    v_template: Float[Array, "V 3"] | None,
-    shapedirs: Float[Array, "V 3 S"] | None,
-    j_template: Float[Array, "J 3"],
-    j_shapedirs: Float[Array, "J 3 S"],
-    parents: list[int],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "2 45"],
-    shape: Float[Array, "*batch 10"],
     body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
     pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     skeleton_only: bool,
     rotation_type: RotationType,
+    rest_joints: Float[Array, "*batch J 3"],
+    local_joint_offsets: Float[Array, "*batch J 3"],
+    rest_vertices: Float[Array, "*batch V 3"] | None = None,
     joint_indices: list[int] | None = None,
 ) -> tuple[
     Float[Array, "*batch V 3"] | None,
@@ -199,7 +191,6 @@ def _forward_core(
     num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
     pose_ndim = num_rot_dims + 1
     batch_shape = body_pose.shape[:-pose_ndim]
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
 
     # Apply hand pose mean
     if rotation_type == "axis_angle":
@@ -225,22 +216,36 @@ def _forward_core(
     hand_matrices = SO3.convert(hand_pose_adj, src="axis_angle", dst="rotmat", xp=xp)
     pose_matrices = xp.concat([pelvis_matrices, body_matrices, hand_matrices], axis=-3)
 
-    # Joint locations from precomputed regression matrices
-    shape_dim = shape.shape[-1]
-    j_t = j_template + xp.einsum("...p,jdp->...jd", shape, j_shapedirs[:, :, :shape_dim])
+    v_t = None if skeleton_only else rest_vertices
 
-    # Shape blend shapes for mesh output
-    if skeleton_only:
-        v_t = None
-    else:
-        assert v_template is not None and shapedirs is not None
-        v_t = v_template + xp.einsum("...i,vdi->...vd", shape, shapedirs[:, :, :shape_dim])
+    T_world = smpl_core.batched_forward_kinematics(
+        xp, pose_matrices, local_joint_offsets, kinematic_fronts, joint_indices
+    )
 
-    # Forward kinematics
+    return v_t, rest_joints, pose_matrices, T_world
+
+
+def prepare_identity(
+    *,
+    xp,
+    v_template: Float[Array, "V 3"] | None,
+    shapedirs: Float[Array, "V 3 S"] | None,
+    j_template: Float[Array, "J 3"],
+    j_shapedirs: Float[Array, "J 3 S"],
+    parents: list[int],
+    shape: Float[Array, "*batch S"],
+    skip_vertices: bool = False,
+) -> SmplhIdentity:
+    """Precompute shape-dependent SMPL-H state for repeated forward passes."""
+    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    j_t = j_template + xp.einsum("...p,jdp->...jd", shape, j_shapedirs[:, :, : shape.shape[-1]])
     j0 = j_t[..., 0:1, :]
     j_rest = j_t[..., 1:, :] - j_t[..., parents[1:], :]
-    t_local = xp.concat([j0, j_rest], axis=-2)
-
-    T_world = smpl_core.batched_forward_kinematics(xp, pose_matrices, t_local, kinematic_fronts, joint_indices)
-
-    return v_t, j_t, pose_matrices, T_world
+    identity: SmplhIdentity = {
+        "rest_joints": j_t,
+        "local_joint_offsets": xp.concat([j0, j_rest], axis=-2),
+    }
+    if not skip_vertices:
+        assert v_template is not None and shapedirs is not None
+        identity["rest_vertices"] = v_template + xp.einsum("...i,vdi->...vd", shape, shapedirs[:, :, : shape.shape[-1]])
+    return identity

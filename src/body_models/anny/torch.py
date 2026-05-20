@@ -12,6 +12,7 @@ from torch import Tensor
 from body_models import common
 from body_models.anny import pose as pose_utils
 from body_models.anny.backends import torch as torch_backend
+from body_models.anny.backends.core import AnnyIdentity
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
 from body_models.base import BodyModel
@@ -109,102 +110,100 @@ class ANNY(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        gender: Float[Tensor, "B"],
-        age: Float[Tensor, "B"],
-        muscle: Float[Tensor, "B"],
-        weight: Float[Tensor, "B"],
-        height: Float[Tensor, "B"],
-        proportions: Float[Tensor, "B"],
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices: Any | None = None,
+        *,
+        shape: Float[Tensor, "*batch 6"] | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[Tensor, "B V 3"]:
         """Compute posed mesh vertices.
 
         Args:
-            gender: Gender phenotype value.
-            age: Age phenotype value.
-            muscle: Muscle phenotype value.
-            weight: Weight phenotype value.
-            height: Height phenotype value.
-            proportions: Body proportion phenotype value.
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
+            shape: Packed phenotype controls.
+            identity: Optional output from :meth:`prepare_identity`.
 
         Returns:
             Posed vertex positions.
         """
         pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            identity = self.prepare_identity(torch.broadcast_to(shape, (*batch_shape, shape.shape[-1])))
         return self._kernel.forward_vertices(
             weights=self.weights,
-            gender=gender,
-            age=age,
-            muscle=muscle,
-            weight=weight,
-            height=height,
-            proportions=proportions,
             pose=pose,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
+            **identity,
         )
 
     def forward_skeleton(
         self,
-        gender: Float[Tensor, "B"],
-        age: Float[Tensor, "B"],
-        muscle: Float[Tensor, "B"],
-        weight: Float[Tensor, "B"],
-        height: Float[Tensor, "B"],
-        proportions: Float[Tensor, "B"],
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices: Any | None = None,
+        *,
+        shape: Float[Tensor, "*batch 6"] | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[Tensor, "B J 4 4"]:
         """Compute posed joint transforms.
 
         Args:
-            gender: Gender phenotype value.
-            age: Age phenotype value.
-            muscle: Muscle phenotype value.
-            weight: Weight phenotype value.
-            height: Height phenotype value.
-            proportions: Body proportion phenotype value.
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
+            shape: Packed phenotype controls.
+            identity: Optional output from :meth:`prepare_identity`.
 
         Returns:
             Joint transforms in the model hierarchy.
         """
         pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            gender=gender,
-            age=age,
-            muscle=muscle,
-            weight=weight,
-            height=height,
-            proportions=proportions,
             pose=pose,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
+            **identity,
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[Tensor, "*batch 6"],
+        skip_vertices: bool = False,
+    ) -> AnnyIdentity:
+        """Precompute phenotype-dependent state for repeated forward passes."""
+        return self._kernel.prepare_identity(
+            self.weights,
+            shape,
+            extrapolate_phenotypes=self.extrapolate_phenotypes,
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(
@@ -232,10 +231,7 @@ class ANNY(BodyModel, nn.Module):
             axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return {
-            **{
-                name: torch.full((*batch_dims,), 0.5, device=device, dtype=dtype)
-                for name in ["gender", "age", "muscle", "weight", "height", "proportions"]
-            },
+            "shape": torch.full((*batch_dims, 6), 0.5, device=device, dtype=dtype),
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
