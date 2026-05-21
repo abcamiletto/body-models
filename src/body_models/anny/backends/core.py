@@ -1,6 +1,6 @@
 """Backend-agnostic ANNY computation."""
 
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from jaxtyping import Float
 from nanomanifold import SO3
@@ -15,132 +15,70 @@ Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, paren
 IDENTITY_LABELS = ("gender", "age", "muscle", "weight", "height", "proportions")
 
 
+class AnnyIdentity(TypedDict):
+    """Phenotype-dependent ANNY state returned by ``prepare_identity``."""
+
+    rest_bone_poses: Float[Array, "*batch J 4 4"]
+    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+
+
+class AnnyPreparedPose(TypedDict):
+    """Pose-dependent ANNY state returned by ``prepare_pose``."""
+
+    bone_poses: Float[Array, "*batch J 4 4"]
+    bone_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
+
+
 def forward_vertices(
     # Model data
-    template_vertices: Float[Array, "V 3"],
-    blendshapes: Float[Array, "S V 3"],
-    template_bone_heads: Float[Array, "J 3"],
-    template_bone_tails: Float[Array, "J 3"],
-    bone_heads_blendshapes: Float[Array, "S J 3"],
-    bone_tails_blendshapes: Float[Array, "S J 3"],
-    bone_rolls_rotmat: Float[Array, "J 3 3"],
     lbs_weights: Float[Array, "V J"],
-    phenotype_mask: Float[Array, "S P"],
-    anchors: Any,
-    kinematic_fronts: list[Front],
-    y_axis: Float[Array, "3"],
-    degenerate_rotation: Float[Array, "3 3"],
-    extrapolate_phenotypes: bool,
-    # Inputs
-    gender: Float[Array, "B"],
-    age: Float[Array, "B"],
-    muscle: Float[Array, "B"],
-    weight: Float[Array, "B"],
-    height: Float[Array, "B"],
-    proportions: Float[Array, "B"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
+    global_translation: Float[Array, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
     *,
+    rest_vertices: Float[Array, "*batch V 3"],
+    bone_transforms: Float[Array, "*batch J 4 4"],
     xp: Any = None,
-) -> Float[Array, "B V 3"]:
+) -> Float[Array, "*batch V 3"]:
     """Compute mesh vertices [B, V, 3]."""
     if xp is None:
-        xp = get_namespace(gender)
+        xp = get_namespace(rest_vertices)
 
-    rest_verts, bone_transforms = forward_unskinned_vertices(
-        template_vertices=template_vertices,
-        blendshapes=blendshapes,
-        template_bone_heads=template_bone_heads,
-        template_bone_tails=template_bone_tails,
-        bone_heads_blendshapes=bone_heads_blendshapes,
-        bone_tails_blendshapes=bone_tails_blendshapes,
-        bone_rolls_rotmat=bone_rolls_rotmat,
-        phenotype_mask=phenotype_mask,
-        anchors=anchors,
-        kinematic_fronts=kinematic_fronts,
-        y_axis=y_axis,
-        degenerate_rotation=degenerate_rotation,
-        extrapolate_phenotypes=extrapolate_phenotypes,
-        gender=gender,
-        age=age,
-        muscle=muscle,
-        weight=weight,
-        height=height,
-        proportions=proportions,
-        pose=pose,
-        vertex_indices=vertex_indices,
-        rotation_type=rotation_type,
-        xp=xp,
-    )
+    rest_verts = rest_vertices
     lbs = lbs_weights if vertex_indices is None else lbs_weights[xp.asarray(vertex_indices)]
+    if vertex_indices is not None:
+        rest_verts = rest_verts[..., xp.asarray(vertex_indices), :]
     vertices = linear_blend_skinning(xp, rest_verts, bone_transforms, lbs)
-    return apply_global_transform(xp, vertices, global_rotation, global_translation, rotation_type)
+    return apply_global_transform(xp, vertices, global_translation)
 
 
-def forward_unskinned_vertices(
+def prepare_pose(
     # Model data
-    template_vertices: Float[Array, "V 3"],
-    blendshapes: Float[Array, "S V 3"],
-    template_bone_heads: Float[Array, "J 3"],
-    template_bone_tails: Float[Array, "J 3"],
-    bone_heads_blendshapes: Float[Array, "S J 3"],
-    bone_tails_blendshapes: Float[Array, "S J 3"],
-    bone_rolls_rotmat: Float[Array, "J 3 3"],
-    phenotype_mask: Float[Array, "S P"],
-    anchors: Any,
     kinematic_fronts: list[Front],
-    y_axis: Float[Array, "3"],
-    degenerate_rotation: Float[Array, "3 3"],
-    extrapolate_phenotypes: bool,
-    # Inputs
-    gender: Float[Array, "B"],
-    age: Float[Array, "B"],
-    muscle: Float[Array, "B"],
-    weight: Float[Array, "B"],
-    height: Float[Array, "B"],
-    proportions: Float[Array, "B"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    vertex_indices: list[int] | None = None,
+    pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType = "axis_angle",
     *,
+    rest_bone_poses: Float[Array, "*batch J 4 4"],
+    skip_vertices: bool = False,
     xp: Any = None,
-) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+) -> AnnyPreparedPose:
+    """Precompute pose-dependent ANNY state for repeated forward passes."""
     if xp is None:
-        xp = get_namespace(gender)
-
-    if vertex_indices is not None:
-        vertex_indices = xp.asarray(vertex_indices)
-        template_vertices = template_vertices[vertex_indices]
-        blendshapes = blendshapes[:, vertex_indices]
+        xp = get_namespace(pose)
 
     pose_T = _pose_to_transform(xp, pose, rotation_type)
-    coeffs, _, bone_transforms = _forward_core(
+    bone_poses, bone_transforms = _forward_core(
         xp=xp,
-        template_bone_heads=template_bone_heads,
-        template_bone_tails=template_bone_tails,
-        bone_heads_blendshapes=bone_heads_blendshapes,
-        bone_tails_blendshapes=bone_tails_blendshapes,
-        bone_rolls_rotmat=bone_rolls_rotmat,
-        phenotype_mask=phenotype_mask,
-        anchors=anchors,
         kinematic_fronts=kinematic_fronts,
-        y_axis=y_axis,
-        degenerate_rotation=degenerate_rotation,
-        extrapolate_phenotypes=extrapolate_phenotypes,
-        gender=gender,
-        age=age,
-        muscle=muscle,
-        weight=weight,
-        height=height,
-        proportions=proportions,
+        rest_bone_poses=rest_bone_poses,
         pose_T=pose_T,
+        skip_transforms=skip_vertices,
     )
-
-    rest_verts = template_vertices + xp.einsum("...s,svd->...vd", coeffs, blendshapes)
-    return rest_verts, bone_transforms
+    prepared_pose: AnnyPreparedPose = {"bone_poses": bone_poses}
+    if skip_vertices:
+        return prepared_pose
+    assert bone_transforms is not None
+    prepared_pose["bone_transforms"] = bone_transforms
+    return prepared_pose
 
 
 def linear_blend_skinning(
@@ -160,14 +98,8 @@ def linear_blend_skinning(
 def apply_global_transform(
     xp,
     vertices: Float[Array, "*batch V 3"],
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
-    rotation_type: RotationType = "axis_angle",
 ) -> Float[Array, "B V 3"]:
-    if global_rotation is not None:
-        global_rotation = xp.asarray(global_rotation, dtype=vertices.dtype)
-        R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
-        vertices = (R_global @ vertices.mT).mT
     if global_translation is not None:
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
         vertices = vertices + global_translation[..., None, :]
@@ -179,169 +111,70 @@ def identity_shape(
     blendshapes: Float[Array, "S V 3"],
     phenotype_mask: Float[Array, "S P"],
     anchors: Any,
-    identity: Float[Array, "B 6"],
+    shape: Float[Array, "*batch 6"],
     *,
     extrapolate_phenotypes: bool = False,
     xp: Any = None,
-) -> Float[Array, "B V 3"]:
+) -> Float[Array, "*batch V 3"]:
     """Compute ANNY rest vertices from the six public phenotype controls."""
     if xp is None:
-        xp = get_namespace(identity)
+        xp = get_namespace(shape)
 
     coeffs = _phenotype_to_coeffs(
         xp=xp,
         phenotype_mask=phenotype_mask,
         anchors=anchors,
         extrapolate_phenotypes=extrapolate_phenotypes,
-        gender=identity[..., 0],
-        age=identity[..., 1],
-        muscle=identity[..., 2],
-        weight=identity[..., 3],
-        height=identity[..., 4],
-        proportions=identity[..., 5],
+        gender=shape[..., 0],
+        age=shape[..., 1],
+        muscle=shape[..., 2],
+        weight=shape[..., 3],
+        height=shape[..., 4],
+        proportions=shape[..., 5],
     )
     return template_vertices + xp.einsum("...s,svd->...vd", coeffs, blendshapes)
 
 
 def forward_skeleton(
     # Model data
-    template_bone_heads: Float[Array, "J 3"],
-    template_bone_tails: Float[Array, "J 3"],
-    bone_heads_blendshapes: Float[Array, "S J 3"],
-    bone_tails_blendshapes: Float[Array, "S J 3"],
-    bone_rolls_rotmat: Float[Array, "J 3 3"],
-    phenotype_mask: Float[Array, "S P"],
-    anchors: Any,
-    kinematic_fronts: list[Front],
-    y_axis: Float[Array, "3"],
-    degenerate_rotation: Float[Array, "3 3"],
-    extrapolate_phenotypes: bool,
-    # Inputs
-    gender: Float[Array, "B"],
-    age: Float[Array, "B"],
-    muscle: Float[Array, "B"],
-    weight: Float[Array, "B"],
-    height: Float[Array, "B"],
-    proportions: Float[Array, "B"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
+    global_translation: Float[Array, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
     *,
+    bone_poses: Float[Array, "*batch J 4 4"],
     xp: Any = None,
-) -> Float[Array, "B J 4 4"]:
+) -> Float[Array, "*batch J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4]."""
     if xp is None:
-        xp = get_namespace(gender)
-
-    pose_T = _pose_to_transform(xp, pose, rotation_type)
-    active_fronts = kinematic_fronts
+        xp = get_namespace(bone_poses)
+    transforms = bone_poses
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
-        num_joints = template_bone_heads.shape[0]
+        num_joints = bone_poses.shape[-3]
         if any(joint < 0 or joint >= num_joints for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {num_joints})")
-
-        parents = [-1] * num_joints
-        for joints, joint_parents in kinematic_fronts:
-            for joint, parent in zip(joints, joint_parents):
-                parents[joint] = parent
-
-        active_joints = set()
-        for joint in joint_indices:
-            cur = joint
-            while cur >= 0 and cur not in active_joints:
-                active_joints.add(cur)
-                cur = parents[cur]
-
-        active_fronts = []
-        for joints, joint_parents in kinematic_fronts:
-            pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
-            if pairs:
-                active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
-    _, bone_poses, _ = _forward_core(
-        xp=xp,
-        template_bone_heads=template_bone_heads,
-        template_bone_tails=template_bone_tails,
-        bone_heads_blendshapes=bone_heads_blendshapes,
-        bone_tails_blendshapes=bone_tails_blendshapes,
-        bone_rolls_rotmat=bone_rolls_rotmat,
-        phenotype_mask=phenotype_mask,
-        anchors=anchors,
-        kinematic_fronts=active_fronts,
-        y_axis=y_axis,
-        degenerate_rotation=degenerate_rotation,
-        extrapolate_phenotypes=extrapolate_phenotypes,
-        gender=gender,
-        age=age,
-        muscle=muscle,
-        weight=weight,
-        height=height,
-        proportions=proportions,
-        pose_T=pose_T,
-        joint_indices=joint_indices,
-    )
-
-    transforms = bone_poses
+        transforms = transforms[..., joint_indices, :, :]
 
     # Global transform
-    if global_rotation is not None or global_translation is not None:
+    if global_translation is not None:
         # Create contiguous identity matrices (broadcast returns non-contiguous view)
         batch_shape = transforms.shape[:-3]
         G = common.eye_as(transforms, batch_dims=batch_shape, xp=xp)
-        if global_rotation is not None:
-            global_rotation = xp.asarray(global_rotation, dtype=transforms.dtype)
-            R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
-            G = common.set(G, (..., slice(None, 3), slice(None, 3)), R_global, copy=False, xp=xp)
-        if global_translation is not None:
-            global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
-            G = common.set(G, (..., slice(None, 3), 3), global_translation, copy=False, xp=xp)
+        global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
+        G = common.set(G, (..., slice(None, 3), 3), global_translation, copy=False, xp=xp)
         transforms = G[..., None, :, :] @ transforms
     return transforms
 
 
 def _forward_core(
     xp,
-    template_bone_heads: Float[Array, "J 3"],
-    template_bone_tails: Float[Array, "J 3"],
-    bone_heads_blendshapes: Float[Array, "S J 3"],
-    bone_tails_blendshapes: Float[Array, "S J 3"],
-    bone_rolls_rotmat: Float[Array, "J 3 3"],
-    phenotype_mask: Float[Array, "S P"],
-    anchors: dict[str, Float[Array, "A"]],
     kinematic_fronts: list[Front],
-    y_axis: Float[Array, "3"],
-    degenerate_rotation: Float[Array, "3 3"],
-    extrapolate_phenotypes: bool,
-    gender: Float[Array, "*batch"],
-    age: Float[Array, "*batch"],
-    muscle: Float[Array, "*batch"],
-    weight: Float[Array, "*batch"],
-    height: Float[Array, "*batch"],
-    proportions: Float[Array, "*batch"],
+    rest_bone_poses: Float[Array, "*batch J 4 4"],
     pose_T: Float[Array, "*batch J 4 4"],
+    skip_transforms: bool = False,
     joint_indices: list[int] | None = None,
-) -> tuple[Float[Array, "B S"], Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
-    """Core forward: returns (blendshape_coeffs, bone_poses, bone_transforms)."""
-    # Phenotype -> blendshape coefficients
-    coeffs = _phenotype_to_coeffs(
-        xp=xp,
-        phenotype_mask=phenotype_mask,
-        anchors=anchors,
-        extrapolate_phenotypes=extrapolate_phenotypes,
-        gender=gender,
-        age=age,
-        muscle=muscle,
-        weight=weight,
-        height=height,
-        proportions=proportions,
-    )
-
-    # Rest bone poses from blendshapes
-    heads = template_bone_heads + xp.einsum("...s,sjd->...jd", coeffs, bone_heads_blendshapes)
-    tails = template_bone_tails + xp.einsum("...s,sjd->...jd", coeffs, bone_tails_blendshapes)
-    rest_poses = _bone_poses_from_heads_tails(xp, heads, tails, bone_rolls_rotmat, y_axis, degenerate_rotation)
+) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
+    """Core forward: returns (bone_poses, bone_transforms)."""
+    rest_poses = rest_bone_poses
 
     # Root parameterization
     root_rest = rest_poses[..., 0, :, :]
@@ -356,9 +189,59 @@ def _forward_core(
 
     # Forward kinematics
     bone_poses, bone_transforms = _forward_kinematics(
-        xp, kinematic_fronts, rest_poses, delta_T, base_T, joint_indices=joint_indices
+        xp,
+        kinematic_fronts,
+        rest_poses,
+        delta_T,
+        base_T,
+        skip_transforms=skip_transforms,
+        joint_indices=joint_indices,
     )
-    return coeffs, bone_poses, bone_transforms
+    return bone_poses, bone_transforms
+
+
+def prepare_identity(
+    *,
+    xp,
+    template_vertices: Float[Array, "V 3"] | None,
+    blendshapes: Float[Array, "S V 3"] | None,
+    template_bone_heads: Float[Array, "J 3"],
+    template_bone_tails: Float[Array, "J 3"],
+    bone_heads_blendshapes: Float[Array, "S J 3"],
+    bone_tails_blendshapes: Float[Array, "S J 3"],
+    bone_rolls_rotmat: Float[Array, "J 3 3"],
+    phenotype_mask: Float[Array, "S P"],
+    anchors: Any,
+    y_axis: Float[Array, "3"],
+    degenerate_rotation: Float[Array, "3 3"],
+    extrapolate_phenotypes: bool,
+    shape: Float[Array, "*batch 6"],
+    skip_vertices: bool = False,
+) -> AnnyIdentity:
+    """Precompute phenotype-dependent ANNY state for repeated forward passes."""
+    coeffs = _phenotype_to_coeffs(
+        xp=xp,
+        phenotype_mask=phenotype_mask,
+        anchors=anchors,
+        extrapolate_phenotypes=extrapolate_phenotypes,
+        gender=shape[..., 0],
+        age=shape[..., 1],
+        muscle=shape[..., 2],
+        weight=shape[..., 3],
+        height=shape[..., 4],
+        proportions=shape[..., 5],
+    )
+    heads = template_bone_heads + xp.einsum("...s,sjd->...jd", coeffs, bone_heads_blendshapes)
+    tails = template_bone_tails + xp.einsum("...s,sjd->...jd", coeffs, bone_tails_blendshapes)
+    identity: AnnyIdentity = {
+        "rest_bone_poses": _bone_poses_from_heads_tails(
+            xp, heads, tails, bone_rolls_rotmat, y_axis, degenerate_rotation
+        )
+    }
+    if not skip_vertices:
+        assert template_vertices is not None and blendshapes is not None
+        identity["rest_vertices"] = template_vertices + xp.einsum("...s,svd->...vd", coeffs, blendshapes)
+    return identity
 
 
 def _phenotype_to_coeffs(
@@ -414,7 +297,7 @@ def _phenotype_to_coeffs(
             alpha = xp.clip(alpha, 0, 1)
 
         # Build weight matrix
-        anchor_indices = xp.arange(n_anchors)
+        anchor_indices = xp.cumsum(xp.ones_like(anchor_arr, dtype=idx.dtype), axis=0) - 1
         w = xp.where(anchor_indices == idx_m1[..., None], 1 - alpha[..., None], 0)
         w = w + xp.where(anchor_indices == idx[..., None], alpha[..., None], 0)
 
@@ -426,7 +309,7 @@ def _phenotype_to_coeffs(
     caucasian = xp.full_like(gender, caucasian, dtype=dtype)
     race = xp.stack([african, asian, caucasian], axis=-1)
     race_sum = xp.sum(race, axis=-1, keepdims=True)
-    race_sum = xp.where(race_sum == 0, xp.asarray(1.0, dtype=dtype), race_sum)
+    race_sum = xp.where(race_sum == 0, xp.ones_like(race_sum), race_sum)
     race = race / race_sum
 
     # Stack all phenotype weights
@@ -503,8 +386,9 @@ def _forward_kinematics(
     rest_poses: Float[Array, "*batch J 4 4"],
     delta_T: Float[Array, "*batch J 4 4"],
     base_T: Float[Array, "*batch 4 4"],
+    skip_transforms: bool = False,
     joint_indices: list[int] | None = None,
-) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
+) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 4 4"] | None]:
     """Parallel forward kinematics (autograd-compatible)."""
     J = rest_poses.shape[-3]
 
@@ -539,10 +423,10 @@ def _forward_kinematics(
 
     if joint_indices is None:
         poses_tensor = xp.stack(poses, axis=-3)
-        transforms_tensor = xp.stack(transforms, axis=-3)
+        transforms_tensor = None if skip_transforms else xp.stack(transforms, axis=-3)
     else:
         poses_tensor = xp.stack([poses[j] for j in joint_indices], axis=-3)
-        transforms_tensor = xp.stack([transforms[j] for j in joint_indices], axis=-3)
+        transforms_tensor = None if skip_transforms else xp.stack([transforms[j] for j in joint_indices], axis=-3)
     return poses_tensor, transforms_tensor
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from jaxtyping import Float
 from nanomanifold import SE3, SO3
@@ -14,45 +14,41 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 
+class GarmentMeasurementsIdentity(TypedDict):
+    """Shape-dependent GarmentMeasurements state returned by ``prepare_identity``."""
+
+    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+    bind_skeleton: Float[Array, "*batch J 7"]
+    local_bind_translations: Float[Array, "*batch J 3"]
+
+
+class GarmentMeasurementsPreparedPose(TypedDict):
+    """Pose-dependent GarmentMeasurements state returned by ``prepare_pose``."""
+
+    posed_skeleton: Float[Array, "*batch J 7"]
+    skinning_skeleton: NotRequired[Float[Array, "*batch J 7"]]
+
+
 def forward_vertices(
-    mean_vertices: Float[Array, "V 3"],
-    components: Float[Array, "V 3 C"],
-    eigenvalues: Float[Array, "C"],
-    bind_quats: Float[Array, "J 4"],
     skin_weights: Float[Array, "V J"],
-    mvc_weights: Float[Array, "V J"],
-    kinematic_fronts: list[Front],
-    shape: Float[Array, "B C"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
+    rest_vertices: Float[Array, "*batch V 3"],
+    skinning_skeleton: Float[Array, "*batch J 7"],
     xp: Any,
 ) -> Float[Array, "B V 3"]:
     """Evaluate shaped and posed body vertices [B, V, 3]."""
-    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-    batch_shape = pose.shape[: -(num_rot_dims + 1)]
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-    vertices, final_skeleton = forward_unskinned_vertices(
-        mean_vertices=mean_vertices,
-        components=components,
-        eigenvalues=eigenvalues,
-        bind_quats=bind_quats,
-        mvc_weights=mvc_weights,
-        kinematic_fronts=kinematic_fronts,
-        shape=shape,
-        pose=pose,
-        vertex_indices=vertex_indices,
-        rotation_type=rotation_type,
-        xp=xp,
-    )
+    vertices = rest_vertices
     weights = skin_weights
     if vertex_indices is not None:
-        weights = weights[xp.asarray(vertex_indices)]
+        vertex_indices = xp.asarray(vertex_indices)
+        vertices = vertices[..., vertex_indices, :]
+        weights = weights[vertex_indices]
 
-    skin_mats = SE3.to_matrix(final_skeleton, xp=xp)
+    skin_mats = SE3.to_matrix(skinning_skeleton, xp=xp)
     vertices = linear_blend_skinning(xp, vertices, skin_mats, weights)
     vertices = _apply_global_transform(
         values=vertices,
@@ -64,40 +60,31 @@ def forward_vertices(
     return vertices
 
 
-def forward_unskinned_vertices(
-    mean_vertices: Float[Array, "V 3"],
-    components: Float[Array, "V 3 C"],
-    eigenvalues: Float[Array, "C"],
+def prepare_pose(
     bind_quats: Float[Array, "J 4"],
-    mvc_weights: Float[Array, "V J"],
     kinematic_fronts: list[Front],
-    shape: Float[Array, "B C"],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
+    bind_skeleton: Float[Array, "*batch J 7"],
+    local_bind_translations: Float[Array, "*batch J 3"],
+    skip_vertices: bool = False,
     xp: Any,
-) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 7"]]:
-    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-    batch_shape = pose.shape[: -(num_rot_dims + 1)]
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-    shaped_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
-    bind_skeleton, posed_skeleton = _forward_skeleton_se3(
-        shaped_vertices=shaped_vertices,
+) -> GarmentMeasurementsPreparedPose:
+    """Precompute pose-dependent GarmentMeasurements state for repeated forward passes."""
+    posed_skeleton = _forward_skeleton_se3(
         bind_quats=bind_quats,
-        mvc_weights=mvc_weights,
+        local_bind_translations=local_bind_translations,
         kinematic_fronts=kinematic_fronts,
         pose=pose,
         rotation_type=rotation_type,
         xp=xp,
     )
 
-    final_skeleton = SE3.multiply(posed_skeleton, SE3.inverse(bind_skeleton, xp=xp), xp=xp)
-    vertices = shaped_vertices
-    if vertex_indices is not None:
-        vertex_indices = xp.asarray(vertex_indices)
-        vertices = vertices[..., vertex_indices, :]
-    return vertices, final_skeleton
+    prepared_pose: GarmentMeasurementsPreparedPose = {"posed_skeleton": posed_skeleton}
+    if not skip_vertices:
+        prepared_pose["skinning_skeleton"] = SE3.multiply(posed_skeleton, SE3.inverse(bind_skeleton, xp=xp), xp=xp)
+    return prepared_pose
 
 
 def linear_blend_skinning(
@@ -115,36 +102,16 @@ def linear_blend_skinning(
 
 
 def forward_skeleton(
-    mean_vertices: Float[Array, "V 3"],
-    components: Float[Array, "V 3 C"],
-    eigenvalues: Float[Array, "C"],
-    bind_quats: Float[Array, "J 4"],
-    mvc_weights: Float[Array, "V J"],
-    kinematic_fronts: list[Front],
-    shape: Float[Array, "B C"],
-    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
+    posed_skeleton: Float[Array, "*batch J 7"],
     xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space joint transforms [B, J, 4, 4]."""
-    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-    batch_shape = pose.shape[: -(num_rot_dims + 1)]
-    shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-    shaped_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
-    _, skeleton = _forward_skeleton_se3(
-        shaped_vertices=shaped_vertices,
-        bind_quats=bind_quats,
-        mvc_weights=mvc_weights,
-        kinematic_fronts=kinematic_fronts,
-        pose=pose,
-        rotation_type=rotation_type,
-        xp=xp,
-    )
-
+    skeleton = posed_skeleton
     skeleton = _apply_global_se3(
         skeleton=skeleton,
         global_rotation=global_rotation,
@@ -178,30 +145,53 @@ def _shape_vertices(
 
 def _forward_skeleton_se3(
     *,
-    shaped_vertices: Float[Array, "B V 3"],
     bind_quats: Float[Array, "J 4"],
-    mvc_weights: Float[Array, "V J"],
+    local_bind_translations: Float[Array, "*batch J 3"],
     kinematic_fronts: list[Front],
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     xp: Any,
-) -> tuple[Float[Array, "B J 7"], Float[Array, "B J 7"]]:
-    batch_shape = shaped_vertices.shape[:-2]
-    mvc_weights = xp.asarray(mvc_weights, dtype=shaped_vertices.dtype)
-    bind_quats = xp.asarray(bind_quats, dtype=shaped_vertices.dtype)
-    joint_positions = xp.einsum("vj,...vd->...jd", mvc_weights, shaped_vertices)
+) -> Float[Array, "B J 7"]:
+    batch_shape = local_bind_translations.shape[:-2]
+    bind_quats = xp.asarray(bind_quats, dtype=local_bind_translations.dtype)
     bind_quats = xp.broadcast_to(bind_quats, (*batch_shape, *bind_quats.shape))
-    bind_global_quats = _propagate_quats(bind_quats, kinematic_fronts, xp=xp)
-    bind_trans = _local_translations_from_positions(joint_positions, bind_global_quats, kinematic_fronts, xp=xp)
-
-    bind_local = SE3.from_rt(bind_quats, bind_trans, xp=xp)
-    bind_global = _propagate_se3(bind_local, kinematic_fronts, xp=xp)
 
     pose_quats = SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
     posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
-    posed_local = SE3.from_rt(posed_quats, bind_trans, xp=xp)
+    posed_local = SE3.from_rt(posed_quats, local_bind_translations, xp=xp)
     posed_global = _propagate_se3(posed_local, kinematic_fronts, xp=xp)
-    return bind_global, posed_global
+    return posed_global
+
+
+def prepare_identity(
+    *,
+    xp,
+    mean_vertices: Float[Array, "V 3"] | None,
+    components: Float[Array, "V 3 C"] | None,
+    eigenvalues: Float[Array, "C"] | None,
+    bind_quats: Float[Array, "J 4"],
+    mvc_weights: Float[Array, "V J"],
+    kinematic_fronts: list[Front],
+    shape: Float[Array, "*batch C"],
+    skip_vertices: bool = False,
+) -> GarmentMeasurementsIdentity:
+    """Precompute shape-dependent GarmentMeasurements state for repeated forward passes."""
+    assert mean_vertices is not None and components is not None and eigenvalues is not None
+    rest_vertices = _shape_vertices(mean_vertices, components, eigenvalues, shape, xp=xp)
+    mvc_weights = xp.asarray(mvc_weights, dtype=rest_vertices.dtype)
+    bind_quats = xp.asarray(bind_quats, dtype=rest_vertices.dtype)
+    joint_positions = xp.einsum("vj,...vd->...jd", mvc_weights, rest_vertices)
+    bind_quats = xp.broadcast_to(bind_quats, (*rest_vertices.shape[:-2], *bind_quats.shape))
+    bind_global_quats = _propagate_quats(bind_quats, kinematic_fronts, xp=xp)
+    bind_trans = _local_translations_from_positions(joint_positions, bind_global_quats, kinematic_fronts, xp=xp)
+    bind_local = SE3.from_rt(bind_quats, bind_trans, xp=xp)
+    identity: GarmentMeasurementsIdentity = {
+        "bind_skeleton": _propagate_se3(bind_local, kinematic_fronts, xp=xp),
+        "local_bind_translations": bind_trans,
+    }
+    if not skip_vertices:
+        identity["rest_vertices"] = rest_vertices
+    return identity
 
 
 def _local_translations_from_positions(

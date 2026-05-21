@@ -1,7 +1,7 @@
 """NumPy frontend for ANNY."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -9,6 +9,7 @@ from nanomanifold import SO3
 
 from body_models.anny import pose as pose_utils
 from body_models.anny.backends import numpy as numpy_backend
+from body_models.anny.backends.core import AnnyIdentity, AnnyPreparedPose
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
 from body_models.base import BodyModel
@@ -37,6 +38,18 @@ class ANNY(BodyModel):
         rotation_type: RotationType = "axis_angle",
         kernel: Literal["numpy", "numba"] = "numpy",
     ) -> None:
+        """Initialize the ANNY model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            rig: Rig variant to load.
+            topology: Mesh topology variant to load.
+            all_phenotypes: Whether to expose the full phenotype control set.
+            extrapolate_phenotypes: Whether phenotype values may extend beyond the trained range.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
+        """
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
         if topology not in ("default", "makehuman"):
@@ -88,66 +101,128 @@ class ANNY(BodyModel):
 
     def forward_vertices(
         self,
-        gender: Float[np.ndarray, "B"],
-        age: Float[np.ndarray, "B"],
-        muscle: Float[np.ndarray, "B"],
-        weight: Float[np.ndarray, "B"],
-        height: Float[np.ndarray, "B"],
-        proportions: Float[np.ndarray, "B"],
         body_pose: Float[np.ndarray, "B 64 N"] | Float[np.ndarray, "B 64 3 3"],
         head_pose: Float[np.ndarray, "B 60 N"] | Float[np.ndarray, "B 60 3 3"],
         hand_pose: Float[np.ndarray, "B 38 N"] | Float[np.ndarray, "B 38 3 3"],
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 6"] | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
-        """Evaluate posed mesh vertices."""
+        """Compute posed mesh vertices.
+
+        Args:
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+            shape: Packed phenotype controls.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Posed vertex positions.
+        """
         pose = pose_utils.pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+        prepared_pose = self.prepare_pose(pose, identity=identity)
+        assert "rest_vertices" in identity
+        assert "bone_transforms" in prepared_pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            gender=gender,
-            age=age,
-            muscle=muscle,
-            weight=weight,
-            height=height,
-            proportions=proportions,
-            pose=pose,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            rotation_type=self.rotation_type,
-            extrapolate_phenotypes=self.extrapolate_phenotypes,
+            rest_vertices=identity["rest_vertices"],
+            bone_transforms=prepared_pose["bone_transforms"],
         )
 
     def forward_skeleton(
         self,
-        gender: Float[np.ndarray, "B"],
-        age: Float[np.ndarray, "B"],
-        muscle: Float[np.ndarray, "B"],
-        weight: Float[np.ndarray, "B"],
-        height: Float[np.ndarray, "B"],
-        proportions: Float[np.ndarray, "B"],
         body_pose: Float[np.ndarray, "B 64 N"] | Float[np.ndarray, "B 64 3 3"],
         head_pose: Float[np.ndarray, "B 60 N"] | Float[np.ndarray, "B 60 3 3"],
         hand_pose: Float[np.ndarray, "B 38 N"] | Float[np.ndarray, "B 38 3 3"],
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 6"] | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[np.ndarray, "B J 4 4"]:
-        """Evaluate world-space joint transforms."""
+        """Compute posed joint transforms.
+
+        Args:
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+            shape: Packed phenotype controls.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         pose = pose_utils.pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
+        prepared_pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            gender=gender,
-            age=age,
-            muscle=muscle,
-            weight=weight,
-            height=height,
-            proportions=proportions,
-            pose=pose,
             global_translation=global_translation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
+            bone_poses=prepared_pose["bone_poses"],
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[np.ndarray, "*batch 6"],
+        skip_vertices: bool = False,
+    ) -> AnnyIdentity:
+        """Precompute phenotype-dependent state for repeated forward passes."""
+        return self._kernel.prepare_identity(
+            self.weights,
+            shape,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
+            skip_vertices=skip_vertices,
+        )
+
+    def phenotype_to_shape(
+        self,
+        gender: Float[np.ndarray, "*batch"],
+        age: Float[np.ndarray, "*batch"],
+        muscle: Float[np.ndarray, "*batch"],
+        weight: Float[np.ndarray, "*batch"],
+        height: Float[np.ndarray, "*batch"],
+        proportions: Float[np.ndarray, "*batch"],
+    ) -> Float[np.ndarray, "*batch 6"]:
+        """Pack named phenotype controls into the ANNY shape vector."""
+        return np.stack([gender, age, muscle, weight, height, proportions], axis=-1)
+
+    def prepare_pose(
+        self,
+        pose: Float[np.ndarray, "B J N"] | Float[np.ndarray, "B J 3 3"],
+        *,
+        identity: AnnyIdentity,
+        skip_vertices: bool = False,
+    ) -> AnnyPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            pose,
+            rotation_type=self.rotation_type,
+            rest_bone_poses=identity["rest_bone_poses"],
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(
@@ -156,7 +231,6 @@ class ANNY(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
-        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
@@ -173,10 +247,7 @@ class ANNY(BodyModel):
             axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np).copy()
         return {
-            **{
-                name: np.full((*batch_dims,), 0.5, dtype=dtype)
-                for name in ["gender", "age", "muscle", "weight", "height", "proportions"]
-            },
+            "shape": np.full((*batch_dims, 6), 0.5, dtype=dtype),
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
@@ -190,7 +261,6 @@ class ANNY(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = np.asarray(ANNY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
@@ -203,7 +273,6 @@ class ANNY(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
 

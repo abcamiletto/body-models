@@ -13,6 +13,7 @@ from .. import common
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import torch as backend
+from .backends.core import GarmentMeasurementsIdentity, GarmentMeasurementsPreparedPose
 from .io import get_model_path, load_model_data
 from .constants import GARMENT_BODY_PRESETS, GARMENT_HAND_PRESETS, GARMENT_JOINTS
 from .pose import pack_pose, unpack_pose
@@ -34,6 +35,12 @@ class GarmentMeasurements(BodyModel, nn.Module):
         *,
         rotation_type: RotationType = "axis_angle",
     ) -> None:
+        """Initialize the GarmentMeasurements model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            rotation_type: Rotation representation expected by pose inputs.
+        """
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
@@ -76,46 +83,118 @@ class GarmentMeasurements(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        shape: Float[Tensor, "B C"],
-        body_pose: Float[Tensor, "B 25 N"] | Float[Tensor, "B 25 3 3"],
-        head_pose: Float[Tensor, "B 3 N"] | Float[Tensor, "B 3 3 3"],
-        hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        global_translation: Float[Tensor, "B 3"] | None = None,
+        body_pose: Float[Tensor, "*batch 25 N"] | Float[Tensor, "*batch 25 3 3"],
+        head_pose: Float[Tensor, "*batch 3 N"] | Float[Tensor, "*batch 3 3 3"],
+        hand_pose: Float[Tensor, "*batch 30 N"] | Float[Tensor, "*batch 30 3 3"],
+        pelvis_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"],
+        global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        global_translation: Float[Tensor, "*batch 3"] | None = None,
         vertex_indices: list[int] | None = None,
-    ) -> Float[Tensor, "B V 3"]:
+        *,
+        shape: Float[Tensor, "*batch C"] | None = None,
+        identity: GarmentMeasurementsIdentity | None = None,
+    ) -> Float[Tensor, "*batch V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         pose = pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+        pose = self.prepare_pose(pose, identity=identity)
+        assert "rest_vertices" in identity
+        assert "skinning_skeleton" in pose
         return backend.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            rest_vertices=identity["rest_vertices"],
+            skinning_skeleton=pose["skinning_skeleton"],
         )
 
     def forward_skeleton(
         self,
-        shape: Float[Tensor, "B C"],
-        body_pose: Float[Tensor, "B 25 N"] | Float[Tensor, "B 25 3 3"],
-        head_pose: Float[Tensor, "B 3 N"] | Float[Tensor, "B 3 3 3"],
-        hand_pose: Float[Tensor, "B 30 N"] | Float[Tensor, "B 30 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        global_translation: Float[Tensor, "B 3"] | None = None,
+        body_pose: Float[Tensor, "*batch 25 N"] | Float[Tensor, "*batch 25 3 3"],
+        head_pose: Float[Tensor, "*batch 3 N"] | Float[Tensor, "*batch 3 3 3"],
+        hand_pose: Float[Tensor, "*batch 30 N"] | Float[Tensor, "*batch 30 3 3"],
+        pelvis_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"],
+        global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        global_translation: Float[Tensor, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
-    ) -> Float[Tensor, "B J 4 4"]:
+        *,
+        shape: Float[Tensor, "*batch C"] | None = None,
+        identity: GarmentMeasurementsIdentity | None = None,
+    ) -> Float[Tensor, "*batch J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         pose = pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            posed_skeleton=pose["posed_skeleton"],
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[Tensor, "*batch C"],
+        skip_vertices: bool = False,
+    ) -> GarmentMeasurementsIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        pose: Float[Tensor, "*batch J N"] | Float[Tensor, "*batch J 3 3"],
+        *,
+        identity: GarmentMeasurementsIdentity,
+        skip_vertices: bool = False,
+    ) -> GarmentMeasurementsPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return backend.prepare_pose(
+            self.weights,
+            pose,
+            rotation_type=self.rotation_type,
+            bind_skeleton=identity["bind_skeleton"],
+            local_bind_translations=identity["local_bind_translations"],
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(

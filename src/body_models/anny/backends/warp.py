@@ -1,51 +1,28 @@
-"""Warp-accelerated ANNY Torch backend."""
+"""PyTorch ANNY backend."""
 
 import torch
-from jaxtyping import Float
 from torch import Tensor
+from jaxtyping import Float
 
-from body_models.anny.backends import core
-from body_models.anny.backends import torch as torch_backend
+from body_models.anny.backends.core import AnnyIdentity, AnnyPreparedPose
+from body_models.anny.backends.core import forward_skeleton as _forward_skeleton
+from body_models.anny.backends.core import forward_vertices as _forward_vertices
+from body_models.anny.backends.core import prepare_identity as _prepare_identity
+from body_models.anny.backends.core import prepare_pose as _prepare_pose
 from body_models.anny.io import AnnyWeights
 from body_models.rotations import RotationType
-from body_models.smpl.backends import warp as smpl_warp
 
-__all__ = ["forward_vertices", "forward_skeleton"]
+__all__ = ["forward_vertices", "forward_skeleton", "prepare_identity", "prepare_pose"]
 
 
-def forward_vertices(
+def prepare_identity(
     weights: AnnyWeights,
-    gender: Float[Tensor, "B"],
-    age: Float[Tensor, "B"],
-    muscle: Float[Tensor, "B"],
-    weight: Float[Tensor, "B"],
-    height: Float[Tensor, "B"],
-    proportions: Float[Tensor, "B"],
-    pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
-    global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-    global_translation: Float[Tensor, "B 3"] | None = None,
-    vertex_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
+    shape: Float[Tensor, "*batch 6"],
     extrapolate_phenotypes: bool = False,
-):
-    if pose.device.type != "cuda":
-        return torch_backend.forward_vertices(
-            weights=weights,
-            gender=gender,
-            age=age,
-            muscle=muscle,
-            weight=weight,
-            height=height,
-            proportions=proportions,
-            pose=pose,
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            vertex_indices=vertex_indices,
-            rotation_type=rotation_type,
-            extrapolate_phenotypes=extrapolate_phenotypes,
-        )
-
-    rest_vertices, bone_transforms = core.forward_unskinned_vertices(
+    skip_vertices: bool = False,
+) -> AnnyIdentity:
+    return _prepare_identity(
+        xp=torch,
         template_vertices=weights.template_vertices,
         blendshapes=weights.blendshapes,
         template_bone_heads=weights.template_bone_heads,
@@ -55,58 +32,61 @@ def forward_vertices(
         bone_rolls_rotmat=weights.bone_rolls_rotmat,
         phenotype_mask=weights.phenotype_mask,
         anchors=weights.anchors,
-        kinematic_fronts=weights.kinematic_fronts,
         y_axis=weights.y_axis,
         degenerate_rotation=weights.degenerate_rotation,
         extrapolate_phenotypes=extrapolate_phenotypes,
-        gender=gender,
-        age=age,
-        muscle=muscle,
-        weight=weight,
-        height=height,
-        proportions=proportions,
+        shape=shape,
+        skip_vertices=skip_vertices,
+    )
+
+
+def prepare_pose(
+    weights: AnnyWeights,
+    pose: Float[Tensor, "*batch J N"] | Float[Tensor, "*batch J 3 3"],
+    rotation_type: RotationType = "axis_angle",
+    *,
+    rest_bone_poses: Float[Tensor, "*batch J 4 4"],
+    skip_vertices: bool = False,
+) -> AnnyPreparedPose:
+    """Precompute pose-dependent state for repeated forward passes."""
+    return _prepare_pose(
+        xp=torch,
+        kinematic_fronts=weights.kinematic_fronts,
         pose=pose,
-        vertex_indices=vertex_indices,
         rotation_type=rotation_type,
+        rest_bone_poses=rest_bone_poses,
+        skip_vertices=skip_vertices,
+    )
+
+
+def forward_vertices(
+    weights: AnnyWeights,
+    global_translation: Float[Tensor, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
+    *,
+    rest_vertices: Float[Tensor, "*batch V 3"],
+    bone_transforms: Float[Tensor, "*batch J 4 4"],
+):
+    return _forward_vertices(
+        lbs_weights=weights.lbs_weights,
+        global_translation=global_translation,
+        vertex_indices=vertex_indices,
+        rest_vertices=rest_vertices,
+        bone_transforms=bone_transforms,
         xp=torch,
     )
-    joint_indices = weights.lbs_joint_indices
-    joint_weights = weights.lbs_joint_weights
-    if vertex_indices is not None:
-        joint_indices = joint_indices[vertex_indices]
-        joint_weights = joint_weights[vertex_indices]
-
-    vertices = smpl_warp.warp_affine_blend_skinning(rest_vertices, bone_transforms, joint_indices, joint_weights)
-    return core.apply_global_transform(torch, vertices, global_rotation, global_translation, rotation_type)
 
 
 def forward_skeleton(
     weights: AnnyWeights,
-    gender: Float[Tensor, "B"],
-    age: Float[Tensor, "B"],
-    muscle: Float[Tensor, "B"],
-    weight: Float[Tensor, "B"],
-    height: Float[Tensor, "B"],
-    proportions: Float[Tensor, "B"],
-    pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
-    global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
     global_translation: Float[Tensor, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
-    extrapolate_phenotypes: bool = False,
+    *,
+    bone_poses: Float[Tensor, "*batch J 4 4"],
 ):
-    return torch_backend.forward_skeleton(
-        weights=weights,
-        gender=gender,
-        age=age,
-        muscle=muscle,
-        weight=weight,
-        height=height,
-        proportions=proportions,
-        pose=pose,
-        global_rotation=global_rotation,
+    return _forward_skeleton(
         global_translation=global_translation,
         joint_indices=joint_indices,
-        rotation_type=rotation_type,
-        extrapolate_phenotypes=extrapolate_phenotypes,
+        bone_poses=bone_poses,
+        xp=torch,
     )

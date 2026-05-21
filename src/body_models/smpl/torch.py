@@ -1,7 +1,7 @@
 """PyTorch backend for SMPL model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -13,6 +13,7 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
+from body_models.smpl.backends.core import SmplIdentity, SmplPreparedPose
 from body_models.smpl.backends import torch as torch_backend
 from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS
 from body_models.smpl.io import get_model_path, load_model_data
@@ -36,6 +37,15 @@ class SMPL(BodyModel, nn.Module):
         rotation_type: RotationType = "axis_angle",
         kernel: Literal["torch", "warp"] = "torch",
     ):
+        """Initialize the SMPL model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            gender: Model gender variant to load.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
+        """
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
         if rotation_type not in VALID_ROTATION_TYPES:
@@ -99,42 +109,116 @@ class SMPL(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        shape: Float[Tensor, "B|1 10"],
-        body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        global_translation: Float[Tensor, "B 3"] | None = None,
-        vertex_indices=None,
-    ) -> Float[Tensor, "B V 3"]:
+        body_pose: Float[Tensor, "*batch 23 N"] | Float[Tensor, "*batch 23 3 3"],
+        pelvis_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        global_translation: Float[Tensor, "*batch 3"] | None = None,
+        vertex_indices: Any | None = None,
+        *,
+        shape: Float[Tensor, "*batch 10"] | None = None,
+        identity: SmplIdentity | None = None,
+    ) -> Float[Tensor, "*batch V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Posed vertex positions.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+        pose = self.prepare_pose(body_pose, pelvis_rotation, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            body_pose=body_pose,
-            pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
         self,
-        shape: Float[Tensor, "B|1 10"],
-        body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
-        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        global_translation: Float[Tensor, "B 3"] | None = None,
-        joint_indices=None,
-    ) -> Float[Tensor, "B 24 4 4"]:
+        body_pose: Float[Tensor, "*batch 23 N"] | Float[Tensor, "*batch 23 3 3"],
+        pelvis_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        global_translation: Float[Tensor, "*batch 3"] | None = None,
+        joint_indices: Any | None = None,
+        *,
+        shape: Float[Tensor, "*batch 10"] | None = None,
+        identity: SmplIdentity | None = None,
+    ) -> Float[Tensor, "*batch 24 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(body_pose, pelvis_rotation, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            body_pose=body_pose,
-            pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            joint_transforms=pose["joint_transforms"],
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[Tensor, "*batch 10"],
+        expression: Any | None = None,
+        skip_vertices: bool = False,
+    ) -> SmplIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        if expression is not None:
+            raise ValueError("SMPL does not support expression parameters.")
+        return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        body_pose: Float[Tensor, "*batch 23 N"] | Float[Tensor, "*batch 23 3 3"],
+        pelvis_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        *,
+        identity: SmplIdentity,
+        skip_vertices: bool = False,
+    ) -> SmplPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            body_pose,
+            pelvis_rotation,
+            rotation_type=self.rotation_type,
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:

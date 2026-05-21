@@ -10,6 +10,7 @@ from nanomanifold import SO3
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import numpy as numpy_backend
+from .backends.core import GarmentMeasurementsIdentity, GarmentMeasurementsPreparedPose
 from .io import get_model_path, load_model_data
 from .constants import GARMENT_BODY_PRESETS, GARMENT_HAND_PRESETS, GARMENT_JOINTS
 from .pose import pack_pose, unpack_pose
@@ -33,6 +34,13 @@ class GarmentMeasurements(BodyModel):
         rotation_type: RotationType = "axis_angle",
         kernel: Literal["numpy", "numba"] = "numpy",
     ) -> None:
+        """Initialize the GarmentMeasurements model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
+        """
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if kernel not in self.kernels:
@@ -77,48 +85,118 @@ class GarmentMeasurements(BodyModel):
 
     def forward_vertices(
         self,
-        shape: Float[np.ndarray, "B C"],
-        body_pose: Float[np.ndarray, "B 25 N"] | Float[np.ndarray, "B 25 3 3"],
-        head_pose: Float[np.ndarray, "B 3 N"] | Float[np.ndarray, "B 3 3 3"],
-        hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"],
-        pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        body_pose: Float[np.ndarray, "*batch 25 N"] | Float[np.ndarray, "*batch 25 3 3"],
+        head_pose: Float[np.ndarray, "*batch 3 N"] | Float[np.ndarray, "*batch 3 3 3"],
+        hand_pose: Float[np.ndarray, "*batch 30 N"] | Float[np.ndarray, "*batch 30 3 3"],
+        pelvis_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"],
+        global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
         vertex_indices: list[int] | None = None,
-    ) -> Float[np.ndarray, "B V 3"]:
-        """Evaluate posed mesh vertices."""
+        *,
+        shape: Float[np.ndarray, "*batch C"] | None = None,
+        identity: GarmentMeasurementsIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         pose = pack_pose(np, pelvis_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+        pose = self.prepare_pose(pose, identity=identity)
+        assert "rest_vertices" in identity
+        assert "skinning_skeleton" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            rest_vertices=identity["rest_vertices"],
+            skinning_skeleton=pose["skinning_skeleton"],
         )
 
     def forward_skeleton(
         self,
-        shape: Float[np.ndarray, "B C"],
-        body_pose: Float[np.ndarray, "B 25 N"] | Float[np.ndarray, "B 25 3 3"],
-        head_pose: Float[np.ndarray, "B 3 N"] | Float[np.ndarray, "B 3 3 3"],
-        hand_pose: Float[np.ndarray, "B 30 N"] | Float[np.ndarray, "B 30 3 3"],
-        pelvis_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        body_pose: Float[np.ndarray, "*batch 25 N"] | Float[np.ndarray, "*batch 25 3 3"],
+        head_pose: Float[np.ndarray, "*batch 3 N"] | Float[np.ndarray, "*batch 3 3 3"],
+        hand_pose: Float[np.ndarray, "*batch 30 N"] | Float[np.ndarray, "*batch 30 3 3"],
+        pelvis_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"],
+        global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
-    ) -> Float[np.ndarray, "B J 4 4"]:
-        """Evaluate world-space joint transforms."""
+        *,
+        shape: Float[np.ndarray, "*batch C"] | None = None,
+        identity: GarmentMeasurementsIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            head_pose: Local head and facial joint rotations.
+            hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         pose = pack_pose(np, pelvis_rotation, body_pose, head_pose, hand_pose)
+        if identity is None:
+            assert shape is not None
+            batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            posed_skeleton=pose["posed_skeleton"],
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[np.ndarray, "*batch C"],
+        skip_vertices: bool = False,
+    ) -> GarmentMeasurementsIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        pose: Float[np.ndarray, "*batch J N"] | Float[np.ndarray, "*batch J 3 3"],
+        *,
+        identity: GarmentMeasurementsIdentity,
+        skip_vertices: bool = False,
+    ) -> GarmentMeasurementsPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            pose,
+            rotation_type=self.rotation_type,
+            bind_skeleton=identity["bind_skeleton"],
+            local_bind_translations=identity["local_bind_translations"],
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(
@@ -127,7 +205,6 @@ class GarmentMeasurements(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
-        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
@@ -165,7 +242,6 @@ class GarmentMeasurements(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = np.asarray(GARMENT_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
@@ -178,7 +254,6 @@ class GarmentMeasurements(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
 

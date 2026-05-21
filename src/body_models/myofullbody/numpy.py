@@ -1,6 +1,7 @@
 """NumPy backend for the MyoFullBody musculoskeletal model."""
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -25,6 +26,11 @@ class MyoFullBody(BodyModel):
     JOINTS = MYOFULLBODY_JOINTS
 
     def __init__(self, model_path: Path | str | None = None) -> None:
+        """Initialize the MyoFullBody model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+        """
         self.weights = load_model_data(model_path)
 
     @property
@@ -110,9 +116,19 @@ class MyoFullBody(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
     ) -> Float[np.ndarray, "B J 4 4"]:
-        """Evaluate world-space joint transforms."""
+        """Compute posed joint transforms.
+
+        Args:
+            body_pose: Local body joint rotations.
+            global_translation: Global model translation.
+            global_rotation: Global model rotation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
         return backend.forward_skeleton(
             weights=self.weights,
             body_pose=body_pose,
@@ -127,9 +143,19 @@ class MyoFullBody(BodyModel):
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
-        """Evaluate posed mesh vertices."""
+        """Compute posed mesh vertices.
+
+        Args:
+            body_pose: Local body joint rotations.
+            global_translation: Global model translation.
+            global_rotation: Global model rotation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
         return backend.forward_vertices(
             weights=self.weights,
             body_pose=body_pose,
@@ -145,7 +171,6 @@ class MyoFullBody(BodyModel):
         *,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B L 4 4"]:
-        """Evaluate world-space rigid link transforms."""
         return backend.forward_links(
             weights=self.weights,
             body_pose=body_pose,
@@ -185,7 +210,6 @@ class MyoFullBody(BodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
-        """Return default parameters for this model."""
         return {
             "body_pose": np.zeros((*batch_dims, self.num_qpos), dtype=dtype),
             "global_rotation": np.zeros((*batch_dims, 3), dtype=dtype),
@@ -197,7 +221,6 @@ class MyoFullBody(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(MYOFULLBODY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()
@@ -208,7 +231,6 @@ class MyoFullBody(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(MYOFULLBODY_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()

@@ -1,13 +1,14 @@
 """NumPy backend for MHR model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from jaxtyping import Float, Int
 
 from body_models.base import BodyModel
 from body_models.mhr.backends import numpy as backend
+from body_models.mhr.backends.core import MhrIdentity, MhrPreparedPose
 from body_models.mhr.constants import (
     MHR_BODY_POSE_DIM,
     MHR_HAND_PRESETS,
@@ -37,6 +38,13 @@ class MHR(BodyModel):
         lod: int = 1,
         simplify: float = 1.0,
     ) -> None:
+        """Initialize the MHR model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            lod: Level-of-detail variant to load.
+            simplify: Mesh simplification factor to apply while loading.
+        """
         self.weights = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
 
     @property
@@ -85,45 +93,106 @@ class MHR(BodyModel):
 
     def forward_vertices(
         self,
-        shape: Float[np.ndarray, "B|1 45"],
-        body_pose: Float[np.ndarray, "B 100"],
-        hand_pose: Float[np.ndarray, "B 104"],
-        expression: Float[np.ndarray, "B 72"] | None = None,
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices=None,
-    ) -> Float[np.ndarray, "B V 3"]:
-        """Evaluate posed mesh vertices."""
+        body_pose: Float[np.ndarray, "*batch 100"],
+        hand_pose: Float[np.ndarray, "*batch 104"],
+        expression: Float[np.ndarray, "*batch 72"],
+        global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
+        vertex_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 45"] | None = None,
+        identity: MhrIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            hand_pose: Local hand joint rotations.
+            expression: Facial expression coefficients.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression=expression)
+        pose = self.prepare_pose(pack_pose(np, body_pose, hand_pose))
+        assert "rest_vertices" in identity
+        assert "joint_params" in pose
         return backend.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            pose=pack_pose(np, body_pose, hand_pose),
-            expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
+            rest_vertices=identity["rest_vertices"],
+            joint_translations=pose["joint_translations"],
+            joint_rotations=pose["joint_rotations"],
+            joint_scales=pose["joint_scales"],
+            joint_params=pose["joint_params"],
         )
 
     def forward_skeleton(
         self,
-        shape: Float[np.ndarray, "B|1 45"],
-        body_pose: Float[np.ndarray, "B 100"],
-        hand_pose: Float[np.ndarray, "B 104"],
-        expression: Float[np.ndarray, "B 72"] | None = None,
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
-        joint_indices=None,
-    ) -> Float[np.ndarray, "B J 4 4"]:
-        """Evaluate world-space joint transforms."""
+        body_pose: Float[np.ndarray, "*batch 100"],
+        hand_pose: Float[np.ndarray, "*batch 104"],
+        expression: Float[np.ndarray, "*batch 72"],
+        global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
+        joint_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 45"] | None = None,
+        identity: MhrIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch J 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            hand_pose: Local hand joint rotations.
+            expression: Facial expression coefficients.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
+        pose = self.prepare_pose(pack_pose(np, body_pose, hand_pose), skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            pose=pack_pose(np, body_pose, hand_pose),
-            expression=expression,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
+            joint_translations=pose["joint_translations"],
+            joint_rotations=pose["joint_rotations"],
+            joint_scales=pose["joint_scales"],
         )
+
+    def prepare_identity(
+        self,
+        shape: Float[np.ndarray, "*batch 45"],
+        expression: Float[np.ndarray, "*batch 72"],
+        skip_vertices: bool = False,
+    ) -> MhrIdentity:
+        """Precompute shape- and expression-dependent state for repeated forward passes."""
+        return backend.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
+
+    def prepare_pose(self, pose: Float[np.ndarray, "*batch 204"], skip_vertices: bool = False) -> MhrPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return backend.prepare_pose(self.weights, pose, skip_vertices=skip_vertices)
 
     def get_rest_pose(
         self,
@@ -131,7 +200,6 @@ class MHR(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
-        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
@@ -154,7 +222,6 @@ class MHR(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         body_pose = np.asarray(MHR_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()
@@ -166,5 +233,4 @@ class MHR(BodyModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)

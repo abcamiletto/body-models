@@ -1,7 +1,7 @@
 """NumPy backend for MANO model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -11,6 +11,7 @@ from nanomanifold import SO3
 
 from body_models.mano.backends import numpy as numpy_backend
 from body_models.mano.backends import scipy as scipy_backend
+from body_models.mano.backends.core import ManoIdentity, ManoPreparedPose
 from body_models.mano.io import get_model_path, load_model_data
 from body_models.mano.constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -36,6 +37,16 @@ class MANO(BodyModel):
         rotation_type: RotationType = "axis_angle",
         kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
+        """Initialize the MANO model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            side: Hand side to load.
+            flat_hand_mean: Whether to use a flat hand as the pose mean.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
+        """
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
         if rotation_type not in VALID_ROTATION_TYPES:
@@ -99,44 +110,112 @@ class MANO(BodyModel):
 
     def forward_vertices(
         self,
-        shape: Float[np.ndarray, "B|1 10"],
         hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"],
         wrist_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 10"] | None = None,
+        identity: ManoIdentity | None = None,
     ) -> Float[np.ndarray, "B V 3"]:
-        """Evaluate posed mesh vertices."""
+        """Compute posed mesh vertices.
+
+        Args:
+            hand_pose: Local hand joint rotations.
+            wrist_rotation: Root wrist rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+            shape: Shape coefficients.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Posed vertex positions.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(hand_pose.shape[: -(self.num_rot_dims + 1)])
+            identity = self.prepare_identity(np.broadcast_to(shape, (*batch_shape, shape.shape[-1])))
+        pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            hand_pose=hand_pose,
-            wrist_rotation=wrist_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
         self,
-        shape: Float[np.ndarray, "B|1 10"],
         hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"],
         wrist_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 10"] | None = None,
+        identity: ManoIdentity | None = None,
     ) -> Float[np.ndarray, "B 16 4 4"]:
-        """Evaluate world-space joint transforms."""
+        """Compute posed joint transforms.
+
+        Args:
+            hand_pose: Local hand joint rotations.
+            wrist_rotation: Root wrist rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+            shape: Shape coefficients.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = tuple(hand_pose.shape[: -(self.num_rot_dims + 1)])
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            hand_pose=hand_pose,
-            wrist_rotation=wrist_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            joint_transforms=pose["joint_transforms"],
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[np.ndarray, "*batch 10"],
+        skip_vertices: bool = False,
+    ) -> ManoIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"],
+        wrist_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        *,
+        identity: ManoIdentity,
+        skip_vertices: bool = False,
+    ) -> ManoPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            hand_pose,
+            wrist_rotation,
+            rotation_type=self.rotation_type,
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(
@@ -145,7 +224,6 @@ class MANO(BodyModel):
         dtype=np.float32,
         hands: Literal["default", "flat", "rest"] = "default",
     ) -> dict[str, np.ndarray]:
-        """Return default parameters for this model."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 

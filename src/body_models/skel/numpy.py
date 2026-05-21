@@ -1,13 +1,14 @@
 """NumPy backend for SKEL model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from jaxtyping import Float, Int
 
 from body_models.base import BodyModel
 from body_models.skel.backends import numpy as backend
+from body_models.skel.backends.core import SkelIdentity, SkelPreparedPose
 from body_models.skel.io import get_model_path, load_model_data
 from body_models.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 
@@ -28,6 +29,13 @@ class SKEL(BodyModel):
         gender: Literal["male", "female"] | None = None,
         simplify: float = 1.0,
     ):
+        """Initialize the SKEL model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            gender: Model gender variant to load.
+            simplify: Mesh simplification factor to apply while loading.
+        """
         if gender not in {"male", "female"}:
             raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
         assert simplify >= 1.0
@@ -57,7 +65,7 @@ class SKEL(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
-        return self.weights.v_template + self.weights.feet_offset
+        return self.weights.v_template
 
     @property
     def shapedirs(self) -> Float[np.ndarray, "V 3 B"]:
@@ -71,48 +79,108 @@ class SKEL(BodyModel):
     def parents(self) -> list[int]:
         return self.weights.parents
 
-    @property
-    def _feet_offset(self) -> Float[np.ndarray, "3"]:
-        return self.weights.feet_offset
-
     def forward_vertices(
         self,
-        shape: Float[np.ndarray, "B|1 10"],
-        body_pose: Float[np.ndarray, "B 46"],
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices=None,
-    ) -> Float[np.ndarray, "B V 3"]:
-        """Evaluate posed mesh vertices."""
+        body_pose: Float[np.ndarray, "*batch 46"],
+        global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
+        vertex_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 10"] | None = None,
+        identity: SkelIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+
+        Returns:
+            Posed vertex positions.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+        pose = self.prepare_pose(body_pose, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return backend.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
         self,
-        shape: Float[np.ndarray, "B|1 10"],
-        body_pose: Float[np.ndarray, "B 46"],
-        global_rotation: Float[np.ndarray, "B 3"] | None = None,
-        global_translation: Float[np.ndarray, "B 3"] | None = None,
-        joint_indices=None,
-    ) -> Float[np.ndarray, "B 24 4 4"]:
-        """Evaluate world-space joint transforms."""
+        body_pose: Float[np.ndarray, "*batch 46"],
+        global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
+        global_translation: Float[np.ndarray, "*batch 3"] | None = None,
+        joint_indices: Any | None = None,
+        *,
+        shape: Float[np.ndarray, "*batch 10"] | None = None,
+        identity: SkelIdentity | None = None,
+    ) -> Float[np.ndarray, "*batch 24 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            shape: Shape coefficients.
+            body_pose: Local body joint rotations.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
+        if identity is None:
+            assert shape is not None
+            batch_shape = body_pose.shape[:-1]
+            shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(body_pose, identity=identity, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
+            joint_transforms=pose["joint_transforms"],
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[np.ndarray, "*batch 10"],
+        skip_vertices: bool = False,
+    ) -> SkelIdentity:
+        """Precompute shape-dependent state for repeated forward passes."""
+        return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        body_pose: Float[np.ndarray, "*batch 46"],
+        *,
+        identity: SkelIdentity,
+        skip_vertices: bool = False,
+    ) -> SkelPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return backend.prepare_pose(
+            self.weights,
+            body_pose,
+            rest_joints=identity["rest_joints"],
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
-        """Return default parameters for this model."""
         return {
             "shape": np.zeros((*batch_dims, self.NUM_BETAS), dtype=dtype),
             "body_pose": np.zeros((*batch_dims, self.NUM_POSE_PARAMS), dtype=dtype),
@@ -125,7 +193,6 @@ class SKEL(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
     def get_apose(
@@ -133,7 +200,6 @@ class SKEL(BodyModel):
         batch_dims: tuple[int, ...] = (),
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """Return parameters for the canonical A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         body_pose = np.asarray(SKEL_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         params["body_pose"] = np.broadcast_to(body_pose, (*batch_dims, *body_pose.shape)).copy()

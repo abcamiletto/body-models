@@ -1,7 +1,7 @@
 """PyTorch backend for FLAME model."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -13,6 +13,7 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.flame.backends import torch as torch_backend
+from body_models.flame.backends.core import FlameIdentity, FlamePreparedPose
 from body_models.flame.constants import FLAME_JOINT_NAMES
 from body_models.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -25,15 +26,23 @@ class FLAME(BodyModel, nn.Module):
 
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
-    kernels = ("torch", "warp")
+    kernels = ("torch",)
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Literal["torch", "warp"] = "torch",
+        kernel: Literal["torch"] = "torch",
     ):
+        """Initialize the FLAME model.
+
+        Args:
+            model_path: Path to model assets, or the default assets when omitted.
+            simplify: Mesh simplification factor to apply while loading.
+            rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
+        """
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if kernel not in self.kernels:
@@ -95,46 +104,120 @@ class FLAME(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        shape: Float[Tensor, "B|1 S"],
-        expression: Float[Tensor, "B E"],
         head_pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"],
         head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        vertex_indices=None,
+        vertex_indices: Any | None = None,
+        *,
+        shape: Float[Tensor, "*batch S"] | None = None,
+        expression: Float[Tensor, "*batch E"] | None = None,
+        identity: FlameIdentity | None = None,
     ) -> Float[Tensor, "B V 3"]:
+        """Compute posed mesh vertices.
+
+        Args:
+            head_pose: Local head and facial joint rotations.
+            head_rotation: Root head rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            vertex_indices: Optional subset of vertices to return.
+            shape: Shape coefficients.
+            expression: Facial expression coefficients.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Posed vertex positions.
+        """
+        if identity is None:
+            assert shape is not None and expression is not None
+            batch_shape = tuple(head_pose.shape[: -(self.num_rot_dims + 1)])
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression)
+        pose = self.prepare_pose(head_pose, head_rotation, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            shape=shape,
-            expression=expression,
-            pose=head_pose,
-            head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
         self,
-        shape: Float[Tensor, "B|1 S"],
-        expression: Float[Tensor, "B E"],
         head_pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"],
         head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
-        joint_indices=None,
+        joint_indices: Any | None = None,
+        *,
+        shape: Float[Tensor, "*batch S"] | None = None,
+        expression: Float[Tensor, "*batch E"] | None = None,
+        identity: FlameIdentity | None = None,
     ) -> Float[Tensor, "B 5 4 4"]:
+        """Compute posed joint transforms.
+
+        Args:
+            head_pose: Local head and facial joint rotations.
+            head_rotation: Root head rotation.
+            global_rotation: Global model rotation.
+            global_translation: Global model translation.
+            joint_indices: Optional subset of joints to return.
+            shape: Shape coefficients.
+            expression: Facial expression coefficients.
+            identity: Optional output from :meth:`prepare_identity`.
+
+        Returns:
+            Joint transforms in the model hierarchy.
+        """
+        if identity is None:
+            assert shape is not None and expression is not None
+            batch_shape = tuple(head_pose.shape[: -(self.num_rot_dims + 1)])
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression, skip_vertices=True)
+        pose = self.prepare_pose(head_pose, head_rotation, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            shape=shape,
-            expression=expression,
-            pose=head_pose,
-            head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
+            joint_transforms=pose["joint_transforms"],
+        )
+
+    def prepare_identity(
+        self,
+        shape: Float[Tensor, "*batch S"],
+        expression: Float[Tensor, "*batch E"],
+        skip_vertices: bool = False,
+    ) -> FlameIdentity:
+        """Precompute shape/expression-dependent state for repeated forward passes."""
+        return self._kernel.prepare_identity(self.weights, shape, expression, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        head_pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"],
+        head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        *,
+        identity: FlameIdentity,
+        skip_vertices: bool = False,
+    ) -> FlamePreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            head_pose,
+            head_rotation,
+            rotation_type=self.rotation_type,
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=torch.float32) -> dict[str, Tensor]:
@@ -155,13 +238,5 @@ class FLAME(BodyModel, nn.Module):
         }
 
 
-def _get_kernel(kernel: Literal["torch", "warp"]):
-    if kernel == "torch":
-        return torch_backend
-
-    try:
-        from body_models.flame.backends import warp as warp_backend
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[warp] to use FLAME kernel='warp'.") from exc
-
-    return warp_backend
+def _get_kernel(kernel: Literal["torch"]):
+    return torch_backend
