@@ -8,7 +8,7 @@ from body_models.rotations import RotationType
 from body_models.smpl.backends import core
 from body_models.smpl.io import SmplWeights
 
-__all__ = ["forward_vertices", "forward_skeleton", "prepare_identity"]
+__all__ = ["forward_vertices", "forward_skeleton", "prepare_identity", "prepare_pose"]
 
 
 def prepare_identity(
@@ -24,6 +24,27 @@ def prepare_identity(
         j_shapedirs=weights.j_shapedirs,
         parents=weights.parents,
         shape=shape,
+        skip_vertices=skip_vertices,
+    )
+
+
+def prepare_pose(
+    weights: SmplWeights,
+    body_pose: Float[np.ndarray, "*batch 23 N"] | Float[np.ndarray, "*batch 23 3 3"],
+    pelvis_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
+    rotation_type: RotationType = "axis_angle",
+    *,
+    local_joint_offsets: Float[np.ndarray, "*batch J 3"],
+    skip_vertices: bool = False,
+) -> core.SmplPreparedPose:
+    return core.prepare_pose(
+        xp=np,
+        posedirs=weights.posedirs,
+        kinematic_fronts=weights.kinematic_fronts,
+        body_pose=body_pose,
+        pelvis_rotation=pelvis_rotation,
+        rotation_type=rotation_type,
+        local_joint_offsets=local_joint_offsets,
         skip_vertices=skip_vertices,
     )
 
@@ -56,8 +77,6 @@ def numba_skin(
 
 def forward_vertices(
     weights: SmplWeights,
-    body_pose: Float[np.ndarray, "*batch 23 N"] | Float[np.ndarray, "*batch 23 3 3"],
-    pelvis_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
     global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
     global_translation: Float[np.ndarray, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
@@ -66,22 +85,12 @@ def forward_vertices(
     rest_joints: Float[np.ndarray, "*batch J 3"],
     local_joint_offsets: Float[np.ndarray, "*batch J 3"],
     rest_vertices: Float[np.ndarray, "*batch V 3"],
+    joint_transforms: Float[np.ndarray, "*batch J 4 4"],
+    pose_offsets: Float[np.ndarray, "*batch V 3"],
 ):
-    v_shaped, j_t, T_world = core.forward_unskinned_vertices(
-        posedirs=weights.posedirs,
-        j_template=weights.j_template,
-        j_shapedirs=weights.j_shapedirs,
-        parents=weights.parents,
-        kinematic_fronts=weights.kinematic_fronts,
-        body_pose=body_pose,
-        pelvis_rotation=pelvis_rotation,
-        vertex_indices=vertex_indices,
-        rotation_type=rotation_type,
-        rest_joints=rest_joints,
-        local_joint_offsets=local_joint_offsets,
-        rest_vertices=rest_vertices,
-        xp=np,
-    )
+    v_shaped = rest_vertices + pose_offsets
+    if vertex_indices is not None:
+        v_shaped = v_shaped[..., vertex_indices, :]
 
     joint_indices = weights.lbs_joint_indices
     joint_weights = weights.lbs_joint_weights
@@ -91,8 +100,8 @@ def forward_vertices(
 
     return numba_skin(
         v_shaped,
-        j_t,
-        T_world,
+        rest_joints,
+        joint_transforms,
         joint_indices,
         joint_weights,
         global_rotation=global_rotation,
@@ -103,8 +112,6 @@ def forward_vertices(
 
 def forward_skeleton(
     weights: SmplWeights,
-    body_pose: Float[np.ndarray, "*batch 23 N"] | Float[np.ndarray, "*batch 23 3 3"],
-    pelvis_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
     global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
     global_translation: Float[np.ndarray, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
@@ -113,20 +120,16 @@ def forward_skeleton(
     rest_joints: Float[np.ndarray, "*batch J 3"],
     local_joint_offsets: Float[np.ndarray, "*batch J 3"],
     rest_vertices: Float[np.ndarray, "*batch V 3"] | None = None,
+    joint_transforms: Float[np.ndarray, "*batch J 4 4"],
+    pose_offsets: Float[np.ndarray, "*batch V 3"] | None = None,
 ):
     return core.forward_skeleton(
-        j_template=weights.j_template,
-        j_shapedirs=weights.j_shapedirs,
         parents=weights.parents,
-        kinematic_fronts=weights.kinematic_fronts,
-        body_pose=body_pose,
-        pelvis_rotation=pelvis_rotation,
         global_rotation=global_rotation,
         global_translation=global_translation,
         joint_indices=joint_indices,
         rotation_type=rotation_type,
-        rest_joints=rest_joints,
-        local_joint_offsets=local_joint_offsets,
+        joint_transforms=joint_transforms,
         xp=np,
     )
 
