@@ -53,7 +53,6 @@ def forward_vertices(
     rotation_type: RotationType = "axis_angle",
     *,
     rest_joints: Float[Tensor, "*batch J 3"],
-    local_joint_offsets: Float[Tensor, "*batch J 3"],
     rest_vertices: Float[Tensor, "*batch V 3"],
     joint_transforms: Float[Tensor, "*batch J 4 4"],
     pose_offsets: Float[Tensor, "*batch V 3"],
@@ -66,7 +65,6 @@ def forward_vertices(
             vertex_indices=vertex_indices,
             rotation_type=rotation_type,
             rest_joints=rest_joints,
-            local_joint_offsets=local_joint_offsets,
             rest_vertices=rest_vertices,
             joint_transforms=joint_transforms,
             pose_offsets=pose_offsets,
@@ -91,11 +89,7 @@ def forward_skeleton(
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
-    rest_joints: Float[Tensor, "*batch J 3"],
-    local_joint_offsets: Float[Tensor, "*batch J 3"],
-    rest_vertices: Float[Tensor, "*batch V 3"] | None = None,
     joint_transforms: Float[Tensor, "*batch J 4 4"],
-    pose_offsets: Float[Tensor, "*batch V 3"] | None = None,
 ):
     return core.forward_skeleton(
         parents=weights.parents,
