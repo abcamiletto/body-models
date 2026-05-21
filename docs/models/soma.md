@@ -15,6 +15,8 @@ body-models download soma
 
 The native implementation does not require installing `py-soma-x`.
 
+`cache_identity=True` can be passed to the constructor for interactive viewers that repeatedly evaluate the same identity with different poses. The default is `False`, which keeps training and JAX-transformed calls graph-safe unless caching is explicitly requested.
+
 ## API
 
 ::: body_models.soma.numpy.SOMA
