@@ -35,6 +35,7 @@ plugins:
             line_length: 70
             filters:
               - "!^_"
+              - "!^get_bind_params$"
             merge_init_into_class: true
             docstring_section_style: spacy
             signature_crossrefs: true
