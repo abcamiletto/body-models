@@ -133,14 +133,18 @@ class SMPL(BodyModel):
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         pose = self.prepare_pose(body_pose, pelvis_rotation, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            **identity,
-            **pose,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
@@ -180,8 +184,7 @@ class SMPL(BodyModel):
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            **identity,
-            **pose,
+            joint_transforms=pose["joint_transforms"],
         )
 
     def prepare_identity(

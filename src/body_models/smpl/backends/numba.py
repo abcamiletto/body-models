@@ -83,7 +83,6 @@ def forward_vertices(
     rotation_type: RotationType = "axis_angle",
     *,
     rest_joints: Float[np.ndarray, "*batch J 3"],
-    local_joint_offsets: Float[np.ndarray, "*batch J 3"],
     rest_vertices: Float[np.ndarray, "*batch V 3"],
     joint_transforms: Float[np.ndarray, "*batch J 4 4"],
     pose_offsets: Float[np.ndarray, "*batch V 3"],
@@ -117,11 +116,7 @@ def forward_skeleton(
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
-    rest_joints: Float[np.ndarray, "*batch J 3"],
-    local_joint_offsets: Float[np.ndarray, "*batch J 3"],
-    rest_vertices: Float[np.ndarray, "*batch V 3"] | None = None,
     joint_transforms: Float[np.ndarray, "*batch J 4 4"],
-    pose_offsets: Float[np.ndarray, "*batch V 3"] | None = None,
 ):
     return core.forward_skeleton(
         parents=weights.parents,
