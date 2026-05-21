@@ -13,7 +13,7 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
-from body_models.smpl.backends.core import SmplIdentity
+from body_models.smpl.backends.core import SmplIdentity, SmplPreparedPose
 from body_models.smpl.backends import torch as torch_backend
 from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS
 from body_models.smpl.io import get_model_path, load_model_data
@@ -137,15 +137,15 @@ class SMPL(BodyModel, nn.Module):
             batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
+        pose = self.prepare_pose(body_pose, pelvis_rotation, identity=identity)
         return self._kernel.forward_vertices(
             weights=self.weights,
-            body_pose=body_pose,
-            pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
             **identity,
+            **pose,
         )
 
     def forward_skeleton(
@@ -178,15 +178,15 @@ class SMPL(BodyModel, nn.Module):
             batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(body_pose, pelvis_rotation, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            body_pose=body_pose,
-            pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
             **identity,
+            **pose,
         )
 
     def prepare_identity(
@@ -199,6 +199,24 @@ class SMPL(BodyModel, nn.Module):
         if expression is not None:
             raise ValueError("SMPL does not support expression parameters.")
         return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        body_pose: Float[Tensor, "*batch 23 N"] | Float[Tensor, "*batch 23 3 3"],
+        pelvis_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+        *,
+        identity: SmplIdentity,
+        skip_vertices: bool = False,
+    ) -> SmplPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            body_pose,
+            pelvis_rotation,
+            rotation_type=self.rotation_type,
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
+        )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.rest_vertices.device
