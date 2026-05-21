@@ -16,8 +16,6 @@ def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, k
     vertices = model.forward_vertices(**inputs)
     if name == "mhr":
         vertices = vertices * 100
-    if name == "skel":
-        vertices = vertices - model._feet_offset
     expected = np.load(model_cases.ASSETS / name / "outputs/0/vertices.npy")
 
     np.testing.assert_allclose(vertices[0], expected, rtol=1e-4, atol=1e-4)
@@ -34,7 +32,7 @@ def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, k
     if name == "mhr":
         skeleton = mhr_native_skeleton(skeleton)
     if name == "skel":
-        skeleton = skeleton[..., :3, 3] - model._feet_offset
+        skeleton = skeleton[..., :3, 3]
 
     if name == "smplx":
         np.testing.assert_allclose(skeleton[0, :, :3, 3], expected[: skeleton.shape[1]], rtol=1e-4, atol=1e-4)
@@ -99,7 +97,17 @@ def reference_inputs(name: str) -> dict[str, np.ndarray]:
         pose = SO3.conversions.from_rotmat_to_axis_angle(rotation, xp=np)
         global_rotation, body_pose, head_pose, hand_pose = anny_pose.unpack_pose(np, pose)
         return {
-            **phenotype,
+            "shape": np.stack(
+                [
+                    phenotype["gender"],
+                    phenotype["age"],
+                    phenotype["muscle"],
+                    phenotype["weight"],
+                    phenotype["height"],
+                    phenotype["proportions"],
+                ],
+                axis=-1,
+            ),
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,

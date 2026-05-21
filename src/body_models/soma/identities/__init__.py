@@ -87,18 +87,18 @@ def anny_identity_shape(
     blendshapes: Float[Any, "S V 3"],
     phenotype_mask: Float[Any, "S P"],
     anchors: Any,
-    identity: Float[Any, "B 6"],
+    shape: Float[Any, "*batch 6"],
     *,
     xp: Any = None,
-) -> Float[Any, "B V 3"]:
+) -> Float[Any, "*batch V 3"]:
     if xp is None:
-        xp = common.get_namespace(identity)
+        xp = common.get_namespace(shape)
     return anny_core.identity_shape(
         template_vertices=template_vertices,
         blendshapes=blendshapes,
         phenotype_mask=phenotype_mask,
         anchors=anchors,
-        identity=identity,
+        shape=shape,
         xp=xp,
     )
 

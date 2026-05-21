@@ -13,7 +13,7 @@ from body_models.base import BodyModel
 from nanomanifold import SO3
 
 from body_models.flame.backends import torch as torch_backend
-from body_models.flame.backends.core import FlameIdentity
+from body_models.flame.backends.core import FlameIdentity, FlamePreparedPose
 from body_models.flame.constants import FLAME_JOINT_NAMES
 from body_models.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -135,15 +135,19 @@ class FLAME(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression)
+        pose = self.prepare_pose(head_pose, head_rotation, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            pose=head_pose,
-            head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
@@ -179,15 +183,14 @@ class FLAME(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression, skip_vertices=True)
+        pose = self.prepare_pose(head_pose, head_rotation, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            pose=head_pose,
-            head_rotation=head_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            joint_transforms=pose["joint_transforms"],
         )
 
     def prepare_identity(
@@ -198,6 +201,24 @@ class FLAME(BodyModel, nn.Module):
     ) -> FlameIdentity:
         """Precompute shape/expression-dependent state for repeated forward passes."""
         return self._kernel.prepare_identity(self.weights, shape, expression, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        head_pose: Float[Tensor, "B 4 N"] | Float[Tensor, "B 4 3 3"],
+        head_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        *,
+        identity: FlameIdentity,
+        skip_vertices: bool = False,
+    ) -> FlamePreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            head_pose,
+            head_rotation,
+            rotation_type=self.rotation_type,
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
+        )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=torch.float32) -> dict[str, Tensor]:
         device = self.rest_vertices.device

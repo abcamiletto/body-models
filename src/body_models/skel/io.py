@@ -38,7 +38,6 @@ class SkelWeights:
     fixed_orientation_joints: Int[Array, "6"]
     non_leaf_joints: Int[Array, "N"]
     non_leaf_children: Int[Array, "N"]
-    feet_offset: Float[Array, "3"]
     all_axes: Float[Array, "47 3"]
     rotation_indices: Int[Array, "24 3"]
     scapula_r_axes: Float[Array, "3 3"]
@@ -104,7 +103,6 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
     parent_list = [id_to_col[kintree[0, i]] for i in range(1, kintree.shape[1])]
     child = _compute_child(kintree)
     non_leaf = [i for i, child_index in enumerate(child) if child_index != 0]
-    y_offset = -v_template[:, 1].min()
 
     return SkelWeights(
         v_template=v_template,
@@ -127,7 +125,6 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
         fixed_orientation_joints=np.asarray([0, 5, 10, 13, 18, 23], dtype=np.int64),
         non_leaf_joints=np.asarray(non_leaf, dtype=np.int64),
         non_leaf_children=np.asarray([child[i] for i in non_leaf], dtype=np.int64),
-        feet_offset=np.asarray([0.0, y_offset, 0.0], dtype=np.float32),
         all_axes=_compute_joint_axes(),
         rotation_indices=_compute_rotation_indices(),
         scapula_r_axes=np.asarray([[0, 1, 0], [0, 0, -1], [-1, 0, 0]], dtype=np.float32),

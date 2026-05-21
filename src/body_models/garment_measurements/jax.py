@@ -12,7 +12,7 @@ from .. import common
 from ..base import BodyModel
 from ..rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import jax as backend
-from .backends.core import GarmentMeasurementsIdentity
+from .backends.core import GarmentMeasurementsIdentity, GarmentMeasurementsPreparedPose
 from .io import get_model_path, load_model_data
 from .constants import GARMENT_BODY_PRESETS, GARMENT_HAND_PRESETS, GARMENT_JOINTS
 from .pose import pack_pose, unpack_pose
@@ -113,14 +113,17 @@ class GarmentMeasurements(BodyModel):
             batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
+        pose = self.prepare_pose(pose, identity=identity)
+        assert "rest_vertices" in identity
+        assert "skinning_skeleton" in pose
         return backend.forward_vertices(
             weights=self.weights,
-            pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            rest_vertices=identity["rest_vertices"],
+            skinning_skeleton=pose["skinning_skeleton"],
         )
 
     def forward_skeleton(
@@ -157,14 +160,14 @@ class GarmentMeasurements(BodyModel):
             batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            pose=pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            posed_skeleton=pose["posed_skeleton"],
         )
 
     def prepare_identity(
@@ -174,6 +177,23 @@ class GarmentMeasurements(BodyModel):
     ) -> GarmentMeasurementsIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        pose: Float[jax.Array, "*batch J N"] | Float[jax.Array, "*batch J 3 3"],
+        *,
+        identity: GarmentMeasurementsIdentity,
+        skip_vertices: bool = False,
+    ) -> GarmentMeasurementsPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return backend.prepare_pose(
+            self.weights,
+            pose,
+            rotation_type=self.rotation_type,
+            bind_skeleton=identity["bind_skeleton"],
+            local_bind_translations=identity["local_bind_translations"],
+            skip_vertices=skip_vertices,
+        )
 
     def get_rest_pose(
         self,

@@ -12,7 +12,7 @@ from torch import Tensor
 from body_models import common
 from body_models.anny import pose as pose_utils
 from body_models.anny.backends import torch as torch_backend
-from body_models.anny.backends.core import AnnyIdentity
+from body_models.anny.backends.core import AnnyIdentity, AnnyPreparedPose
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
 from body_models.base import BodyModel
@@ -139,15 +139,17 @@ class ANNY(BodyModel, nn.Module):
         if identity is None:
             assert shape is not None
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
-            identity = self.prepare_identity(torch.broadcast_to(shape, (*batch_shape, shape.shape[-1])))
+            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+        prepared_pose = self.prepare_pose(pose, identity=identity)
+        assert "rest_vertices" in identity
+        assert "bone_transforms" in prepared_pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            pose=pose,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            rotation_type=self.rotation_type,
-            extrapolate_phenotypes=self.extrapolate_phenotypes,
-            **identity,
+            rest_vertices=identity["rest_vertices"],
+            bone_transforms=prepared_pose["bone_transforms"],
         )
 
     def forward_skeleton(
@@ -183,14 +185,12 @@ class ANNY(BodyModel, nn.Module):
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
+        prepared_pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            pose=pose,
             global_translation=global_translation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
-            extrapolate_phenotypes=self.extrapolate_phenotypes,
-            **identity,
+            bone_poses=prepared_pose["bone_poses"],
         )
 
     def prepare_identity(
@@ -203,6 +203,34 @@ class ANNY(BodyModel, nn.Module):
             self.weights,
             shape,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
+            skip_vertices=skip_vertices,
+        )
+
+    def phenotype_to_shape(
+        self,
+        gender: Float[Tensor, "*batch"],
+        age: Float[Tensor, "*batch"],
+        muscle: Float[Tensor, "*batch"],
+        weight: Float[Tensor, "*batch"],
+        height: Float[Tensor, "*batch"],
+        proportions: Float[Tensor, "*batch"],
+    ) -> Float[Tensor, "*batch 6"]:
+        """Pack named phenotype controls into the ANNY shape vector."""
+        return torch.stack([gender, age, muscle, weight, height, proportions], dim=-1)
+
+    def prepare_pose(
+        self,
+        pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
+        *,
+        identity: AnnyIdentity,
+        skip_vertices: bool = False,
+    ) -> AnnyPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            pose,
+            rotation_type=self.rotation_type,
+            rest_bone_poses=identity["rest_bone_poses"],
             skip_vertices=skip_vertices,
         )
 
