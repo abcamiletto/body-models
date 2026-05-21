@@ -78,7 +78,7 @@ class AnnyIdentitySource(IdentitySource):
             blendshapes=self.model.weights.blendshapes,
             phenotype_mask=self.model.weights.phenotype_mask,
             anchors=self.model.weights.anchors,
-            identity=identity,
+            shape=identity,
             xp=torch,
         )
 

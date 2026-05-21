@@ -59,12 +59,11 @@ def test_forward_accepts_arbitrary_leading_dimensions(
     model = numpy_model(**kwargs)
     vertex_indices = list(range(min(8, model.num_vertices)))
     joint_indices = list(range(min(8, model.num_joints)))
-    forward_kwargs = {"apply_correctives": False} if name == "soma" else {}
     for batch_shape in LEADING_DIM_BATCH_SHAPES:
         shaped_params = model.get_rest_pose(batch_dims=batch_shape)
 
-        shaped_vertices = model.forward_vertices(**shaped_params, vertex_indices=vertex_indices, **forward_kwargs)
-        shaped_skeleton = model.forward_skeleton(**shaped_params, joint_indices=joint_indices, **forward_kwargs)
+        shaped_vertices = model.forward_vertices(**shaped_params, vertex_indices=vertex_indices)
+        shaped_skeleton = model.forward_skeleton(**shaped_params, joint_indices=joint_indices)
 
         assert shaped_vertices.shape == (*batch_shape, len(vertex_indices), 3)
         assert shaped_skeleton.shape == (*batch_shape, len(joint_indices), 4, 4)
@@ -74,8 +73,8 @@ def test_forward_accepts_arbitrary_leading_dimensions(
             entry_params = {
                 key: value[entry_index][None] if batch_shape else value[None] for key, value in shaped_params.items()
             }
-            entry_vertices = model.forward_vertices(**entry_params, vertex_indices=vertex_indices, **forward_kwargs)[0]
-            entry_skeleton = model.forward_skeleton(**entry_params, joint_indices=joint_indices, **forward_kwargs)[0]
+            entry_vertices = model.forward_vertices(**entry_params, vertex_indices=vertex_indices)[0]
+            entry_skeleton = model.forward_skeleton(**entry_params, joint_indices=joint_indices)[0]
 
             np.testing.assert_allclose(
                 np.asarray(shaped_vertices[entry_index]),

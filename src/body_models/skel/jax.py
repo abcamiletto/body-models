@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 from body_models import common
 from body_models.base import BodyModel
 from body_models.skel.backends import jax as backend
-from body_models.skel.backends.core import SkelIdentity
+from body_models.skel.backends.core import SkelIdentity, SkelPreparedPose
 from body_models.skel.io import get_model_path, load_model_data
 from body_models.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 
@@ -68,7 +68,7 @@ class SKEL(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.weights.v_template + self.weights.feet_offset
+        return self.weights.v_template
 
     @property
     def shapedirs(self) -> Float[jax.Array, "V 3 B"]:
@@ -81,10 +81,6 @@ class SKEL(BodyModel):
     @property
     def parents(self) -> list[int]:
         return self.weights.parents
-
-    @property
-    def _feet_offset(self) -> Float[jax.Array, "3"]:
-        return self.weights.feet_offset
 
     def forward_vertices(
         self,
@@ -113,13 +109,18 @@ class SKEL(BodyModel):
             batch_shape = body_pose.shape[:-1]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
+        pose = self.prepare_pose(body_pose, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return backend.forward_vertices(
             weights=self.weights,
-            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            **identity,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
@@ -149,13 +150,13 @@ class SKEL(BodyModel):
             batch_shape = body_pose.shape[:-1]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(body_pose, identity=identity, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            pose=body_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
-            **identity,
+            joint_transforms=pose["joint_transforms"],
         )
 
     def prepare_identity(
@@ -165,6 +166,22 @@ class SKEL(BodyModel):
     ) -> SkelIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        body_pose: Float[jax.Array, "*batch 46"],
+        *,
+        identity: SkelIdentity,
+        skip_vertices: bool = False,
+    ) -> SkelPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return backend.prepare_pose(
+            self.weights,
+            body_pose,
+            rest_joints=identity["rest_joints"],
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
+        )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
         return {

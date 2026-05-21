@@ -11,7 +11,7 @@ from nanomanifold import SO3
 
 from body_models.mano.backends import numpy as numpy_backend
 from body_models.mano.backends import scipy as scipy_backend
-from body_models.mano.backends.core import ManoIdentity
+from body_models.mano.backends.core import ManoIdentity, ManoPreparedPose
 from body_models.mano.io import get_model_path, load_model_data
 from body_models.mano.constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -137,15 +137,19 @@ class MANO(BodyModel):
             assert shape is not None
             batch_shape = tuple(hand_pose.shape[: -(self.num_rot_dims + 1)])
             identity = self.prepare_identity(np.broadcast_to(shape, (*batch_shape, shape.shape[-1])))
+        pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
-            hand_pose=hand_pose,
-            wrist_rotation=wrist_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
@@ -178,15 +182,14 @@ class MANO(BodyModel):
             batch_shape = tuple(hand_pose.shape[: -(self.num_rot_dims + 1)])
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
+        pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             weights=self.weights,
-            hand_pose=hand_pose,
-            wrist_rotation=wrist_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            joint_transforms=pose["joint_transforms"],
         )
 
     def prepare_identity(
@@ -196,6 +199,24 @@ class MANO(BodyModel):
     ) -> ManoIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        hand_pose: Float[np.ndarray, "B 15 N"] | Float[np.ndarray, "B 15 3 3"],
+        wrist_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        *,
+        identity: ManoIdentity,
+        skip_vertices: bool = False,
+    ) -> ManoPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(
+            self.weights,
+            hand_pose,
+            wrist_rotation,
+            rotation_type=self.rotation_type,
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
+        )
 
     def get_rest_pose(
         self,
