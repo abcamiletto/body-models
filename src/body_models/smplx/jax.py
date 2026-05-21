@@ -13,7 +13,7 @@ from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.smplx.backends import jax as backend
-from body_models.smplx.backends.core import SmplxIdentity
+from body_models.smplx.backends.core import SmplxIdentity, SmplxPreparedPose
 from body_models.smplx.io import get_model_path, load_model_data
 from body_models.smplx.constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
 
@@ -112,13 +112,13 @@ class SMPLX(BodyModel):
         body_pose: Float[jax.Array, "*batch 21 N"] | Float[jax.Array, "*batch 21 3 3"],
         hand_pose: Float[jax.Array, "*batch 30 N"] | Float[jax.Array, "*batch 30 3 3"],
         head_pose: Float[jax.Array, "*batch 3 N"] | Float[jax.Array, "*batch 3 3 3"],
-        expression: Float[jax.Array, "*batch 10"] | None = None,
         pelvis_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
         global_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
         global_translation: Float[jax.Array, "*batch 3"] | None = None,
         vertex_indices: Any | None = None,
         *,
         shape: Float[jax.Array, "*batch 10"] | None = None,
+        expression: Float[jax.Array, "*batch 10"] | None = None,
         identity: SmplxIdentity | None = None,
     ) -> Float[jax.Array, "*batch V 3"]:
         """Compute posed mesh vertices.
@@ -139,22 +139,24 @@ class SMPLX(BodyModel):
         """
         if identity is None:
             assert shape is not None
+            assert expression is not None
             batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            if expression is not None:
-                expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
+        pose = self.prepare_pose(body_pose, hand_pose, head_pose, pelvis_rotation, identity=identity)
+        assert "rest_vertices" in identity
+        assert "pose_offsets" in pose
         return backend.forward_vertices(
             weights=self.weights,
-            body_pose=body_pose,
-            hand_pose=hand_pose,
-            head_pose=head_pose,
-            pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            rest_joints=identity["rest_joints"],
+            rest_vertices=identity["rest_vertices"],
+            joint_transforms=pose["joint_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
@@ -162,13 +164,13 @@ class SMPLX(BodyModel):
         body_pose: Float[jax.Array, "*batch 21 N"] | Float[jax.Array, "*batch 21 3 3"],
         hand_pose: Float[jax.Array, "*batch 30 N"] | Float[jax.Array, "*batch 30 3 3"],
         head_pose: Float[jax.Array, "*batch 3 N"] | Float[jax.Array, "*batch 3 3 3"],
-        expression: Float[jax.Array, "*batch 10"] | None = None,
         pelvis_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
         global_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
         global_translation: Float[jax.Array, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
         *,
         shape: Float[jax.Array, "*batch 10"] | None = None,
+        expression: Float[jax.Array, "*batch 10"] | None = None,
         identity: SmplxIdentity | None = None,
     ) -> Float[jax.Array, "*batch 55 4 4"]:
         """Compute posed joint transforms.
@@ -189,32 +191,55 @@ class SMPLX(BodyModel):
         """
         if identity is None:
             assert shape is not None
+            assert expression is not None
             batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            if expression is not None:
-                expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
+        pose = self.prepare_pose(
+            body_pose, hand_pose, head_pose, pelvis_rotation, identity=identity, skip_vertices=True
+        )
         return backend.forward_skeleton(
             weights=self.weights,
-            body_pose=body_pose,
-            hand_pose=hand_pose,
-            head_pose=head_pose,
-            pelvis_rotation=pelvis_rotation,
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            **identity,
+            joint_transforms=pose["joint_transforms"],
         )
 
     def prepare_identity(
         self,
         shape: Float[jax.Array, "*batch 10"],
-        expression: Float[jax.Array, "*batch 10"] | None = None,
+        expression: Float[jax.Array, "*batch 10"],
         skip_vertices: bool = False,
     ) -> SmplxIdentity:
         """Precompute shape- and expression-dependent state for repeated forward passes."""
         return backend.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        body_pose: Float[jax.Array, "*batch 21 N"] | Float[jax.Array, "*batch 21 3 3"],
+        hand_pose: Float[jax.Array, "*batch 30 N"] | Float[jax.Array, "*batch 30 3 3"],
+        head_pose: Float[jax.Array, "*batch 3 N"] | Float[jax.Array, "*batch 3 3 3"],
+        pelvis_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
+        *,
+        shape: Float[jax.Array, "*batch 10"] | None = None,
+        expression: Float[jax.Array, "*batch 10"] | None = None,
+        identity: SmplxIdentity,
+        skip_vertices: bool = False,
+    ) -> SmplxPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return backend.prepare_pose(
+            self.weights,
+            body_pose,
+            hand_pose,
+            head_pose,
+            pelvis_rotation,
+            rotation_type=self.rotation_type,
+            local_joint_offsets=identity["local_joint_offsets"],
+            skip_vertices=skip_vertices,
+        )
 
     def get_rest_pose(
         self,

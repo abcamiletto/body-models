@@ -35,6 +35,7 @@ def prepare_pose(
     local_joint_offsets: Float[Tensor, "*batch J 3"],
     skip_vertices: bool = False,
 ) -> core.SmplPreparedPose:
+    """Precompute pose-dependent state for repeated forward passes."""
     return torch_backend.prepare_pose(
         weights,
         body_pose,

@@ -167,7 +167,6 @@ class SOMA(BodyModel, nn.Module):
         identity: core.SomaIdentity | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices: Any | None = None,
-        apply_correctives: bool = True,
     ) -> Float[Tensor, "B V 3"]:
         """Compute posed mesh vertices.
 
@@ -181,7 +180,6 @@ class SOMA(BodyModel, nn.Module):
             identity: Optional output from :meth:`prepare_identity`.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
-            apply_correctives: Whether to apply pose and identity correctives.
 
         Returns:
             Posed vertex positions.
@@ -194,14 +192,18 @@ class SOMA(BodyModel, nn.Module):
             if scale_params is not None:
                 scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params)
+        pose = self.prepare_pose(pose)
+        assert "bind_shape_active" in identity
+        assert "inverse_world_bind_pose" in identity
         return self._kernel.forward_vertices(
             data=self.weights,
-            pose=pose,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            **identity,
+            bind_shape_active=identity["bind_shape_active"],
+            world_bind_pose=identity["world_bind_pose"],
+            inverse_world_bind_pose=identity["inverse_world_bind_pose"],
+            pose_rot_full=pose["pose_rot_full"],
             xp=torch,
         )
 
@@ -217,7 +219,6 @@ class SOMA(BodyModel, nn.Module):
         identity: core.SomaIdentity | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices: Any | None = None,
-        apply_correctives: bool = True,
     ) -> Float[Tensor, "B 77 4 4"]:
         """Compute posed joint transforms.
 
@@ -231,7 +232,6 @@ class SOMA(BodyModel, nn.Module):
             identity: Optional output from :meth:`prepare_identity`.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
-            apply_correctives: Whether to apply pose and identity correctives.
 
         Returns:
             Joint transforms in the model hierarchy.
@@ -243,15 +243,15 @@ class SOMA(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            identity = self.prepare_identity(shape, scale_params=scale_params)
+            identity = self.prepare_identity(shape, scale_params=scale_params, skip_vertices=True)
+        pose = self.prepare_pose(pose)
         return self._kernel.forward_skeleton(
             data=self.weights,
-            pose=pose,
             global_translation=global_translation,
             joint_indices=joint_indices,
-            apply_correctives=apply_correctives,
             rotation_type=self.rotation_type,
-            **identity,
+            world_bind_pose=identity["world_bind_pose"],
+            pose_rot_full=pose["pose_rot_full"],
             xp=torch,
         )
 
@@ -304,6 +304,7 @@ class SOMA(BodyModel, nn.Module):
         shape: Float[Tensor, "*batch I"],
         *,
         scale_params: Float[Tensor, "B|1 K"] | None = None,
+        skip_vertices: bool = False,
     ) -> core.SomaIdentity:
         """Precompute identity-dependent SOMA state for repeated forward passes."""
         if self.num_scale_params is None:
@@ -314,12 +315,21 @@ class SOMA(BodyModel, nn.Module):
                 device=shape.device,
                 dtype=shape.dtype,
             )
-        return self._prepare_identity_from_inputs(shape, scale_params)
+        return self._prepare_identity_from_inputs(shape, scale_params, skip_vertices=skip_vertices)
+
+    def prepare_pose(
+        self,
+        pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
+    ) -> core.SomaPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return self._kernel.prepare_pose(self.weights, pose, rotation_type=self.rotation_type, xp=torch)
 
     def _prepare_identity_from_inputs(
         self,
         shape: Float[Tensor, "B I"],
         scale_params: Float[Tensor, "B K"] | None,
+        *,
+        skip_vertices: bool = False,
     ) -> core.SomaIdentity:
         rest_shape_full, rest_shape_active = identities.rest_shapes(
             data=self.weights,
@@ -334,6 +344,7 @@ class SOMA(BodyModel, nn.Module):
             rest_shape_active=rest_shape_active,
             match_warp=self.match_warp,
             xp=torch,
+            skip_vertices=skip_vertices,
         )
 
     def get_tpose(

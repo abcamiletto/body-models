@@ -21,6 +21,15 @@ class MhrIdentity(TypedDict):
     rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
 
 
+class MhrPreparedPose(TypedDict):
+    """Pose-dependent MHR state returned by ``prepare_pose``."""
+
+    joint_translations: Float[Array, "*batch J 3"]
+    joint_rotations: Float[Array, "*batch J 3 3"]
+    joint_scales: Float[Array, "*batch J 1"]
+    joint_params: NotRequired[Float[Array, "*batch J 7"]]
+
+
 def apply_pose_correctives(
     joint_params: Float[Array, "B J 7"],
     W1: Float[Array, "3000 750"],
@@ -61,25 +70,24 @@ def forward_vertices(
     bind_inv_translation: Float[Array, "J 3"],
     corrective_W1: Float[Array, "3000 750"],
     corrective_W2: Float[Array, "V*3 3000"],
-    kinematic_fronts: list[Front],
-    num_joints: int,
-    shape_dim: int,
     expr_dim: int,
-    pose: Float[Array, "B 204"],
     global_rotation: Float[Array, "B 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     *,
     rest_vertices: Float[Array, "*batch V 3"],
+    joint_translations: Float[Array, "*batch J 3"],
+    joint_rotations: Float[Array, "*batch J 3 3"],
+    joint_scales: Float[Array, "*batch J 1"],
+    joint_params: Float[Array, "*batch J 7"],
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
-    assert pose.ndim >= 1 and pose.shape[-1] == 204
     assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
-        xp = get_namespace(pose)
+        xp = get_namespace(rest_vertices)
 
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
@@ -90,23 +98,12 @@ def forward_vertices(
             -1, corrective_W2.shape[-1]
         )
 
-    t_g, r_g, s_g, j_p = _forward_skeleton_core(
-        xp=xp,
-        pose=pose,
-        joint_offsets=joint_offsets,
-        joint_pre_rotations=joint_pre_rotations,
-        parameter_transform=parameter_transform,
-        kinematic_fronts=kinematic_fronts,
-        num_joints=num_joints,
-        shape_dim=shape_dim,
-    )
-
     v_t = rest_vertices
-    v_t = v_t + apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp)
+    v_t = v_t + apply_pose_correctives(joint_params, corrective_W1, corrective_W2, xp=xp)
 
-    lin_g = r_g * s_g[..., None]
+    lin_g = joint_rotations * joint_scales[..., None]
     lin = xp.einsum("...jik,jkl->...jil", lin_g, bind_inv_linear)
-    t = xp.einsum("...jik,jk->...ji", lin_g, bind_inv_translation) + t_g
+    t = xp.einsum("...jik,jk->...ji", lin_g, bind_inv_translation) + joint_translations
 
     lin = _gather_joint_matrices(lin, skin_indices)
     t = _gather_joint_vectors(t, skin_indices)
@@ -124,7 +121,7 @@ def forward_vertices(
     return verts
 
 
-def forward_skeleton(
+def prepare_pose(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
@@ -132,56 +129,62 @@ def forward_skeleton(
     num_joints: int,
     shape_dim: int,
     pose: Float[Array, "B 204"],
-    global_rotation: Float[Array, "B 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
-    joint_indices: list[int] | None = None,
     *,
-    rest_vertices: Float[Array, "*batch V 3"] | None = None,
+    skip_vertices: bool = False,
     xp: Any = None,
-) -> Float[Array, "B J 4 4"]:
-    """Compute skeleton transforms [B, J, 4, 4] in meters."""
+) -> MhrPreparedPose:
+    """Precompute pose-dependent MHR state for repeated forward passes."""
     assert pose.ndim >= 1 and pose.shape[-1] == 204
-    assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
-    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
-
     if xp is None:
         xp = get_namespace(pose)
-    batch_shape = tuple(pose.shape[:-1])
-    active_fronts = kinematic_fronts
-    if joint_indices is not None:
-        joint_indices = [int(joint) for joint in joint_indices]
-        if any(joint < 0 or joint >= num_joints for joint in joint_indices):
-            raise IndexError(f"joint_indices must be in [0, {num_joints})")
-
-        parents = [-1] * num_joints
-        for joints, joint_parents in kinematic_fronts:
-            for joint, parent in zip(joints, joint_parents):
-                parents[joint] = parent
-
-        active_joints = set()
-        for joint in joint_indices:
-            cur = joint
-            while cur >= 0 and cur not in active_joints:
-                active_joints.add(cur)
-                cur = parents[cur]
-
-        active_fronts = []
-        for joints, joint_parents in kinematic_fronts:
-            pairs = [(joint, parent) for joint, parent in zip(joints, joint_parents) if joint in active_joints]
-            if pairs:
-                active_fronts.append(([joint for joint, _ in pairs], [parent for _, parent in pairs]))
-
-    t_g, r_g, s_g, _ = _forward_skeleton_core(
+    t_g, r_g, s_g, j_p = _forward_skeleton_core(
         xp=xp,
         pose=pose,
         joint_offsets=joint_offsets,
         joint_pre_rotations=joint_pre_rotations,
         parameter_transform=parameter_transform,
-        kinematic_fronts=active_fronts,
+        kinematic_fronts=kinematic_fronts,
         num_joints=num_joints,
         shape_dim=shape_dim,
-        joint_indices=joint_indices,
     )
+    prepared_pose: MhrPreparedPose = {
+        "joint_translations": t_g,
+        "joint_rotations": r_g,
+        "joint_scales": s_g,
+    }
+    if not skip_vertices:
+        prepared_pose["joint_params"] = j_p
+    return prepared_pose
+
+
+def forward_skeleton(
+    num_joints: int,
+    global_rotation: Float[Array, "B 3"] | None = None,
+    global_translation: Float[Array, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
+    *,
+    joint_translations: Float[Array, "*batch J 3"],
+    joint_rotations: Float[Array, "*batch J 3 3"],
+    joint_scales: Float[Array, "*batch J 1"],
+    xp: Any = None,
+) -> Float[Array, "B J 4 4"]:
+    """Compute skeleton transforms [B, J, 4, 4] in meters."""
+    assert global_rotation is None or (global_rotation.ndim >= 1 and global_rotation.shape[-1] == 3)
+    assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
+
+    if xp is None:
+        xp = get_namespace(joint_translations)
+    batch_shape = tuple(joint_translations.shape[:-2])
+    t_g = joint_translations
+    r_g = joint_rotations
+    s_g = joint_scales
+    if joint_indices is not None:
+        joint_indices = [int(joint) for joint in joint_indices]
+        if any(joint < 0 or joint >= num_joints for joint in joint_indices):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+        t_g = t_g[..., joint_indices, :]
+        r_g = r_g[..., joint_indices, :, :]
+        s_g = s_g[..., joint_indices, :]
 
     T = _trs_to_transforms(xp, t_g * 0.01, r_g, s_g)
 
@@ -213,7 +216,7 @@ def prepare_identity(
     base_vertices: Float[Array, "V 3"] | None,
     blendshape_dirs: Float[Array, "117 V 3"] | None,
     shape: Float[Array, "*batch 45"],
-    expression: Float[Array, "*batch 72"] | None = None,
+    expression: Float[Array, "*batch 72"],
     expr_dim: int = 72,
     skip_vertices: bool = False,
 ) -> MhrIdentity:
@@ -222,8 +225,6 @@ def prepare_identity(
     identity: MhrIdentity = {}
     if not skip_vertices:
         assert base_vertices is not None and blendshape_dirs is not None
-        if expression is None:
-            expression = common.zeros_as(shape, shape=(*shape.shape[:-1], expr_dim), xp=xp)
         coeffs = xp.concat([shape, expression], axis=-1)
         identity["rest_vertices"] = base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)
     return identity

@@ -8,7 +8,7 @@ from jaxtyping import Float, Int
 
 from body_models.base import BodyModel
 from body_models.mhr.backends import numpy as backend
-from body_models.mhr.backends.core import MhrIdentity
+from body_models.mhr.backends.core import MhrIdentity, MhrPreparedPose
 from body_models.mhr.constants import (
     MHR_BODY_POSE_DIM,
     MHR_HAND_PRESETS,
@@ -95,7 +95,7 @@ class MHR(BodyModel):
         self,
         body_pose: Float[np.ndarray, "*batch 100"],
         hand_pose: Float[np.ndarray, "*batch 104"],
-        expression: Float[np.ndarray, "*batch 72"] | None = None,
+        expression: Float[np.ndarray, "*batch 72"],
         global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
         global_translation: Float[np.ndarray, "*batch 3"] | None = None,
         vertex_indices: Any | None = None,
@@ -121,23 +121,28 @@ class MHR(BodyModel):
             assert shape is not None
             batch_shape = body_pose.shape[:-1]
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            if expression is not None:
-                expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
+        pose = self.prepare_pose(pack_pose(np, body_pose, hand_pose))
+        assert "rest_vertices" in identity
+        assert "joint_params" in pose
         return backend.forward_vertices(
             weights=self.weights,
-            pose=pack_pose(np, body_pose, hand_pose),
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            **identity,
+            rest_vertices=identity["rest_vertices"],
+            joint_translations=pose["joint_translations"],
+            joint_rotations=pose["joint_rotations"],
+            joint_scales=pose["joint_scales"],
+            joint_params=pose["joint_params"],
         )
 
     def forward_skeleton(
         self,
         body_pose: Float[np.ndarray, "*batch 100"],
         hand_pose: Float[np.ndarray, "*batch 104"],
-        expression: Float[np.ndarray, "*batch 72"] | None = None,
+        expression: Float[np.ndarray, "*batch 72"],
         global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
         global_translation: Float[np.ndarray, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
@@ -163,26 +168,31 @@ class MHR(BodyModel):
             assert shape is not None
             batch_shape = body_pose.shape[:-1]
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            if expression is not None:
-                expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
+        pose = self.prepare_pose(pack_pose(np, body_pose, hand_pose), skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
-            pose=pack_pose(np, body_pose, hand_pose),
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
-            **identity,
+            joint_translations=pose["joint_translations"],
+            joint_rotations=pose["joint_rotations"],
+            joint_scales=pose["joint_scales"],
         )
 
     def prepare_identity(
         self,
         shape: Float[np.ndarray, "*batch 45"],
-        expression: Float[np.ndarray, "*batch 72"] | None = None,
+        expression: Float[np.ndarray, "*batch 72"],
         skip_vertices: bool = False,
     ) -> MhrIdentity:
         """Precompute shape- and expression-dependent state for repeated forward passes."""
         return backend.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
+
+    def prepare_pose(self, pose: Float[np.ndarray, "*batch 204"], skip_vertices: bool = False) -> MhrPreparedPose:
+        """Precompute pose-dependent state for repeated forward passes."""
+        return backend.prepare_pose(self.weights, pose, skip_vertices=skip_vertices)
 
     def get_rest_pose(
         self,

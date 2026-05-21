@@ -37,6 +37,7 @@ def prepare_pose(
     local_joint_offsets: Float[np.ndarray, "*batch J 3"],
     skip_vertices: bool = False,
 ) -> core.SmplPreparedPose:
+    """Precompute pose-dependent state for repeated forward passes."""
     return core.prepare_pose(
         xp=np,
         posedirs=weights.posedirs,
