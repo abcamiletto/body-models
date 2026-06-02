@@ -118,8 +118,6 @@ class GarmentMeasurements(BodyModel):
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         pose = self.prepare_pose(pose, identity=identity)
-        assert "rest_vertices" in identity
-        assert "skinning_skeleton" in pose
         return self._kernel.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -127,7 +125,7 @@ class GarmentMeasurements(BodyModel):
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
             rest_vertices=identity["rest_vertices"],
-            skinning_skeleton=pose["skinning_skeleton"],
+            skinning_transforms=pose["skinning_transforms"],
         )
 
     def forward_skeleton(
@@ -166,12 +164,12 @@ class GarmentMeasurements(BodyModel):
             identity = self.prepare_identity(shape, skip_vertices=True)
         pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
-            weights=self.weights,
+            self.weights,
+            pose["skeleton_transforms"],
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            posed_skeleton=pose["posed_skeleton"],
         )
 
     def prepare_identity(

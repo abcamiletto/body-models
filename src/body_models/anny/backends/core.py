@@ -18,25 +18,24 @@ IDENTITY_LABELS = ("gender", "age", "muscle", "weight", "height", "proportions")
 class AnnyIdentity(TypedDict):
     """Phenotype-dependent ANNY state returned by ``prepare_identity``."""
 
-    rest_bone_poses: Float[Array, "*batch J 4 4"]
+    rest_skeleton_transforms: Float[Array, "*batch J 4 4"]
     rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
 
 
 class AnnyPreparedPose(TypedDict):
     """Pose-dependent ANNY state returned by ``prepare_pose``."""
 
-    bone_poses: Float[Array, "*batch J 4 4"]
-    bone_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
+    skeleton_transforms: Float[Array, "*batch J 4 4"]
+    skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
 
 
 def forward_vertices(
     # Model data
     lbs_weights: Float[Array, "V J"],
+    rest_vertices: Float[Array, "*batch V 3"],
+    skinning_transforms: Float[Array, "*batch J 4 4"],
     global_translation: Float[Array, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    *,
-    rest_vertices: Float[Array, "*batch V 3"],
-    bone_transforms: Float[Array, "*batch J 4 4"],
     xp: Any = None,
 ) -> Float[Array, "*batch V 3"]:
     """Compute mesh vertices [B, V, 3]."""
@@ -47,7 +46,7 @@ def forward_vertices(
     lbs = lbs_weights if vertex_indices is None else lbs_weights[xp.asarray(vertex_indices)]
     if vertex_indices is not None:
         rest_verts = rest_verts[..., xp.asarray(vertex_indices), :]
-    vertices = linear_blend_skinning(xp, rest_verts, bone_transforms, lbs)
+    vertices = linear_blend_skinning(xp, rest_verts, skinning_transforms, lbs)
     return apply_global_transform(xp, vertices, global_translation)
 
 
@@ -57,7 +56,7 @@ def prepare_pose(
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType = "axis_angle",
     *,
-    rest_bone_poses: Float[Array, "*batch J 4 4"],
+    rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
     skip_vertices: bool = False,
     xp: Any = None,
 ) -> AnnyPreparedPose:
@@ -66,29 +65,29 @@ def prepare_pose(
         xp = get_namespace(pose)
 
     pose_T = _pose_to_transform(xp, pose, rotation_type)
-    bone_poses, bone_transforms = _forward_core(
+    skeleton_transforms, skinning_transforms = _forward_core(
         xp=xp,
         kinematic_fronts=kinematic_fronts,
-        rest_bone_poses=rest_bone_poses,
+        rest_skeleton_transforms=rest_skeleton_transforms,
         pose_T=pose_T,
         skip_transforms=skip_vertices,
     )
-    prepared_pose: AnnyPreparedPose = {"bone_poses": bone_poses}
+    prepared_pose: AnnyPreparedPose = {"skeleton_transforms": skeleton_transforms}
     if skip_vertices:
         return prepared_pose
-    assert bone_transforms is not None
-    prepared_pose["bone_transforms"] = bone_transforms
+    assert skinning_transforms is not None
+    prepared_pose["skinning_transforms"] = skinning_transforms
     return prepared_pose
 
 
 def linear_blend_skinning(
     xp,
     rest_verts: Float[Array, "*batch V 3"],
-    bone_transforms: Float[Array, "*batch J 4 4"],
+    skinning_transforms: Float[Array, "*batch J 4 4"],
     lbs_weights: Float[Array, "V J"],
 ) -> Float[Array, "*batch V 3"]:
-    R = bone_transforms[..., :3, :3]
-    t = bone_transforms[..., :3, 3]
+    R = skinning_transforms[..., :3, :3]
+    t = skinning_transforms[..., :3, 3]
     W_R = xp.einsum("vj,...jkl->...vkl", lbs_weights, R)
     W_t = xp.einsum("vj,...jk->...vk", lbs_weights, t)
     rotated = xp.squeeze(W_R @ rest_verts[..., None], axis=-1)
@@ -137,19 +136,18 @@ def identity_shape(
 
 def forward_skeleton(
     # Model data
+    skeleton_transforms: Float[Array, "*batch J 4 4"],
     global_translation: Float[Array, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
-    *,
-    bone_poses: Float[Array, "*batch J 4 4"],
     xp: Any = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4]."""
     if xp is None:
-        xp = get_namespace(bone_poses)
-    transforms = bone_poses
+        xp = get_namespace(skeleton_transforms)
+    transforms = skeleton_transforms
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
-        num_joints = bone_poses.shape[-3]
+        num_joints = skeleton_transforms.shape[-3]
         if any(joint < 0 or joint >= num_joints for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {num_joints})")
         transforms = transforms[..., joint_indices, :, :]
@@ -168,13 +166,13 @@ def forward_skeleton(
 def _forward_core(
     xp,
     kinematic_fronts: list[Front],
-    rest_bone_poses: Float[Array, "*batch J 4 4"],
+    rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
     pose_T: Float[Array, "*batch J 4 4"],
     skip_transforms: bool = False,
     joint_indices: list[int] | None = None,
 ) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 4 4"]]:
-    """Core forward: returns (bone_poses, bone_transforms)."""
-    rest_poses = rest_bone_poses
+    """Core forward: returns (skeleton_transforms, skinning_transforms)."""
+    rest_poses = rest_skeleton_transforms
 
     # Root parameterization
     root_rest = rest_poses[..., 0, :, :]
@@ -188,7 +186,7 @@ def _forward_core(
     delta_T = common.set(pose_T, (..., 0, slice(None), slice(None)), new_root, copy=True, xp=xp)
 
     # Forward kinematics
-    bone_poses, bone_transforms = _forward_kinematics(
+    skeleton_transforms, skinning_transforms = _forward_kinematics(
         xp,
         kinematic_fronts,
         rest_poses,
@@ -197,7 +195,7 @@ def _forward_core(
         skip_transforms=skip_transforms,
         joint_indices=joint_indices,
     )
-    return bone_poses, bone_transforms
+    return skeleton_transforms, skinning_transforms
 
 
 def prepare_identity(
@@ -234,7 +232,7 @@ def prepare_identity(
     heads = template_bone_heads + xp.einsum("...s,sjd->...jd", coeffs, bone_heads_blendshapes)
     tails = template_bone_tails + xp.einsum("...s,sjd->...jd", coeffs, bone_tails_blendshapes)
     identity: AnnyIdentity = {
-        "rest_bone_poses": _bone_poses_from_heads_tails(
+        "rest_skeleton_transforms": _skeleton_transforms_from_heads_tails(
             xp, heads, tails, bone_rolls_rotmat, y_axis, degenerate_rotation
         )
     }
@@ -327,7 +325,7 @@ def _phenotype_to_coeffs(
     return xp.prod(masked + (1 - phenotype_mask), axis=-1)
 
 
-def _bone_poses_from_heads_tails(
+def _skeleton_transforms_from_heads_tails(
     xp,
     heads: Float[Array, "*batch J 3"],
     tails: Float[Array, "*batch J 3"],

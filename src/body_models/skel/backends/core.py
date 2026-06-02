@@ -12,6 +12,7 @@ from nanomanifold import SO3
 
 from body_models import common
 from body_models.common import get_namespace
+from body_models.smpl.backends import core as smpl_core
 
 Array = Any  # Generic array type (numpy, torch, jax)
 
@@ -35,20 +36,19 @@ class SkelIdentity(TypedDict):
 class SkelPreparedPose(TypedDict):
     """Pose-dependent SKEL state returned by ``prepare_pose``."""
 
-    joint_transforms: Float[Array, "*batch 24 4 4"]
+    skeleton_transforms: Float[Array, "*batch 24 4 4"]
+    skinning_transforms: Float[Array, "*batch 24 4 4"]
     pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
 
 
 def forward_vertices(
     skin_weights: Float[Array, "V 24"],
+    rest_vertices: Float[Array, "*batch V 3"],
+    skinning_transforms: Float[Array, "*batch 24 4 4"],
+    pose_offsets: Float[Array, "*batch V 3"],
     global_rotation: Float[Array, "*batch 3"] | None = None,
     global_translation: Float[Array, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    *,
-    rest_joints: Float[Array, "*batch 24 3"],
-    rest_vertices: Float[Array, "*batch V 3"],
-    joint_transforms: Float[Array, "*batch 24 4 4"],
-    pose_offsets: Float[Array, "*batch V 3"],
     xp: Any = None,
 ) -> Float[Array, "*batch V 3"]:
     """Compute mesh vertices [B, V, 3]."""
@@ -65,13 +65,10 @@ def forward_vertices(
         skin_weights = skin_weights[vertex_indices]
 
     v_posed = rest_vertices + pose_offsets
-    G = joint_transforms
-    R_joint = G[..., :3, :3]
-    t_world = G[..., :3, 3]
-    t_skin = t_world - xp.squeeze(R_joint @ rest_joints[..., None], axis=-1)  # [B, J, 3]
-
-    W_R = xp.einsum("vj,...jkl->...vkl", skin_weights, R_joint)
-    W_t = xp.einsum("vj,...jk->...vk", skin_weights, t_skin)
+    R = skinning_transforms[..., :3, :3]
+    t = skinning_transforms[..., :3, 3]
+    W_R = xp.einsum("vj,...jkl->...vkl", skin_weights, R)
+    W_t = xp.einsum("vj,...jk->...vk", skin_weights, t)
     v_out = xp.squeeze(W_R @ v_posed[..., None], axis=-1) + W_t
 
     if global_rotation is not None:
@@ -99,8 +96,8 @@ def prepare_pose(
     posedirs: Float[Array, "P V*3"],
     pose: Float[Array, "*batch 46"],
     *,
-    rest_joints: Float[Array, "*batch 24 3"],
     local_joint_offsets: Float[Array, "*batch 24 3"],
+    rest_joints: Float[Array, "*batch 24 3"],
     skip_vertices: bool = False,
     xp: Any = None,
 ) -> SkelPreparedPose:
@@ -127,7 +124,10 @@ def prepare_pose(
     )
     G = _propagate_transforms(xp, G_local, parents[1:])
 
-    prepared_pose: SkelPreparedPose = {"joint_transforms": G}
+    prepared_pose: SkelPreparedPose = {
+        "skeleton_transforms": G,
+        "skinning_transforms": smpl_core.bind_relative_transforms(xp, G, rest_joints),
+    }
     if skip_vertices:
         return prepared_pose
     eye3 = common.eye_as(apose_R, batch_dims=(*batch_shape, 1), xp=xp)
@@ -141,11 +141,10 @@ def prepare_pose(
 
 
 def forward_skeleton(
+    skeleton_transforms: Float[Array, "*batch 24 4 4"],
     global_rotation: Float[Array, "*batch 3"] | None = None,
     global_translation: Float[Array, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
-    *,
-    joint_transforms: Float[Array, "*batch 24 4 4"],
     xp: Any = None,
 ) -> Float[Array, "*batch 24 4 4"]:
     """Compute skeleton joint transforms [B, 24, 4, 4]."""
@@ -153,8 +152,8 @@ def forward_skeleton(
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
-        xp = get_namespace(joint_transforms)
-    G = joint_transforms
+        xp = get_namespace(skeleton_transforms)
+    G = skeleton_transforms
     batch_shape = tuple(G.shape[:-3])
     dtype = G.dtype
 

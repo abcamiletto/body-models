@@ -166,8 +166,8 @@ class ViserBodyModelHandle:
             self.mesh.vertices = _bind_vertices(self.model, bind_pose)
 
         pose = dict(self.pose)
-        bone_wxyzs, bone_positions = _bone_poses(self.model, pose)
-        for bone, wxyz, position in zip(self.mesh.bones, bone_wxyzs, bone_positions):
+        skeleton_wxyzs, skeleton_positions = _skeleton_poses(self.model, pose)
+        for bone, wxyz, position in zip(self.mesh.bones, skeleton_wxyzs, skeleton_positions):
             bone.wxyz = wxyz
             bone.position = position
 
@@ -190,21 +190,21 @@ def add_body_model(
     pose = model.get_rest_pose()
     root = scene.add_frame(name, show_axes=False)
     bind_pose = model.get_bind_params(**pose)
-    bone_wxyzs, bone_positions = _bone_poses(model, bind_pose)
+    skeleton_wxyzs, skeleton_positions = _skeleton_poses(model, bind_pose)
     mesh_path = f"{name}/mesh"
     mesh_handle = scene.add_mesh_skinned(
         mesh_path,
         vertices=_bind_vertices(model, bind_pose),
         faces=_triangular_faces(model),
-        bone_wxyzs=bone_wxyzs,
-        bone_positions=bone_positions,
+        bone_wxyzs=skeleton_wxyzs,
+        bone_positions=skeleton_positions,
         skin_weights=_viser_skin_weights(_numpy_array(model.skin_weights)),
         color=color,
     )
     return ViserBodyModelHandle(model, pose, root, mesh_handle)
 
 
-def _bone_poses(
+def _skeleton_poses(
     model: BodyModel,
     forward_kwargs: dict[str, object],
 ) -> tuple[Float[np.ndarray, "J 4"], Float[np.ndarray, "J 3"]]:
@@ -215,9 +215,9 @@ def _bone_poses(
     if skeleton.ndim != 3 or skeleton.shape[-2:] != (4, 4):
         raise ValueError(f"add_body_model() expects unbatched skeleton shape (N, 4, 4), got {skeleton.shape}.")
 
-    bone_wxyzs = SO3.conversions.from_rotmat_to_quat(skeleton[:, :3, :3], convention="wxyz", xp=np)
-    bone_positions = skeleton[:, :3, 3].copy()
-    return bone_wxyzs, bone_positions
+    skeleton_wxyzs = SO3.conversions.from_rotmat_to_quat(skeleton[:, :3, :3], convention="wxyz", xp=np)
+    skeleton_positions = skeleton[:, :3, 3].copy()
+    return skeleton_wxyzs, skeleton_positions
 
 
 def _bind_vertices(

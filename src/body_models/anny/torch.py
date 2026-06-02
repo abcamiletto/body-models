@@ -142,14 +142,12 @@ class ANNY(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         prepared_pose = self.prepare_pose(pose, identity=identity)
-        assert "rest_vertices" in identity
-        assert "bone_transforms" in prepared_pose
         return self._kernel.forward_vertices(
-            weights=self.weights,
+            self.weights,
+            identity["rest_vertices"],
+            prepared_pose["skinning_transforms"],
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            rest_vertices=identity["rest_vertices"],
-            bone_transforms=prepared_pose["bone_transforms"],
         )
 
     def forward_skeleton(
@@ -187,10 +185,10 @@ class ANNY(BodyModel, nn.Module):
             identity = self.prepare_identity(shape, skip_vertices=True)
         prepared_pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
-            weights=self.weights,
+            self.weights,
+            prepared_pose["skeleton_transforms"],
             global_translation=global_translation,
             joint_indices=joint_indices,
-            bone_poses=prepared_pose["bone_poses"],
         )
 
     def prepare_identity(
@@ -230,7 +228,7 @@ class ANNY(BodyModel, nn.Module):
             self.weights,
             pose,
             rotation_type=self.rotation_type,
-            rest_bone_poses=identity["rest_bone_poses"],
+            rest_skeleton_transforms=identity["rest_skeleton_transforms"],
             skip_vertices=skip_vertices,
         )
 
