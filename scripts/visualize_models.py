@@ -473,18 +473,18 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
         elif name == "SOMA":
             assert isinstance(state.model, SOMA)
             model = state.model
-            identity_default = float(state.params["identity"][0])
+            shape_default = float(state.params["shape"][0])
             with server.gui.add_folder("Identity"):
                 handles += betas(
                     server,
                     state,
-                    key="identity",
+                    key="shape",
                     count=min(10, model.identity_dim),
                     prefix="ι",
                     lo=-1.0,
                     hi=1.0,
                     step=0.05,
-                    initial=identity_default,
+                    initial=shape_default,
                 )
             with server.gui.add_folder("Body Pose"):
                 handles += joint_xyz(
