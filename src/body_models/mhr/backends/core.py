@@ -25,7 +25,7 @@ class MhrPreparedPose(TypedDict):
     """Pose-dependent MHR state returned by ``prepare_pose``."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
+    skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
     pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
 
 
@@ -134,17 +134,18 @@ def prepare_pose(
     )
     prepared_pose: MhrPreparedPose = {
         "skeleton_transforms": _trs_to_transforms(xp, t_g * 0.01, r_g, s_g),
-        "skinning_transforms": _skinning_transforms(
-            xp,
-            joint_translations=t_g,
-            joint_rotations=r_g,
-            joint_scales=s_g,
-            bind_inv_linear=bind_inv_linear,
-            bind_inv_translation=bind_inv_translation,
-        ),
     }
-    if not skip_vertices:
-        prepared_pose["pose_offsets"] = apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp) * 0.01
+    if skip_vertices:
+        return prepared_pose
+    prepared_pose["skinning_transforms"] = _skinning_transforms(
+        xp,
+        joint_translations=t_g,
+        joint_rotations=r_g,
+        joint_scales=s_g,
+        bind_inv_linear=bind_inv_linear,
+        bind_inv_translation=bind_inv_translation,
+    )
+    prepared_pose["pose_offsets"] = apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp) * 0.01
     return prepared_pose
 
 

@@ -144,7 +144,7 @@ class ANNY(BodyModel, nn.Module):
         prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
         return self._kernel.forward_vertices(
             self.weights,
-            identity["rest_vertices"] + prepared_pose["pose_offsets"],
+            identity["rest_vertices"],
             prepared_pose["skinning_transforms"],
             global_translation=global_translation,
             vertex_indices=vertex_indices,
@@ -240,7 +240,6 @@ class ANNY(BodyModel, nn.Module):
             pose,
             rotation_type=self.rotation_type,
             rest_skeleton_transforms=identity["rest_skeleton_transforms"],
-            rest_vertices=None if skip_vertices else identity["rest_vertices"],
             skip_vertices=skip_vertices,
         )
 

@@ -45,7 +45,6 @@ def prepare_pose(
     rotation_type: RotationType = "axis_angle",
     *,
     rest_skeleton_transforms: Float[np.ndarray, "*batch J 4 4"],
-    rest_vertices: Float[np.ndarray, "*batch V 3"] | None = None,
     skip_vertices: bool = False,
 ) -> AnnyPreparedPose:
     """Precompute pose-dependent state for repeated forward passes."""
@@ -55,7 +54,6 @@ def prepare_pose(
         pose=pose,
         rotation_type=rotation_type,
         rest_skeleton_transforms=rest_skeleton_transforms,
-        rest_vertices=rest_vertices,
         skip_vertices=skip_vertices,
     )
 
