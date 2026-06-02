@@ -27,6 +27,7 @@ class AnnyPreparedPose(TypedDict):
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
     skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
+    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
 
 
 def forward_vertices(
@@ -57,6 +58,7 @@ def prepare_pose(
     rotation_type: RotationType = "axis_angle",
     *,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
+    rest_vertices: Float[Array, "*batch V 3"] | None = None,
     skip_vertices: bool = False,
     xp: Any = None,
 ) -> AnnyPreparedPose:
@@ -75,8 +77,10 @@ def prepare_pose(
     prepared_pose: AnnyPreparedPose = {"skeleton_transforms": skeleton_transforms}
     if skip_vertices:
         return prepared_pose
+    assert rest_vertices is not None
     assert skinning_transforms is not None
     prepared_pose["skinning_transforms"] = skinning_transforms
+    prepared_pose["pose_offsets"] = common.zeros_as(rest_vertices, shape=rest_vertices.shape, xp=xp)
     return prepared_pose
 
 

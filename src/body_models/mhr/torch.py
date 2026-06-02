@@ -131,17 +131,14 @@ class MHR(BodyModel, nn.Module):
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
         pose = self.prepare_pose(body_pose, hand_pose)
-        assert "joint_params" in pose
         return backend.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rest_vertices=identity["rest_vertices"],
-            joint_translations=pose["joint_translations"],
-            joint_rotations=pose["joint_rotations"],
-            joint_scales=pose["joint_scales"],
-            joint_params=pose["joint_params"],
+            skinning_transforms=pose["skinning_transforms"],
+            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
@@ -182,9 +179,7 @@ class MHR(BodyModel, nn.Module):
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
-            joint_translations=pose["joint_translations"],
-            joint_rotations=pose["joint_rotations"],
-            joint_scales=pose["joint_scales"],
+            skeleton_transforms=pose["skeleton_transforms"],
         )
 
     def prepare_identity(

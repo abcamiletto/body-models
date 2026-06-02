@@ -133,7 +133,7 @@ class ANNY(BodyModel):
             weights=self.weights,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
-            rest_vertices=identity["rest_vertices"],
+            rest_vertices=identity["rest_vertices"] + prepared_pose["pose_offsets"],
             skinning_transforms=prepared_pose["skinning_transforms"],
         )
 
@@ -227,6 +227,7 @@ class ANNY(BodyModel):
             pose,
             rotation_type=self.rotation_type,
             rest_skeleton_transforms=identity["rest_skeleton_transforms"],
+            rest_vertices=None if skip_vertices else identity["rest_vertices"],
             skip_vertices=skip_vertices,
         )
 
