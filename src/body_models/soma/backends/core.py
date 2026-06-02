@@ -17,7 +17,7 @@ Front = tuple[list[int], list[int]]
 class SomaIdentity(TypedDict):
     """Identity-dependent SOMA state returned by ``prepare_identity``."""
 
-    bind_shape_active: NotRequired[Float[Array, "*batch Va 3"]]
+    rest_vertices: NotRequired[Float[Array, "*batch Va 3"]]
     world_bind_pose: Float[Array, "*batch Jf 4 4"]
     inverse_world_bind_pose: NotRequired[Float[Array, "*batch Jf 4 4"]]
 
@@ -25,7 +25,9 @@ class SomaIdentity(TypedDict):
 class SomaPreparedPose(TypedDict):
     """Pose-dependent SOMA state returned by ``prepare_pose``."""
 
-    pose_rot_full: Float[Array, "*batch Jf 3 3"]
+    skeleton_transforms: Float[Array, "*batch J 4 4"]
+    skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
+    pose_offsets: NotRequired[Float[Array, "*batch Va 3"]]
 
 
 def prepare_data(soma_weights: Any) -> Any:
@@ -70,7 +72,7 @@ def prepare_identity_from_rest_shape(
         "world_bind_pose": world_bind_pose,
     }
     if not skip_vertices:
-        identity["bind_shape_active"] = bind_shape_active
+        identity["rest_vertices"] = bind_shape_active * 0.01
         identity["inverse_world_bind_pose"] = inverse_world_bind_pose
     return identity
 
@@ -78,10 +80,9 @@ def prepare_identity_from_rest_shape(
 def forward_vertices(
     data: Any,
     xp: Any,
-    bind_shape_active: Float[Array, "*batch Va 3"],
-    world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    inverse_world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    pose_rot_full: Float[Array, "*batch Jf 3 3"],
+    rest_vertices: Float[Array, "*batch Va 3"],
+    skinning_transforms: Float[Array, "*batch J 4 4"],
+    pose_offsets: Float[Array, "*batch Va 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
@@ -89,10 +90,9 @@ def forward_vertices(
 ) -> Float[Array, "B V 3"]:
     return _forward_vertices_with(
         data=data,
-        bind_shape_active=bind_shape_active,
-        world_bind_pose=world_bind_pose,
-        inverse_world_bind_pose=inverse_world_bind_pose,
-        pose_rot_full=pose_rot_full,
+        rest_vertices=rest_vertices,
+        skinning_transforms=skinning_transforms,
+        pose_offsets=pose_offsets,
         global_rotation=global_rotation,
         global_translation=global_translation,
         vertex_indices=vertex_indices,
@@ -110,36 +110,17 @@ def _forward_vertices_with(
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
     *,
-    bind_shape_active: Float[Array, "*batch Va 3"],
-    world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    inverse_world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    pose_rot_full: Float[Array, "*batch Jf 3 3"],
+    rest_vertices: Float[Array, "*batch Va 3"],
+    skinning_transforms: Float[Array, "*batch J 4 4"],
+    pose_offsets: Float[Array, "*batch Va 3"],
     xp: Any,
     apply_pose_correctives_fn: Any,
     linear_blend_skinning_fn: Any,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
-    topology = data.topology
-
-    rest_shape_active = bind_shape_active
-    corrective_offsets = apply_pose_correctives_fn(data, pose_rot_full, xp=xp)
-    if data.vertex_map is not None:
-        corrective_offsets = corrective_offsets[..., data.vertex_map, :]
-    rest_shape_active = rest_shape_active + corrective_offsets
-
-    verts_cm, _ = pose_mesh_from_oriented_pose(
-        xp=xp,
-        rest_shape=rest_shape_active,
-        skin_weights=data.skin_weights_active,
-        world_bind_pose=world_bind_pose,
-        inverse_world_bind_pose=inverse_world_bind_pose,
-        kinematic_fronts=topology.kinematic_fronts_full,
-        parents_full=topology.parents_full,
-        pose_rot_full=pose_rot_full,
-        linear_blend_skinning_fn=linear_blend_skinning_fn,
+    verts = linear_blend_skinning_fn(
+        xp, rest_vertices + pose_offsets, data.skin_weights_active[:, 1:], skinning_transforms
     )
-
-    verts = verts_cm * 0.01
     verts = _apply_global_transform_vertices(xp, verts, global_rotation, global_translation, rotation_type)
     if vertex_indices is not None:
         verts = verts[..., xp.asarray(vertex_indices), :]
@@ -149,26 +130,16 @@ def _forward_vertices_with(
 def forward_skeleton(
     data: Any,
     xp: Any,
-    world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    pose_rot_full: Float[Array, "*batch Jf 3 3"],
+    skeleton_transforms: Float[Array, "*batch J 4 4"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
-    topology = data.topology
-    T_world_cm = _pose_skeleton_from_oriented_pose(
-        xp=xp,
-        world_bind_pose=world_bind_pose,
-        kinematic_fronts=topology.kinematic_fronts_full,
-        parents_full=topology.parents_full,
-        pose_rot_full=pose_rot_full,
-    )
-
-    T_world = common.set(T_world_cm, (..., slice(None, 3), 3), T_world_cm[..., :3, 3] * 0.01, xp=xp)
+    T_world = skeleton_transforms
     T_world = _apply_global_transform_transforms(xp, T_world, global_rotation, global_translation, rotation_type)
-    public = T_world[..., 1:, :, :]
+    public = T_world
     if joint_indices is not None:
         public = public[..., xp.asarray(joint_indices), :, :]
     return public
@@ -179,11 +150,44 @@ def prepare_pose(
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType = "axis_angle",
     *,
+    world_bind_pose: Float[Array, "*batch Jf 4 4"],
+    inverse_world_bind_pose: Float[Array, "*batch Jf 4 4"] | None,
+    skip_vertices: bool = False,
     xp: Any,
 ) -> SomaPreparedPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    return {"pose_rot_full": _orient_pose_rot_full(xp, pose_rot, data.t_pose_world, data.topology.parents_full)}
+    pose_rot_full = _orient_pose_rot_full(xp, pose_rot, data.t_pose_world, data.topology.parents_full)
+    skeleton_transforms_full = _pose_skeleton_from_oriented_pose(
+        xp=xp,
+        world_bind_pose=world_bind_pose,
+        kinematic_fronts=data.topology.kinematic_fronts_full,
+        parents_full=data.topology.parents_full,
+        pose_rot_full=pose_rot_full,
+    )
+    skeleton_transforms_full = common.set(
+        skeleton_transforms_full,
+        (..., slice(None, 3), 3),
+        skeleton_transforms_full[..., :3, 3] * 0.01,
+        xp=xp,
+    )
+    prepared_pose: SomaPreparedPose = {"skeleton_transforms": skeleton_transforms_full[..., 1:, :, :]}
+    if skip_vertices:
+        return prepared_pose
+    assert inverse_world_bind_pose is not None
+    inverse_world_bind_pose = common.set(
+        inverse_world_bind_pose,
+        (..., slice(None, 3), 3),
+        inverse_world_bind_pose[..., :3, 3] * 0.01,
+        xp=xp,
+    )
+    skinning_transforms = skeleton_transforms_full @ inverse_world_bind_pose
+    prepared_pose["skinning_transforms"] = skinning_transforms[..., 1:, :, :]
+    pose_offsets = apply_pose_correctives(data, pose_rot_full, xp=xp)
+    if data.vertex_map is not None:
+        pose_offsets = pose_offsets[..., data.vertex_map, :]
+    prepared_pose["pose_offsets"] = pose_offsets * 0.01
+    return prepared_pose
 
 
 def fit_rigid_transform(
