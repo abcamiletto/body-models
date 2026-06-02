@@ -131,7 +131,6 @@ class MHR(BodyModel, nn.Module):
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
         pose = self.prepare_pose(pack_pose(torch, body_pose, hand_pose))
-        assert "rest_vertices" in identity
         assert "joint_params" in pose
         return backend.forward_vertices(
             weights=self.weights,

@@ -2,7 +2,6 @@
 
 import numpy as np
 from jaxtyping import Float
-from scipy import sparse
 
 from body_models.rotations import RotationType
 from body_models.smpl.backends import core
@@ -35,6 +34,7 @@ def prepare_pose(
     rotation_type: RotationType = "axis_angle",
     *,
     local_joint_offsets: Float[np.ndarray, "*batch J 3"],
+    rest_joints: Float[np.ndarray, "*batch J 3"],
     skip_vertices: bool = False,
 ) -> core.SmplPreparedPose:
     """Precompute pose-dependent state for repeated forward passes."""
@@ -46,46 +46,20 @@ def prepare_pose(
         pelvis_rotation=pelvis_rotation,
         rotation_type=rotation_type,
         local_joint_offsets=local_joint_offsets,
+        rest_joints=rest_joints,
         skip_vertices=skip_vertices,
     )
 
 
-def sparse_skin(
-    v_shaped,
-    j_t,
-    T_world,
-    lbs_weights,
-    *,
-    global_rotation=None,
-    global_translation=None,
-    rotation_type: RotationType = "axis_angle",
-):
-    lbs_weights = sparse.csr_array(lbs_weights)
-    R_world = T_world[..., :3, :3]
-    t_world = T_world[..., :3, 3]
-    t_adjusted = t_world - np.squeeze(R_world @ j_t[..., None], axis=-1)
-
-    v_posed = np.empty_like(v_shaped)
-    num_joints = j_t.shape[-2]
-    for batch in np.ndindex(v_shaped.shape[:-2]):
-        W_R = lbs_weights @ R_world[batch].reshape(num_joints, 9)
-        W_t = lbs_weights @ t_adjusted[batch]
-        v_posed[batch] = np.einsum("vij,vj->vi", W_R.reshape(-1, 3, 3), v_shaped[batch]) + W_t
-
-    return core.apply_global_transform(np, v_posed, global_rotation, global_translation, rotation_type)
-
-
 def forward_vertices(
     weights: SmplWeights,
+    rest_vertices: Float[np.ndarray, "*batch V 3"],
+    skinning_transforms: Float[np.ndarray, "*batch J 4 4"],
+    pose_offsets: Float[np.ndarray, "*batch V 3"],
     global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
     global_translation: Float[np.ndarray, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    rest_joints: Float[np.ndarray, "*batch J 3"],
-    rest_vertices: Float[np.ndarray, "*batch V 3"],
-    joint_transforms: Float[np.ndarray, "*batch J 4 4"],
-    pose_offsets: Float[np.ndarray, "*batch V 3"],
 ):
     v_shaped = rest_vertices + pose_offsets
     lbs_weights = weights.lbs_weights
@@ -93,25 +67,23 @@ def forward_vertices(
         v_shaped = v_shaped[..., vertex_indices, :]
         lbs_weights = lbs_weights[vertex_indices]
 
-    return sparse_skin(
-        v_shaped,
-        rest_joints,
-        joint_transforms,
-        lbs_weights,
-        global_rotation=global_rotation,
-        global_translation=global_translation,
+    v_posed = core.linear_blend_skinning(np, v_shaped, skinning_transforms, lbs_weights)
+    return core.apply_global_transform(
+        np,
+        v_posed,
+        rotation=global_rotation,
+        translation=global_translation,
         rotation_type=rotation_type,
     )
 
 
 def forward_skeleton(
     weights: SmplWeights,
+    skeleton_transforms: Float[np.ndarray, "*batch J 4 4"],
     global_rotation: Float[np.ndarray, "*batch N"] | Float[np.ndarray, "*batch 3 3"] | None = None,
     global_translation: Float[np.ndarray, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    joint_transforms: Float[np.ndarray, "*batch J 4 4"],
 ):
     return core.forward_skeleton(
         parents=weights.parents,
@@ -119,6 +91,6 @@ def forward_skeleton(
         global_translation=global_translation,
         joint_indices=joint_indices,
         rotation_type=rotation_type,
-        joint_transforms=joint_transforms,
+        skeleton_transforms=skeleton_transforms,
         xp=np,
     )

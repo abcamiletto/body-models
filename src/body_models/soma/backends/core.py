@@ -77,16 +77,15 @@ def prepare_identity_from_rest_shape(
 
 def forward_vertices(
     data: Any,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
-    vertex_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
-    *,
+    xp: Any,
     bind_shape_active: Float[Array, "*batch Va 3"],
     world_bind_pose: Float[Array, "*batch Jf 4 4"],
     inverse_world_bind_pose: Float[Array, "*batch Jf 4 4"],
     pose_rot_full: Float[Array, "*batch Jf 3 3"],
-    xp: Any,
+    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_translation: Float[Array, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
 ) -> Float[Array, "B V 3"]:
     return _forward_vertices_with(
         data=data,
@@ -149,14 +148,13 @@ def _forward_vertices_with(
 
 def forward_skeleton(
     data: Any,
+    xp: Any,
+    world_bind_pose: Float[Array, "*batch Jf 4 4"],
+    pose_rot_full: Float[Array, "*batch Jf 3 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    pose_rot_full: Float[Array, "*batch Jf 3 3"],
-    xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""
     topology = data.topology
@@ -542,10 +540,10 @@ def linear_blend_skinning(
     xp,
     bind_shape: Float[Array, "B V 3"],
     skin_weights: Float[Array, "V J"],
-    bone_transforms: Float[Array, "B J 4 4"],
+    skinning_transforms: Float[Array, "B J 4 4"],
 ) -> Float[Array, "B V 3"]:
-    R = bone_transforms[..., :3, :3]
-    t = bone_transforms[..., :3, 3]
+    R = skinning_transforms[..., :3, :3]
+    t = skinning_transforms[..., :3, 3]
     R_blend = xp.einsum("vj,...jik->...vik", skin_weights, R)
     t_blend = xp.einsum("vj,...ji->...vi", skin_weights, t)
     return xp.einsum("...vik,...vk->...vi", R_blend, bind_shape) + t_blend

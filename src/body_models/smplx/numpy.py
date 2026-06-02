@@ -149,18 +149,15 @@ class SMPLX(BodyModel):
             expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
         pose = self.prepare_pose(body_pose, hand_pose, head_pose, pelvis_rotation, identity=identity)
-        assert "rest_vertices" in identity
-        assert "pose_offsets" in pose
         return self._kernel.forward_vertices(
-            weights=self.weights,
+            self.weights,
+            identity["rest_vertices"],
+            pose["skinning_transforms"],
+            pose["pose_offsets"],
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            rest_joints=identity["rest_joints"],
-            rest_vertices=identity["rest_vertices"],
-            joint_transforms=pose["joint_transforms"],
-            pose_offsets=pose["pose_offsets"],
         )
 
     def forward_skeleton(
@@ -204,12 +201,12 @@ class SMPLX(BodyModel):
             body_pose, hand_pose, head_pose, pelvis_rotation, identity=identity, skip_vertices=True
         )
         return self._kernel.forward_skeleton(
-            weights=self.weights,
+            self.weights,
+            pose["skeleton_transforms"],
             global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            joint_transforms=pose["joint_transforms"],
         )
 
     def prepare_identity(
@@ -242,6 +239,7 @@ class SMPLX(BodyModel):
             pelvis_rotation,
             rotation_type=self.rotation_type,
             local_joint_offsets=identity["local_joint_offsets"],
+            rest_joints=identity["rest_joints"],
             skip_vertices=skip_vertices,
         )
 
