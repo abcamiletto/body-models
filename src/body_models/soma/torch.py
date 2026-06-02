@@ -192,18 +192,15 @@ class SOMA(BodyModel, nn.Module):
             if scale_params is not None:
                 scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params)
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation)
-        assert "bind_shape_active" in identity
-        assert "inverse_world_bind_pose" in identity
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
         return self._kernel.forward_vertices(
             data=self.weights,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            bind_shape_active=identity["bind_shape_active"],
-            world_bind_pose=identity["world_bind_pose"],
-            inverse_world_bind_pose=identity["inverse_world_bind_pose"],
-            pose_rot_full=pose["pose_rot_full"],
+            rest_vertices=identity["rest_vertices"],
+            skinning_transforms=pose["skinning_transforms"],
+            pose_offsets=pose["pose_offsets"],
             xp=torch,
         )
 
@@ -244,14 +241,13 @@ class SOMA(BodyModel, nn.Module):
             if scale_params is not None:
                 scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params, skip_vertices=True)
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             data=self.weights,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            world_bind_pose=identity["world_bind_pose"],
-            pose_rot_full=pose["pose_rot_full"],
+            skeleton_transforms=pose["skeleton_transforms"],
             xp=torch,
         )
 
@@ -324,11 +320,20 @@ class SOMA(BodyModel, nn.Module):
         hand_pose: Float[Tensor, "B 48 N"] | Float[Tensor, "B 48 3 3"],
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
-        identity: core.SomaIdentity | None = None,
+        identity: core.SomaIdentity,
+        skip_vertices: bool = False,
     ) -> core.SomaPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         pose = pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
-        return self._kernel.prepare_pose(self.weights, pose, rotation_type=self.rotation_type, xp=torch)
+        return self._kernel.prepare_pose(
+            self.weights,
+            pose,
+            rotation_type=self.rotation_type,
+            world_bind_pose=identity["world_bind_pose"],
+            inverse_world_bind_pose=None if skip_vertices else identity["inverse_world_bind_pose"],
+            skip_vertices=skip_vertices,
+            xp=torch,
+        )
 
     def _prepare_identity_from_inputs(
         self,
