@@ -45,7 +45,7 @@ def prepare_pose(
     pose: Float[Tensor, "*batch J N"] | Float[Tensor, "*batch J 3 3"],
     rotation_type: RotationType = "axis_angle",
     *,
-    rest_bone_poses: Float[Tensor, "*batch J 4 4"],
+    rest_skeleton_transforms: Float[Tensor, "*batch J 4 4"],
     skip_vertices: bool = False,
 ) -> AnnyPreparedPose:
     """Precompute pose-dependent state for repeated forward passes."""
@@ -54,39 +54,37 @@ def prepare_pose(
         kinematic_fronts=weights.kinematic_fronts,
         pose=pose,
         rotation_type=rotation_type,
-        rest_bone_poses=rest_bone_poses,
+        rest_skeleton_transforms=rest_skeleton_transforms,
         skip_vertices=skip_vertices,
     )
 
 
 def forward_vertices(
     weights: AnnyWeights,
+    rest_vertices: Float[Tensor, "*batch V 3"],
+    skinning_transforms: Float[Tensor, "*batch J 4 4"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    *,
-    rest_vertices: Float[Tensor, "*batch V 3"],
-    bone_transforms: Float[Tensor, "*batch J 4 4"],
 ):
     return _forward_vertices(
         lbs_weights=weights.lbs_weights,
         global_translation=global_translation,
         vertex_indices=vertex_indices,
         rest_vertices=rest_vertices,
-        bone_transforms=bone_transforms,
+        skinning_transforms=skinning_transforms,
         xp=torch,
     )
 
 
 def forward_skeleton(
     weights: AnnyWeights,
+    skeleton_transforms: Float[Tensor, "*batch J 4 4"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
-    *,
-    bone_poses: Float[Tensor, "*batch J 4 4"],
 ):
     return _forward_skeleton(
         global_translation=global_translation,
         joint_indices=joint_indices,
-        bone_poses=bone_poses,
+        skeleton_transforms=skeleton_transforms,
         xp=torch,
     )

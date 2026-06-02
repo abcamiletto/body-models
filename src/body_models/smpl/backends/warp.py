@@ -33,6 +33,7 @@ def prepare_pose(
     rotation_type: RotationType = "axis_angle",
     *,
     local_joint_offsets: Float[Tensor, "*batch J 3"],
+    rest_joints: Float[Tensor, "*batch J 3"],
     skip_vertices: bool = False,
 ) -> core.SmplPreparedPose:
     """Precompute pose-dependent state for repeated forward passes."""
@@ -42,35 +43,21 @@ def prepare_pose(
         pelvis_rotation,
         rotation_type=rotation_type,
         local_joint_offsets=local_joint_offsets,
+        rest_joints=rest_joints,
         skip_vertices=skip_vertices,
     )
 
 
 def forward_vertices(
     weights: SmplWeights,
+    rest_vertices: Float[Tensor, "*batch V 3"],
+    skinning_transforms: Float[Tensor, "*batch J 4 4"],
+    pose_offsets: Float[Tensor, "*batch V 3"],
     global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
     global_translation: Float[Tensor, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    rest_joints: Float[Tensor, "*batch J 3"],
-    rest_vertices: Float[Tensor, "*batch V 3"],
-    joint_transforms: Float[Tensor, "*batch J 4 4"],
-    pose_offsets: Float[Tensor, "*batch V 3"],
 ):
-    if rest_vertices.device.type != "cuda":
-        return torch_backend.forward_vertices(
-            weights=weights,
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            vertex_indices=vertex_indices,
-            rotation_type=rotation_type,
-            rest_joints=rest_joints,
-            rest_vertices=rest_vertices,
-            joint_transforms=joint_transforms,
-            pose_offsets=pose_offsets,
-        )
-
     v_shaped = rest_vertices + pose_offsets
     joint_indices = weights.lbs_joint_indices
     joint_weights = weights.lbs_joint_weights
@@ -79,18 +66,17 @@ def forward_vertices(
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
 
-    v_posed = warp_linear_blend_skinning(v_shaped, rest_joints, joint_transforms, joint_indices, joint_weights)
+    v_posed = warp_affine_blend_skinning(v_shaped, skinning_transforms, joint_indices, joint_weights)
     return core.apply_global_transform(torch, v_posed, global_rotation, global_translation, rotation_type)
 
 
 def forward_skeleton(
     weights: SmplWeights,
+    skeleton_transforms: Float[Tensor, "*batch J 4 4"],
     global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
     global_translation: Float[Tensor, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    joint_transforms: Float[Tensor, "*batch J 4 4"],
 ):
     return core.forward_skeleton(
         parents=weights.parents,
@@ -98,69 +84,9 @@ def forward_skeleton(
         global_translation=global_translation,
         joint_indices=joint_indices,
         rotation_type=rotation_type,
-        joint_transforms=joint_transforms,
+        skeleton_transforms=skeleton_transforms,
         xp=torch,
     )
-
-
-@disable_compile
-def warp_linear_blend_skinning(
-    vertices: Float[Tensor, "*batch V 3"],
-    joints: Float[Tensor, "*batch J 3"],
-    transforms: Float[Tensor, "*batch J 4 4"],
-    joint_indices: Tensor,
-    joint_weights: Tensor,
-) -> Float[Tensor, "*batch V 3"]:
-    _check_warp_inputs(vertices)
-    if vertices.requires_grad or transforms.requires_grad or joints.requires_grad:
-        raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
-    if vertices.ndim > 3:
-        output = torch.empty_like(vertices)
-        for batch_index in itertools.product(*[range(size) for size in vertices.shape[:-2]]):
-            batch_vertices = vertices[batch_index][None]
-            batch_joints = joints[batch_index][None]
-            batch_transforms = transforms[batch_index][None]
-            output[batch_index] = warp_linear_blend_skinning(
-                batch_vertices, batch_joints, batch_transforms, joint_indices, joint_weights
-            )[0]
-        return output
-
-    _init_warp()
-    vertices = vertices.contiguous()
-    joints = joints.contiguous()
-    transforms = transforms.contiguous()
-    joint_indices = joint_indices.to(device=vertices.device, dtype=torch.int32).contiguous()
-    joint_weights = joint_weights.to(device=vertices.device, dtype=vertices.dtype).contiguous()
-    output = torch.empty_like(vertices)
-
-    flat_vertices = vertices.reshape(-1)
-    flat_joints = joints.reshape(-1)
-    flat_transforms = transforms.reshape(-1)
-    flat_indices = joint_indices.reshape(-1)
-    flat_weights = joint_weights.reshape(-1)
-    flat_output = output.reshape(-1)
-
-    batch_size, num_vertices = vertices.shape[:2]
-    num_joints = joints.shape[1]
-    num_slots = joint_indices.shape[1]
-    device = wp.from_torch(flat_vertices).device
-    wp.launch(
-        _skin_vertices_kernel,
-        dim=(batch_size, num_vertices),
-        inputs=[
-            wp.from_torch(flat_vertices),
-            wp.from_torch(flat_joints),
-            wp.from_torch(flat_transforms),
-            wp.from_torch(flat_indices),
-            wp.from_torch(flat_weights),
-            num_vertices,
-            num_joints,
-            num_slots,
-            wp.from_torch(flat_output),
-        ],
-        device=device,
-    )
-    return output
 
 
 @disable_compile
@@ -341,66 +267,6 @@ def _forward_kinematics_kernel(
         output[out + 13] = 0.0
         output[out + 14] = 0.0
         output[out + 15] = 1.0
-
-
-@wp.kernel
-def _skin_vertices_kernel(
-    vertices: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-    joints: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-    transforms: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-    joint_indices: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
-    joint_weights: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-    num_vertices: int,
-    num_joints: int,
-    num_slots: int,
-    output: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-):
-    batch, vertex = wp.tid()  # ty: ignore[invalid-assignment, not-iterable]
-
-    vertex_base = (batch * num_vertices + vertex) * 3
-    vx = vertices[vertex_base]
-    vy = vertices[vertex_base + 1]
-    vz = vertices[vertex_base + 2]
-    out_x = float(0.0)
-    out_y = float(0.0)
-    out_z = float(0.0)
-
-    for slot in range(num_slots):
-        slot_index = vertex * num_slots + slot
-        joint = joint_indices[slot_index]
-        if joint < 0:
-            continue
-
-        weight = joint_weights[slot_index]
-        joint_base = (batch * num_joints + joint) * 3
-        jx = joints[joint_base]
-        jy = joints[joint_base + 1]
-        jz = joints[joint_base + 2]
-
-        transform_base = (batch * num_joints + joint) * 16
-        r00 = transforms[transform_base]
-        r01 = transforms[transform_base + 1]
-        r02 = transforms[transform_base + 2]
-        tx = transforms[transform_base + 3]
-        r10 = transforms[transform_base + 4]
-        r11 = transforms[transform_base + 5]
-        r12 = transforms[transform_base + 6]
-        ty = transforms[transform_base + 7]
-        r20 = transforms[transform_base + 8]
-        r21 = transforms[transform_base + 9]
-        r22 = transforms[transform_base + 10]
-        tz = transforms[transform_base + 11]
-
-        dx = vx - jx
-        dy = vy - jy
-        dz = vz - jz
-        out_x += weight * (r00 * dx + r01 * dy + r02 * dz + tx)
-        out_y += weight * (r10 * dx + r11 * dy + r12 * dz + ty)
-        out_z += weight * (r20 * dx + r21 * dy + r22 * dz + tz)
-
-    output[vertex_base] = out_x
-    output[vertex_base + 1] = out_y
-    output[vertex_base + 2] = out_z
 
 
 @wp.kernel

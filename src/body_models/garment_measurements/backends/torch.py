@@ -60,13 +60,12 @@ def prepare_pose(
 
 def forward_vertices(
     weights: GarmentMeasurementsWeights,
+    rest_vertices: Float[Tensor, "*batch V 3"],
+    skinning_transforms: Float[Tensor, "*batch J 7"],
     global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
     global_translation: Float[Tensor, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    rest_vertices: Float[Tensor, "*batch V 3"],
-    skinning_skeleton: Float[Tensor, "*batch J 7"],
 ):
     return _forward_vertices(
         skin_weights=weights.skin_weights,
@@ -75,25 +74,24 @@ def forward_vertices(
         vertex_indices=vertex_indices,
         rotation_type=rotation_type,
         rest_vertices=rest_vertices,
-        skinning_skeleton=skinning_skeleton,
+        skinning_transforms=skinning_transforms,
         xp=torch,
     )
 
 
 def forward_skeleton(
     weights: GarmentMeasurementsWeights,
+    skeleton_transforms: Float[Tensor, "*batch J 7"],
     global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
     global_translation: Float[Tensor, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    posed_skeleton: Float[Tensor, "*batch J 7"],
 ):
     return _forward_skeleton(
         global_rotation=global_rotation,
         global_translation=global_translation,
         joint_indices=joint_indices,
         rotation_type=rotation_type,
-        posed_skeleton=posed_skeleton,
+        skeleton_transforms=skeleton_transforms,
         xp=torch,
     )

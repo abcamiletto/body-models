@@ -71,15 +71,14 @@ def forward_vertices(
     corrective_W1: Float[Array, "3000 750"],
     corrective_W2: Float[Array, "V*3 3000"],
     expr_dim: int,
-    global_rotation: Float[Array, "B 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
-    vertex_indices: list[int] | None = None,
-    *,
     rest_vertices: Float[Array, "*batch V 3"],
     joint_translations: Float[Array, "*batch J 3"],
     joint_rotations: Float[Array, "*batch J 3 3"],
     joint_scales: Float[Array, "*batch J 1"],
     joint_params: Float[Array, "*batch J 7"],
+    global_rotation: Float[Array, "B 3"] | None = None,
+    global_translation: Float[Array, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
@@ -159,13 +158,13 @@ def prepare_pose(
 
 def forward_skeleton(
     num_joints: int,
-    global_rotation: Float[Array, "B 3"] | None = None,
-    global_translation: Float[Array, "B 3"] | None = None,
-    joint_indices: list[int] | None = None,
     *,
     joint_translations: Float[Array, "*batch J 3"],
     joint_rotations: Float[Array, "*batch J 3 3"],
     joint_scales: Float[Array, "*batch J 1"],
+    global_rotation: Float[Array, "B 3"] | None = None,
+    global_translation: Float[Array, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4] in meters."""

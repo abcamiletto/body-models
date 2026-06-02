@@ -40,6 +40,7 @@ def prepare_pose(
     rotation_type: RotationType = "axis_angle",
     *,
     local_joint_offsets: Float[Tensor, "*batch J 3"],
+    rest_joints: Float[Tensor, "*batch J 3"],
     skip_vertices: bool = False,
 ) -> SmplhPreparedPose:
     """Precompute pose-dependent state for repeated forward passes."""
@@ -53,21 +54,20 @@ def prepare_pose(
         pelvis_rotation=pelvis_rotation,
         rotation_type=rotation_type,
         local_joint_offsets=local_joint_offsets,
+        rest_joints=rest_joints,
         skip_vertices=skip_vertices,
     )
 
 
 def forward_vertices(
     weights: SmplhWeights,
+    rest_vertices: Float[Tensor, "*batch V 3"],
+    skinning_transforms: Float[Tensor, "*batch J 4 4"],
+    pose_offsets: Float[Tensor, "*batch V 3"],
     global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
     global_translation: Float[Tensor, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    rest_joints: Float[Tensor, "*batch J 3"],
-    rest_vertices: Float[Tensor, "*batch V 3"],
-    joint_transforms: Float[Tensor, "*batch J 4 4"],
-    pose_offsets: Float[Tensor, "*batch V 3"],
 ):
     return _forward_vertices(
         lbs_weights=weights.lbs_weights,
@@ -75,9 +75,8 @@ def forward_vertices(
         global_translation=global_translation,
         vertex_indices=vertex_indices,
         rotation_type=rotation_type,
-        rest_joints=rest_joints,
         rest_vertices=rest_vertices,
-        joint_transforms=joint_transforms,
+        skinning_transforms=skinning_transforms,
         pose_offsets=pose_offsets,
         xp=torch,
     )
@@ -85,12 +84,11 @@ def forward_vertices(
 
 def forward_skeleton(
     weights: SmplhWeights,
+    skeleton_transforms: Float[Tensor, "*batch J 4 4"],
     global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
     global_translation: Float[Tensor, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    joint_transforms: Float[Tensor, "*batch J 4 4"],
 ):
     return _forward_skeleton(
         parents=weights.parents,
@@ -98,6 +96,6 @@ def forward_skeleton(
         global_translation=global_translation,
         joint_indices=joint_indices,
         rotation_type=rotation_type,
-        joint_transforms=joint_transforms,
+        skeleton_transforms=skeleton_transforms,
         xp=torch,
     )

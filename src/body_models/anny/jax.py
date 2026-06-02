@@ -129,14 +129,12 @@ class ANNY(BodyModel):
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         prepared_pose = self.prepare_pose(pose, identity=identity)
-        assert "rest_vertices" in identity
-        assert "bone_transforms" in prepared_pose
         return backend.forward_vertices(
             weights=self.weights,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rest_vertices=identity["rest_vertices"],
-            bone_transforms=prepared_pose["bone_transforms"],
+            skinning_transforms=prepared_pose["skinning_transforms"],
         )
 
     def forward_skeleton(
@@ -177,7 +175,7 @@ class ANNY(BodyModel):
             weights=self.weights,
             global_translation=global_translation,
             joint_indices=joint_indices,
-            bone_poses=prepared_pose["bone_poses"],
+            skeleton_transforms=prepared_pose["skeleton_transforms"],
         )
 
     def prepare_identity(
@@ -217,7 +215,7 @@ class ANNY(BodyModel):
             self.weights,
             pose,
             rotation_type=self.rotation_type,
-            rest_bone_poses=identity["rest_bone_poses"],
+            rest_skeleton_transforms=identity["rest_skeleton_transforms"],
             skip_vertices=skip_vertices,
         )
 

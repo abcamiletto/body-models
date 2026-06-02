@@ -149,17 +149,14 @@ class SMPL(BodyModel):
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         pose = self.prepare_pose(body_pose, pelvis_rotation, identity=identity)
-        assert "rest_vertices" in identity
-        assert "pose_offsets" in pose
         return backend.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
-            rest_joints=identity["rest_joints"],
             rest_vertices=identity["rest_vertices"],
-            joint_transforms=pose["joint_transforms"],
+            skinning_transforms=pose["skinning_transforms"],
             pose_offsets=pose["pose_offsets"],
         )
 
@@ -200,7 +197,7 @@ class SMPL(BodyModel):
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
-            joint_transforms=pose["joint_transforms"],
+            skeleton_transforms=pose["skeleton_transforms"],
         )
 
     def prepare_identity(
@@ -229,6 +226,7 @@ class SMPL(BodyModel):
             pelvis_rotation,
             rotation_type=self.rotation_type,
             local_joint_offsets=identity["local_joint_offsets"],
+            rest_joints=identity["rest_joints"],
             skip_vertices=skip_vertices,
         )
 

@@ -43,12 +43,12 @@ def forward_vertices(*args, **kwargs):
 
 
 def _linear_blend_skinning(data):
-    def skin(xp, bind_shape, skin_weights, bone_transforms):
+    def skin(xp, bind_shape, skin_weights, skinning_transforms):
         return linear_blend_skinning(
             xp,
             bind_shape,
             skin_weights,
-            bone_transforms,
+            skinning_transforms,
             joint_indices=data.skin_joint_indices_active,
             joint_weights=data.skin_joint_weights_active,
         )
@@ -56,7 +56,7 @@ def _linear_blend_skinning(data):
     return skin
 
 
-def linear_blend_skinning(xp, bind_shape, skin_weights, bone_transforms, *, joint_indices, joint_weights):
+def linear_blend_skinning(xp, bind_shape, skin_weights, skinning_transforms, *, joint_indices, joint_weights):
     if bind_shape.device.type != "cuda":
-        return torch_backend.linear_blend_skinning(xp, bind_shape, skin_weights, bone_transforms)
-    return smpl_warp.warp_affine_blend_skinning(bind_shape, bone_transforms, joint_indices, joint_weights)
+        return torch_backend.linear_blend_skinning(xp, bind_shape, skin_weights, skinning_transforms)
+    return smpl_warp.warp_affine_blend_skinning(bind_shape, skinning_transforms, joint_indices, joint_weights)
