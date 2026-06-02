@@ -135,13 +135,13 @@ class ANNY(BodyModel, nn.Module):
         Returns:
             Posed vertex positions.
         """
-        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
+            pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        prepared_pose = self.prepare_pose(pose, identity=identity)
+        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
         return self._kernel.forward_vertices(
             self.weights,
             identity["rest_vertices"],
@@ -177,13 +177,20 @@ class ANNY(BodyModel, nn.Module):
         Returns:
             Joint transforms in the model hierarchy.
         """
-        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
+            pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
-        prepared_pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
+        prepared_pose = self.prepare_pose(
+            body_pose,
+            head_pose,
+            hand_pose,
+            global_rotation,
+            identity=identity,
+            skip_vertices=True,
+        )
         return self._kernel.forward_skeleton(
             self.weights,
             prepared_pose["skeleton_transforms"],
@@ -218,12 +225,16 @@ class ANNY(BodyModel, nn.Module):
 
     def prepare_pose(
         self,
-        pose: Float[Tensor, "B J N"] | Float[Tensor, "B J 3 3"],
+        body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
+        head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
+        hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
         identity: AnnyIdentity,
         skip_vertices: bool = False,
     ) -> AnnyPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.prepare_pose(
             self.weights,
             pose,

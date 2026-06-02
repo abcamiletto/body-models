@@ -130,7 +130,7 @@ class MHR(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
-        pose = self.prepare_pose(pack_pose(torch, body_pose, hand_pose))
+        pose = self.prepare_pose(body_pose, hand_pose)
         assert "joint_params" in pose
         return backend.forward_vertices(
             weights=self.weights,
@@ -176,7 +176,7 @@ class MHR(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
-        pose = self.prepare_pose(pack_pose(torch, body_pose, hand_pose), skip_vertices=True)
+        pose = self.prepare_pose(body_pose, hand_pose, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -196,8 +196,16 @@ class MHR(BodyModel, nn.Module):
         """Precompute shape- and expression-dependent state for repeated forward passes."""
         return backend.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
 
-    def prepare_pose(self, pose: Float[Tensor, "*batch 204"], skip_vertices: bool = False) -> MhrPreparedPose:
+    def prepare_pose(
+        self,
+        body_pose: Float[Tensor, "*batch 100"],
+        hand_pose: Float[Tensor, "*batch 104"],
+        *,
+        identity: MhrIdentity | None = None,
+        skip_vertices: bool = False,
+    ) -> MhrPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        pose = pack_pose(torch, body_pose, hand_pose)
         return backend.prepare_pose(self.weights, pose, skip_vertices=skip_vertices)
 
     def get_rest_pose(
