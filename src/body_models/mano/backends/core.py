@@ -26,22 +26,21 @@ class ManoIdentity(TypedDict):
 class ManoPreparedPose(TypedDict):
     """Pose-dependent MANO state returned by ``prepare_pose``."""
 
-    joint_transforms: Float[Array, "*batch J 4 4"]
+    skeleton_transforms: Float[Array, "*batch J 4 4"]
+    skinning_transforms: Float[Array, "*batch J 4 4"]
     pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
 
 
 def forward_vertices(
     # Model data
     lbs_weights: Float[Array, "V 16"],
+    rest_vertices: Float[Array, "*batch V 3"],
+    skinning_transforms: Float[Array, "*batch J 4 4"],
+    pose_offsets: Float[Array, "*batch V 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    rest_joints: Float[Array, "*batch J 3"],
-    rest_vertices: Float[Array, "*batch V 3"],
-    joint_transforms: Float[Array, "*batch J 4 4"],
-    pose_offsets: Float[Array, "*batch V 3"],
     xp: Any = None,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3]."""
@@ -56,7 +55,7 @@ def forward_vertices(
         lbs_weights = lbs_weights[vertex_indices]
 
     v_shaped = rest_vertices + pose_offsets
-    v_posed = smpl_core.linear_blend_skinning(xp, v_shaped, rest_joints, joint_transforms, lbs_weights)
+    v_posed = smpl_core.linear_blend_skinning(xp, v_shaped, skinning_transforms, lbs_weights)
     v_posed = smpl_core.apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
 
     return v_posed
@@ -72,6 +71,7 @@ def prepare_pose(
     rotation_type: RotationType = "axis_angle",
     *,
     local_joint_offsets: Float[Array, "*batch J 3"],
+    rest_joints: Float[Array, "*batch J 3"],
     skip_vertices: bool = False,
     xp: Any = None,
 ) -> ManoPreparedPose:
@@ -91,7 +91,10 @@ def prepare_pose(
         rotation_type=rotation_type,
     )
 
-    prepared_pose: ManoPreparedPose = {"joint_transforms": T_world}
+    prepared_pose: ManoPreparedPose = {
+        "skeleton_transforms": T_world,
+        "skinning_transforms": smpl_core.bind_relative_transforms(xp, T_world, rest_joints),
+    }
     if skip_vertices:
         return prepared_pose
     eye3 = common.eye_as(pose_matrices, batch_dims=(*batch_shape, 1), xp=xp)
@@ -102,20 +105,19 @@ def prepare_pose(
 
 def forward_skeleton(
     parents: list[int],
+    skeleton_transforms: Float[Array, "*batch J 4 4"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
     global_translation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
-    *,
-    joint_transforms: Float[Array, "*batch J 4 4"],
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute skeleton joint transforms [B, J, 4, 4]."""
     assert global_translation is None or (global_translation.ndim >= 1 and global_translation.shape[-1] == 3)
 
     if xp is None:
-        xp = get_namespace(joint_transforms)
-    T_world = joint_transforms
+        xp = get_namespace(skeleton_transforms)
+    T_world = skeleton_transforms
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
         if any(joint < 0 or joint >= len(parents) for joint in joint_indices):

@@ -34,8 +34,8 @@ def prepare_pose(
     weights: SkelWeights,
     pose: Float[np.ndarray, "*batch 46"],
     *,
-    rest_joints: Float[np.ndarray, "*batch 24 3"],
     local_joint_offsets: Float[np.ndarray, "*batch 24 3"],
+    rest_joints: Float[np.ndarray, "*batch 24 3"],
     skip_vertices: bool = False,
 ) -> SkelPreparedPose:
     """Precompute pose-dependent state for repeated forward passes."""
@@ -54,8 +54,8 @@ def prepare_pose(
         num_joints_smpl=weights.num_joints_smpl,
         posedirs=weights.posedirs,
         pose=pose,
-        rest_joints=rest_joints,
         local_joint_offsets=local_joint_offsets,
+        rest_joints=rest_joints,
         skip_vertices=skip_vertices,
         xp=np,
     )
@@ -63,23 +63,20 @@ def prepare_pose(
 
 def forward_vertices(
     weights: SkelWeights,
+    rest_vertices: Float[np.ndarray, "*batch V 3"],
+    skinning_transforms: Float[np.ndarray, "*batch 24 4 4"],
+    pose_offsets: Float[np.ndarray, "*batch V 3"],
     global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
     global_translation: Float[np.ndarray, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    *,
-    rest_joints: Float[np.ndarray, "*batch 24 3"],
-    rest_vertices: Float[np.ndarray, "*batch V 3"],
-    joint_transforms: Float[np.ndarray, "*batch 24 4 4"],
-    pose_offsets: Float[np.ndarray, "*batch V 3"],
 ):
     return _forward_vertices(
         skin_weights=weights.skin_weights,
         global_rotation=global_rotation,
         global_translation=global_translation,
         vertex_indices=vertex_indices,
-        rest_joints=rest_joints,
         rest_vertices=rest_vertices,
-        joint_transforms=joint_transforms,
+        skinning_transforms=skinning_transforms,
         pose_offsets=pose_offsets,
         xp=np,
     )
@@ -87,16 +84,15 @@ def forward_vertices(
 
 def forward_skeleton(
     weights: SkelWeights,
+    skeleton_transforms: Float[np.ndarray, "*batch 24 4 4"],
     global_rotation: Float[np.ndarray, "*batch 3"] | None = None,
     global_translation: Float[np.ndarray, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
-    *,
-    joint_transforms: Float[np.ndarray, "*batch 24 4 4"],
 ):
     return _forward_skeleton(
         global_rotation=global_rotation,
         global_translation=global_translation,
         joint_indices=joint_indices,
-        joint_transforms=joint_transforms,
+        skeleton_transforms=skeleton_transforms,
         xp=np,
     )

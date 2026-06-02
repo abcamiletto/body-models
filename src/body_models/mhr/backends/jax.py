@@ -49,15 +49,14 @@ def prepare_pose(
 
 def forward_vertices(
     weights: MhrWeights,
-    global_rotation: Float[jax.Array, "B 3"] | None = None,
-    global_translation: Float[jax.Array, "B 3"] | None = None,
-    vertex_indices: list[int] | None = None,
-    *,
     rest_vertices: Float[jax.Array, "*batch V 3"],
     joint_translations: Float[jax.Array, "*batch J 3"],
     joint_rotations: Float[jax.Array, "*batch J 3 3"],
     joint_scales: Float[jax.Array, "*batch J 1"],
     joint_params: Float[jax.Array, "*batch J 7"],
+    global_rotation: Float[jax.Array, "B 3"] | None = None,
+    global_translation: Float[jax.Array, "B 3"] | None = None,
+    vertex_indices: list[int] | None = None,
 ):
     return _forward_vertices(
         base_vertices=weights.base_vertices,
@@ -86,13 +85,13 @@ def forward_vertices(
 
 def forward_skeleton(
     weights: MhrWeights,
-    global_rotation: Float[jax.Array, "B 3"] | None = None,
-    global_translation: Float[jax.Array, "B 3"] | None = None,
-    joint_indices: list[int] | None = None,
     *,
     joint_translations: Float[jax.Array, "*batch J 3"],
     joint_rotations: Float[jax.Array, "*batch J 3 3"],
     joint_scales: Float[jax.Array, "*batch J 1"],
+    global_rotation: Float[jax.Array, "B 3"] | None = None,
+    global_translation: Float[jax.Array, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
 ):
     return _forward_skeleton(
         num_joints=len(weights.parents),

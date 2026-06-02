@@ -79,10 +79,10 @@ def linear_blend_skinning(
     xp,
     bind_shape: Float[Array, "B V 3"],
     skin_weights: Any,
-    bone_transforms: Float[Array, "B J 4 4"],
+    skinning_transforms: Float[Array, "B J 4 4"],
 ) -> Float[Array, "B V 3"]:
-    R = bone_transforms[..., :3, :3]
-    t = bone_transforms[..., :3, 3]
+    R = skinning_transforms[..., :3, :3]
+    t = skinning_transforms[..., :3, 3]
     out = xp.empty_like(bind_shape)
     for batch_index in np.ndindex(bind_shape.shape[:-2]):
         R_blend = xp.asarray(skin_weights @ R[batch_index].reshape(R.shape[-3], 9)).reshape(-1, 3, 3)
