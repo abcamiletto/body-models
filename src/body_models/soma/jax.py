@@ -174,15 +174,15 @@ class SOMA(BodyModel):
         Returns:
             Posed vertex positions.
         """
-        pose = pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
+            pose = pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = jnp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params)
-        pose = self.prepare_pose(pose)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation)
         assert "bind_shape_active" in identity
         assert "inverse_world_bind_pose" in identity
         return backend.forward_vertices(
@@ -226,15 +226,15 @@ class SOMA(BodyModel):
         Returns:
             Joint transforms in the model hierarchy.
         """
-        pose = pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
+            pose = pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = jnp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params, skip_vertices=True)
-        pose = self.prepare_pose(pose)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation)
         return backend.forward_skeleton(
             data=self.weights,
             global_translation=global_translation,
@@ -298,9 +298,15 @@ class SOMA(BodyModel):
 
     def prepare_pose(
         self,
-        pose: Float[jax.Array, "B J N"] | Float[jax.Array, "B J 3 3"],
+        body_pose: Float[jax.Array, "B 23 N"] | Float[jax.Array, "B 23 3 3"],
+        head_pose: Float[jax.Array, "B 5 N"] | Float[jax.Array, "B 5 3 3"],
+        hand_pose: Float[jax.Array, "B 48 N"] | Float[jax.Array, "B 48 3 3"],
+        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"],
+        *,
+        identity: core.SomaIdentity | None = None,
     ) -> core.SomaPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        pose = pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         return backend.prepare_pose(self.weights, pose, rotation_type=self.rotation_type, xp=jnp)
 
     def _prepare_identity_from_inputs(
