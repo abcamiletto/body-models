@@ -240,6 +240,12 @@ class MANO(BodyModel):
                 rotation_type=self.rotation_type,
                 xp=jnp,
             ),
+            "global_rotation": SO3.identity_as(
+                wrist_ref,
+                batch_dims=batch_dims,
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
             "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
 

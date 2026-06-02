@@ -249,6 +249,12 @@ class MANO(BodyModel, nn.Module):
                 rotation_type=self.rotation_type,
                 xp=torch,
             ),
+            "global_rotation": SO3.identity_as(
+                wrist_ref,
+                batch_dims=batch_dims,
+                rotation_type=self.rotation_type,
+                xp=torch,
+            ),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
