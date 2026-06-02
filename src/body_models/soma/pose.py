@@ -13,7 +13,7 @@ def _joint_axis(pose: Array) -> int:
 
 def pack_pose(
     xp: Any,
-    global_rotation: Float[Array, "... N"] | Float[Array, "... 3 3"],
+    pelvis_rotation: Float[Array, "... N"] | Float[Array, "... 3 3"],
     body_pose: Float[Array, "... 23 N"] | Float[Array, "... 23 3 3"],
     head_pose: Float[Array, "... 5 N"] | Float[Array, "... 5 3 3"],
     hand_pose: Float[Array, "... 48 N"] | Float[Array, "... 48 3 3"],
@@ -21,7 +21,7 @@ def pack_pose(
     """Pack separated SOMA pose groups into the canonical 77-joint pose."""
     joint_axis = _joint_axis(body_pose)
     rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
-    root = global_rotation[(..., None, *rotation_dims)]
+    root = pelvis_rotation[(..., None, *rotation_dims)]
 
     return xp.concat(
         [
@@ -47,10 +47,10 @@ def unpack_pose(
     Float[Array, "... 5 N"] | Float[Array, "... 5 3 3"],
     Float[Array, "... 48 N"] | Float[Array, "... 48 3 3"],
 ]:
-    """Split the canonical SOMA pose into global rotation, body, head, and hands."""
+    """Split the canonical SOMA pose into pelvis, body, head, and hands."""
     joint_axis = _joint_axis(pose)
     rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
-    global_rotation = pose[(..., 0, *rotation_dims)]
+    pelvis_rotation = pose[(..., 0, *rotation_dims)]
     body_parts = [
         pose[(..., slice(1, 6), *rotation_dims)],
         pose[(..., slice(11, 15), *rotation_dims)],
@@ -64,7 +64,7 @@ def unpack_pose(
     body_pose = xp.concat(body_parts, axis=joint_axis)
     head_pose = pose[(..., slice(6, 11), *rotation_dims)]
     hand_pose = xp.concat(hand_parts, axis=joint_axis)
-    return global_rotation, body_pose, head_pose, hand_pose
+    return pelvis_rotation, body_pose, head_pose, hand_pose
 
 
 __all__ = ["pack_pose", "unpack_pose"]

@@ -100,7 +100,8 @@ class ANNY(BodyModel):
         body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
         head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
         hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
-        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
+        pelvis_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
+        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"] | None = None,
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         vertex_indices: Any | None = None,
         *,
@@ -113,6 +114,7 @@ class ANNY(BodyModel):
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
@@ -124,15 +126,17 @@ class ANNY(BodyModel):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
+            pose = pose_utils.pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
+        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
         return backend.forward_vertices(
             weights=self.weights,
+            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
+            rotation_type=self.rotation_type,
             rest_vertices=identity["rest_vertices"],
             skinning_transforms=prepared_pose["skinning_transforms"],
         )
@@ -142,7 +146,8 @@ class ANNY(BodyModel):
         body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
         head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
         hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
-        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
+        pelvis_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
+        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"] | None = None,
         global_translation: Float[jnp.ndarray, "B 3"] | None = None,
         joint_indices: Any | None = None,
         *,
@@ -155,6 +160,7 @@ class ANNY(BodyModel):
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
@@ -166,7 +172,7 @@ class ANNY(BodyModel):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
+            pose = pose_utils.pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
@@ -174,14 +180,16 @@ class ANNY(BodyModel):
             body_pose,
             head_pose,
             hand_pose,
-            global_rotation,
+            pelvis_rotation,
             identity=identity,
             skip_vertices=True,
         )
         return backend.forward_skeleton(
             weights=self.weights,
+            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
+            rotation_type=self.rotation_type,
             skeleton_transforms=prepared_pose["skeleton_transforms"],
         )
 
@@ -215,13 +223,13 @@ class ANNY(BodyModel):
         body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
         head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
         hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
-        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
+        pelvis_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
         *,
         identity: AnnyIdentity,
         skip_vertices: bool = False,
     ) -> AnnyPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
         return backend.prepare_pose(
             self.weights,
             pose,
@@ -246,7 +254,7 @@ class ANNY(BodyModel):
             rotation_type=self.rotation_type,
             xp=jnp,
         )
-        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
+        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(jnp, pose)
         if hands != "default":
             axis_angle = jnp.asarray(ANNY_HAND_PRESETS[hands], dtype=dtype).reshape(-1, 3)
             axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
@@ -256,7 +264,13 @@ class ANNY(BodyModel):
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
-            "global_rotation": global_rotation,
+            "pelvis_rotation": pelvis_rotation,
+            "global_rotation": SO3.identity_as(
+                pose_ref,
+                batch_dims=batch_dims,
+                rotation_type=self.rotation_type,
+                xp=jnp,
+            ),
             "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
 

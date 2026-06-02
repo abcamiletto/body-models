@@ -34,8 +34,10 @@ def forward_vertices(
     lbs_weights: Float[Array, "V J"],
     rest_vertices: Float[Array, "*batch V 3"],
     skinning_transforms: Float[Array, "*batch J 4 4"],
+    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
     global_translation: Float[Array, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
     xp: Any = None,
 ) -> Float[Array, "*batch V 3"]:
     """Compute mesh vertices [B, V, 3]."""
@@ -47,7 +49,7 @@ def forward_vertices(
     if vertex_indices is not None:
         rest_verts = rest_verts[..., xp.asarray(vertex_indices), :]
     vertices = linear_blend_skinning(xp, rest_verts, skinning_transforms, lbs)
-    return apply_global_transform(xp, vertices, global_translation)
+    return apply_global_transform(xp, vertices, global_rotation, global_translation, rotation_type)
 
 
 def prepare_pose(
@@ -97,8 +99,13 @@ def linear_blend_skinning(
 def apply_global_transform(
     xp,
     vertices: Float[Array, "*batch V 3"],
-    global_translation: Float[Array, "B 3"] | None = None,
-) -> Float[Array, "B V 3"]:
+    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+    global_translation: Float[Array, "*batch 3"] | None = None,
+    rotation_type: RotationType = "axis_angle",
+) -> Float[Array, "*batch V 3"]:
+    if global_rotation is not None:
+        R = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
+        vertices = xp.einsum("...ij,...vj->...vi", R, vertices)
     if global_translation is not None:
         global_translation = xp.asarray(global_translation, dtype=vertices.dtype)
         vertices = vertices + global_translation[..., None, :]
@@ -137,8 +144,10 @@ def identity_shape(
 def forward_skeleton(
     # Model data
     skeleton_transforms: Float[Array, "*batch J 4 4"],
+    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
     global_translation: Float[Array, "*batch 3"] | None = None,
     joint_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
     xp: Any = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Compute skeleton transforms [B, J, 4, 4]."""
@@ -152,15 +161,21 @@ def forward_skeleton(
             raise IndexError(f"joint_indices must be in [0, {num_joints})")
         transforms = transforms[..., joint_indices, :, :]
 
-    # Global transform
+    if global_rotation is None and global_translation is None:
+        return transforms
+
+    R_world = transforms[..., :3, :3]
+    t_world = transforms[..., :3, 3]
+    if global_rotation is not None:
+        R_global = SO3.convert(global_rotation, src=rotation_type, dst="rotmat", xp=xp)
+        R_world = R_global[..., None, :, :] @ R_world
+        t_world = xp.einsum("...ij,...vj->...vi", R_global, t_world)
     if global_translation is not None:
-        # Create contiguous identity matrices (broadcast returns non-contiguous view)
-        batch_shape = transforms.shape[:-3]
-        G = common.eye_as(transforms, batch_dims=batch_shape, xp=xp)
         global_translation = xp.asarray(global_translation, dtype=transforms.dtype)
-        G = common.set(G, (..., slice(None, 3), 3), global_translation, copy=False, xp=xp)
-        transforms = G[..., None, :, :] @ transforms
-    return transforms
+        t_world = t_world + global_translation[..., None, :]
+
+    transforms = common.set(transforms, (..., slice(None, 3), slice(None, 3)), R_world, xp=xp)
+    return common.set(transforms, (..., slice(None, 3), 3), t_world, xp=xp)
 
 
 def _forward_core(

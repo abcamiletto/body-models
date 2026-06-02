@@ -63,13 +63,17 @@ def forward_vertices(
     weights: AnnyWeights,
     rest_vertices: Float[jax.Array, "*batch V 3"],
     skinning_transforms: Float[jax.Array, "*batch J 4 4"],
+    global_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
     global_translation: Float[jax.Array, "B 3"] | None = None,
     vertex_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
 ):
     return _forward_vertices(
         lbs_weights=weights.lbs_weights,
+        global_rotation=global_rotation,
         global_translation=global_translation,
         vertex_indices=vertex_indices,
+        rotation_type=rotation_type,
         rest_vertices=rest_vertices,
         skinning_transforms=skinning_transforms,
         xp=jnp,
@@ -79,12 +83,16 @@ def forward_vertices(
 def forward_skeleton(
     weights: AnnyWeights,
     skeleton_transforms: Float[jax.Array, "*batch J 4 4"],
+    global_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"] | None = None,
     global_translation: Float[jax.Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
+    rotation_type: RotationType = "axis_angle",
 ):
     return _forward_skeleton(
+        global_rotation=global_rotation,
         global_translation=global_translation,
         joint_indices=joint_indices,
+        rotation_type=rotation_type,
         skeleton_transforms=skeleton_transforms,
         xp=jnp,
     )

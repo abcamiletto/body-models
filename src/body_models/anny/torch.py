@@ -113,7 +113,8 @@ class ANNY(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices: Any | None = None,
         *,
@@ -126,6 +127,7 @@ class ANNY(BodyModel, nn.Module):
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
@@ -137,17 +139,19 @@ class ANNY(BodyModel, nn.Module):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
+            pose = pose_utils.pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
+        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
         return self._kernel.forward_vertices(
             self.weights,
             identity["rest_vertices"],
             prepared_pose["skinning_transforms"],
+            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
+            rotation_type=self.rotation_type,
         )
 
     def forward_skeleton(
@@ -155,7 +159,8 @@ class ANNY(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices: Any | None = None,
         *,
@@ -168,6 +173,7 @@ class ANNY(BodyModel, nn.Module):
             body_pose: Local body joint rotations.
             head_pose: Local head and facial joint rotations.
             hand_pose: Local hand joint rotations.
+            pelvis_rotation: Root pelvis rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
@@ -179,7 +185,7 @@ class ANNY(BodyModel, nn.Module):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
+            pose = pose_utils.pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
@@ -187,15 +193,17 @@ class ANNY(BodyModel, nn.Module):
             body_pose,
             head_pose,
             hand_pose,
-            global_rotation,
+            pelvis_rotation,
             identity=identity,
             skip_vertices=True,
         )
         return self._kernel.forward_skeleton(
             self.weights,
             prepared_pose["skeleton_transforms"],
+            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
+            rotation_type=self.rotation_type,
         )
 
     def prepare_identity(
@@ -228,13 +236,13 @@ class ANNY(BodyModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        pelvis_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
         identity: AnnyIdentity,
         skip_vertices: bool = False,
     ) -> AnnyPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.prepare_pose(
             self.weights,
             pose,
@@ -261,7 +269,7 @@ class ANNY(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
             xp=torch,
         )
-        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
+        pelvis_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
         if hands != "default":
             preset = ANNY_HAND_PRESETS[hands]
             axis_angle = torch.asarray(preset, device=device, dtype=dtype).reshape(-1, 3)
@@ -272,7 +280,13 @@ class ANNY(BodyModel, nn.Module):
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
-            "global_rotation": global_rotation,
+            "pelvis_rotation": pelvis_rotation,
+            "global_rotation": SO3.identity_as(
+                pose_ref,
+                batch_dims=batch_dims,
+                rotation_type=self.rotation_type,
+                xp=torch,
+            ),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
