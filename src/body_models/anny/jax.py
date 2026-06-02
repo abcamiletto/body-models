@@ -122,13 +122,13 @@ class ANNY(BodyModel):
         Returns:
             Posed vertex positions.
         """
-        pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
+            pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        prepared_pose = self.prepare_pose(pose, identity=identity)
+        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
         return backend.forward_vertices(
             weights=self.weights,
             global_translation=global_translation,
@@ -164,13 +164,20 @@ class ANNY(BodyModel):
         Returns:
             Joint transforms in the model hierarchy.
         """
-        pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
+            pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
             batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
-        prepared_pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
+        prepared_pose = self.prepare_pose(
+            body_pose,
+            head_pose,
+            hand_pose,
+            global_rotation,
+            identity=identity,
+            skip_vertices=True,
+        )
         return backend.forward_skeleton(
             weights=self.weights,
             global_translation=global_translation,
@@ -205,12 +212,16 @@ class ANNY(BodyModel):
 
     def prepare_pose(
         self,
-        pose: Float[jnp.ndarray, "B J N"] | Float[jnp.ndarray, "B J 3 3"],
+        body_pose: Float[jnp.ndarray, "B 64 N"] | Float[jnp.ndarray, "B 64 3 3"],
+        head_pose: Float[jnp.ndarray, "B 60 N"] | Float[jnp.ndarray, "B 60 3 3"],
+        hand_pose: Float[jnp.ndarray, "B 38 N"] | Float[jnp.ndarray, "B 38 3 3"],
+        global_rotation: Float[jnp.ndarray, "B N"] | Float[jnp.ndarray, "B 3 3"],
         *,
         identity: AnnyIdentity,
         skip_vertices: bool = False,
     ) -> AnnyPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        pose = pose_utils.pack_pose(jnp, global_rotation, body_pose, head_pose, hand_pose)
         return backend.prepare_pose(
             self.weights,
             pose,
