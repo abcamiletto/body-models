@@ -241,7 +241,9 @@ class SOMA(BodyModel, nn.Module):
             if scale_params is not None:
                 scale_params = torch.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params, skip_vertices=True)
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity, skip_vertices=True)
+        pose = self.prepare_pose(
+            body_pose, head_pose, hand_pose, global_rotation, identity=identity, skip_vertices=True
+        )
         return self._kernel.forward_skeleton(
             data=self.weights,
             global_translation=global_translation,
