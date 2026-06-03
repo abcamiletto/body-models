@@ -98,7 +98,6 @@ def forward_vertices(
         vertex_indices=vertex_indices,
         rotation_type=rotation_type,
         xp=xp,
-        apply_pose_correctives_fn=apply_pose_correctives,
         linear_blend_skinning_fn=linear_blend_skinning,
     )
 
@@ -114,7 +113,6 @@ def _forward_vertices_with(
     skinning_transforms: Float[Array, "*batch J 4 4"],
     pose_offsets: Float[Array, "*batch Va 3"],
     xp: Any,
-    apply_pose_correctives_fn: Any,
     linear_blend_skinning_fn: Any,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
@@ -148,12 +146,13 @@ def forward_skeleton(
 def prepare_pose(
     data: Any,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
-    rotation_type: RotationType = "axis_angle",
+    rotation_type: RotationType,
     *,
     world_bind_pose: Float[Array, "*batch Jf 4 4"],
     inverse_world_bind_pose: Float[Array, "*batch Jf 4 4"] | None,
-    skip_vertices: bool = False,
+    skip_vertices: bool,
     xp: Any,
+    apply_pose_correctives_fn: Any,
 ) -> SomaPreparedPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
@@ -183,7 +182,7 @@ def prepare_pose(
     )
     skinning_transforms = skeleton_transforms_full @ inverse_world_bind_pose
     prepared_pose["skinning_transforms"] = skinning_transforms[..., 1:, :, :]
-    pose_offsets = apply_pose_correctives(data, pose_rot_full, xp=xp)
+    pose_offsets = apply_pose_correctives_fn(data, pose_rot_full, xp=xp)
     if data.vertex_map is not None:
         pose_offsets = pose_offsets[..., data.vertex_map, :]
     prepared_pose["pose_offsets"] = pose_offsets * 0.01
@@ -258,31 +257,6 @@ def pose_mesh_from_oriented_pose(
     bone = T_world @ inverse_world_bind_pose
     verts = linear_blend_skinning_fn(xp, rest_shape, skin_weights, bone)
     return verts, T_world
-
-
-def apply_pose_correctives(
-    data: Any,
-    pose_rot_full: Float[Array, "B J 3 3"],
-    *,
-    xp: Any,
-) -> Float[Array, "B V 3"]:
-    """Compute SOMA pose correctives from oriented local rotations."""
-    correctives = data.correctives
-    batch_shape = pose_rot_full.shape[:-3]
-    x = correctives.corrective_bindpose.swapaxes(-2, -1) @ pose_rot_full
-    x = common.set(x, (..., 0, 0), x[..., 0, 0] - 1.0, copy=False, xp=xp)
-    x = common.set(x, (..., 1, 1), x[..., 1, 1] - 1.0, copy=False, xp=xp)
-    feat = x[..., :, :, :2].reshape(*batch_shape, -1)
-
-    z = feat @ correctives.corrective_W1
-    z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
-
-    out = common.zeros_as(z, shape=(*batch_shape, data.mean_full.shape[0] * 3), xp=xp)
-    for row, col, value in zip(
-        correctives.corrective_W2_rows, correctives.corrective_W2_cols, correctives.corrective_W2_values
-    ):
-        out = common.set(out, (..., col), out[..., col] + z[..., row] * value, xp=xp)
-    return out.reshape(*batch_shape, data.mean_full.shape[0], 3)
 
 
 def identity_to_rest_vertices(

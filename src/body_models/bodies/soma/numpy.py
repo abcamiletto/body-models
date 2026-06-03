@@ -18,7 +18,6 @@ from .io import (
     load_model_data,
     simplify_mesh,
 )
-from body_models.bodies.soma.backends import numpy as numpy_backend
 from body_models.bodies.soma.backends import scipy as scipy_backend
 from body_models.bodies.soma.backends import core
 from body_models.bodies.soma import identities
@@ -41,7 +40,7 @@ class SOMA(BodyModel):
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
-    kernels = ("numpy", "scipy")
+    kernels = ("scipy",)
     JOINTS = SOMA_JOINTS
 
     _kernel: Any
@@ -55,7 +54,7 @@ class SOMA(BodyModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
-        kernel: Literal["numpy", "scipy"] = "numpy",
+        kernel: Literal["scipy"] = "scipy",
     ) -> None:
         """Initialize the SOMA model.
 
@@ -83,7 +82,7 @@ class SOMA(BodyModel):
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.match_warp = match_warp
-        self._kernel = {"numpy": numpy_backend, "scipy": scipy_backend}[kernel]
+        self._kernel = {"scipy": scipy_backend}[kernel]
         resolved_path = get_model_path(model_path)
         data = load_model_data(resolved_path)
 

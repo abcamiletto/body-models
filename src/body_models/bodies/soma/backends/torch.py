@@ -21,7 +21,6 @@ forward_skeleton = core.forward_skeleton
 linear_blend_skinning = core.linear_blend_skinning
 SomaIdentity = core.SomaIdentity
 SomaPreparedPose = core.SomaPreparedPose
-prepare_pose = core.prepare_pose
 
 
 def prepare_identity_from_rest_shape(*args, **kwargs):
@@ -36,9 +35,12 @@ def forward_vertices(*args, **kwargs):
     return core._forward_vertices_with(
         *args,
         **kwargs,
-        apply_pose_correctives_fn=apply_pose_correctives,
         linear_blend_skinning_fn=linear_blend_skinning,
     )
+
+
+def prepare_pose(*args, **kwargs):
+    return core.prepare_pose(*args, **kwargs, apply_pose_correctives_fn=apply_pose_correctives)
 
 
 def apply_pose_correctives(data, pose_rot_full, *, xp):

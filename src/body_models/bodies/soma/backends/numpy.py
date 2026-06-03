@@ -1,6 +1,6 @@
 """NumPy SOMA backend."""
 
-from . import core
+from . import scipy
 
 __all__ = [
     "apply_pose_correctives",
@@ -14,20 +14,13 @@ __all__ = [
     "prepare_identity_from_rest_shape",
 ]
 
-apply_pose_correctives = core.apply_pose_correctives
-fit_rigid_transform = core.fit_rigid_transform
-forward_skeleton = core.forward_skeleton
-forward_vertices = core.forward_vertices
-linear_blend_skinning = core.linear_blend_skinning
-SomaIdentity = core.SomaIdentity
-SomaPreparedPose = core.SomaPreparedPose
-prepare_data = core.prepare_data
-prepare_pose = core.prepare_pose
-
-
-def prepare_identity_from_rest_shape(*args, **kwargs):
-    return core.prepare_identity_from_rest_shape(
-        *args,
-        **kwargs,
-        linear_blend_skinning_fn=linear_blend_skinning,
-    )
+apply_pose_correctives = scipy.apply_pose_correctives
+fit_rigid_transform = scipy.fit_rigid_transform
+forward_skeleton = scipy.forward_skeleton
+forward_vertices = scipy.forward_vertices
+linear_blend_skinning = scipy.linear_blend_skinning
+SomaIdentity = scipy.SomaIdentity
+SomaPreparedPose = scipy.SomaPreparedPose
+prepare_data = scipy.prepare_data
+prepare_pose = scipy.prepare_pose
+prepare_identity_from_rest_shape = scipy.prepare_identity_from_rest_shape
