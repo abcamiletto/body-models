@@ -1,6 +1,28 @@
-from . import anny, brainco, flame, g1, garment_measurements, mano, mhr, myofullbody, skel, smpl, smplh, smplx, soma
+from importlib import import_module
+import sys
+
 from .base import BodyModel
 from .constants import Joint
+
+_MODEL_MODULES = {
+    "anny": "bodies.anny",
+    "garment_measurements": "bodies.garment_measurements",
+    "mhr": "bodies.mhr",
+    "smpl": "bodies.smpl",
+    "smplh": "bodies.smplh",
+    "smplx": "bodies.smplx",
+    "soma": "bodies.soma",
+    "flame": "parts.flame",
+    "mano": "parts.mano",
+    "myofullbody": "skeletons.myofullbody",
+    "skel": "skeletons.skel",
+    "brainco": "robots.brainco",
+    "g1": "robots.g1",
+}
+
+for _name, _target in _MODEL_MODULES.items():
+    globals()[_name] = import_module(f".{_target}", __name__)
+    sys.modules[f"{__name__}.{_name}"] = globals()[_name]
 
 __all__ = [
     # Submodules
@@ -30,15 +52,15 @@ def main() -> None:
     import typer
 
     from . import download as official_downloads
-    from .anny.io import download_model as download_anny_model
-    from .brainco.io import download_model as download_brainco_model
+    from .bodies.anny.io import download_model as download_anny_model
+    from .bodies.garment_measurements.io import download_model as download_garment_measurements_model
+    from .bodies.mhr.io import download_model as download_mhr_model
+    from .bodies.smpl.download import download_smpl
+    from .bodies.soma.io import download_model as download_soma_model
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
-    from .g1.io import download_model as download_g1_model
-    from .garment_measurements.io import download_model as download_garment_measurements_model
-    from .mhr.io import download_model as download_mhr_model
-    from .myofullbody.io import download_model as download_myofullbody_model
-    from .smpl.download import download_smpl
-    from .soma.io import download_model as download_soma_model
+    from .robots.brainco.io import download_model as download_brainco_model
+    from .robots.g1.io import download_model as download_g1_model
+    from .skeletons.myofullbody.io import download_model as download_myofullbody_model
 
     Model = Literal[
         "smpl-male",

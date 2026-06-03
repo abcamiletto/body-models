@@ -67,29 +67,29 @@ def unset_model_path(model: str) -> None:
 
 def validate_model_path(model: str, path: str | Path) -> Path:
     if model in SMPL_MODELS:
-        from .smpl.io import validate_path
+        from .bodies.smpl.io import validate_path
     elif model in SMPLX_MODELS:
-        from .smplx.io import validate_path
+        from .bodies.smplx.io import validate_path
     elif model in SMPLH_MODELS:
-        from .smplh.io import validate_path
+        from .bodies.smplh.io import validate_path
     elif model in MANO_MODELS:
-        from .mano.io import validate_path
+        from .parts.mano.io import validate_path
     elif model in SKEL_MODELS:
-        from .skel.io import validate_path
+        from .skeletons.skel.io import validate_path
     elif model == "anny":
-        from .anny.io import validate_path
+        from .bodies.anny.io import validate_path
     elif model == "mhr":
-        from .mhr.io import validate_path
+        from .bodies.mhr.io import validate_path
     elif model == "flame":
-        from .flame.io import validate_path
+        from .parts.flame.io import validate_path
     elif model == "brainco":
-        from .brainco.io import validate_path
+        from .robots.brainco.io import validate_path
     elif model == "g1":
-        from .g1.io import validate_path
+        from .robots.g1.io import validate_path
     elif model == "soma":
-        from .soma.io import validate_path
+        from .bodies.soma.io import validate_path
     elif model == "garment-measurements":
-        from .garment_measurements.io import validate_path
+        from .bodies.garment_measurements.io import validate_path
     else:
         raise ValueError(f"Unknown model: {model}")
 
