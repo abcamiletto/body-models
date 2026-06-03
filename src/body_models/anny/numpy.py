@@ -1,5 +1,6 @@
 """NumPy frontend for ANNY."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,7 +13,7 @@ from body_models.anny.backends import numpy as numpy_backend
 from body_models.anny.backends.core import AnnyIdentity, AnnyPreparedPose
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
-from body_models.base import BodyModel
+from body_models.base import BodyModel, SkinningPayload
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
@@ -98,6 +99,11 @@ class ANNY(BodyModel):
     @property
     def parents(self) -> list[int]:
         return self.weights.parents
+
+    def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
+        skinning = super().prepare_skinning(identity=identity, pose=pose)
+        skinning["faces"] = _triangulate_faces(self.faces)
+        return skinning
 
     def forward_vertices(
         self,
@@ -295,3 +301,9 @@ def _get_kernel(kernel: Literal["numpy", "numba"]):
         raise ModuleNotFoundError("Install body-models[numba] to use ANNY kernel='numba'.") from exc
 
     return numba_backend
+
+
+def _triangulate_faces(faces: Int[np.ndarray, "F _"]) -> Int[np.ndarray, "Ftri 3"]:
+    if faces.shape[-1] == 3:
+        return faces
+    return np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
