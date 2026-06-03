@@ -4,12 +4,13 @@ import argparse
 import os
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import body_models_viser as bmv
 import numpy as np
 import viser
+from nanomanifold import SO3
 
 from body_models.anny.numpy import ANNY
 from body_models.base import BodyModel
@@ -26,6 +27,18 @@ from body_models.soma.numpy import SOMA
 
 DISPLAY_GLOBAL_ROTATIONS = {
     "ANNY": (-np.pi / 2, 0.0, 0.0),
+}
+MODEL_FACTORIES: dict[str, Callable[[], BodyModel]] = {
+    "SMPL": lambda: SMPL(gender="neutral"),
+    "SMPLH": lambda: SMPLH(gender="neutral"),
+    "MANO": lambda: MANO(side="right"),
+    "SMPLX": lambda: SMPLX(gender="neutral"),
+    "SKEL": lambda: SKEL(gender="male"),
+    "ANNY": ANNY,
+    "MHR": MHR,
+    "FLAME": FLAME,
+    "GarmentMeasurements": GarmentMeasurements,
+    "SOMA": SOMA,
 }
 
 SMPL_POSE_JOINTS = [
@@ -117,11 +130,11 @@ CANONICAL_POSE_MODELS = ("SMPL", "SMPLH", "SMPLX", "SKEL", "ANNY", "MHR", "Garme
 class ModelState:
     model: BodyModel
     params: dict[str, np.ndarray]
-    color: tuple[int, int, int]
+    bounds_vertices: np.ndarray
+    body_handle: bmv.BodyModelHandle
     display_global_rotation: np.ndarray | None = None
     hands: str = "default"
-    body_handle: bmv.BodyModelHandle | None = None
-    changed: bool = True
+    changed_keys: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -141,7 +154,7 @@ class ModelControls:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize body models with body-models-viser.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("_VISER_PORT_OVERRIDE", "8080")))
-    parser.add_argument("--model", action="append", choices=sorted(model_specs()), help="Model to load.")
+    parser.add_argument("--model", action="append", choices=sorted(MODEL_FACTORIES), help="Model to load.")
     args = parser.parse_args()
 
     server = viser.ViserServer(port=args.port)
@@ -150,7 +163,7 @@ def main() -> None:
     server.gui.configure_theme(control_layout="fixed", control_width="large")
 
     models = load_models(args.model)
-    states = init_states(models)
+    states = init_states(server, models)
     tabs = server.gui.add_tab_group()
     selected_model = next(iter(states))
 
@@ -194,42 +207,20 @@ def main() -> None:
 
     while True:
         time.sleep(0.02)
-        for name, state in states.items():
-            if state.changed:
-                state.changed = False
-                update_body_handle(server, name, state)
-
-
-def model_specs() -> dict[str, Callable[[], BodyModel]]:
-    return {
-        "SMPL": lambda: SMPL(gender="neutral"),
-        "SMPLH": lambda: SMPLH(gender="neutral"),
-        "MANO": lambda: MANO(side="right"),
-        "SMPLX": lambda: SMPLX(gender="neutral"),
-        "SKEL": lambda: SKEL(gender="male"),
-        "ANNY": ANNY,
-        "MHR": MHR,
-        "FLAME": FLAME,
-        "GarmentMeasurements": GarmentMeasurements,
-        "SOMA": SOMA,
-    }
+        for state in states.values():
+            if state.changed_keys:
+                sync_body_handle(state)
 
 
 def load_models(names: list[str] | None) -> dict[str, BodyModel]:
-    specs = model_specs()
     models = {}
-    for name in names or list(specs):
-        try:
-            print(f"Loading {name}", flush=True)
-            models[name] = specs[name]()
-        except Exception as exc:
-            print(f"Skipping {name}: {exc}", flush=True)
-    if not models:
-        raise RuntimeError("No models loaded.")
+    for name in names or list(MODEL_FACTORIES):
+        print(f"Loading {name}", flush=True)
+        models[name] = MODEL_FACTORIES[name]()
     return models
 
 
-def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
+def init_states(server: viser.ViserServer, models: dict[str, BodyModel]) -> dict[str, ModelState]:
     n = len(models)
     num_rows = (n + GRID_COLS - 1) // GRID_COLS
     states = {}
@@ -241,19 +232,26 @@ def init_states(models: dict[str, BodyModel]) -> dict[str, ModelState]:
         if display_global_rotation is not None:
             display_global_rotation = np.asarray(display_global_rotation, dtype=params["global_rotation"].dtype)
             params["global_rotation"] = display_global_rotation.copy()
-        verts = model.forward_vertices(**params)
+        mesh_path = f"/meshes/{name}"
+        body_handle = bmv.add_body_model(server.scene, mesh_path, model, color=MODEL_COLORS[name])
+        bounds_vertices = runtime_vertices(server, mesh_path, params)
         params["global_translation"] = np.asarray(
             (
                 (col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
-                -float(verts[..., 1].min()),
+                -float(bounds_vertices[..., 1].min()),
                 (row - 0.5 * (num_rows - 1)) * GRID_SPACING_Z,
             ),
             dtype=params["global_translation"].dtype,
         )
+        body_handle.set_transform(
+            global_rotation=params["global_rotation"],
+            global_translation=params["global_translation"],
+        )
         states[name] = ModelState(
             model=model,
             params=params,
-            color=MODEL_COLORS[name],
+            bounds_vertices=bounds_vertices,
+            body_handle=body_handle,
             display_global_rotation=display_global_rotation,
         )
     return states
@@ -263,17 +261,28 @@ def mutable_params(params: dict[str, Any]) -> dict[str, np.ndarray]:
     return {key: np.asarray(value).copy() for key, value in params.items()}
 
 
-def update_body_handle(server: viser.ViserServer, name: str, state: ModelState) -> None:
-    if state.body_handle is None:
-        state.body_handle = bmv.add_body_model(server.scene, f"/meshes/{name}", state.model, color=state.color)
-    state.body_handle.set_pose(**state.params)
+def runtime_vertices(
+    server: viser.ViserServer,
+    mesh_path: str,
+    params: dict[str, np.ndarray],
+) -> np.ndarray:
+    message = server.scene._websock_interface._body_models_viser.models[mesh_path]
+    rest_vertices = np.asarray(message.rest_vertices)
+    pose_offsets = np.asarray(message.pose_offsets)
+    skinning_transforms = np.asarray(message.skinning_transforms)
+    skin_weights = np.asarray(message.lbs_weights)
+
+    vertices = rest_vertices + pose_offsets
+    transforms = np.einsum("vj,jab->vab", skin_weights, skinning_transforms)
+    vertices = np.einsum("vab,vb->va", transforms[:, :3, :3], vertices) + transforms[:, :3, 3]
+    rotation = SO3.convert(params["global_rotation"], src="axis_angle", dst="rotmat", xp=np)
+    return vertices @ rotation.T
 
 
 def add_labels(server: viser.ViserServer, states: dict[str, ModelState]) -> None:
     for name, state in states.items():
-        verts = state.model.forward_vertices(**state.params)
         label_position = np.asarray(state.params["global_translation"]).copy()
-        label_position[1] = float(verts[..., 1].max()) + 0.1
+        label_position[1] += float(state.bounds_vertices[..., 1].max()) + 0.1
         server.scene.add_label(f"/labels/{name}", text=name, position=label_position)
 
 
@@ -294,7 +303,7 @@ def add_slider(
     @handle.on_update
     def _(event) -> None:
         state.params[key][indices] = event.target.value
-        state.changed = True
+        state.changed_keys.add(key)
 
     return SliderHandle(handle, initial, key, indices)
 
@@ -514,8 +523,7 @@ def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -
     for slider in sliders:
         if slider.key in updated_keys:
             slider.handle.value = float(state.params[slider.key][slider.indices])
-    refit_to_floor(state)
-    state.changed = True
+    state.changed_keys.update(updated_keys)
 
 
 def apply_hands(state: ModelState, sliders: list[SliderHandle], hands: Literal["default", "flat", "rest"]) -> None:
@@ -525,12 +533,24 @@ def apply_hands(state: ModelState, sliders: list[SliderHandle], hands: Literal["
     for slider in sliders:
         if slider.key == "hand_pose":
             slider.handle.value = float(state.params[slider.key][slider.indices])
-    state.changed = True
+    state.changed_keys.add("hand_pose")
 
 
-def refit_to_floor(state: ModelState) -> None:
-    verts = state.model.forward_vertices(**state.params)
-    state.params["global_translation"][1] -= float(verts[..., 1].min())
+def sync_body_handle(state: ModelState) -> None:
+    changed_keys = state.changed_keys
+    state.changed_keys = set()
+
+    transform_keys = changed_keys & {"global_rotation", "global_translation"}
+    if transform_keys:
+        state.body_handle.set_transform(**{key: state.params[key] for key in transform_keys})
+
+    identity_keys = changed_keys & state.body_handle.identity_keys
+    if identity_keys:
+        state.body_handle.set_identity(**{key: state.params[key] for key in identity_keys})
+
+    pose_keys = changed_keys & state.body_handle.pose_keys
+    if pose_keys:
+        state.body_handle.set_pose(**{key: state.params[key] for key in pose_keys})
 
 
 def set_gui_visible(handle: Any, visible: bool) -> None:
