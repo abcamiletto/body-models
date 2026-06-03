@@ -21,7 +21,7 @@ forward_skeleton = torch_backend.forward_skeleton
 apply_pose_correctives = torch_backend.apply_pose_correctives
 SomaIdentity = core.SomaIdentity
 SomaPreparedPose = core.SomaPreparedPose
-prepare_pose = core.prepare_pose
+prepare_pose = torch_backend.prepare_pose
 
 
 def prepare_identity_from_rest_shape(*args, **kwargs):
@@ -37,7 +37,6 @@ def forward_vertices(*args, **kwargs):
     return core._forward_vertices_with(
         *args,
         **kwargs,
-        apply_pose_correctives_fn=apply_pose_correctives,
         linear_blend_skinning_fn=_linear_blend_skinning(data),
     )
 
