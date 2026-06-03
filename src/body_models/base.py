@@ -1,8 +1,18 @@
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NotRequired, TypedDict
 
 from body_models.constants import Joint
+
+
+class SkinningPayload(TypedDict):
+    """Renderer-ready linear blend skinning inputs."""
+
+    rest_vertices: Any
+    skinning_transforms: Any
+    pose_offsets: NotRequired[Any]
+    skin_weights: Any
+    faces: Any
 
 
 class BodyModel(ABC):
@@ -148,3 +158,18 @@ class BodyModel(ABC):
             if name in bind_params and name not in self.POSE_PARAMETER_NAMES:
                 bind_params[name] = value
         return bind_params
+
+    def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
+        """Pack prepared model state into renderer-ready skinning inputs."""
+        if self.is_rigid_body:
+            raise NotImplementedError(f"{self.__class__.__name__} is rigid and does not support skinning.")
+
+        skinning: SkinningPayload = {
+            "rest_vertices": identity["rest_vertices"],
+            "skinning_transforms": pose["skinning_transforms"],
+            "skin_weights": self.skin_weights,
+            "faces": self.faces,
+        }
+        if "pose_offsets" in pose:
+            skinning["pose_offsets"] = pose["pose_offsets"]
+        return skinning
