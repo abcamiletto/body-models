@@ -166,7 +166,7 @@ provides-extras = ["torch", "jax", "numba", "warp"]
 [package.metadata.requires-dev]
 dev = [
     { name = "anny", specifier = ">=0.3.1" },
-    { name = "body-models-viser", marker = "python_full_version >= '3.12'", specifier = "==0.2.0" },
+    { name = "body-models-viser", marker = "python_full_version >= '3.12'", specifier = "==0.2.1" },
     { name = "flax", specifier = ">=0.10.0" },
     { name = "jax", specifier = ">=0.4.33" },
     { name = "numba", specifier = ">=0.65.1" },
@@ -187,7 +187,7 @@ docs = [
 
 [[package]]
 name = "body-models-viser"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "body-models", marker = "python_full_version >= '3.12'" },
@@ -196,9 +196,9 @@ dependencies = [
     { name = "numpy", marker = "python_full_version >= '3.12'" },
     { name = "viser", marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/e9/eeae7c2940e991e139db1e95827b6fbad1445492539eba4c97d4dc1e31a6/body_models_viser-0.2.0.tar.gz", hash = "sha256:04d25ae238f3928cc5491fdf7c2a9bba3b7245ca1e6bb544bd81d843cf11f251", size = 45026, upload-time = "2026-06-03T11:36:29.636Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/ff/33de71d50cec1a772d6e5a5a2f3b03f44e5417f84b9b4770e62b0c8c05f5/body_models_viser-0.2.1.tar.gz", hash = "sha256:95a6646e3f4cdad435dfa496508912ad0917dd70e9991dd61835f79c7c344836", size = 45197, upload-time = "2026-06-03T11:48:51.331Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/57/84/9430e82afac48a5104abd90c0aae5f07e4325c6b67abc9149b733efa5fca/body_models_viser-0.2.0-py3-none-any.whl", hash = "sha256:ff96f832459a9314e8785ea67ec3af25309c867705134397ba22a6cb024ab8e9", size = 25841, upload-time = "2026-06-03T11:36:28.476Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/73/7f0413ca7c72be4abee87dcbebc2ac534179de76ba65b435c315ae93f07d/body_models_viser-0.2.1-py3-none-any.whl", hash = "sha256:54daf2560a9466505de7c6ad184965045a9cdc713b4bdc89f6f8d2ad268ed6e9", size = 26030, upload-time = "2026-06-03T11:48:52.106Z" },
 ]
 
 [[package]]
