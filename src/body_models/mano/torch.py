@@ -25,7 +25,6 @@ class MANO(BodyModel, nn.Module):
     """MANO hand model with PyTorch backend."""
 
     has_hands = True
-
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
     kernels = ("torch", "warp")

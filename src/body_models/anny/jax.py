@@ -23,7 +23,7 @@ class ANNY(BodyModel):
     """ANNY body model with JAX backend."""
 
     has_hands = True
-
+    has_head = True
     JOINTS = ANNY_JOINTS
 
     def __init__(

@@ -22,7 +22,7 @@ class ANNY(BodyModel):
     """ANNY body model with NumPy backend."""
 
     has_hands = True
-
+    has_head = True
     kernels = ("numpy", "numba")
     JOINTS = ANNY_JOINTS
 

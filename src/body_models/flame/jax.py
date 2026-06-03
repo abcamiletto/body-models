@@ -23,6 +23,7 @@ __all__ = ["FLAME"]
 class FLAME(BodyModel):
     """FLAME head model with JAX backend."""
 
+    has_head = True
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
 

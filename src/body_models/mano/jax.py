@@ -24,7 +24,6 @@ class MANO(BodyModel):
     """MANO hand model with JAX backend."""
 
     has_hands = True
-
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
 

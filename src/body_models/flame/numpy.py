@@ -21,6 +21,7 @@ __all__ = ["FLAME"]
 class FLAME(BodyModel):
     """FLAME head model with NumPy backend."""
 
+    has_head = True
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
     kernels = ("numpy",)

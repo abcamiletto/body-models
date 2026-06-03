@@ -13,7 +13,6 @@ Documentation: https://abcamiletto.github.io/body-models/
 - NumPy, PyTorch, and JAX backends
 - Separate mesh and skeleton forwards with `forward_vertices()` and `forward_skeleton()`
 - Prepared identities for repeated poses with fixed shape/expression parameters
-- Skinned-mesh and rigid-body helpers for `viser`
 - Mesh simplification and vertex-subset forwards for supported mesh models
 - Multiple rotation representations for supported pose models
 
@@ -28,7 +27,6 @@ Install optional extras when needed:
 ```bash
 uv add "body-models[torch]"
 uv add "body-models[jax]"
-uv add "body-models[viser]"
 ```
 
 ## Quick Start
@@ -69,22 +67,6 @@ work can use `skip_vertices=True` to avoid preparing rest vertices.
 
 See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)
 for setup, supported backends, inputs, and model-specific behavior.
-
-## Extras
-
-Optional integrations live under `body_models.extras`, including the
-[viser plugin](https://abcamiletto.github.io/body-models/extras/viser-plugin/).
-
-```python
-import viser
-from body_models.extras import viser_plugin as vp
-from body_models.smpl.numpy import SMPL
-
-server = viser.ViserServer()
-model = SMPL(gender="neutral")
-handle = vp.add_body_model(server.scene, "/body", model)
-handle.set_pose(**model.get_rest_pose())
-```
 
 ## Development
 

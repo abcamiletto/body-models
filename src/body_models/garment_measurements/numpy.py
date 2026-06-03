@@ -23,7 +23,7 @@ class GarmentMeasurements(BodyModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
     has_hands = True
-
+    has_head = True
     kernels = ("numpy", "numba")
     JOINTS = GARMENT_JOINTS
 

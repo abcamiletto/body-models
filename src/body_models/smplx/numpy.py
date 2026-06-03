@@ -23,7 +23,7 @@ class SMPLX(BodyModel):
     """SMPL-X body model with NumPy backend."""
 
     has_hands = True
-
+    has_head = True
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
