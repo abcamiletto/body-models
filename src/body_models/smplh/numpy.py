@@ -23,7 +23,6 @@ class SMPLH(BodyModel):
     """SMPL-H body model with NumPy backend."""
 
     has_hands = True
-
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_JOINTS = 52

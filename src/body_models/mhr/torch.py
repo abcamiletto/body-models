@@ -29,7 +29,6 @@ class MHR(BodyModel, nn.Module):
     """MHR body model with PyTorch backend."""
 
     has_hands = True
-
     SHAPE_DIM = 45
     EXPR_DIM = 72
     JOINTS = MHR_JOINTS

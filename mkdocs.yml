@@ -74,7 +74,4 @@ nav:
       - Robots:
           - BrainCo: models/brainco.md
           - G1: models/g1.md
-  - Extras:
-      - viser: extras/viser-plugin.md
-
 strict: true

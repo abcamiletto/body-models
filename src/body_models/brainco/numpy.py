@@ -20,7 +20,6 @@ class BrainCoHand(BodyModel):
     """BrainCo Revo 2 as rigid STL links attached to its MuJoCo hand skeleton."""
 
     has_hands = True
-
     is_rigid_body = True
 
     def __init__(

@@ -22,7 +22,6 @@ class MyoFullBody(BodyModel):
     """MyoSuite-derived full-body MJCF model with rigid STL link meshes."""
 
     is_rigid_body = True
-    has_tendons = True
     JOINTS = MYOFULLBODY_JOINTS
 
     def __init__(self, model_path: Path | str | None = None) -> None:

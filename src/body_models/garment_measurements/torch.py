@@ -26,7 +26,7 @@ class GarmentMeasurements(BodyModel, nn.Module):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
     has_hands = True
-
+    has_head = True
     JOINTS = GARMENT_JOINTS
 
     def __init__(

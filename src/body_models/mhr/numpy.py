@@ -26,7 +26,6 @@ class MHR(BodyModel):
     """MHR body model with NumPy backend."""
 
     has_hands = True
-
     SHAPE_DIM = 45
     EXPR_DIM = 72
     JOINTS = MHR_JOINTS

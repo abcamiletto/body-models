@@ -25,7 +25,6 @@ class SMPLH(BodyModel, nn.Module):
     """SMPL-H body model with PyTorch backend."""
 
     has_hands = True
-
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_JOINTS = 52

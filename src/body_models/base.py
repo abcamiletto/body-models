@@ -30,11 +30,10 @@ class BodyModel(ABC):
     # True for models whose meshes are rigidly attached to bodies, e.g. G1 and
     # MyoFullBody.
     is_rigid_body: bool = False
-    # True for models that expose MJCF-style muscle via-points and tendons
-    # (currently MyoFullBody only). Renderers branch on this to draw muscles.
-    has_tendons: bool = False
-    # True for models that expose a hand_pose parameter and accept hands presets.
+    # True for models that expose a hand_pose parameter.
     has_hands: bool = False
+    # True for models that expose a head_pose or head_rotation parameter.
+    has_head: bool = False
     kernels: ClassVar[tuple[str, ...]] = ("numpy",)
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
     POSE_PARAMETER_NAMES: ClassVar[frozenset[str]] = frozenset(

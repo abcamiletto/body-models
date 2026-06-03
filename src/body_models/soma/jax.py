@@ -38,7 +38,7 @@ class SOMA(BodyModel):
     """SOMA body model with JAX backend."""
 
     has_hands = True
-
+    has_head = True
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)

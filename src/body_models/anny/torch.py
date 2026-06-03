@@ -25,7 +25,7 @@ class ANNY(BodyModel, nn.Module):
     """ANNY body model with PyTorch backend."""
 
     has_hands = True
-
+    has_head = True
     kernels = ("torch", "warp")
     JOINTS = ANNY_JOINTS
 

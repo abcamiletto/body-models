@@ -24,6 +24,7 @@ __all__ = ["FLAME"]
 class FLAME(BodyModel, nn.Module):
     """FLAME head model with PyTorch backend."""
 
+    has_head = True
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
     kernels = ("torch",)

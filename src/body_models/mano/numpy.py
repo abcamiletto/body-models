@@ -23,7 +23,6 @@ class MANO(BodyModel):
     """MANO hand model with NumPy backend."""
 
     has_hands = True
-
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
     kernels = ("numpy", "scipy", "numba")

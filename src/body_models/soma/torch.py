@@ -38,7 +38,7 @@ class SOMA(BodyModel, nn.Module):
     """SOMA body model with PyTorch backend."""
 
     has_hands = True
-
+    has_head = True
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
