@@ -84,10 +84,11 @@ def reference_inputs(name: str) -> dict[str, np.ndarray]:
         }
     if name == "mhr":
         pose = np.asarray(data["pose"], dtype=np.float32)[None]
-        body_pose, hand_pose = mhr_pose.unpack_pose(np, pose)
+        body_pose, head_pose, hand_pose = mhr_pose.unpack_pose(np, pose)
         return {
             "shape": np.asarray(data["shape"], dtype=np.float32)[None],
             "body_pose": body_pose,
+            "head_pose": head_pose,
             "hand_pose": hand_pose,
             "expression": np.asarray(data["expression"], dtype=np.float32)[None],
         }
