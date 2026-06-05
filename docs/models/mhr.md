@@ -13,4 +13,4 @@ body-models download mhr
 
 ## API
 
-::: body_models.mhr.numpy.MHR
+::: body_models.bodies.mhr.numpy.MHR

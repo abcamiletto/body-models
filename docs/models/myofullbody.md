@@ -37,4 +37,4 @@ MyoFullBody is a rigid articulated model, so it does not define `skin_weights`. 
 
 ## API
 
-::: body_models.myofullbody.numpy.MyoFullBody
+::: body_models.skeletons.myofullbody.numpy.MyoFullBody

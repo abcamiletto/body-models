@@ -13,4 +13,4 @@ body-models download anny
 
 ## API
 
-::: body_models.anny.numpy.ANNY
+::: body_models.bodies.anny.numpy.ANNY
