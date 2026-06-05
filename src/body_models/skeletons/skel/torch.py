@@ -30,9 +30,6 @@ class SKEL(BodyModel, nn.Module):
 
     NUM_BETAS = 10
     NUM_JOINTS = 24
-    NUM_POSE_PARAMS = SKEL_CANONICAL_POSE_DIM
-    BODY_POSE_DIM = SKEL_BODY_POSE_DIM
-    HEAD_POSE_DIM = SKEL_HEAD_POSE_DIM
     JOINTS = SKEL_JOINTS
     has_head = True
 
@@ -97,6 +94,18 @@ class SKEL(BodyModel, nn.Module):
     @property
     def skeleton_faces(self) -> Int[Tensor, "Fs 3"]:
         return self.weights.skel_faces
+
+    @property
+    def pose_dim(self) -> int:
+        return SKEL_CANONICAL_POSE_DIM
+
+    @property
+    def body_pose_dim(self) -> int:
+        return SKEL_BODY_POSE_DIM
+
+    @property
+    def head_pose_dim(self) -> int:
+        return SKEL_HEAD_POSE_DIM
 
     def forward_vertices(
         self,
@@ -225,8 +234,8 @@ class SKEL(BodyModel, nn.Module):
         device = self.weights.v_template.device
         return {
             "shape": torch.zeros((*batch_dims, self.NUM_BETAS), device=device, dtype=dtype),
-            "body_pose": torch.zeros((*batch_dims, self.BODY_POSE_DIM), device=device, dtype=dtype),
-            "head_pose": torch.zeros((*batch_dims, self.HEAD_POSE_DIM), device=device, dtype=dtype),
+            "body_pose": torch.zeros((*batch_dims, self.body_pose_dim), device=device, dtype=dtype),
+            "head_pose": torch.zeros((*batch_dims, self.head_pose_dim), device=device, dtype=dtype),
             "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }

@@ -29,9 +29,6 @@ class SKEL(BodyModel):
 
     NUM_BETAS = 10
     NUM_JOINTS = 24
-    NUM_POSE_PARAMS = SKEL_CANONICAL_POSE_DIM
-    BODY_POSE_DIM = SKEL_BODY_POSE_DIM
-    HEAD_POSE_DIM = SKEL_HEAD_POSE_DIM
     JOINTS = SKEL_JOINTS
     has_head = True
 
@@ -91,6 +88,18 @@ class SKEL(BodyModel):
     @property
     def parents(self) -> list[int]:
         return self.weights.parents
+
+    @property
+    def pose_dim(self) -> int:
+        return SKEL_CANONICAL_POSE_DIM
+
+    @property
+    def body_pose_dim(self) -> int:
+        return SKEL_BODY_POSE_DIM
+
+    @property
+    def head_pose_dim(self) -> int:
+        return SKEL_HEAD_POSE_DIM
 
     def forward_vertices(
         self,
@@ -199,8 +208,8 @@ class SKEL(BodyModel):
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
         return {
             "shape": jnp.zeros((*batch_dims, self.NUM_BETAS), dtype=dtype),
-            "body_pose": jnp.zeros((*batch_dims, self.BODY_POSE_DIM), dtype=dtype),
-            "head_pose": jnp.zeros((*batch_dims, self.HEAD_POSE_DIM), dtype=dtype),
+            "body_pose": jnp.zeros((*batch_dims, self.body_pose_dim), dtype=dtype),
+            "head_pose": jnp.zeros((*batch_dims, self.head_pose_dim), dtype=dtype),
             "global_rotation": jnp.zeros((*batch_dims, 3), dtype=dtype),
             "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
