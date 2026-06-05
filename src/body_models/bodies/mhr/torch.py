@@ -14,13 +14,14 @@ from body_models.bodies.mhr.backends import torch as backend
 from body_models.bodies.mhr.backends.core import MhrIdentity, MhrPreparedPose
 from body_models.bodies.mhr.constants import (
     MHR_BODY_POSE_DIM,
+    MHR_HEAD_POSE_DIM,
     MHR_HAND_PRESETS,
     MHR_HAND_POSE_DIM,
     MHR_BODY_PRESETS,
     MHR_JOINTS,
 )
 from body_models.bodies.mhr.io import get_model_path, load_model_data
-from body_models.bodies.mhr.pose import pack_pose
+from body_models.bodies.mhr.pose import pack_pose, unpack_pose
 
 __all__ = ["MHR"]
 
@@ -29,6 +30,7 @@ class MHR(BodyModel, nn.Module):
     """MHR body model with PyTorch backend."""
 
     has_hands = True
+    has_head = True
     SHAPE_DIM = 45
     EXPR_DIM = 72
     JOINTS = MHR_JOINTS
@@ -75,6 +77,10 @@ class MHR(BodyModel, nn.Module):
         return MHR_BODY_POSE_DIM
 
     @property
+    def head_pose_dim(self) -> int:
+        return MHR_HEAD_POSE_DIM
+
+    @property
     def hand_pose_dim(self) -> int:
         return MHR_HAND_POSE_DIM
 
@@ -99,7 +105,8 @@ class MHR(BodyModel, nn.Module):
 
     def forward_vertices(
         self,
-        body_pose: Float[Tensor, "*batch 100"],
+        body_pose: Float[Tensor, "*batch 94"],
+        head_pose: Float[Tensor, "*batch 6"],
         hand_pose: Float[Tensor, "*batch 104"],
         expression: Float[Tensor, "*batch 72"],
         global_rotation: Float[Tensor, "*batch 3"] | None = None,
@@ -114,6 +121,7 @@ class MHR(BodyModel, nn.Module):
         Args:
             shape: Shape coefficients.
             body_pose: Local body joint rotations.
+            head_pose: Local head and facial controls.
             hand_pose: Local hand joint rotations.
             expression: Facial expression coefficients.
             global_rotation: Global model rotation.
@@ -129,7 +137,7 @@ class MHR(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
-        pose = self.prepare_pose(body_pose, hand_pose)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose)
         return backend.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -142,7 +150,8 @@ class MHR(BodyModel, nn.Module):
 
     def forward_skeleton(
         self,
-        body_pose: Float[Tensor, "*batch 100"],
+        body_pose: Float[Tensor, "*batch 94"],
+        head_pose: Float[Tensor, "*batch 6"],
         hand_pose: Float[Tensor, "*batch 104"],
         expression: Float[Tensor, "*batch 72"],
         global_rotation: Float[Tensor, "*batch 3"] | None = None,
@@ -157,6 +166,7 @@ class MHR(BodyModel, nn.Module):
         Args:
             shape: Shape coefficients.
             body_pose: Local body joint rotations.
+            head_pose: Local head and facial controls.
             hand_pose: Local hand joint rotations.
             expression: Facial expression coefficients.
             global_rotation: Global model rotation.
@@ -172,7 +182,7 @@ class MHR(BodyModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
-        pose = self.prepare_pose(body_pose, hand_pose, skip_vertices=True)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -192,14 +202,15 @@ class MHR(BodyModel, nn.Module):
 
     def prepare_pose(
         self,
-        body_pose: Float[Tensor, "*batch 100"],
+        body_pose: Float[Tensor, "*batch 94"],
+        head_pose: Float[Tensor, "*batch 6"],
         hand_pose: Float[Tensor, "*batch 104"],
         *,
         identity: MhrIdentity | None = None,
         skip_vertices: bool = False,
     ) -> MhrPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        pose = pack_pose(torch, body_pose, hand_pose)
+        pose = pack_pose(torch, body_pose, head_pose, hand_pose)
         return backend.prepare_pose(self.weights, pose, skip_vertices=skip_vertices)
 
     def get_rest_pose(
@@ -220,6 +231,7 @@ class MHR(BodyModel, nn.Module):
         return {
             "shape": torch.zeros((*batch_dims, self.SHAPE_DIM), device=device, dtype=dtype),
             "body_pose": torch.zeros((*batch_dims, self.body_pose_dim), device=device, dtype=dtype),
+            "head_pose": torch.zeros((*batch_dims, self.head_pose_dim), device=device, dtype=dtype),
             "hand_pose": hand_pose,
             "expression": torch.zeros((*batch_dims, self.EXPR_DIM), device=device, dtype=dtype),
             "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
@@ -233,10 +245,11 @@ class MHR(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        body_pose = torch.as_tensor(
-            MHR_BODY_PRESETS["t_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
+        pose = torch.zeros(
+            (*batch_dims, self.pose_dim), device=params["body_pose"].device, dtype=params["body_pose"].dtype
         )
-        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
+        pose[..., :100] = torch.as_tensor(MHR_BODY_PRESETS["t_pose"], device=pose.device, dtype=pose.dtype)
+        params["body_pose"], params["head_pose"], _hand_pose = unpack_pose(torch, pose)
         return params
 
     def get_apose(

@@ -7,6 +7,7 @@ from nanomanifold import SO3
 import model_cases
 from body_models.anny import pose as anny_pose
 from body_models.mhr import pose as mhr_pose
+from body_models.skel import pose as skel_pose
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
@@ -77,17 +78,20 @@ def reference_inputs(name: str) -> dict[str, np.ndarray]:
             "global_translation": np.asarray(data["transl"], dtype=np.float32)[None],
         }
     if name == "skel":
+        body_pose, head_pose = skel_pose.unpack_pose(np, np.asarray(data["body_pose"], dtype=np.float32)[None])
         return {
             "shape": np.asarray(data["shape"], dtype=np.float32)[None],
-            "body_pose": np.asarray(data["body_pose"], dtype=np.float32)[None],
+            "body_pose": body_pose,
+            "head_pose": head_pose,
             "global_translation": np.asarray(data["trans"], dtype=np.float32)[None],
         }
     if name == "mhr":
         pose = np.asarray(data["pose"], dtype=np.float32)[None]
-        body_pose, hand_pose = mhr_pose.unpack_pose(np, pose)
+        body_pose, head_pose, hand_pose = mhr_pose.unpack_pose(np, pose)
         return {
             "shape": np.asarray(data["shape"], dtype=np.float32)[None],
             "body_pose": body_pose,
+            "head_pose": head_pose,
             "hand_pose": hand_pose,
             "expression": np.asarray(data["expression"], dtype=np.float32)[None],
         }

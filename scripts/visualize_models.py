@@ -61,8 +61,13 @@ SKEL_POSE_DOFS = [
     ("Lumbar flex", 17, (-0.8, 0.8)),
     ("Lumbar bend", 18, (-0.5, 0.5)),
     ("Thorax flex", 20, (-0.5, 0.5)),
-    ("Shoulder R", 28, (-1.5, 1.5)),
-    ("Shoulder L", 38, (-1.5, 1.5)),
+    ("Shoulder R", 25, (-1.5, 1.5)),
+    ("Shoulder L", 35, (-1.5, 1.5)),
+]
+SKEL_HEAD_POSE_DOFS = [
+    ("Head flex", 0, (-0.8, 0.8)),
+    ("Head bend", 1, (-0.8, 0.8)),
+    ("Head rot", 2, (-0.8, 0.8)),
 ]
 FLAME_POSE_JOINTS = [("Neck", 0), ("Jaw", 1), ("L Eye", 2), ("R Eye", 3)]
 ANNY_PHENOTYPE_PARAMS = ["Gender", "Age", "Muscle", "Weight", "Height", "Proportions"]
@@ -399,6 +404,21 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                             step=0.05,
                             initial=0.0,
                             key="body_pose",
+                            indices=(idx,),
+                        )
+                    )
+            with server.gui.add_folder("Head Pose"):
+                for label, idx, (lo, hi) in SKEL_HEAD_POSE_DOFS:
+                    handles.append(
+                        add_slider(
+                            server,
+                            state,
+                            label,
+                            lo=lo,
+                            hi=hi,
+                            step=0.05,
+                            initial=0.0,
+                            key="head_pose",
                             indices=(idx,),
                         )
                     )
