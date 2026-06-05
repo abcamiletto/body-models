@@ -19,4 +19,4 @@ The native implementation does not require installing `py-soma-x`.
 
 ## API
 
-::: body_models.soma.numpy.SOMA
+::: body_models.bodies.soma.numpy.SOMA
