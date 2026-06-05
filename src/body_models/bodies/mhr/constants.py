@@ -2,10 +2,9 @@ from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
 
-MHR_BODY_POSE_DIM = 100
+MHR_BODY_POSE_DIM = 94
+MHR_HEAD_POSE_DIM = 6
 MHR_HAND_POSE_DIM = 104
-MHR_BODY_POSE_SPLIT = 68
-MHR_HAND_POSE_SPLIT = 54
 
 MHR_JOINTS = {
     Joint.LEFT_SHOULDER: "l_uparm",
@@ -61,9 +60,8 @@ MHR_HAND_PRESETS = _POSES["hand"]
 
 __all__ = [
     "MHR_BODY_POSE_DIM",
+    "MHR_HEAD_POSE_DIM",
     "MHR_HAND_POSE_DIM",
-    "MHR_BODY_POSE_SPLIT",
-    "MHR_HAND_POSE_SPLIT",
     "MHR_JOINTS",
     "MHR_BODY_PRESETS",
     "MHR_HAND_PRESETS",

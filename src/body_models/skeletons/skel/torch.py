@@ -12,8 +12,15 @@ from body_models import common
 from body_models.base import BodyModel
 from body_models.skeletons.skel.backends import torch as backend
 from body_models.skeletons.skel.backends.core import SkelIdentity, SkelPreparedPose
-from body_models.skeletons.skel.io import get_model_path, load_model_data
 from body_models.skeletons.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
+from body_models.skeletons.skel.io import get_model_path, load_model_data
+from body_models.skeletons.skel.pose import (
+    SKEL_BODY_POSE_DIM,
+    SKEL_CANONICAL_POSE_DIM,
+    SKEL_HEAD_POSE_DIM,
+    pack_pose,
+    unpack_pose,
+)
 
 __all__ = ["SKEL"]
 
@@ -23,8 +30,8 @@ class SKEL(BodyModel, nn.Module):
 
     NUM_BETAS = 10
     NUM_JOINTS = 24
-    NUM_POSE_PARAMS = 46
     JOINTS = SKEL_JOINTS
+    has_head = True
 
     def __init__(
         self,
@@ -88,9 +95,22 @@ class SKEL(BodyModel, nn.Module):
     def skeleton_faces(self) -> Int[Tensor, "Fs 3"]:
         return self.weights.skel_faces
 
+    @property
+    def pose_dim(self) -> int:
+        return SKEL_CANONICAL_POSE_DIM
+
+    @property
+    def body_pose_dim(self) -> int:
+        return SKEL_BODY_POSE_DIM
+
+    @property
+    def head_pose_dim(self) -> int:
+        return SKEL_HEAD_POSE_DIM
+
     def forward_vertices(
         self,
-        body_pose: Float[Tensor, "*batch 46"],
+        body_pose: Float[Tensor, "*batch 43"],
+        head_pose: Float[Tensor, "*batch 3"],
         global_rotation: Float[Tensor, "*batch 3"] | None = None,
         global_translation: Float[Tensor, "*batch 3"] | None = None,
         vertex_indices: Any | None = None,
@@ -103,6 +123,7 @@ class SKEL(BodyModel, nn.Module):
         Args:
             shape: Shape coefficients.
             body_pose: Local body joint rotations.
+            head_pose: Local head joint rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             vertex_indices: Optional subset of vertices to return.
@@ -115,7 +136,7 @@ class SKEL(BodyModel, nn.Module):
             batch_shape = body_pose.shape[:-1]
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        pose = self.prepare_pose(body_pose, identity=identity)
+        pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         return backend.forward_vertices(
             self.weights,
             identity["rest_vertices"],
@@ -128,7 +149,8 @@ class SKEL(BodyModel, nn.Module):
 
     def forward_skeleton(
         self,
-        body_pose: Float[Tensor, "*batch 46"],
+        body_pose: Float[Tensor, "*batch 43"],
+        head_pose: Float[Tensor, "*batch 3"],
         global_rotation: Float[Tensor, "*batch 3"] | None = None,
         global_translation: Float[Tensor, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
@@ -141,6 +163,7 @@ class SKEL(BodyModel, nn.Module):
         Args:
             shape: Shape coefficients.
             body_pose: Local body joint rotations.
+            head_pose: Local head joint rotation.
             global_rotation: Global model rotation.
             global_translation: Global model translation.
             joint_indices: Optional subset of joints to return.
@@ -153,7 +176,7 @@ class SKEL(BodyModel, nn.Module):
             batch_shape = body_pose.shape[:-1]
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
-        pose = self.prepare_pose(body_pose, identity=identity, skip_vertices=True)
+        pose = self.prepare_pose(body_pose, head_pose, identity=identity, skip_vertices=True)
         return backend.forward_skeleton(
             self.weights,
             pose["skeleton_transforms"],
@@ -172,15 +195,17 @@ class SKEL(BodyModel, nn.Module):
 
     def prepare_pose(
         self,
-        body_pose: Float[Tensor, "*batch 46"],
+        body_pose: Float[Tensor, "*batch 43"],
+        head_pose: Float[Tensor, "*batch 3"],
         *,
         identity: SkelIdentity,
         skip_vertices: bool = False,
     ) -> SkelPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        pose = pack_pose(torch, body_pose, head_pose)
         return backend.prepare_pose(
             self.weights,
-            body_pose,
+            pose,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
             skip_vertices=skip_vertices,
@@ -188,7 +213,8 @@ class SKEL(BodyModel, nn.Module):
 
     def forward_links(
         self,
-        body_pose: Float[Tensor, "*batch 46"],
+        body_pose: Float[Tensor, "*batch 43"],
+        head_pose: Float[Tensor, "*batch 3"],
         global_translation: Float[Tensor, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "*batch 3"] | None = None,
@@ -197,6 +223,7 @@ class SKEL(BodyModel, nn.Module):
     ) -> Float[Tensor, "*batch 24 4 4"]:
         return self.forward_skeleton(
             body_pose,
+            head_pose,
             global_rotation=global_rotation,
             global_translation=global_translation,
             shape=shape,
@@ -207,7 +234,8 @@ class SKEL(BodyModel, nn.Module):
         device = self.weights.v_template.device
         return {
             "shape": torch.zeros((*batch_dims, self.NUM_BETAS), device=device, dtype=dtype),
-            "body_pose": torch.zeros((*batch_dims, self.NUM_POSE_PARAMS), device=device, dtype=dtype),
+            "body_pose": torch.zeros((*batch_dims, self.body_pose_dim), device=device, dtype=dtype),
+            "head_pose": torch.zeros((*batch_dims, self.head_pose_dim), device=device, dtype=dtype),
             "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
@@ -225,8 +253,9 @@ class SKEL(BodyModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        body_pose = torch.as_tensor(
+        pose = torch.as_tensor(
             SKEL_BODY_PRESETS["a_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
         )
-        params["body_pose"] = torch.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
+        pose = torch.broadcast_to(pose, (*batch_dims, *pose.shape))
+        params["body_pose"], params["head_pose"] = unpack_pose(torch, pose)
         return params

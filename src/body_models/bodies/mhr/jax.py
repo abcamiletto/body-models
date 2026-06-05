@@ -13,13 +13,14 @@ from body_models.bodies.mhr.backends import jax as backend
 from body_models.bodies.mhr.backends.core import MhrIdentity, MhrPreparedPose
 from body_models.bodies.mhr.constants import (
     MHR_BODY_POSE_DIM,
+    MHR_HEAD_POSE_DIM,
     MHR_HAND_PRESETS,
     MHR_HAND_POSE_DIM,
     MHR_BODY_PRESETS,
     MHR_JOINTS,
 )
 from body_models.bodies.mhr.io import get_model_path, load_model_data
-from body_models.bodies.mhr.pose import pack_pose
+from body_models.bodies.mhr.pose import pack_pose, unpack_pose
 
 __all__ = ["MHR"]
 
@@ -29,6 +30,7 @@ class MHR(BodyModel):
     """MHR body model with JAX backend."""
 
     has_hands = True
+    has_head = True
     SHAPE_DIM = 45
     EXPR_DIM = 72
     JOINTS = MHR_JOINTS
@@ -83,6 +85,10 @@ class MHR(BodyModel):
         return MHR_BODY_POSE_DIM
 
     @property
+    def head_pose_dim(self) -> int:
+        return MHR_HEAD_POSE_DIM
+
+    @property
     def hand_pose_dim(self) -> int:
         return MHR_HAND_POSE_DIM
 
@@ -103,7 +109,8 @@ class MHR(BodyModel):
 
     def forward_vertices(
         self,
-        body_pose: Float[jax.Array, "*batch 100"],
+        body_pose: Float[jax.Array, "*batch 94"],
+        head_pose: Float[jax.Array, "*batch 6"],
         hand_pose: Float[jax.Array, "*batch 104"],
         expression: Float[jax.Array, "*batch 72"],
         global_rotation: Float[jax.Array, "*batch 3"] | None = None,
@@ -118,6 +125,7 @@ class MHR(BodyModel):
         Args:
             shape: Shape coefficients.
             body_pose: Local body joint rotations.
+            head_pose: Local head and facial controls.
             hand_pose: Local hand joint rotations.
             expression: Facial expression coefficients.
             global_rotation: Global model rotation.
@@ -133,7 +141,7 @@ class MHR(BodyModel):
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
-        pose = self.prepare_pose(body_pose, hand_pose)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose)
         return backend.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -146,7 +154,8 @@ class MHR(BodyModel):
 
     def forward_skeleton(
         self,
-        body_pose: Float[jax.Array, "*batch 100"],
+        body_pose: Float[jax.Array, "*batch 94"],
+        head_pose: Float[jax.Array, "*batch 6"],
         hand_pose: Float[jax.Array, "*batch 104"],
         expression: Float[jax.Array, "*batch 72"],
         global_rotation: Float[jax.Array, "*batch 3"] | None = None,
@@ -161,6 +170,7 @@ class MHR(BodyModel):
         Args:
             shape: Shape coefficients.
             body_pose: Local body joint rotations.
+            head_pose: Local head and facial controls.
             hand_pose: Local hand joint rotations.
             expression: Facial expression coefficients.
             global_rotation: Global model rotation.
@@ -176,7 +186,7 @@ class MHR(BodyModel):
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = jnp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
-        pose = self.prepare_pose(body_pose, hand_pose, skip_vertices=True)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -196,14 +206,15 @@ class MHR(BodyModel):
 
     def prepare_pose(
         self,
-        body_pose: Float[jax.Array, "*batch 100"],
+        body_pose: Float[jax.Array, "*batch 94"],
+        head_pose: Float[jax.Array, "*batch 6"],
         hand_pose: Float[jax.Array, "*batch 104"],
         *,
         identity: MhrIdentity | None = None,
         skip_vertices: bool = False,
     ) -> MhrPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        pose = pack_pose(jnp, body_pose, hand_pose)
+        pose = pack_pose(jnp, body_pose, head_pose, hand_pose)
         return backend.prepare_pose(self.weights, pose, skip_vertices=skip_vertices)
 
     def get_rest_pose(
@@ -222,6 +233,7 @@ class MHR(BodyModel):
         return {
             "shape": jnp.zeros((*batch_dims, self.SHAPE_DIM), dtype=dtype),
             "body_pose": jnp.zeros((*batch_dims, self.body_pose_dim), dtype=dtype),
+            "head_pose": jnp.zeros((*batch_dims, self.head_pose_dim), dtype=dtype),
             "hand_pose": hand_pose,
             "expression": jnp.zeros((*batch_dims, self.EXPR_DIM), dtype=dtype),
             "global_rotation": jnp.zeros((*batch_dims, 3), dtype=dtype),
@@ -235,8 +247,9 @@ class MHR(BodyModel):
         **kwargs,
     ) -> dict[str, jnp.ndarray]:
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        body_pose = jnp.asarray(MHR_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
+        pose = jnp.zeros((*batch_dims, self.pose_dim), dtype=params["body_pose"].dtype)
+        pose = pose.at[..., :100].set(jnp.asarray(MHR_BODY_PRESETS["t_pose"], dtype=pose.dtype))
+        params["body_pose"], params["head_pose"], _hand_pose = unpack_pose(jnp, pose)
         return params
 
     def get_apose(
