@@ -32,14 +32,17 @@ uv add "body-models[jax]"
 ## Quick Start
 
 ```python
-from body_models.smpl.torch import SMPL
+import body_models
 
-model = SMPL(gender="neutral")
+model = body_models.create_model("smpl", backend="torch")
 params = model.get_rest_pose(batch_dims=(1,))
 
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
+
+Discover available model names with `body_models.list_models()`. Model options
+such as `gender="male"` or `side="left"` are passed as constructor kwargs.
 
 When shape-dependent identity parameters stay fixed across many poses, prepare
 them once and pass the returned dictionary back through `identity`. This avoids

@@ -3,6 +3,7 @@ import sys
 
 from .base import BodyModel
 from .constants import Joint
+from .registry import create_model, list_models
 
 _MODEL_MODULES = {
     "anny": "bodies.anny",
@@ -42,6 +43,8 @@ __all__ = [
     # Base class
     "BodyModel",
     "Joint",
+    "create_model",
+    "list_models",
 ]
 
 
