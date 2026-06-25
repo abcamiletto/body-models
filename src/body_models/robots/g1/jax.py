@@ -192,7 +192,6 @@ class G1(RigidBodyModel):
             link_vertex_counts=self.weights.link_vertex_counts,
             link_face_starts=self.weights.link_face_starts,
             link_face_counts=self.weights.link_face_counts,
-            joint_names=self.weights.joint_names,
             link_names=self.weights.link_names,
             link_name=link_name,
         )

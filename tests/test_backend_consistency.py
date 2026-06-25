@@ -48,7 +48,6 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
     with torch.no_grad():
         torch_meshes = torch_instance.forward_meshes(**torch_params)
     assert all(isinstance(mesh, Trimesh) for mesh in torch_meshes)
-    assert [mesh.metadata["name"] for mesh in torch_meshes] == [mesh.metadata["name"] for mesh in expected_meshes]
     np.testing.assert_allclose(mesh_vertices(torch_meshes), expected, rtol=1e-4, atol=1e-4)
 
     pytest.importorskip("jax")
@@ -59,7 +58,6 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
     jax_params = jax_instance.get_rest_pose(dtype=jnp.float32)
     jax_meshes = jax_instance.forward_meshes(**jax_params)
     assert all(isinstance(mesh, Trimesh) for mesh in jax_meshes)
-    assert [mesh.metadata["name"] for mesh in jax_meshes] == [mesh.metadata["name"] for mesh in expected_meshes]
     np.testing.assert_allclose(mesh_vertices(jax_meshes), expected, rtol=1e-4, atol=1e-4)
 
 

@@ -80,8 +80,6 @@ def forward_meshes(
         link_face_counts=weights.link_face_counts,
         link_geom_positions=weights.link_geom_positions,
         link_geom_rotations=weights.link_geom_rotations,
-        link_names=weights.link_names,
-        joint_names=weights.joint_names,
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,

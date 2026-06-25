@@ -49,8 +49,6 @@ def forward_meshes_from_links(
     link_vertex_counts: list[int],
     link_face_starts: list[int],
     link_face_counts: list[int],
-    link_names: list[str],
-    joint_names: list[str],
     *,
     link_indices: list[int] | None = None,
     xp: Any,
@@ -60,7 +58,7 @@ def forward_meshes_from_links(
     link_pos = links[..., :3, 3]
     source_vertices = xp.asarray(vertices, dtype=links.dtype)
     source_faces = xp.asarray(faces)
-    indices = range(len(link_names)) if link_indices is None else link_indices
+    indices = range(len(link_joint_indices)) if link_indices is None else link_indices
 
     meshes = []
     for link_idx in indices:
@@ -70,18 +68,9 @@ def forward_meshes_from_links(
         face_count = link_face_counts[link_idx]
         local_vertices = source_vertices[vertex_start : vertex_start + vertex_count]
         transformed = xp.squeeze(link_rot[..., link_idx, None, :, :] @ local_vertices[..., None], axis=-1)
-        joint_idx = link_joint_indices[link_idx]
         mesh_vertices = transformed + link_pos[..., link_idx, None, :]
         mesh_faces = source_faces[face_start : face_start + face_count] - vertex_start
-        meshes.append(
-            _make_trimesh(
-                vertices=mesh_vertices,
-                faces=mesh_faces,
-                name=link_names[link_idx],
-                joint_index=joint_idx,
-                joint_name=joint_names[joint_idx],
-            )
-        )
+        meshes.append(_make_trimesh(vertices=mesh_vertices, faces=mesh_faces))
     return meshes
 
 
@@ -93,7 +82,6 @@ def link_mesh(
     link_vertex_counts: list[int],
     link_face_starts: list[int],
     link_face_counts: list[int],
-    joint_names: list[str],
     link_names: list[str],
     link_name: str,
 ) -> Trimesh:
@@ -103,13 +91,9 @@ def link_mesh(
     vertex_count = link_vertex_counts[link_idx]
     face_start = link_face_starts[link_idx]
     face_count = link_face_counts[link_idx]
-    joint_idx = link_joint_indices[link_idx]
     return _make_trimesh(
         vertices=vertices[vertex_start : vertex_start + vertex_count],
         faces=faces[face_start : face_start + face_count] - vertex_start,
-        name=link_name,
-        joint_index=joint_idx,
-        joint_name=joint_names[joint_idx],
     )
 
 
@@ -140,7 +124,6 @@ def joint_meshes(
                 link_vertex_counts=link_vertex_counts,
                 link_face_starts=link_face_starts,
                 link_face_counts=link_face_counts,
-                joint_names=joint_names,
                 link_names=link_names,
                 link_name=link_name,
             )
@@ -152,23 +135,12 @@ def _make_trimesh(
     *,
     vertices: Float[Array, "... V 3"],
     faces: Int[Array, "F 3"],
-    name: str,
-    joint_index: int,
-    joint_name: str,
 ) -> Trimesh:
-    mesh = Trimesh(
+    return Trimesh(
         vertices=_as_unbatched_vertices(vertices),
         faces=_as_numpy(faces),
         process=False,
     )
-    mesh.metadata.update(
-        {
-            "name": name,
-            "joint_index": joint_index,
-            "joint_name": joint_name,
-        }
-    )
-    return mesh
 
 
 def _as_unbatched_vertices(vertices: Float[Array, "... V 3"]) -> Float[np.ndarray, "V 3"]:
@@ -180,7 +152,7 @@ def _as_unbatched_vertices(vertices: Float[Array, "... V 3"]) -> Float[np.ndarra
     return vertices
 
 
-def _as_numpy(value: Float[Array, "..."] | Int[Array, "..."]) -> Float[np.ndarray, "..."] | Int[np.ndarray, "..."]:
+def _as_numpy(value: Any) -> Float[np.ndarray, "..."] | Int[np.ndarray, "..."]:
     if hasattr(value, "detach"):
         value = value.detach()
     if hasattr(value, "cpu"):

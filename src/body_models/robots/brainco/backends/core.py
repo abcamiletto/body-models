@@ -181,8 +181,6 @@ def forward_meshes(
     link_face_counts: list[int],
     link_geom_positions: Float[Array, "L 3"],
     link_geom_rotations: Float[Array, "L 3 3"],
-    link_names: list[str],
-    joint_names: list[str],
     pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
@@ -222,8 +220,6 @@ def forward_meshes(
         link_vertex_counts=link_vertex_counts,
         link_face_starts=link_face_starts,
         link_face_counts=link_face_counts,
-        link_names=link_names,
-        joint_names=joint_names,
         link_indices=link_indices,
         xp=xp,
     )
@@ -237,7 +233,6 @@ def link_mesh(
     link_vertex_counts: list[int],
     link_face_starts: list[int],
     link_face_counts: list[int],
-    joint_names: list[str],
     link_names: list[str],
     link_name: str,
 ) -> Trimesh:
@@ -249,7 +244,6 @@ def link_mesh(
         link_vertex_counts=link_vertex_counts,
         link_face_starts=link_face_starts,
         link_face_counts=link_face_counts,
-        joint_names=joint_names,
         link_names=link_names,
         link_name=link_name,
     )

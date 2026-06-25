@@ -192,7 +192,6 @@ class BrainCoHand(RigidBodyModel):
             self.weights.link_vertex_counts,
             self.weights.link_face_starts,
             self.weights.link_face_counts,
-            self.weights.joint_names,
             self.weights.link_names,
             link_name,
         )
