@@ -22,6 +22,7 @@ _MODELS: dict[str, ModelInfo] = {
     "myofullbody": ("body_models.skeletons.myofullbody", "MyoFullBody", {}),
     "skel": ("body_models.skeletons.skel", "SKEL", {"gender": "male"}),
     "smpl": ("body_models.bodies.smpl", "SMPL", {"gender": "neutral"}),
+    "smpl_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {}),
     "smplh": ("body_models.bodies.smplh", "SMPLH", {"gender": "neutral"}),
     "smplx": ("body_models.bodies.smplx", "SMPLX", {"gender": "neutral"}),
     "soma": ("body_models.bodies.soma", "SOMA", {}),

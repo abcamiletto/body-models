@@ -20,6 +20,7 @@ from body_models.mano.numpy import MANO
 from body_models.mhr.numpy import MHR
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
+from body_models.smpl_humanoid.numpy import SmplHumanoid
 from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
@@ -30,6 +31,7 @@ DISPLAY_GLOBAL_ROTATIONS = {
 }
 MODEL_FACTORIES: dict[str, Callable[[], SkinnedModel]] = {
     "SMPL": lambda: SMPL(gender="neutral"),
+    "SmplHumanoid": SmplHumanoid,
     "SMPLH": lambda: SMPLH(gender="neutral"),
     "MANO": lambda: MANO(side="right"),
     "SMPLX": lambda: SMPLX(gender="neutral"),
@@ -118,6 +120,7 @@ GRID_SPACING_Z = 1.8
 
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "SMPL": (173, 216, 230),
+    "SmplHumanoid": (190, 190, 205),
     "SMPLH": (216, 191, 216),
     "MANO": (245, 205, 155),
     "SMPLX": (255, 182, 193),
@@ -128,7 +131,17 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "GarmentMeasurements": (176, 224, 230),
     "SOMA": (250, 200, 200),
 }
-CANONICAL_POSE_MODELS = ("SMPL", "SMPLH", "SMPLX", "SKEL", "ANNY", "MHR", "GarmentMeasurements", "SOMA")
+CANONICAL_POSE_MODELS = (
+    "SMPL",
+    "SmplHumanoid",
+    "SMPLH",
+    "SMPLX",
+    "SKEL",
+    "ANNY",
+    "MHR",
+    "GarmentMeasurements",
+    "SOMA",
+)
 
 
 @dataclass
@@ -136,7 +149,7 @@ class ModelState:
     model: SkinnedModel
     params: dict[str, np.ndarray]
     bounds_vertices: np.ndarray
-    body_handle: bmv.BodyModelHandle
+    body_handle: bmv.BodyModelHandle | RigidBodyModelHandle
     display_global_rotation: np.ndarray | None = None
     hands: str = "default"
     changed_keys: set[str] = field(default_factory=set)
@@ -156,13 +169,56 @@ class ModelControls:
     sliders: list[SliderHandle]
 
 
+class RigidBodyModelHandle:
+    identity_keys: set[str] = set()
+    pose_keys = {"body_pose"}
+
+    def __init__(
+        self,
+        scene: viser.SceneApi,
+        name: str,
+        model: BodyModel,
+        params: dict[str, np.ndarray],
+        color: tuple[int, int, int],
+    ) -> None:
+        self.model = model
+        self.params = {key: np.asarray(value).copy() for key, value in params.items()}
+        self.mesh = scene.add_mesh_simple(
+            name,
+            vertices=self._vertices(),
+            faces=np.asarray(model.faces, dtype=np.uint32),
+            color=color,
+            side="double",
+        )
+
+    def set_identity(self, **_: np.ndarray) -> None:
+        return
+
+    def set_pose(self, **params: np.ndarray) -> None:
+        self._update(params)
+
+    def set_transform(self, **params: np.ndarray) -> None:
+        self._update(params)
+
+    def _update(self, params: dict[str, np.ndarray]) -> None:
+        for key, value in params.items():
+            self.params[key] = np.asarray(value).copy()
+        self.mesh.vertices = self._vertices()
+
+    def _vertices(self) -> np.ndarray:
+        return np.asarray(self.model.forward_vertices(**self.params), dtype=np.float32)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize body models with body-models-viser.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("_VISER_PORT_OVERRIDE", "8080")))
+    parser.add_argument("--share", action="store_true", help="Request a public Viser share URL.")
     parser.add_argument("--model", action="append", choices=sorted(MODEL_FACTORIES), help="Model to load.")
     args = parser.parse_args()
 
     server = viser.ViserServer(port=args.port)
+    if args.share:
+        server.request_share_url()
     server.scene.set_up_direction("+y")
     server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
     server.gui.configure_theme(control_layout="fixed", control_width="large")
@@ -238,8 +294,8 @@ def init_states(server: viser.ViserServer, models: dict[str, SkinnedModel]) -> d
             display_global_rotation = np.asarray(display_global_rotation, dtype=params["global_rotation"].dtype)
             params["global_rotation"] = display_global_rotation.copy()
         mesh_path = f"/meshes/{name}"
-        body_handle = bmv.add_body_model(server.scene, mesh_path, model, color=MODEL_COLORS[name])
-        bounds_vertices = runtime_vertices(server, mesh_path, params)
+        body_handle = add_visual_body_model(server, mesh_path, model, params, color=MODEL_COLORS[name])
+        bounds_vertices = runtime_vertices(server, mesh_path, model, params)
         params["global_translation"] = np.asarray(
             (
                 (col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
@@ -269,8 +325,14 @@ def mutable_params(params: dict[str, Any]) -> dict[str, np.ndarray]:
 def runtime_vertices(
     server: viser.ViserServer,
     mesh_path: str,
+    model: BodyModel,
     params: dict[str, np.ndarray],
 ) -> np.ndarray:
+    if model.is_rigid_body:
+        rotation = SO3.convert(params["global_rotation"], src="axis_angle", dst="rotmat", xp=np)
+        vertices = np.asarray(model.forward_vertices(**params), dtype=np.float32)
+        return (vertices - params["global_translation"]) @ rotation.T
+
     message = server.scene._websock_interface._body_models_viser.models[mesh_path]
     rest_vertices = np.asarray(message.rest_vertices)
     pose_offsets = np.asarray(message.pose_offsets)
@@ -282,6 +344,19 @@ def runtime_vertices(
     vertices = np.einsum("vab,vb->va", transforms[:, :3, :3], vertices) + transforms[:, :3, 3]
     rotation = SO3.convert(params["global_rotation"], src="axis_angle", dst="rotmat", xp=np)
     return vertices @ rotation.T
+
+
+def add_visual_body_model(
+    server: viser.ViserServer,
+    mesh_path: str,
+    model: BodyModel,
+    params: dict[str, np.ndarray],
+    *,
+    color: tuple[int, int, int],
+) -> bmv.BodyModelHandle | RigidBodyModelHandle:
+    if model.is_rigid_body:
+        return RigidBodyModelHandle(server.scene, mesh_path, model, params, color)
+    return bmv.add_body_model(server.scene, mesh_path, model, color=color)
 
 
 def add_labels(server: viser.ViserServer, states: dict[str, ModelState]) -> None:
@@ -382,6 +457,9 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
             if name == "SMPLX":
                 with server.gui.add_folder("Expression"):
                     handles += betas(server, state, key="expression", count=10, prefix="psi", lo=-2.0, hi=2.0)
+            with server.gui.add_folder("Body Pose"):
+                handles += joint_xyz(server, state, key="body_pose", joints=SMPL_POSE_JOINTS)
+        elif name == "SmplHumanoid":
             with server.gui.add_folder("Body Pose"):
                 handles += joint_xyz(server, state, key="body_pose", joints=SMPL_POSE_JOINTS)
         elif name == "MANO":
