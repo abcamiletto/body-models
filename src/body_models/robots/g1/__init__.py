@@ -17,8 +17,8 @@ def to_mujoco_qpos(
 ) -> Any:
     """Convert a G1 body pose to MuJoCo qpos."""
     return _core.to_mujoco_qpos(
-        qpos_joint_axes=model.qpos_joint_axes,
-        qpos_joint_limits=model.qpos_joint_limits,
+        actuated_joint_axes=model.actuated_joint_axes,
+        actuated_joint_limits=model.actuated_joint_limits,
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,

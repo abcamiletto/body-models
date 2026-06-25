@@ -72,8 +72,8 @@ def forward_skeleton(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     parents: list[int],
-    body_qpos_starts: list[int],
-    body_qpos_counts: list[int],
+    body_actuated_starts: list[int],
+    body_actuated_counts: list[int],
     qpos_axes: Float[Array, "Q 3"],
     qpos_anchors: Float[Array, "Q 3"],
     hinge_mask: Float[Array, "Q"],
@@ -113,8 +113,8 @@ def forward_skeleton(
     for j in range(num_joints):
         local_rot = xp.broadcast_to(rest_rot[j], (*batch_shape, 3, 3))
         local_t = xp.broadcast_to(rest_t[j], (*batch_shape, 3))
-        start = body_qpos_starts[j]
-        for k in range(start, start + body_qpos_counts[j]):
+        start = body_actuated_starts[j]
+        for k in range(start, start + body_actuated_counts[j]):
             qpos_t = xp.squeeze(local_rot @ t_q[..., k, :, None], axis=-1)
             local_t = local_t + qpos_t
             local_rot = local_rot @ R_q[..., k, :, :]
@@ -153,8 +153,8 @@ def forward_links(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     parents: list[int],
-    body_qpos_starts: list[int],
-    body_qpos_counts: list[int],
+    body_actuated_starts: list[int],
+    body_actuated_counts: list[int],
     qpos_axes: Float[Array, "Q 3"],
     qpos_anchors: Float[Array, "Q 3"],
     hinge_mask: Float[Array, "Q"],
@@ -175,8 +175,8 @@ def forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
         parents=parents,
-        body_qpos_starts=body_qpos_starts,
-        body_qpos_counts=body_qpos_counts,
+        body_actuated_starts=body_actuated_starts,
+        body_actuated_counts=body_actuated_counts,
         qpos_axes=qpos_axes,
         qpos_anchors=qpos_anchors,
         hinge_mask=hinge_mask,
@@ -201,8 +201,8 @@ def forward_meshes(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     parents: list[int],
-    body_qpos_starts: list[int],
-    body_qpos_counts: list[int],
+    body_actuated_starts: list[int],
+    body_actuated_counts: list[int],
     qpos_axes: Float[Array, "Q 3"],
     qpos_anchors: Float[Array, "Q 3"],
     hinge_mask: Float[Array, "Q"],
@@ -227,8 +227,8 @@ def forward_meshes(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
         parents=parents,
-        body_qpos_starts=body_qpos_starts,
-        body_qpos_counts=body_qpos_counts,
+        body_actuated_starts=body_actuated_starts,
+        body_actuated_counts=body_actuated_counts,
         qpos_axes=qpos_axes,
         qpos_anchors=qpos_anchors,
         hinge_mask=hinge_mask,

@@ -48,12 +48,12 @@ class MyoFullBody(RigidBodyModel):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_types(self) -> list[str]:
-        return self.weights.qpos_joint_types
+    def actuated_joint_types(self) -> list[str]:
+        return self.weights.actuated_joint_types
 
     @property
     def link_names(self) -> list[str]:
@@ -96,8 +96,8 @@ class MyoFullBody(RigidBodyModel):
         return self.weights.vertices.shape[0]
 
     @property
-    def num_qpos(self) -> int:
-        return self.weights.qpos_joint_axes.shape[0]
+    def num_actuated(self) -> int:
+        return self.weights.actuated_joint_axes.shape[0]
 
     def forward_skeleton(
         self,
@@ -169,7 +169,7 @@ class MyoFullBody(RigidBodyModel):
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
         return {
-            "body_pose": np.zeros((*batch_dims, self.num_qpos), dtype=dtype),
+            "body_pose": np.zeros((*batch_dims, self.num_actuated), dtype=dtype),
             "global_rotation": np.zeros((*batch_dims, 3), dtype=dtype),
             "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }

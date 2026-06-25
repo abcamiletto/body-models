@@ -69,20 +69,20 @@ class BrainCoHand(RigidBodyModel):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_indices(self) -> list[int]:
-        return self.weights.qpos_joint_indices
+    def num_actuated(self) -> int:
+        return len(self.weights.actuated_joint_names)
 
     @property
-    def qpos_joint_axes(self) -> Float[jax.Array, "Q 3"]:
-        return self.weights.qpos_joint_axes
+    def actuated_joint_axes(self) -> Float[jax.Array, "Q 3"]:
+        return self.weights.actuated_joint_axes
 
     @property
-    def qpos_joint_limits(self) -> Float[jax.Array, "Q 2"]:
-        return self.weights.qpos_joint_limits
+    def actuated_joint_limits(self) -> Float[jax.Array, "Q 2"]:
+        return self.weights.actuated_joint_limits
 
     @property
     def link_names(self) -> list[str]:
@@ -190,11 +190,11 @@ class BrainCoHand(RigidBodyModel):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         global_ref = jnp.zeros((*batch_dims, 3), dtype=dtype)
-        qpos = jnp.zeros((len(self.weights.qpos_joint_indices), 1), dtype=dtype)
+        qpos = jnp.zeros((self.num_actuated, 1), dtype=dtype)
         if hands != "default":
             qpos = jnp.asarray(BRAINCO_HAND_PRESETS[self.side][hands], dtype=dtype).reshape(-1, 1)
         qpos = jnp.broadcast_to(qpos, (*batch_dims, *qpos.shape))
-        axes = self.weights.qpos_joint_axes
+        axes = self.weights.actuated_joint_axes
         rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=jnp)
         dst_kwargs = {"hinge": {"axes": axes}}.get(self.rotation_type, {})
         hand_pose = SO3.convert(

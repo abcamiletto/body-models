@@ -61,20 +61,20 @@ class G1(RigidBodyModel):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_indices(self) -> list[int]:
-        return self.weights.qpos_joint_indices
+    def num_actuated(self) -> int:
+        return len(self.weights.actuated_joint_names)
 
     @property
-    def qpos_joint_axes(self) -> Float[jax.Array, "Q 3"]:
-        return self.weights.qpos_joint_axes
+    def actuated_joint_axes(self) -> Float[jax.Array, "Q 3"]:
+        return self.weights.actuated_joint_axes
 
     @property
-    def qpos_joint_limits(self) -> Float[jax.Array, "Q 2"]:
-        return self.weights.qpos_joint_limits
+    def actuated_joint_limits(self) -> Float[jax.Array, "Q 2"]:
+        return self.weights.actuated_joint_limits
 
     @property
     def link_names(self) -> list[str]:
@@ -181,11 +181,11 @@ class G1(RigidBodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
-        pose_ref = jnp.zeros((*batch_dims, len(self.weights.qpos_joint_indices), 3), dtype=dtype)
+        pose_ref = jnp.zeros((*batch_dims, self.num_actuated, 3), dtype=dtype)
         global_ref = jnp.zeros((*batch_dims, 3), dtype=dtype)
         body_pose = SO3.identity_as(
             pose_ref,
-            batch_dims=(*batch_dims, len(self.weights.qpos_joint_indices)),
+            batch_dims=(*batch_dims, self.num_actuated),
             rotation_type=self.rotation_type,
             xp=jnp,
         )
@@ -209,7 +209,7 @@ class G1(RigidBodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = jnp.asarray(G1_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"hinge": {"axes": self.actuated_joint_axes}}.get(self.rotation_type, {})
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
@@ -227,7 +227,7 @@ class G1(RigidBodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = jnp.asarray(G1_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = jnp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"hinge": {"axes": self.actuated_joint_axes}}.get(self.rotation_type, {})
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",

@@ -63,20 +63,20 @@ class G1(RigidBodyModel, nn.Module):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_indices(self) -> list[int]:
-        return self.weights.qpos_joint_indices
+    def num_actuated(self) -> int:
+        return len(self.weights.actuated_joint_names)
 
     @property
-    def qpos_joint_axes(self) -> Float[Tensor, "Q 3"]:
-        return self.weights.qpos_joint_axes
+    def actuated_joint_axes(self) -> Float[Tensor, "Q 3"]:
+        return self.weights.actuated_joint_axes
 
     @property
-    def qpos_joint_limits(self) -> Float[Tensor, "Q 2"]:
-        return self.weights.qpos_joint_limits
+    def actuated_joint_limits(self) -> Float[Tensor, "Q 2"]:
+        return self.weights.actuated_joint_limits
 
     @property
     def link_names(self) -> list[str]:
@@ -184,11 +184,11 @@ class G1(RigidBodyModel, nn.Module):
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
-        pose_ref = torch.zeros((*batch_dims, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)
+        pose_ref = torch.zeros((*batch_dims, self.num_actuated, 3), device=device, dtype=dtype)
         global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
         body_pose = SO3.identity_as(
             pose_ref,
-            batch_dims=(*batch_dims, len(self.weights.qpos_joint_indices)),
+            batch_dims=(*batch_dims, self.num_actuated),
             rotation_type=self.rotation_type,
             xp=torch,
         )
@@ -216,7 +216,7 @@ class G1(RigidBodyModel, nn.Module):
             dtype=params["body_pose"].dtype,
         )
         axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"hinge": {"axes": self.actuated_joint_axes}}.get(self.rotation_type, {})
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
@@ -238,7 +238,7 @@ class G1(RigidBodyModel, nn.Module):
             dtype=params["body_pose"].dtype,
         )
         axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"hinge": {"axes": self.actuated_joint_axes}}.get(self.rotation_type, {})
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",

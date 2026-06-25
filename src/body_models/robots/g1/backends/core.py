@@ -195,8 +195,8 @@ def forward_links(
 
 
 def to_mujoco_qpos(
-    qpos_joint_axes: Float[Array, "Q 3"],
-    qpos_joint_limits: Float[Array, "Q 2"],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_limits: Float[Array, "Q 2"],
     body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
@@ -209,7 +209,7 @@ def to_mujoco_qpos(
     """Build MuJoCo qpos from root translation and local joint rotations."""
     if xp is None:
         xp = get_namespace(body_pose)
-    axes = xp.asarray(qpos_joint_axes, dtype=body_pose.dtype)
+    axes = xp.asarray(actuated_joint_axes, dtype=body_pose.dtype)
     src_kwargs = {
         "axis_angle": {},
         "quat": {},
@@ -242,9 +242,9 @@ def to_mujoco_qpos(
     root_rot_mujoco = kimodo_to_mujoco @ root_rot @ coord
     root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
 
-    axes = xp.asarray(qpos_joint_axes, dtype=dtype)
+    axes = xp.asarray(actuated_joint_axes, dtype=dtype)
     angles = SO3.convert(body_rot, src="rotmat", dst="hinge", dst_kwargs={"axes": axes}, xp=xp)[..., 0]
     if clamp_to_limits:
-        limits = xp.asarray(qpos_joint_limits, dtype=dtype)
+        limits = xp.asarray(actuated_joint_limits, dtype=dtype)
         angles = xp.clip(angles, limits[:, 0], limits[:, 1])
     return xp.concat([root_t, root_quat, angles], axis=-1)

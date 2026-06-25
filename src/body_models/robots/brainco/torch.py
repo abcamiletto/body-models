@@ -71,20 +71,20 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_indices(self) -> list[int]:
-        return self.weights.qpos_joint_indices
+    def num_actuated(self) -> int:
+        return len(self.weights.actuated_joint_names)
 
     @property
-    def qpos_joint_axes(self) -> Float[Tensor, "Q 3"]:
-        return self.weights.qpos_joint_axes
+    def actuated_joint_axes(self) -> Float[Tensor, "Q 3"]:
+        return self.weights.actuated_joint_axes
 
     @property
-    def qpos_joint_limits(self) -> Float[Tensor, "Q 2"]:
-        return self.weights.qpos_joint_limits
+    def actuated_joint_limits(self) -> Float[Tensor, "Q 2"]:
+        return self.weights.actuated_joint_limits
 
     @property
     def link_names(self) -> list[str]:
@@ -193,11 +193,11 @@ class BrainCoHand(RigidBodyModel, nn.Module):
 
         device = self.weights.vertices.device
         global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
-        qpos = torch.zeros((len(self.weights.qpos_joint_indices), 1), device=device, dtype=dtype)
+        qpos = torch.zeros((self.num_actuated, 1), device=device, dtype=dtype)
         if hands != "default":
             qpos = torch.as_tensor(BRAINCO_HAND_PRESETS[self.side][hands], device=device, dtype=dtype).reshape(-1, 1)
         qpos = torch.broadcast_to(qpos, (*batch_dims, *qpos.shape))
-        axes = self.weights.qpos_joint_axes
+        axes = self.weights.actuated_joint_axes
         rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=torch)
         dst_kwargs = {"hinge": {"axes": axes}}.get(self.rotation_type, {})
         hand_pose = SO3.convert(

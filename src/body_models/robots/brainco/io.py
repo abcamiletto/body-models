@@ -67,10 +67,10 @@ class BrainCoWeights:
     link_geom_positions: Float[Array, "L 3"]
     link_geom_rotations: Float[Array, "L 3 3"]
     link_names: list[str]
-    qpos_joint_indices: list[int]
-    qpos_joint_axes: Float[Array, "Q 3"]
-    qpos_joint_limits: Float[Array, "Q 2"]
-    qpos_joint_names: list[str]
+    actuated_joint_indices: list[int]
+    actuated_joint_axes: Float[Array, "Q 3"]
+    actuated_joint_limits: Float[Array, "Q 2"]
+    actuated_joint_names: list[str]
     coupled_joint_indices: list[int]
     coupled_joint_axes: Float[Array, "C 3"]
     coupled_driver_indices: list[int]
@@ -164,10 +164,10 @@ def load_model_data(model_path: PathLike | None = None, *, side: Side = "right",
         link_geom_positions=link_data["geom_positions"].astype(dtype),
         link_geom_rotations=link_data["geom_rotations"].astype(dtype),
         link_names=link_data["names"],
-        qpos_joint_indices=joint_indices,
-        qpos_joint_axes=joint_axes.astype(dtype),
-        qpos_joint_limits=joint_limits.astype(dtype),
-        qpos_joint_names=joint_names,
+        actuated_joint_indices=joint_indices,
+        actuated_joint_axes=joint_axes.astype(dtype),
+        actuated_joint_limits=joint_limits.astype(dtype),
+        actuated_joint_names=joint_names,
         coupled_joint_indices=coupled_joint_indices,
         coupled_joint_axes=coupled_joint_axes.astype(dtype),
         coupled_driver_indices=coupled_driver_indices,
@@ -266,11 +266,11 @@ def _parse_active_joints(
 def _parse_coupled_joints(
     root: ET.Element,
     names: list[str],
-    qpos_joint_names: list[str],
+    actuated_joint_names: list[str],
     class_axes: dict[str, np.ndarray],
 ) -> tuple[list[int], np.ndarray, list[int], np.ndarray]:
     by_name = {name: i for i, name in enumerate(names)}
-    qpos_by_name = {name: i for i, name in enumerate(qpos_joint_names)}
+    qpos_by_name = {name: i for i, name in enumerate(actuated_joint_names)}
     joint_by_name = {joint.get("name"): joint for joint in root.findall(".//joint") if joint.get("name")}
     indices = []
     axes = []

@@ -40,15 +40,15 @@ class MyoFullBodyWeights:
     parents: list[int]
     local_offsets: Float[Array, "J 3"]
     rest_local_rotations: Float[Array, "J 3 3"]
-    qpos_joint_names: list[str]
-    qpos_joint_axes: Float[Array, "Q 3"]
-    qpos_joint_anchors: Float[Array, "Q 3"]
-    qpos_joint_types: list[str]
-    qpos_joint_limits: Float[Array, "Q 2"]
+    actuated_joint_names: list[str]
+    actuated_joint_axes: Float[Array, "Q 3"]
+    actuated_joint_anchors: Float[Array, "Q 3"]
+    actuated_joint_types: list[str]
+    actuated_joint_limits: Float[Array, "Q 2"]
     hinge_mask: Float[Array, "Q"]
     slide_mask: Float[Array, "Q"]
-    body_qpos_starts: list[int]
-    body_qpos_counts: list[int]
+    body_actuated_starts: list[int]
+    body_actuated_counts: list[int]
     vertices: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     link_joint_indices: list[int]
@@ -143,21 +143,21 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     local_offsets = np.stack([b["pos"] for b in body_records])
     rest_local_rotations = np.stack([b["rot"] for b in body_records])
 
-    body_qpos_starts: list[int] = []
-    body_qpos_counts: list[int] = []
+    body_actuated_starts: list[int] = []
+    body_actuated_counts: list[int] = []
     cursor = 0
     for body in body_records:
-        body_qpos_starts.append(cursor)
-        body_qpos_counts.append(body["qpos_count"])
+        body_actuated_starts.append(cursor)
+        body_actuated_counts.append(body["qpos_count"])
         cursor += body["qpos_count"]
 
-    qpos_joint_names = [q["name"] for q in qpos_records]
-    qpos_joint_axes = _stack_or_empty(qpos_records, "axis", (0, 3))
-    qpos_joint_anchors = _stack_or_empty(qpos_records, "anchor", (0, 3))
-    qpos_joint_types = [q["type"] for q in qpos_records]
-    qpos_joint_limits = _stack_or_empty(qpos_records, "range", (0, 2))
-    hinge_mask = np.asarray([t == "hinge" for t in qpos_joint_types], dtype=np.float32)
-    slide_mask = np.asarray([t == "slide" for t in qpos_joint_types], dtype=np.float32)
+    actuated_joint_names = [q["name"] for q in qpos_records]
+    actuated_joint_axes = _stack_or_empty(qpos_records, "axis", (0, 3))
+    actuated_joint_anchors = _stack_or_empty(qpos_records, "anchor", (0, 3))
+    actuated_joint_types = [q["type"] for q in qpos_records]
+    actuated_joint_limits = _stack_or_empty(qpos_records, "range", (0, 2))
+    hinge_mask = np.asarray([t == "hinge" for t in actuated_joint_types], dtype=np.float32)
+    slide_mask = np.asarray([t == "slide" for t in actuated_joint_types], dtype=np.float32)
 
     vertices, faces, link_meta = _build_link_meshes(
         link_records,
@@ -176,15 +176,15 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         parents=parents,
         local_offsets=local_offsets.astype(dtype),
         rest_local_rotations=rest_local_rotations.astype(dtype),
-        qpos_joint_names=qpos_joint_names,
-        qpos_joint_axes=qpos_joint_axes.astype(dtype),
-        qpos_joint_anchors=qpos_joint_anchors.astype(dtype),
-        qpos_joint_types=qpos_joint_types,
-        qpos_joint_limits=qpos_joint_limits.astype(dtype),
+        actuated_joint_names=actuated_joint_names,
+        actuated_joint_axes=actuated_joint_axes.astype(dtype),
+        actuated_joint_anchors=actuated_joint_anchors.astype(dtype),
+        actuated_joint_types=actuated_joint_types,
+        actuated_joint_limits=actuated_joint_limits.astype(dtype),
         hinge_mask=hinge_mask.astype(dtype),
         slide_mask=slide_mask.astype(dtype),
-        body_qpos_starts=body_qpos_starts,
-        body_qpos_counts=body_qpos_counts,
+        body_actuated_starts=body_actuated_starts,
+        body_actuated_counts=body_actuated_counts,
         vertices=vertices.astype(dtype),
         faces=faces.astype(np.int64),
         link_joint_indices=link_meta["joint_indices"],

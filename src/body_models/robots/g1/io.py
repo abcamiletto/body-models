@@ -148,10 +148,10 @@ class G1Weights:
     link_geom_positions: Float[Array, "L 3"]
     link_geom_rotations: Float[Array, "L 3 3"]
     link_names: list[str]
-    qpos_joint_indices: list[int]
-    qpos_joint_axes: Float[Array, "Q 3"]
-    qpos_joint_limits: Float[Array, "Q 2"]
-    qpos_joint_names: list[str]
+    actuated_joint_indices: list[int]
+    actuated_joint_axes: Float[Array, "Q 3"]
+    actuated_joint_limits: Float[Array, "Q 2"]
+    actuated_joint_names: list[str]
 
 
 def get_model_path(model_path: PathLike | None = None) -> Path:
@@ -218,7 +218,7 @@ def load_model_data(
     class_axes, class_limits = _parse_joint_defaults(root)
     local_offsets, rest_local_rotations = _parse_joint_rest(root, coord)
     mesh_transforms = _parse_mesh_local_transforms(root, coord)
-    qpos_joint_indices, qpos_joint_axes, qpos_joint_limits, qpos_joint_names = _parse_qpos_joints(
+    actuated_joint_indices, actuated_joint_axes, actuated_joint_limits, actuated_joint_names = _parse_actuated_joints(
         root,
         class_axes,
         class_limits,
@@ -240,10 +240,10 @@ def load_model_data(
         link_geom_positions=link_data["geom_positions"].astype(dtype),
         link_geom_rotations=link_data["geom_rotations"].astype(dtype),
         link_names=link_data["names"],
-        qpos_joint_indices=qpos_joint_indices,
-        qpos_joint_axes=qpos_joint_axes.astype(dtype),
-        qpos_joint_limits=qpos_joint_limits.astype(dtype),
-        qpos_joint_names=qpos_joint_names,
+        actuated_joint_indices=actuated_joint_indices,
+        actuated_joint_axes=actuated_joint_axes.astype(dtype),
+        actuated_joint_limits=actuated_joint_limits.astype(dtype),
+        actuated_joint_names=actuated_joint_names,
     )
 
 
@@ -316,7 +316,7 @@ def _parse_mesh_local_transforms(root: ET.Element, coord: np.ndarray) -> dict[st
     return out
 
 
-def _parse_qpos_joints(
+def _parse_actuated_joints(
     root: ET.Element,
     class_axes: dict[str, np.ndarray],
     class_limits: dict[str, tuple[float, float]],

@@ -70,6 +70,26 @@ def test_rigid_body_models_do_not_expose_forward_vertices(name, numpy_model, _to
     assert not hasattr(model, "forward_vertices")
 
 
+@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.RIGID_BODY_MODELS)
+def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
+    model = numpy_model(**kwargs)
+    params = model.get_rest_pose(batch_dims=(2,), dtype=np.float32)
+    pose_name = "hand_pose" if "hand_pose" in params else "body_pose"
+    skeleton = model.forward_skeleton(**params)
+
+    assert len(model.joint_names) == model.num_joints
+    assert skeleton.shape[-3] == len(model.joint_names)
+    assert len(model.actuated_joint_names) == model.num_actuated
+    assert model.num_actuated in params[pose_name].shape[1:]
+
+    assert not hasattr(model, "qpos_joint_names")
+    assert not hasattr(model, "qpos_joint_indices")
+    assert not hasattr(model, "qpos_joint_axes")
+    assert not hasattr(model, "qpos_joint_limits")
+    assert not hasattr(model, "num_qpos")
+    assert not hasattr(model, "actuated_joint_indices")
+
+
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_kernels_match_default(name, numpy_model, torch_model, _jax_model, kwargs) -> None:
     numpy_instance = numpy_model(**kwargs)

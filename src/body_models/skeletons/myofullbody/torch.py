@@ -52,12 +52,12 @@ class MyoFullBody(RigidBodyModel, nn.Module):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_types(self) -> list[str]:
-        return self.weights.qpos_joint_types
+    def actuated_joint_types(self) -> list[str]:
+        return self.weights.actuated_joint_types
 
     @property
     def link_names(self) -> list[str]:
@@ -100,8 +100,8 @@ class MyoFullBody(RigidBodyModel, nn.Module):
         return self.weights.vertices.shape[0]
 
     @property
-    def num_qpos(self) -> int:
-        return self.weights.qpos_joint_axes.shape[0]
+    def num_actuated(self) -> int:
+        return self.weights.actuated_joint_axes.shape[0]
 
     def forward_skeleton(
         self,
@@ -174,7 +174,7 @@ class MyoFullBody(RigidBodyModel, nn.Module):
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
         return {
-            "body_pose": torch.zeros((*batch_dims, self.num_qpos), device=device, dtype=dtype),
+            "body_pose": torch.zeros((*batch_dims, self.num_actuated), device=device, dtype=dtype),
             "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }

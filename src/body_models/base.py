@@ -174,6 +174,16 @@ class RigidBodyModel(BodyModel):
 
     @property
     @abstractmethod
+    def actuated_joint_names(self) -> list[str]:
+        """Actuated pose coordinate names in ``body_pose``/``hand_pose`` order."""
+
+    @property
+    @abstractmethod
+    def num_actuated(self) -> int:
+        """Number of actuated pose coordinates."""
+
+    @property
+    @abstractmethod
     def link_names(self) -> list[str]:
         """Link mesh names in link index order."""
 
