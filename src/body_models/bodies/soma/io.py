@@ -24,7 +24,10 @@ Front = tuple[list[int], list[int]]
 
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
+SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
+SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
+SOMA_UPSTREAM_02_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
 SOMA_BASE_URL = f"{HF_DATASET_BASE_URL}/soma"
 SOMA_LEGACY_NPZ_FIELDS = (
     "bind_shape",
@@ -236,7 +239,12 @@ def validate_path(model_path: PathLike) -> Path:
         raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
     unsupported = _missing_legacy_npz_fields(model_path)
     if unsupported:
-        raise FileNotFoundError(f"SOMA model path {model_path} is missing required NPZ fields: {', '.join(unsupported)}.")
+        missing_sidecars = [name for name in SOMA_UPSTREAM_02_ASSETS if not (model_path / name).exists()]
+        if missing_sidecars:
+            raise FileNotFoundError(
+                f"SOMA model path {model_path} is missing required NPZ fields: {', '.join(unsupported)}. "
+                f"Missing upstream 0.2.1 sidecars: {', '.join(missing_sidecars)}."
+            )
     return model_path
 
 
@@ -383,6 +391,37 @@ def _procedural_rig_data(data: Any) -> SomaProceduralRig | None:
         twist_axis_ids=np.asarray(data["procedural_twist_axis_ids"], dtype=np.int64),
         twist_axis_signs=np.asarray(data["procedural_twist_axis_signs"], dtype=np.float32),
     )
+
+
+def _load_upstream_soma_02_rig_data(asset_dir: Path) -> tuple[dict[str, Any], dict[str, Any], SomaProceduralRig]:
+    try:
+        from soma.soma import SOMALayer
+    except ImportError as exc:
+        raise ImportError(
+            "Original SOMA-X 0.2.1 assets require py-soma-x to normalize the USD rig. "
+            "Install body-models[soma-upstream] or use the normalized body-models SOMA assets."
+        ) from exc
+
+    layer = SOMALayer(
+        data_root=asset_dir,
+        device="cpu",
+        identity_model_type="soma",
+        mode="dense",
+        lod="mid",
+        correctives_model_path=None,
+    )
+    transforms = layer.procedural_transforms
+    procedural = SomaProceduralRig(
+        public_joint_indices_full=layer.public_transform_joint_indices.cpu().numpy().astype(np.int64),
+        rotation_matrix=transforms.rotation_parameter_matrix.cpu().numpy().astype(np.float32),
+        translation_matrix=transforms.translation_parameter_matrix.cpu().numpy().astype(np.float32),
+        source_axis_ids=transforms.source_twist_axis_ids.cpu().numpy().astype(np.int64),
+        source_axis_signs=transforms.source_twist_axis_signs.cpu().numpy().astype(np.float32),
+        twist_joint_indices=transforms.twist_target_ids.cpu().numpy().astype(np.int64),
+        twist_axis_ids=transforms.twist_axis_ids.cpu().numpy().astype(np.int64),
+        twist_axis_signs=transforms.twist_axis_signs.cpu().numpy().astype(np.float32),
+    )
+    return dict(layer.rig_data), dict(layer._public_mid_rig_data), procedural
 
 
 def active_public_skin_weights(data: SomaWeights, vertex_map: np.ndarray | None) -> np.ndarray | None:
@@ -864,10 +903,18 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         eigenvalues = np.asarray(data["eigenvalues"], dtype=np.float32)
         faces = np.asarray(data["triangles"], dtype=np.int64)
         if missing_soma_fields := [name for name in SOMA_LEGACY_NPZ_FIELDS if name not in data]:
-            raise FileNotFoundError(
-                f"SOMA asset {asset_dir / SOMA_CORE_ASSET} is missing rig fields: {', '.join(missing_soma_fields)}."
-            )
-        rig_data = {name: data[name] for name in SOMA_LEGACY_NPZ_FIELDS}
+            missing_sidecars = [name for name in SOMA_UPSTREAM_02_ASSETS if not (asset_dir / name).exists()]
+            if missing_sidecars:
+                raise FileNotFoundError(
+                    f"SOMA asset {asset_dir / SOMA_CORE_ASSET} is missing rig fields: "
+                    f"{', '.join(missing_soma_fields)}. Missing upstream 0.2.1 sidecars: "
+                    f"{', '.join(missing_sidecars)}."
+                )
+            rig_data, public_rig_data, procedural = _load_upstream_soma_02_rig_data(asset_dir)
+        else:
+            rig_data = {name: data[name] for name in SOMA_LEGACY_NPZ_FIELDS}
+            public_rig_data = _prefixed_rig_data(data, "public_")
+            procedural = _procedural_rig_data(data)
 
         bind_shape = np.asarray(rig_data["bind_shape"], dtype=np.float32)
         bind_pose_world = np.asarray(rig_data["bind_pose_world"], dtype=np.float32)
@@ -878,8 +925,6 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         joint_names_full = [str(name) for name in rig_data["joint_names"]]
 
         skin_weights = _dense_skin_weights(rig_data)
-        public_rig_data = _prefixed_rig_data(data, "public_")
-        procedural = _procedural_rig_data(data)
         if (public_rig_data is None) != (procedural is None):
             raise ValueError(f"SOMA asset {asset_dir / SOMA_CORE_ASSET} has incomplete public rig metadata.")
 

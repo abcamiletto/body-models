@@ -63,10 +63,11 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
     upstream_model_path.mkdir()
     upstream_npz = model_path / "SOMA_neutral.upstream-0.2.1.npz"
     required_assets = [upstream_npz, model_path / "SOMA_template_rig.usda", model_path / "SOMA_procedural_transforms.json"]
-    if not all(path.exists() for path in required_assets):
+    package_assets = [model_path / "correctives_model.pt"]
+    if not all(path.exists() for path in [*required_assets, *package_assets]):
         pytest.skip("SOMA 0.2.1 assets are not available")
     (upstream_model_path / "SOMA_neutral.npz").symlink_to(upstream_npz)
-    for asset in required_assets[1:]:
+    for asset in [*required_assets[1:], *package_assets]:
         (upstream_model_path / asset.name).symlink_to(asset)
 
     upstream = upstream_soma.SOMALayer(
@@ -77,7 +78,7 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
         lod="mid",
         correctives_model_path=None,
     )
-    model = SOMA(model_path=model_path, model_type="soma", rotation_type="axis_angle")
+    model = SOMA(model_path=upstream_model_path, model_type="soma", rotation_type="axis_angle")
 
     shape = np.zeros((1, 128), dtype=np.float32)
     poses = np.zeros((3, 1, 77, 3), dtype=np.float32)
