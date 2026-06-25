@@ -17,7 +17,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.cache import download_and_extract, get_cache_dir
+from body_models.cache import HF_MODEL_BASE_URL, download_and_extract, get_cache_dir
 from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 from body_models.robots import mjcf
 
@@ -28,7 +28,7 @@ from body_models.robots import mjcf
 _RY_90 = np.array([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]], dtype=np.float32)
 _MUJOCO_TO_KIMODO_BARE = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 MUJOCO_TO_KIMODO = (_RY_90 @ _MUJOCO_TO_KIMODO_BARE).astype(np.float32)
-MUSCLEMIMIC_REPO_ZIP = "https://github.com/amathislab/musclemimic_models/archive/refs/heads/main.zip"
+MUSCLEMIMIC_REPO_ZIP = f"{HF_MODEL_BASE_URL}/myofullbody/assets.zip"
 MAIN_XML_RELPATH = Path("body") / "myofullbody.xml"
 ROOT_BODY_NAME = "Full Body"
 Array = Any
@@ -93,7 +93,6 @@ def download_model() -> Path:
     download_and_extract(
         url=MUSCLEMIMIC_REPO_ZIP,
         dest=cache_dir,
-        extract_subdir="musclemimic_models-main/musclemimic_models/model/",
     )
     print("Done")
     return cache_dir

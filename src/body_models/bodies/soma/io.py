@@ -18,7 +18,7 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.common import simplify_mesh
-from body_models.cache import HF_DATASET_BASE_URL, download_file, get_cache_dir
+from body_models.cache import HF_MODEL_BASE_URL, download_and_extract, get_cache_dir
 
 PathLike = Path | str
 
@@ -30,7 +30,7 @@ SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
 SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_UPSTREAM_02_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
-SOMA_BASE_URL = f"{HF_DATASET_BASE_URL}/soma"
+SOMA_URL = f"{HF_MODEL_BASE_URL}/soma/assets.zip"
 SOMA_LEGACY_NPZ_FIELDS = (
     "bind_shape",
     "bind_pose_world",
@@ -274,12 +274,9 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 def download_model(model_dir: PathLike | None = None) -> Path:
     """Download SOMA assets from Hugging Face."""
     cache_dir = Path(model_dir) if model_dir is not None else get_cache_dir() / "soma"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    missing = [name for name in SOMA_ASSETS if not (cache_dir / name).exists()]
-    if missing:
+    if _missing_assets(cache_dir):
         print(f"Downloading SOMA model to {cache_dir}...")
-        for name in missing:
-            download_file(f"{SOMA_BASE_URL}/{name}", cache_dir / name)
+        download_and_extract(url=SOMA_URL, dest=cache_dir)
         print("Done")
     return validate_path(cache_dir)
 
@@ -288,21 +285,15 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
     """Ensure supplementary SOMA assets exist for a given identity backend."""
     normalized = model_type.lower()
     spec = MODEL_TYPE_SPECS.get(normalized)
-    if spec is None or spec.asset_dir is None:
+    if spec is None or spec.asset_dir is None or spec.source_mesh_name is None or spec.target_mesh_name is None:
         raise ValueError(f"Unsupported SOMA identity assets: {model_type}")
 
     asset_dir = Path(model_dir)
-    asset_names = (
-        f"{spec.asset_dir}/{spec.target_mesh_name}",
-        f"{spec.asset_dir}/{spec.source_mesh_name}",
-    )
-    missing = [name for name in asset_names if not (asset_dir / name).exists()]
-    if missing:
-        print(f"Downloading SOMA {normalized} assets to {asset_dir}...")
-        for name in missing:
-            path = asset_dir / name
-            download_file(f"{SOMA_BASE_URL}/{name}", path)
-        print("Done")
+    identity_dir = asset_dir / spec.asset_dir
+    source_mesh = identity_dir / spec.source_mesh_name
+    target_mesh = identity_dir / spec.target_mesh_name
+    if not source_mesh.exists() or not target_mesh.exists():
+        download_model(asset_dir)
 
 
 def preprocess_model(upstream_dir: PathLike, output_dir: PathLike) -> Path:
@@ -416,16 +407,7 @@ def _procedural_rig_data(data: Any) -> SomaProceduralRig | None:
         "twist_axis_signs": np.float32,
     }
     values = {name: np.asarray(data[f"procedural_{name}"], dtype=dtypes[name]) for name in SOMA_PROCEDURAL_RIG_FIELDS}
-    return SomaProceduralRig(
-        public_joint_indices_full=values["public_joint_indices_full"],
-        rotation_matrix=values["rotation_matrix"],
-        translation_matrix=values["translation_matrix"],
-        source_axis_ids=values["source_axis_ids"],
-        source_axis_signs=values["source_axis_signs"],
-        twist_joint_indices=values["twist_joint_indices"],
-        twist_axis_ids=values["twist_axis_ids"],
-        twist_axis_signs=values["twist_axis_signs"],
-    )
+    return SomaProceduralRig(**values)
 
 
 def with_active_mesh(

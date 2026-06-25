@@ -26,6 +26,7 @@ MODELS = [
     "flame",
     "brainco",
     "g1",
+    "smpl-humanoid",
     "soma",
     "garment-measurements",
     "myofullbody",
@@ -86,6 +87,8 @@ def validate_model_path(model: str, path: str | Path) -> Path:
         from .robots.brainco.io import validate_path
     elif model == "g1":
         from .robots.g1.io import validate_path
+    elif model == "smpl-humanoid":
+        from .robots.smpl_humanoid.io import validate_path
     elif model == "soma":
         from .bodies.soma.io import validate_path
     elif model == "garment-measurements":

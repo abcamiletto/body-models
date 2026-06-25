@@ -67,6 +67,7 @@ def main() -> None:
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
     from .robots.brainco.io import download_model as download_brainco_model
     from .robots.g1.io import download_model as download_g1_model
+    from .robots.smpl_humanoid.io import download_model as download_smpl_humanoid_model
     from .skeletons.myofullbody.io import download_model as download_myofullbody_model
 
     Model = Literal[
@@ -88,6 +89,7 @@ def main() -> None:
         "flame",
         "brainco",
         "g1",
+        "smpl-humanoid",
         "soma",
         "garment-measurements",
         "myofullbody",
@@ -130,6 +132,7 @@ def main() -> None:
                 "brainco",
                 "mhr",
                 "g1",
+                "smpl-humanoid",
                 "soma",
                 "garment-measurements",
                 "myofullbody",
@@ -233,6 +236,11 @@ def main() -> None:
             path = download_g1_model()
             set_model_path("g1", str(path))
             print(f"Set g1 = {path}")
+
+        if model in ("smpl-humanoid", "all"):
+            path = download_smpl_humanoid_model()
+            set_model_path("smpl-humanoid", str(path))
+            print(f"Set smpl-humanoid = {path}")
 
         if model in ("soma", "all"):
             path = download_soma_model()
