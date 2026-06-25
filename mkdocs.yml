@@ -74,4 +74,5 @@ nav:
       - Robots:
           - BrainCo: models/brainco.md
           - G1: models/g1.md
+          - SmplHumanoid: models/smpl-humanoid.md
 strict: true

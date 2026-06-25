@@ -14,6 +14,12 @@ from body_models.common import Front, compute_kinematic_fronts, simplify_mesh
 from body_models.cache import download_hf_archive, get_cache_dir
 
 PathLike = Path | str
+SUPPORTED_LODS = tuple(range(7))
+MHR_ASSETS = (
+    "mhr_model.pt",
+    "corrective_activation.npz",
+    *(f"mhr_lod{lod}.npz" for lod in SUPPORTED_LODS),
+)
 
 __all__ = [
     "get_model_path",
@@ -66,7 +72,7 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
         return validate_path(model_path)
 
     cache_path = get_cache_dir() / "mhr"
-    if (cache_path / "mhr_model.pt").exists():
+    if _has_model(cache_path):
         return cache_path
 
     return download_model()
@@ -84,10 +90,12 @@ def download_model() -> Path:
 def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrWeights:
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
-    if lod != 1:
-        raise ValueError("MHR lod values other than 1 are not supported.")
+    if lod not in SUPPORTED_LODS:
+        raise ValueError(f"MHR lod must be one of {SUPPORTED_LODS}, got {lod}")
 
     data = _load_raw_model_data(asset_dir)
+    if lod != 1:
+        data = _load_lod_data(asset_dir, lod, data)
     base_vertices = data["base_vertices"]
     blendshape_dirs = data["blendshape_dirs"]
     skin_weights = data["skin_weights"]
@@ -162,6 +170,36 @@ def _load_raw_model_data(asset_dir: Path) -> dict[str, Any]:
         "inverse_bind_pose": lbs.inverse_bind_pose,
         "faces": character.mesh.faces,
     }
+
+
+def _load_lod_data(asset_dir: Path, lod: int, data: dict[str, Any]) -> dict[str, Any]:
+    path = asset_dir / f"mhr_lod{lod}.npz"
+    with np.load(path, allow_pickle=False) as asset:
+        joint_names = [str(name) for name in asset["skin_joint_names"].tolist()]
+        checkpoint_joint_index = {name: index for index, name in enumerate(data["joint_names"])}
+        skin_joint_indices = np.asarray(asset["skin_joint_indices"], dtype=np.int64)
+        mapped_joint_indices = np.asarray([checkpoint_joint_index[name] for name in joint_names], dtype=np.int64)
+        base_vertices = np.asarray(asset["base_vertices"], dtype=np.float32)
+        skin_indices, skin_weights = _build_dense_skinning(
+            asset["skin_vertex_indices"],
+            mapped_joint_indices[skin_joint_indices],
+            asset["skin_weights"],
+            len(base_vertices),
+        )
+        blendshape_dirs = np.asarray(asset["blendshape_dirs"], dtype=np.float32)
+        faces = np.asarray(asset["faces"], dtype=np.int64)
+
+    return data | {
+        "base_vertices": base_vertices,
+        "blendshape_dirs": blendshape_dirs,
+        "skin_weights": skin_weights,
+        "skin_indices": skin_indices,
+        "faces": faces,
+    }
+
+
+def _has_model(model_path: Path) -> bool:
+    return all((model_path / name).is_file() for name in MHR_ASSETS)
 
 
 def _get_attr(obj: Any, path: str) -> Any:
