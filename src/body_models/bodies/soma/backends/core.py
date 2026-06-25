@@ -8,7 +8,7 @@ from nanomanifold import SO3
 
 from body_models import common
 from body_models.common import get_namespace
-from body_models.bodies.soma.io import public_parents_full
+from body_models.bodies.soma.io import compute_kinematic_fronts, public_parents_full
 from body_models.rotations import RotationType
 
 Array = Any
@@ -46,51 +46,15 @@ def prepare_identity_from_rest_shape(
     skip_vertices: bool = False,
 ) -> SomaIdentity:
     if data.procedural is not None and data.public_joint_regressor is not None:
-        public_parents = public_parents_full(data)
-        public_children = _joint_children(public_parents)
-        public_skinned_vertices = [
-            _index_list(xp.where(data.public_skin_weights_full[:, joint_index] > 0.01)[0])
-            for joint_index in range(data.public_skin_weights_full.shape[1])
-        ]
-        rest_shape_full, public_world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
-            xp=xp,
-            bind_shape=data.bind_shape_full,
-            bind_pose_world=_public_joint_values(xp, data.bind_pose_world, data),
-            joint_regressor=data.public_joint_regressor,
-            joint_children_full=public_children,
-            joint_children_indices_full=_pad_indices(xp, public_children),
-            skinned_vertex_indices_full=public_skinned_vertices,
-            skinned_vertex_indices_full_index=_pad_indices(xp, public_skinned_vertices),
-            parents_full=public_parents,
-            rest_shape=rest_shape_full,
+        return _prepare_procedural_identity(
+            data,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
             match_warp=match_warp,
-        )
-        public_skin_weights_active = (
-            data.public_skin_weights_full if data.vertex_map is None else data.public_skin_weights_full[data.vertex_map]
-        )
-        public_bind_pose_local = _joint_world_to_local(
-            xp,
-            _public_joint_values(xp, data.bind_pose_world, data),
-            public_parents,
-        )
-        bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
             xp=xp,
-            rest_shape=rest_shape_active,
-            skin_weights=public_skin_weights_active,
-            world_bind_pose_fit=public_world_bind_pose_fit,
-            bind_pose_local=public_bind_pose_local,
-            kinematic_fronts=compute_fronts(public_parents),
-            parents_full=public_parents,
             linear_blend_skinning_fn=linear_blend_skinning_fn,
+            skip_vertices=skip_vertices,
         )
-        public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
-        world_bind_pose = _expand_public_bind_pose(xp, data, public_world_bind_pose)
-        inverse_world_bind_pose = _invert_transforms(xp, world_bind_pose)
-        identity: SomaIdentity = {"world_bind_pose": world_bind_pose}
-        if not skip_vertices:
-            identity["rest_vertices"] = bind_shape_active * 0.01
-            identity["inverse_world_bind_pose"] = inverse_world_bind_pose
-        return identity
 
     rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
         xp=xp,
@@ -125,8 +89,70 @@ def prepare_identity_from_rest_shape(
     return identity
 
 
+def _prepare_procedural_identity(
+    data: Any,
+    *,
+    rest_shape_full: Float[Array, "B Vf 3"],
+    rest_shape_active: Float[Array, "B Va 3"],
+    match_warp: bool,
+    xp: Any,
+    linear_blend_skinning_fn: Any,
+    skip_vertices: bool,
+) -> SomaIdentity:
+    public_parents = public_parents_full(data)
+    public_children = _joint_children(public_parents)
+    public_bind_pose_world = _public_joint_values(xp, data.bind_pose_world, data)
+    public_skin_weights = _active_public_skin_weights(data)
+    public_skinned_vertices = _skinned_vertices(xp, data.public_skin_weights_full)
+
+    rest_shape_full, public_world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
+        xp=xp,
+        bind_shape=data.bind_shape_full,
+        bind_pose_world=public_bind_pose_world,
+        joint_regressor=data.public_joint_regressor,
+        joint_children_full=public_children,
+        joint_children_indices_full=_pad_indices(xp, public_children),
+        skinned_vertex_indices_full=public_skinned_vertices,
+        skinned_vertex_indices_full_index=_pad_indices(xp, public_skinned_vertices),
+        parents_full=public_parents,
+        rest_shape=rest_shape_full,
+        match_warp=match_warp,
+    )
+    bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
+        xp=xp,
+        rest_shape=rest_shape_active,
+        skin_weights=public_skin_weights,
+        world_bind_pose_fit=public_world_bind_pose_fit,
+        bind_pose_local=_joint_world_to_local(xp, public_bind_pose_world, public_parents),
+        kinematic_fronts=compute_kinematic_fronts(public_parents),
+        parents_full=public_parents,
+        linear_blend_skinning_fn=linear_blend_skinning_fn,
+    )
+    public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
+    world_bind_pose = _expand_public_bind_pose(xp, data, public_world_bind_pose)
+
+    identity: SomaIdentity = {"world_bind_pose": world_bind_pose}
+    if not skip_vertices:
+        identity["rest_vertices"] = bind_shape_active * 0.01
+        identity["inverse_world_bind_pose"] = _invert_transforms(xp, world_bind_pose)
+    return identity
+
+
 def _public_joint_values(xp: Any, values: Array, data: Any) -> Array:
     return values[xp.asarray(data.procedural.public_joint_indices_full)]
+
+
+def _active_public_skin_weights(data: Any) -> Array:
+    if data.vertex_map is None:
+        return data.public_skin_weights_full
+    return data.public_skin_weights_full[data.vertex_map]
+
+
+def _skinned_vertices(xp: Any, skin_weights: Array) -> list[list[int]]:
+    return [
+        [int(vertex) for vertex in xp.where(skin_weights[:, joint] > 0.01)[0]]
+        for joint in range(skin_weights.shape[1])
+    ]
 
 
 def _joint_children(parents: list[int]) -> list[list[int]]:
@@ -135,12 +161,6 @@ def _joint_children(parents: list[int]) -> list[list[int]]:
         if joint != parent:
             children[parent].append(joint)
     return children
-
-
-def _index_list(indices: Any) -> list[int]:
-    if hasattr(indices, "detach"):
-        return [int(value) for value in indices.detach().cpu().tolist()]
-    return [int(value) for value in indices.tolist()]
 
 
 def _pad_indices(xp: Any, indices: list[list[int]]) -> Array:
@@ -153,25 +173,6 @@ def _pad_indices(xp: Any, indices: list[list[int]]) -> Array:
     return out
 
 
-def compute_fronts(parents: list[int]) -> list[Front]:
-    processed: set[int] = set()
-    fronts: list[Front] = []
-    while len(processed) < len(parents):
-        joints = []
-        joint_parents = []
-        for joint, parent in enumerate(parents):
-            if joint in processed:
-                continue
-            if parent == joint or parent in processed:
-                joints.append(joint)
-                joint_parents.append(-1 if parent == joint else parent)
-        if not joints:
-            raise ValueError(f"Invalid SOMA parent chain: {parents}")
-        fronts.append((joints, joint_parents))
-        processed.update(joints)
-    return fronts
-
-
 def _pin_root_transform(xp: Any, transforms: Array) -> Array:
     eye = common.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
     return common.set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
@@ -181,10 +182,6 @@ def _expand_public_bind_pose(xp: Any, data: Any, public_world_bind_pose: Array) 
     public_indices = xp.asarray(data.procedural.public_joint_indices_full)
     batch_shape = public_world_bind_pose.shape[:-3]
     target = xp.broadcast_to(data.bind_pose_world, (*batch_shape, *data.bind_pose_world.shape))
-    if hasattr(target, "clone"):
-        target = target.clone()
-    elif hasattr(target, "copy"):
-        target = target.copy()
     target = common.set(target, (..., public_indices, slice(None), slice(None)), public_world_bind_pose, xp=xp)
     translations = xp.asarray(data.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
     return common.set(target, (..., slice(None), slice(None, 3), 3), translations, xp=xp)
