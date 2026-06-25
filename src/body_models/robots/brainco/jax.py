@@ -73,16 +73,12 @@ class BrainCoHand(RigidBodyModel):
         return self.weights.actuated_joint_names
 
     @property
-    def num_actuated(self) -> int:
-        return len(self.weights.actuated_joint_names)
-
-    @property
-    def actuated_joint_axes(self) -> Float[jax.Array, "Q 3"]:
-        return self.weights.actuated_joint_axes
-
-    @property
     def actuated_joint_limits(self) -> Float[jax.Array, "Q 2"]:
         return self.weights.actuated_joint_limits
+
+    @property
+    def actuated_joint_types(self) -> list[str]:
+        return ["hinge"] * self.num_actuated
 
     @property
     def link_names(self) -> list[str]:

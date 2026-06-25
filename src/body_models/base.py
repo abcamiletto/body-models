@@ -49,9 +49,9 @@ class BodyModel(ABC):
         """Mesh face indices. Shape [F, 3] for triangles or [F, 4] for quads."""
 
     @property
-    @abstractmethod
     def num_joints(self) -> int:
         """Number of joints in the skeleton."""
+        return len(self.joint_names)
 
     @property
     @abstractmethod
@@ -178,9 +178,19 @@ class RigidBodyModel(BodyModel):
         """Actuated pose coordinate names in ``body_pose``/``hand_pose`` order."""
 
     @property
-    @abstractmethod
     def num_actuated(self) -> int:
         """Number of actuated pose coordinates."""
+        return len(self.actuated_joint_names)
+
+    @property
+    @abstractmethod
+    def actuated_joint_limits(self) -> Any:
+        """Limits for each actuated pose coordinate. Shape [Q, 2]."""
+
+    @property
+    @abstractmethod
+    def actuated_joint_types(self) -> list[str]:
+        """Actuated pose coordinate types in ``actuated_joint_names`` order."""
 
     @property
     @abstractmethod

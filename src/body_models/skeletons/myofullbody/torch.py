@@ -60,6 +60,10 @@ class MyoFullBody(RigidBodyModel, nn.Module):
         return self.weights.actuated_joint_types
 
     @property
+    def actuated_joint_limits(self) -> Float[Tensor, "Q 2"]:
+        return self.weights.actuated_joint_limits
+
+    @property
     def link_names(self) -> list[str]:
         return self.weights.link_names
 
@@ -98,10 +102,6 @@ class MyoFullBody(RigidBodyModel, nn.Module):
     @property
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
-
-    @property
-    def num_actuated(self) -> int:
-        return self.weights.actuated_joint_axes.shape[0]
 
     def forward_skeleton(
         self,

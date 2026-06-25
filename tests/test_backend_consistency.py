@@ -80,6 +80,8 @@ def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_mode
     assert len(model.joint_names) == model.num_joints
     assert skeleton.shape[-3] == len(model.joint_names)
     assert len(model.actuated_joint_names) == model.num_actuated
+    assert len(model.actuated_joint_types) == model.num_actuated
+    assert model.actuated_joint_limits.shape == (model.num_actuated, 2)
     assert model.num_actuated in params[pose_name].shape[1:]
 
     assert not hasattr(model, "qpos_joint_names")
@@ -88,6 +90,7 @@ def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_mode
     assert not hasattr(model, "qpos_joint_limits")
     assert not hasattr(model, "num_qpos")
     assert not hasattr(model, "actuated_joint_indices")
+    assert not hasattr(model, "actuated_joint_axes")
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)

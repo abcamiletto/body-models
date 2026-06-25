@@ -29,8 +29,8 @@ GLOBAL_ROTATION_TYPES: dict[RotationType, SO3RotationType] = {
 def forward_skeleton(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    joint_axes: Float[Array, "Q 3"],
-    joint_indices: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_indices: list[int],
     coupled_joint_axes: Float[Array, "C 3"],
     coupled_joint_indices: list[int],
     coupled_driver_indices: list[int],
@@ -47,7 +47,7 @@ def forward_skeleton(
     """Compute world-space BrainCo hand joint transforms."""
     if xp is None:
         xp = get_namespace(pose)
-    axes = xp.asarray(joint_axes, dtype=pose.dtype)
+    axes = xp.asarray(actuated_joint_axes, dtype=pose.dtype)
     src_kwargs = {"axes": axes} if rotation_type == "hinge" else {}
     local_joint_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", src_kwargs=src_kwargs, xp=xp)
     if local_joint_rot.shape[-2:] != (3, 3):
@@ -61,7 +61,7 @@ def forward_skeleton(
 
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
     local_rot = common.eye_as(local_joint_rot, batch_dims=(*batch_shape, num_joints), xp=xp)
-    local_rot = common.set(local_rot, (..., joint_indices, slice(None), slice(None)), local_joint_rot, xp=xp)
+    local_rot = common.set(local_rot, (..., actuated_joint_indices, slice(None), slice(None)), local_joint_rot, xp=xp)
     if rotation_type == "hinge" and coupled_joint_indices:
         driver_pose = pose[..., coupled_driver_indices, 0]
         coeffs = xp.asarray(coupled_polycoef, dtype=dtype)
@@ -117,8 +117,8 @@ def forward_skeleton(
 def forward_links(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    joint_axes: Float[Array, "Q 3"],
-    joint_indices: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_indices: list[int],
     coupled_joint_axes: Float[Array, "C 3"],
     coupled_joint_indices: list[int],
     coupled_driver_indices: list[int],
@@ -140,8 +140,8 @@ def forward_links(
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
-        joint_axes=joint_axes,
-        joint_indices=joint_indices,
+        actuated_joint_axes=actuated_joint_axes,
+        actuated_joint_indices=actuated_joint_indices,
         coupled_joint_axes=coupled_joint_axes,
         coupled_joint_indices=coupled_joint_indices,
         coupled_driver_indices=coupled_driver_indices,
@@ -167,8 +167,8 @@ def forward_meshes(
     faces: Int[Array, "F 3"],
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    joint_axes: Float[Array, "Q 3"],
-    joint_indices: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_indices: list[int],
     coupled_joint_axes: Float[Array, "C 3"],
     coupled_joint_indices: list[int],
     coupled_driver_indices: list[int],
@@ -194,8 +194,8 @@ def forward_meshes(
     links = forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
-        joint_axes=joint_axes,
-        joint_indices=joint_indices,
+        actuated_joint_axes=actuated_joint_axes,
+        actuated_joint_indices=actuated_joint_indices,
         coupled_joint_axes=coupled_joint_axes,
         coupled_joint_indices=coupled_joint_indices,
         coupled_driver_indices=coupled_driver_indices,
