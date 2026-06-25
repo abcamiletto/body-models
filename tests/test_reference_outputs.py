@@ -11,6 +11,7 @@ from body_models.base import RigidBodyModel
 from body_models.mhr import pose as mhr_pose
 from body_models.skel import pose as skel_pose
 from body_models.bodies.soma import pose as soma_pose
+from body_models.bodies.soma.generate_asset import generate_asset as generate_soma_asset
 from body_models.bodies.soma.numpy import SOMA
 
 
@@ -78,7 +79,9 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
         lod="mid",
         correctives_model_path=None,
     )
-    model = SOMA(model_path=upstream_model_path, model_type="soma", rotation_type="axis_angle")
+    normalized_model_path = tmp_path / "soma-normalized"
+    generate_soma_asset(upstream_model_path, normalized_model_path)
+    model = SOMA(model_path=normalized_model_path, model_type="soma", rotation_type="axis_angle")
 
     shape = np.zeros((1, 128), dtype=np.float32)
     poses = np.zeros((3, 1, 77, 3), dtype=np.float32)

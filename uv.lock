@@ -104,7 +104,6 @@ dependencies = [
     { name = "scipy" },
     { name = "trimesh" },
     { name = "typer" },
-    { name = "usd-core" },
 ]
 
 [package.optional-dependencies]
@@ -114,9 +113,6 @@ jax = [
 ]
 numba = [
     { name = "numba" },
-]
-soma-upstream = [
-    { name = "py-soma-x" },
 ]
 torch = [
     { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
@@ -158,17 +154,15 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "platformdirs", specifier = ">=4.6" },
     { name = "ptloader", specifier = "==0.3.0" },
-    { name = "py-soma-x", marker = "extra == 'soma-upstream'", specifier = ">=0.2.1" },
     { name = "pyfqmr", specifier = ">=0.3.0" },
     { name = "scipy", specifier = ">=1.13.0" },
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.3.0" },
     { name = "trimesh", specifier = ">=4.0.0" },
     { name = "typer", specifier = ">=0.9.0" },
-    { name = "usd-core", specifier = ">=26.5" },
     { name = "warp-lang", marker = "extra == 'warp'", specifier = ">=1.12.0" },
 ]
-provides-extras = ["torch", "jax", "numba", "warp", "soma-upstream"]
+provides-extras = ["torch", "jax", "numba", "warp"]
 
 [package.metadata.requires-dev]
 dev = [
