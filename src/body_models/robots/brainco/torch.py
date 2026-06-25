@@ -10,7 +10,7 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import MeshPayload, RigidBodyModel
 from body_models.robots.brainco.backends import core
 from body_models.robots.brainco.backends import torch as backend
 from body_models.robots.brainco.io import Side, load_model_data
@@ -19,11 +19,10 @@ from body_models.robots.brainco.constants import BRAINCO_HAND_PRESETS, LEFT_BRAI
 __all__ = ["BrainCoHand"]
 
 
-class BrainCoHand(BodyModel, nn.Module):
+class BrainCoHand(RigidBodyModel, nn.Module):
     """BrainCo Revo 2 as rigid STL links attached to its MuJoCo hand skeleton."""
 
     has_hands = True
-    is_rigid_body = True
 
     def __init__(
         self,
@@ -114,19 +113,6 @@ class BrainCoHand(BodyModel, nn.Module):
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
 
-    @property
-    def skin_weights(self) -> Float[Tensor, "V J"]:
-        raise NotImplementedError(core.SKIN_WEIGHTS_ERROR)
-
-    @property
-    def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        params = self.get_rest_pose(batch_dims=())
-        return self.forward_vertices(
-            hand_pose=params["hand_pose"],
-            global_translation=params["global_translation"],
-            global_rotation=params["global_rotation"],
-        )
-
     def forward_skeleton(
         self,
         hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
@@ -155,31 +141,31 @@ class BrainCoHand(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def forward_vertices(
+    def forward_meshes(
         self,
         hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        vertex_indices: list[int] | None = None,
-    ) -> Float[Tensor, "B V 3"]:
-        """Compute posed mesh vertices.
+        link_indices: list[int] | None = None,
+    ) -> list[MeshPayload]:
+        """Compute posed link meshes.
 
         Args:
             hand_pose: Local hand joint rotations.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
-            vertex_indices: Optional subset of vertices to return.
+            link_indices: Optional subset of links to return.
 
         Returns:
-            Posed vertex positions.
+            One posed mesh payload per link.
         """
-        return backend.forward_vertices(
+        return backend.forward_meshes(
             self.weights,
             hand_pose,
             global_translation,
             global_rotation=global_rotation,
-            vertex_indices=vertex_indices,
+            link_indices=link_indices,
             rotation_type=self.rotation_type,
         )
 
@@ -198,14 +184,16 @@ class BrainCoHand(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def link_mesh(self, link_name: str) -> dict[str, Tensor | str]:
+    def link_mesh(self, link_name: str) -> MeshPayload:
         return core.link_mesh(
             self.weights.vertices,
             self.weights.faces,
+            self.weights.link_joint_indices,
             self.weights.link_vertex_starts,
             self.weights.link_vertex_counts,
             self.weights.link_face_starts,
             self.weights.link_face_counts,
+            self.weights.joint_names,
             self.weights.link_names,
             link_name,
         )

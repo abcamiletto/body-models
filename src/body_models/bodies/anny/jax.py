@@ -14,13 +14,13 @@ from body_models.bodies.anny.backends import jax as backend
 from body_models.bodies.anny.backends.core import AnnyIdentity, AnnyPreparedPose
 from body_models.bodies.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.bodies.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
-from body_models.base import BodyModel, SkinningPayload
+from body_models.base import SkinnedModel, SkinningPayload
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 __all__ = ["ANNY"]
 
 
-class ANNY(BodyModel):
+class ANNY(SkinnedModel):
     """ANNY body model with JAX backend."""
 
     has_hands = True

@@ -1,7 +1,7 @@
 from importlib import import_module
 import sys
 
-from .base import BodyModel
+from .base import BodyModel, RigidBodyModel, SkinnedModel
 from .constants import Joint
 from .registry import create_model, list_models
 
@@ -42,6 +42,8 @@ __all__ = [
     "soma",
     # Base class
     "BodyModel",
+    "RigidBodyModel",
+    "SkinnedModel",
     "Joint",
     "create_model",
     "list_models",

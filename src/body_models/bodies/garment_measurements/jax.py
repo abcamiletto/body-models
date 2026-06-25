@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import jax as backend
 from .backends.core import GarmentMeasurementsIdentity, GarmentMeasurementsPreparedPose
@@ -21,7 +21,7 @@ from .pose import pack_pose, unpack_pose
 __all__ = ["GarmentMeasurements"]
 
 
-class GarmentMeasurements(BodyModel):
+class GarmentMeasurements(SkinnedModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
     has_hands = True

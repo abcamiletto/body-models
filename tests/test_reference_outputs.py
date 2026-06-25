@@ -6,6 +6,7 @@ from nanomanifold import SO3
 
 import model_cases
 from body_models.anny import pose as anny_pose
+from body_models.base import RigidBodyModel
 from body_models.mhr import pose as mhr_pose
 from body_models.skel import pose as skel_pose
 
@@ -14,7 +15,10 @@ from body_models.skel import pose as skel_pose
 def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
     model = numpy_model(**kwargs)
     inputs = reference_inputs(name)
-    vertices = model.forward_vertices(**inputs)
+    if isinstance(model, RigidBodyModel):
+        vertices = np.concatenate([mesh["vertices"] for mesh in model.forward_meshes(**inputs)], axis=-2)
+    else:
+        vertices = model.forward_vertices(**inputs)
     if name == "mhr":
         vertices = vertices * 100
     expected = np.load(model_cases.ASSETS / name / "outputs/0/vertices.npy")

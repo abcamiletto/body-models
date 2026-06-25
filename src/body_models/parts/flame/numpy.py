@@ -6,7 +6,7 @@ from typing import Any, Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.parts.flame.backends import numpy as numpy_backend
@@ -18,7 +18,7 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 __all__ = ["FLAME"]
 
 
-class FLAME(BodyModel):
+class FLAME(SkinnedModel):
     """FLAME head model with NumPy backend."""
 
     has_head = True

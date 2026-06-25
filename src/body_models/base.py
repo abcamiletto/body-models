@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, NotRequired, TypedDict
 
 from body_models.constants import Joint
@@ -15,21 +15,24 @@ class SkinningPayload(TypedDict):
     faces: Any
 
 
+class MeshPayload(TypedDict):
+    """Renderer-ready rigid mesh inputs."""
+
+    name: str
+    vertices: Any
+    faces: Any
+    joint_index: int
+    joint_name: str
+
+
 class BodyModel(ABC):
-    """Abstract base class for body models.
+    """Shared skeleton and pose interface for body-like models.
 
     Framework-agnostic interface that all backends (torch, numpy, jax) implement.
     Array types are left as Any to support different frameworks.
-
-    PyTorch backends should inherit from both BodyModel and nn.Module:
-        class SMPL(BodyModel, nn.Module):
-            ...
     """
 
     parents: list[int]
-    # True for models whose meshes are rigidly attached to bodies, e.g. G1 and
-    # MyoFullBody.
-    is_rigid_body: bool = False
     # True for models that expose a hand_pose parameter.
     has_hands: bool = False
     # True for models that expose a head_pose or head_rotation parameter.
@@ -84,28 +87,6 @@ class BodyModel(ABC):
             raise KeyError(f"{self.__class__.__name__} has no standard joint {joint.value!r}") from exc
         return self.joint_names.index(native_name)
 
-    @property
-    @abstractmethod
-    def skin_weights(self) -> Any:
-        """Skinning weights mapping vertices to joints. Shape [V, J]."""
-
-    @property
-    @abstractmethod
-    def rest_vertices(self) -> Any:
-        """Mesh vertices in rest pose. Shape [V, 3]."""
-
-    @abstractmethod
-    def forward_vertices(self, *args, **kwargs) -> Any:
-        """
-        Compute mesh vertices.
-
-        Signature varies by model. Outputs use the model's native coordinate system.
-        in meters.
-
-        Returns:
-            Mesh vertices [B, V, 3] in meters.
-        """
-
     @abstractmethod
     def forward_skeleton(self, *args, **kwargs) -> Any:
         """
@@ -158,11 +139,34 @@ class BodyModel(ABC):
                 bind_params[name] = value
         return bind_params
 
+
+class SkinnedModel(BodyModel):
+    """Base class for models that expose one skinned mesh."""
+
+    @property
+    @abstractmethod
+    def skin_weights(self) -> Any:
+        """Skinning weights mapping vertices to joints. Shape [V, J]."""
+
+    @property
+    @abstractmethod
+    def rest_vertices(self) -> Any:
+        """Mesh vertices in rest pose. Shape [V, 3]."""
+
+    @abstractmethod
+    def forward_vertices(self, *args, **kwargs) -> Any:
+        """
+        Compute mesh vertices.
+
+        Signature varies by model. Outputs use the model's native coordinate system.
+        in meters.
+
+        Returns:
+            Mesh vertices [B, V, 3] in meters.
+        """
+
     def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
         """Pack prepared model state into renderer-ready skinning inputs."""
-        if self.is_rigid_body:
-            raise NotImplementedError(f"{self.__class__.__name__} is rigid and does not support skinning.")
-
         skinning: SkinningPayload = {
             "rest_vertices": identity["rest_vertices"],
             "skinning_transforms": pose["skinning_transforms"],
@@ -172,3 +176,29 @@ class BodyModel(ABC):
         if "pose_offsets" in pose:
             skinning["pose_offsets"] = pose["pose_offsets"]
         return skinning
+
+
+class RigidBodyModel(BodyModel):
+    """Base class for rigid articulated models that expose meshes per link."""
+
+    @property
+    @abstractmethod
+    def link_names(self) -> list[str]:
+        """Link mesh names in link index order."""
+
+    @property
+    @abstractmethod
+    def link_joint_indices(self) -> list[int]:
+        """Joint index associated with each link mesh."""
+
+    @abstractmethod
+    def link_mesh(self, link_name: str) -> MeshPayload:
+        """Return rest-pose mesh data for a link."""
+
+    @abstractmethod
+    def forward_links(self, *args, **kwargs) -> Any:
+        """Compute world-space 4x4 link transforms as the array/autograd primitive."""
+
+    @abstractmethod
+    def forward_meshes(self, *args, **kwargs) -> Sequence[MeshPayload]:
+        """Build renderer-facing mesh payloads from link transforms."""

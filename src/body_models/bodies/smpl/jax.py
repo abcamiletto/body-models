@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from jaxtyping import Float, Int
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -22,7 +22,7 @@ __all__ = ["SMPL"]
 
 
 @jax.tree_util.register_pytree_node_class
-class SMPL(BodyModel):
+class SMPL(SkinnedModel):
     """SMPL body model with JAX backend."""
 
     NUM_BODY_JOINTS = 23

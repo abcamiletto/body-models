@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -21,7 +21,7 @@ from body_models.bodies.smplx.constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PR
 __all__ = ["SMPLX"]
 
 
-class SMPLX(BodyModel, nn.Module):
+class SMPLX(SkinnedModel, nn.Module):
     """SMPL-X body model with PyTorch backend."""
 
     has_hands = True

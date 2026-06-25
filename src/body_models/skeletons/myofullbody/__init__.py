@@ -1,8 +1,8 @@
 """MyoFullBody musculoskeletal model support.
 
 The model is sourced from ``amathislab/musclemimic_models`` (Apache-2.0). It is
-exposed through the same multi-backend ``forward_skeleton``/``forward_vertices``
-API as the rest of body-models, with rigid STL link meshes attached to a
+exposed through the same multi-backend ``forward_skeleton``/``forward_meshes``
+API as other rigid-body models, with STL link meshes attached to a
 MuJoCo-derived body tree. Inputs are scalar joint coordinates (``body_pose``)
 plus a free-root ``global_translation``/``global_rotation``.
 """

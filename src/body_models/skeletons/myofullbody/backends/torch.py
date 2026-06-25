@@ -61,16 +61,17 @@ def forward_links(
     )
 
 
-def forward_vertices(
+def forward_meshes(
     weights: MyoFullBodyWeights,
     body_pose: Float[Tensor, "B Q"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
     global_rotation: Float[Tensor, "B 3"] | None = None,
-    vertex_indices=None,
+    link_indices=None,
 ):
-    return core.forward_vertices(
+    return core.forward_meshes(
         vertices=weights.vertices,
+        faces=weights.faces,
         local_offsets=weights.local_offsets,
         rest_local_rotations=weights.rest_local_rotations,
         parents=weights.parents,
@@ -83,12 +84,16 @@ def forward_vertices(
         link_joint_indices=weights.link_joint_indices,
         link_vertex_starts=weights.link_vertex_starts,
         link_vertex_counts=weights.link_vertex_counts,
+        link_face_starts=weights.link_face_starts,
+        link_face_counts=weights.link_face_counts,
         link_geom_positions=weights.link_geom_positions,
         link_geom_rotations=weights.link_geom_rotations,
+        link_names=weights.link_names,
+        joint_names=weights.joint_names,
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        vertex_indices=vertex_indices,
+        link_indices=link_indices,
         xp=torch,
     )
 

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from jaxtyping import Float, Int
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -20,7 +20,7 @@ from body_models.bodies.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PR
 __all__ = ["SMPLH"]
 
 
-class SMPLH(BodyModel):
+class SMPLH(SkinnedModel):
     """SMPL-H body model with JAX backend."""
 
     has_hands = True

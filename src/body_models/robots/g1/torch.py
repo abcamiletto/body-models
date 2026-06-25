@@ -9,7 +9,7 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import MeshPayload, RigidBodyModel
 from body_models.robots.g1.backends import core
 from body_models.robots.g1.backends import torch as backend
 from body_models.robots.g1.io import load_model_data
@@ -18,10 +18,9 @@ from body_models.robots.g1.constants import G1_BODY_PRESETS, G1_JOINTS
 __all__ = ["G1"]
 
 
-class G1(BodyModel, nn.Module):
+class G1(RigidBodyModel, nn.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
-    is_rigid_body = True
     JOINTS = G1_JOINTS
 
     def __init__(
@@ -114,19 +113,6 @@ class G1(BodyModel, nn.Module):
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
 
-    @property
-    def skin_weights(self) -> Float[Tensor, "V J"]:
-        raise NotImplementedError(core.SKIN_WEIGHTS_ERROR)
-
-    @property
-    def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        params = self.get_rest_pose(batch_dims=())
-        return self.forward_vertices(
-            body_pose=params["body_pose"],
-            global_translation=params["global_translation"],
-            global_rotation=params["global_rotation"],
-        )
-
     def forward_skeleton(
         self,
         body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
@@ -155,31 +141,31 @@ class G1(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def forward_vertices(
+    def forward_meshes(
         self,
         body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        vertex_indices: list[int] | None = None,
-    ) -> Float[Tensor, "B V 3"]:
-        """Compute posed mesh vertices.
+        link_indices: list[int] | None = None,
+    ) -> list[MeshPayload]:
+        """Compute posed link meshes.
 
         Args:
             body_pose: Local body joint rotations.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
-            vertex_indices: Optional subset of vertices to return.
+            link_indices: Optional subset of links to return.
 
         Returns:
-            Posed vertex positions.
+            One posed mesh payload per link.
         """
-        return backend.forward_vertices(
+        return backend.forward_meshes(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            vertex_indices=vertex_indices,
+            link_indices=link_indices,
             rotation_type=self.rotation_type,
         )
 
@@ -198,7 +184,7 @@ class G1(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def link_mesh(self, link_name: str) -> dict[str, Tensor | str | int]:
+    def link_mesh(self, link_name: str) -> MeshPayload:
         return core.link_mesh(
             vertices=self.weights.vertices,
             faces=self.weights.faces,
@@ -212,7 +198,7 @@ class G1(BodyModel, nn.Module):
             link_name=link_name,
         )
 
-    def joint_meshes(self, joint_name: str) -> list[dict[str, Tensor | str | int]]:
+    def joint_meshes(self, joint_name: str) -> list[MeshPayload]:
         return core.joint_meshes(
             vertices=self.weights.vertices,
             faces=self.weights.faces,

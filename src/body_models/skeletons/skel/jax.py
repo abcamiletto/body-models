@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from jaxtyping import Float, Int
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.skeletons.skel.backends import jax as backend
 from body_models.skeletons.skel.backends.core import SkelIdentity, SkelPreparedPose
 from body_models.skeletons.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
@@ -24,7 +24,7 @@ from body_models.skeletons.skel.pose import (
 __all__ = ["SKEL"]
 
 
-class SKEL(BodyModel):
+class SKEL(SkinnedModel):
     """SKEL body model with JAX backend."""
 
     NUM_BETAS = 10

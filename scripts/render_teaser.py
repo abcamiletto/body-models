@@ -39,6 +39,7 @@ from body_models.smpl.numpy import SMPL
 from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
+from body_models.base import RigidBodyModel
 
 # ── Lineup configuration ─────────────────────────────────────────────────────
 MODEL_HEIGHT = 1.75
@@ -137,14 +138,31 @@ def parse_args() -> argparse.Namespace:
 # ── Per-family canonical mesh ────────────────────────────────────────────────
 def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
-    if family in TPOSE_FAMILIES:
+    if isinstance(model, RigidBodyModel):
+        params = model.get_tpose() if family in TPOSE_FAMILIES else model.get_rest_pose()
+        meshes = model.forward_meshes(**params)
+        vertices = []
+        faces = []
+        vertex_offset = 0
+        for mesh in meshes:
+            mesh_vertices = np.asarray(mesh["vertices"], dtype=np.float32)
+            if mesh_vertices.ndim == 3:
+                mesh_vertices = mesh_vertices[0]
+            vertices.append(mesh_vertices)
+            faces.append(np.asarray(mesh["faces"], dtype=np.int32) + vertex_offset)
+            vertex_offset += mesh_vertices.shape[0]
+        verts = np.concatenate(vertices, axis=0)
+        face_array = np.concatenate(faces, axis=0)
+    elif family in TPOSE_FAMILIES:
         params = model.get_tpose()
         if family == "anny":
             params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
         verts = np.asarray(model.forward_vertices(**params), dtype=np.float32)
+        face_array = np.asarray(model.faces, dtype=np.int32)
     else:
         verts = np.asarray(model.rest_vertices, dtype=np.float32)
-    return verts, np.asarray(model.faces, dtype=np.int32)
+        face_array = np.asarray(model.faces, dtype=np.int32)
+    return verts, face_array
 
 
 # ── Scene construction ──────────────────────────────────────────────────────
