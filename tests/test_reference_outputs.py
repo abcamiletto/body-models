@@ -63,7 +63,11 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
     upstream_model_path = tmp_path / "soma-upstream"
     upstream_model_path.mkdir()
     upstream_npz = model_path / "SOMA_neutral.upstream-0.2.1.npz"
-    required_assets = [upstream_npz, model_path / "SOMA_template_rig.usda", model_path / "SOMA_procedural_transforms.json"]
+    required_assets = [
+        upstream_npz,
+        model_path / "SOMA_template_rig.usda",
+        model_path / "SOMA_procedural_transforms.json",
+    ]
     package_assets = [model_path / "correctives_model.pt"]
     if not all(path.exists() for path in [*required_assets, *package_assets]):
         pytest.skip("SOMA 0.2.1 assets are not available")
@@ -90,11 +94,15 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
 
     for pose in poses:
         with torch.no_grad():
-            expected = upstream(
-                poses=torch.as_tensor(pose),
-                identity_coeffs=torch.zeros(1, 128),
-                apply_correctives=False,
-            )["vertices"].detach().numpy()
+            expected = (
+                upstream(
+                    poses=torch.as_tensor(pose),
+                    identity_coeffs=torch.zeros(1, 128),
+                    apply_correctives=False,
+                )["vertices"]
+                .detach()
+                .numpy()
+            )
 
         global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
         identity = model.prepare_identity(shape)

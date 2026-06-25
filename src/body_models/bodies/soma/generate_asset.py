@@ -297,7 +297,9 @@ def _derive_public_rig(rig_data: dict[str, Any], public_joint_names: list[str]) 
 
 def _load_soma_02_rig_data(asset_dir: Path) -> dict[str, Any]:
     expanded_rig = _load_soma_02_rig_from_usd(asset_dir)
-    public_joint_names, procedural = _load_procedural_data(asset_dir, [str(name) for name in expanded_rig["joint_names"]])
+    public_joint_names, procedural = _load_procedural_data(
+        asset_dir, [str(name) for name in expanded_rig["joint_names"]]
+    )
     expanded_rig["procedural"] = procedural
     expanded_rig["public_rig_data"] = _derive_public_rig(expanded_rig, public_joint_names)
     return expanded_rig
