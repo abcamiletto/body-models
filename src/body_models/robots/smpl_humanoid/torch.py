@@ -1,5 +1,7 @@
 """PyTorch backend for the procedural SMPL humanoid robot."""
 
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
@@ -23,13 +25,13 @@ class SmplHumanoid(BodyModel, nn.Module):
     is_rigid_body = True
     JOINTS = SMPL_HUMANOID_JOINTS
 
-    def __init__(self, *, rotation_type: core.RotationType = "axis_angle") -> None:
+    def __init__(self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle") -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES or rotation_type == "hinge":
             raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self.weights = common.torchify(load_model_data())
+        self.weights = common.torchify(load_model_data(model_path))
         self.register_buffer("pd_action_offset", torch.zeros(ACTION_SIZE, dtype=torch.float32))
         self.register_buffer("pd_action_scale", torch.full((ACTION_SIZE,), torch.pi, dtype=torch.float32))
 

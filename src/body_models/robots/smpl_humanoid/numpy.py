@@ -1,5 +1,7 @@
 """NumPy backend for the procedural SMPL humanoid robot."""
 
+from pathlib import Path
+
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -20,12 +22,12 @@ class SmplHumanoid(BodyModel):
     is_rigid_body = True
     JOINTS = SMPL_HUMANOID_JOINTS
 
-    def __init__(self, *, rotation_type: core.RotationType = "axis_angle") -> None:
+    def __init__(self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle") -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES or rotation_type == "hinge":
             raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self.weights = load_model_data()
+        self.weights = load_model_data(model_path)
         self.pd_action_offset = np.zeros(ACTION_SIZE, dtype=np.float32)
         self.pd_action_scale = np.full(ACTION_SIZE, np.pi, dtype=np.float32)
 

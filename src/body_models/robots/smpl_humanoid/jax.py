@@ -1,5 +1,7 @@
 """JAX backend for the procedural SMPL humanoid robot."""
 
+from pathlib import Path
+
 import jax
 import jax.numpy as jnp
 from jaxtyping import Float, Int
@@ -22,12 +24,12 @@ class SmplHumanoid(BodyModel):
     is_rigid_body = True
     JOINTS = SMPL_HUMANOID_JOINTS
 
-    def __init__(self, *, rotation_type: core.RotationType = "axis_angle") -> None:
+    def __init__(self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle") -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES or rotation_type == "hinge":
             raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self.weights = common.jaxify(load_model_data())
+        self.weights = common.jaxify(load_model_data(model_path))
         self.pd_action_offset = jnp.zeros(ACTION_SIZE, dtype=jnp.float32)
         self.pd_action_scale = jnp.full((ACTION_SIZE,), jnp.pi, dtype=jnp.float32)
 
