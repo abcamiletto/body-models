@@ -15,7 +15,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.base import MeshPayload
+from trimesh import Trimesh
 from body_models.common import rigid
 
 Array = Any
@@ -222,7 +222,7 @@ def forward_meshes(
     global_rotation: Float[Array, "B 3"] | None = None,
     link_indices: list[int] | None = None,
     xp: Any = None,
-) -> list[MeshPayload]:
+) -> list[Trimesh]:
     """Rigidly transform each MyoFullBody STL link mesh and keep link boundaries."""
     if xp is None:
         xp = get_namespace(body_pose)
@@ -302,7 +302,7 @@ def link_mesh(
     joint_names: list[str],
     link_names: list[str],
     link_name: str,
-) -> MeshPayload:
+) -> Trimesh:
     """Return the static STL chunk for one link mesh."""
     return rigid.link_mesh(
         vertices=vertices,
@@ -329,7 +329,7 @@ def joint_meshes(
     joint_names: list[str],
     link_names: list[str],
     joint_name: str,
-) -> list[MeshPayload]:
+) -> list[Trimesh]:
     """Return all static STL chunks attached to one body frame."""
     return rigid.joint_meshes(
         vertices=vertices,

@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.base import MeshPayload
+from trimesh import Trimesh
 from body_models.common import rigid
 from body_models.rotations import RotationType as SO3RotationType
 
@@ -190,7 +190,7 @@ def forward_meshes(
     link_indices: list[int] | None = None,
     rotation_type: RotationType = "rotmat",
     xp: Any = None,
-) -> list[MeshPayload]:
+) -> list[Trimesh]:
     """Rigidly transform each BrainCo STL link mesh and keep link boundaries."""
     if xp is None:
         xp = get_namespace(pose)
@@ -240,7 +240,7 @@ def link_mesh(
     joint_names: list[str],
     link_names: list[str],
     link_name: str,
-) -> MeshPayload:
+) -> Trimesh:
     return rigid.link_mesh(
         vertices=vertices,
         faces=faces,

@@ -8,7 +8,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.base import MeshPayload, RigidBodyModel
+from body_models.base import RigidBodyModel
+from trimesh import Trimesh
 from body_models.robots.g1.backends import core
 from body_models.robots.g1.backends import jax as backend
 from body_models.robots.g1.io import load_model_data
@@ -146,7 +147,7 @@ class G1(RigidBodyModel):
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         link_indices: list[int] | None = None,
-    ) -> list[MeshPayload]:
+    ) -> list[Trimesh]:
         """Compute posed link meshes.
 
         Args:
@@ -182,7 +183,7 @@ class G1(RigidBodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def link_mesh(self, link_name: str) -> MeshPayload:
+    def link_mesh(self, link_name: str) -> Trimesh:
         return core.link_mesh(
             vertices=self.weights.vertices,
             faces=self.weights.faces,
@@ -196,7 +197,7 @@ class G1(RigidBodyModel):
             link_name=link_name,
         )
 
-    def joint_meshes(self, joint_name: str) -> list[MeshPayload]:
+    def joint_meshes(self, joint_name: str) -> list[Trimesh]:
         return core.joint_meshes(
             vertices=self.weights.vertices,
             faces=self.weights.faces,

@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.base import MeshPayload
+from trimesh import Trimesh
 from body_models.common import rigid
 from body_models.rotations import RotationType as SO3RotationType
 
@@ -126,7 +126,7 @@ def forward_meshes(
     link_indices: list[int] | None = None,
     rotation_type: RotationType = "rotmat",
     xp: Any = None,
-) -> list[MeshPayload]:
+) -> list[Trimesh]:
     """Rigidly transform each G1 STL link mesh and keep link boundaries."""
     if xp is None:
         xp = get_namespace(body_pose)
@@ -212,7 +212,7 @@ def link_mesh(
     joint_names: list[str],
     link_names: list[str],
     link_name: str,
-) -> MeshPayload:
+) -> Trimesh:
     """Return the static STL mesh chunk for one G1 link mesh."""
     return rigid.link_mesh(
         vertices=vertices,
@@ -239,7 +239,7 @@ def joint_meshes(
     joint_names: list[str],
     link_names: list[str],
     joint_name: str,
-) -> list[MeshPayload]:
+) -> list[Trimesh]:
     """Return static STL mesh chunks attached to one G1 skeleton joint."""
     return rigid.joint_meshes(
         vertices=vertices,

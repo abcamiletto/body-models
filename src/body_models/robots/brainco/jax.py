@@ -9,7 +9,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.base import MeshPayload, RigidBodyModel
+from body_models.base import RigidBodyModel
+from trimesh import Trimesh
 from body_models.robots.brainco.backends import core
 from body_models.robots.brainco.backends import jax as backend
 from body_models.robots.brainco.io import Side, load_model_data
@@ -146,7 +147,7 @@ class BrainCoHand(RigidBodyModel):
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
         link_indices: list[int] | None = None,
-    ) -> list[MeshPayload]:
+    ) -> list[Trimesh]:
         """Compute posed link meshes.
 
         Args:
@@ -182,7 +183,7 @@ class BrainCoHand(RigidBodyModel):
             rotation_type=self.rotation_type,
         )
 
-    def link_mesh(self, link_name: str) -> MeshPayload:
+    def link_mesh(self, link_name: str) -> Trimesh:
         return core.link_mesh(
             self.weights.vertices,
             self.weights.faces,

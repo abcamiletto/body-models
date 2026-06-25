@@ -8,7 +8,8 @@ import jax.numpy as jnp
 from jaxtyping import Float, Int
 
 from body_models import common
-from body_models.base import MeshPayload, RigidBodyModel
+from body_models.base import RigidBodyModel
+from trimesh import Trimesh
 from body_models.skeletons.myofullbody.backends import core
 from body_models.skeletons.myofullbody.backends import jax as backend
 from body_models.skeletons.myofullbody.io import load_model_data
@@ -135,7 +136,7 @@ class MyoFullBody(RigidBodyModel):
         *,
         global_rotation: Float[jax.Array, "B 3"] | None = None,
         link_indices: Any | None = None,
-    ) -> list[MeshPayload]:
+    ) -> list[Trimesh]:
         """Compute posed link meshes.
 
         Args:
@@ -172,7 +173,7 @@ class MyoFullBody(RigidBodyModel):
     def world_sites(self, skeleton: Float[jax.Array, "B J 4 4"]) -> Float[jax.Array, "B S 3"]:
         return backend.world_sites(self.weights, skeleton)
 
-    def link_mesh(self, link_name: str) -> MeshPayload:
+    def link_mesh(self, link_name: str) -> Trimesh:
         return core.link_mesh(
             vertices=self.weights.vertices,
             faces=self.weights.faces,
@@ -186,7 +187,7 @@ class MyoFullBody(RigidBodyModel):
             link_name=link_name,
         )
 
-    def joint_meshes(self, joint_name: str) -> list[MeshPayload]:
+    def joint_meshes(self, joint_name: str) -> list[Trimesh]:
         return core.joint_meshes(
             vertices=self.weights.vertices,
             faces=self.weights.faces,

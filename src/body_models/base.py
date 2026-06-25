@@ -3,6 +3,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, NotRequired, TypedDict
 
 from body_models.constants import Joint
+from trimesh import Trimesh
 
 
 class SkinningPayload(TypedDict):
@@ -13,16 +14,6 @@ class SkinningPayload(TypedDict):
     pose_offsets: NotRequired[Any]
     skin_weights: Any
     faces: Any
-
-
-class MeshPayload(TypedDict):
-    """Renderer-ready rigid mesh inputs."""
-
-    name: str
-    vertices: Any
-    faces: Any
-    joint_index: int
-    joint_name: str
 
 
 class BodyModel(ABC):
@@ -192,7 +183,7 @@ class RigidBodyModel(BodyModel):
         """Joint index associated with each link mesh."""
 
     @abstractmethod
-    def link_mesh(self, link_name: str) -> MeshPayload:
+    def link_mesh(self, link_name: str) -> Trimesh:
         """Return rest-pose mesh data for a link."""
 
     @abstractmethod
@@ -200,5 +191,5 @@ class RigidBodyModel(BodyModel):
         """Compute world-space 4x4 link transforms as the array/autograd primitive."""
 
     @abstractmethod
-    def forward_meshes(self, *args, **kwargs) -> Sequence[MeshPayload]:
-        """Build renderer-facing mesh payloads from link transforms."""
+    def forward_meshes(self, *args, **kwargs) -> Sequence[Trimesh]:
+        """Build unbatched renderer-facing meshes from link transforms."""

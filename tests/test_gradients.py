@@ -7,7 +7,7 @@ from body_models.base import RigidBodyModel
 
 def surface_loss(model, params):
     if isinstance(model, RigidBodyModel):
-        return model.forward_meshes(**params, link_indices=[0])[0]["vertices"][..., :8, :].sum()
+        return model.forward_links(**params)[..., :1, :3, 3].sum()
     return model.forward_vertices(**params)[..., :8, :].sum()
 
 

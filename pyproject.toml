@@ -16,6 +16,7 @@ dependencies = [
     "ptloader==0.3.0",
     "pyfqmr>=0.3.0",
     "scipy>=1.13.0",
+    "trimesh>=4.0.0",
     "typer>=0.9.0",
 ]
 

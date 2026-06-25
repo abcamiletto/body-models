@@ -145,11 +145,9 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
         faces = []
         vertex_offset = 0
         for mesh in meshes:
-            mesh_vertices = np.asarray(mesh["vertices"], dtype=np.float32)
-            if mesh_vertices.ndim == 3:
-                mesh_vertices = mesh_vertices[0]
+            mesh_vertices = np.asarray(mesh.vertices, dtype=np.float32)
             vertices.append(mesh_vertices)
-            faces.append(np.asarray(mesh["faces"], dtype=np.int32) + vertex_offset)
+            faces.append(np.asarray(mesh.faces, dtype=np.int32) + vertex_offset)
             vertex_offset += mesh_vertices.shape[0]
         verts = np.concatenate(vertices, axis=0)
         face_array = np.concatenate(faces, axis=0)
