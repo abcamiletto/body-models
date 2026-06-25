@@ -8,7 +8,6 @@ from nanomanifold import SO3
 
 from body_models import common
 from body_models.common import get_namespace
-from body_models.bodies.soma.io import compute_kinematic_fronts, public_parents_full
 from body_models.rotations import RotationType
 
 Array = Any
@@ -45,7 +44,7 @@ def prepare_identity_from_rest_shape(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool = False,
 ) -> SomaIdentity:
-    if data.procedural is not None:
+    if data.public is not None:
         return _prepare_procedural_identity(
             data,
             rest_shape_full=rest_shape_full,
@@ -99,33 +98,29 @@ def _prepare_procedural_identity(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool,
 ) -> SomaIdentity:
-    public_parents = public_parents_full(data)
-    public_children = _joint_children(public_parents)
-    public_bind_pose_world = _public_joint_values(xp, data.bind_pose_world, data)
-    public_skin_weights = _active_public_skin_weights(data)
-    public_skinned_vertices = _skinned_vertices(xp, data.public_skin_weights_full)
+    public = data.public
 
     rest_shape_full, public_world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
         xp=xp,
         bind_shape=data.bind_shape_full,
-        bind_pose_world=public_bind_pose_world,
-        joint_regressor=data.public_joint_regressor,
-        joint_children_full=public_children,
-        joint_children_indices_full=_pad_indices(xp, public_children),
-        skinned_vertex_indices_full=public_skinned_vertices,
-        skinned_vertex_indices_full_index=_pad_indices(xp, public_skinned_vertices),
-        parents_full=public_parents,
+        bind_pose_world=public.bind_pose_world,
+        joint_regressor=public.joint_regressor,
+        joint_children_full=public.topology.joint_children_full,
+        joint_children_indices_full=public.topology.joint_children_indices_full,
+        skinned_vertex_indices_full=public.topology.skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=public.topology.skinned_vertex_indices_full_index,
+        parents_full=public.topology.parents_full,
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
     bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
         xp=xp,
         rest_shape=rest_shape_active,
-        skin_weights=public_skin_weights,
+        skin_weights=public.skin_weights_active,
         world_bind_pose_fit=public_world_bind_pose_fit,
-        bind_pose_local=_joint_world_to_local(xp, public_bind_pose_world, public_parents),
-        kinematic_fronts=compute_kinematic_fronts(public_parents),
-        parents_full=public_parents,
+        bind_pose_local=public.bind_pose_local,
+        kinematic_fronts=public.topology.kinematic_fronts_full,
+        parents_full=public.topology.parents_full,
         linear_blend_skinning_fn=linear_blend_skinning_fn,
     )
     public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
@@ -138,52 +133,17 @@ def _prepare_procedural_identity(
     return identity
 
 
-def _public_joint_values(xp: Any, values: Array, data: Any) -> Array:
-    return values[xp.asarray(data.procedural.public_joint_indices_full)]
-
-
-def _active_public_skin_weights(data: Any) -> Array:
-    if data.vertex_map is None:
-        return data.public_skin_weights_full
-    return data.public_skin_weights_full[data.vertex_map]
-
-
-def _skinned_vertices(xp: Any, skin_weights: Array) -> list[list[int]]:
-    return [
-        [int(vertex) for vertex in xp.where(skin_weights[:, joint] > 0.01)[0]]
-        for joint in range(skin_weights.shape[1])
-    ]
-
-
-def _joint_children(parents: list[int]) -> list[list[int]]:
-    children = [[] for _ in parents]
-    for joint, parent in enumerate(parents):
-        if joint != parent:
-            children[parent].append(joint)
-    return children
-
-
-def _pad_indices(xp: Any, indices: list[list[int]]) -> Array:
-    width = max((len(row) for row in indices), default=0)
-    dtype = getattr(xp, "int32", int)
-    out = xp.zeros((len(indices), width), dtype=dtype)
-    for row_index, row in enumerate(indices):
-        if row:
-            out = common.set(out, (row_index, slice(0, len(row))), xp.asarray(row, dtype=dtype), xp=xp)
-    return out
-
-
 def _pin_root_transform(xp: Any, transforms: Array) -> Array:
     eye = common.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
     return common.set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
 
 
 def _expand_public_bind_pose(xp: Any, data: Any, public_world_bind_pose: Array) -> Array:
-    public_indices = xp.asarray(data.procedural.public_joint_indices_full)
+    public_indices = xp.asarray(data.public.procedural.public_joint_indices_full)
     batch_shape = public_world_bind_pose.shape[:-3]
     target = xp.broadcast_to(data.bind_pose_world, (*batch_shape, *data.bind_pose_world.shape))
     target = common.set(target, (..., public_indices, slice(None), slice(None)), public_world_bind_pose, xp=xp)
-    translations = xp.asarray(data.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
+    translations = xp.asarray(data.public.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
     return common.set(target, (..., slice(None), slice(None, 3), 3), translations, xp=xp)
 
 
@@ -295,13 +255,12 @@ def prepare_pose(
     skinning_transforms = skeleton_transforms_full @ inverse_world_bind_pose
     prepared_pose["skinning_transforms"] = skinning_transforms[..., 1:, :, :]
     correctives_pose_rot = pose_rot_full
-    if data.procedural is not None:
-        public_indices = data.procedural.public_joint_indices_full
+    if data.public is not None:
         correctives_pose_rot = _orient_pose_rot_full(
             xp,
             pose_rot_public,
-            data.t_pose_world[xp.asarray(public_indices)],
-            public_parents_full(data),
+            data.public.t_pose_world,
+            data.public.topology.parents_full,
         )
     pose_offsets = apply_pose_correctives_fn(data, correctives_pose_rot, xp=xp)
     if data.vertex_map is not None:
@@ -313,9 +272,9 @@ def prepare_pose(
 def _public_joint_transforms(
     xp, data: Any, transforms_full: Float[Array, "*batch Jf 4 4"]
 ) -> Float[Array, "*batch J 4 4"]:
-    if data.procedural is None:
+    if data.public is None:
         return transforms_full[..., 1:, :, :]
-    public_joint_indices = data.procedural.public_joint_indices_full
+    public_joint_indices = data.public.procedural.public_joint_indices_full
     indices = xp.asarray(public_joint_indices[1:])
     return transforms_full[..., indices, :, :]
 
@@ -323,10 +282,10 @@ def _public_joint_transforms(
 def _expand_public_pose_rotations(
     xp, data: Any, pose_rot: Float[Array, "*batch J 3 3"]
 ) -> Float[Array, "*batch Ji 3 3"]:
-    if data.procedural is None:
+    if data.public is None:
         return pose_rot
 
-    procedural = data.procedural
+    procedural = data.public.procedural
     public_joint_indices = procedural.public_joint_indices_full
     batch_shape = pose_rot.shape[:-3]
     root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)

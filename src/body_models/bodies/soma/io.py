@@ -47,6 +47,7 @@ SOMA_LEGACY_NPZ_FIELDS = (
 
 __all__ = [
     "SomaIdentityTransfer",
+    "SomaPublicRig",
     "SomaProceduralRig",
     "SomaWeights",
     "get_model_path",
@@ -57,7 +58,6 @@ __all__ = [
     "compute_kinematic_fronts",
     "active_public_skin_weights",
     "public_joint_metadata",
-    "public_parents_full",
     "simplify_mesh",
 ]
 
@@ -102,6 +102,20 @@ class SomaProceduralRig:
 
 
 @dataclass(frozen=True)
+class SomaPublicRig:
+    joint_names_full: list[str]
+    parents_full: list[int]
+    bind_pose_world: Float[np.ndarray, "Jp 4 4"]
+    bind_pose_local: Float[np.ndarray, "Jp 4 4"]
+    t_pose_world: Float[np.ndarray, "Jp 4 4"]
+    joint_regressor: Float[np.ndarray, "Jp Vf"]
+    skin_weights_full: Float[np.ndarray, "Vf Jp"]
+    skin_weights_active: Float[np.ndarray, "Va Jp"]
+    topology: SomaTopology
+    procedural: SomaProceduralRig
+
+
+@dataclass(frozen=True)
 class SomaWeights:
     mean_full: Float[np.ndarray, "Vf 3"]
     mean_active: Float[np.ndarray, "Va 3"]
@@ -114,7 +128,6 @@ class SomaWeights:
     t_pose_world: Float[np.ndarray, "Jf 4 4"]
     t_pose_local: Float[np.ndarray, "Jf 4 4"]
     joint_regressor: Float[np.ndarray, "Jf Vf"]
-    public_joint_regressor: Float[np.ndarray, "Jp Vf"] | None
     skin_weights_full: Float[np.ndarray, "Vf Jf"]
     skin_weights_active: Float[np.ndarray, "Va Jf"]
     skin_joint_indices_active: Int[np.ndarray, "Va K"]
@@ -125,9 +138,7 @@ class SomaWeights:
     topology: SomaTopology
     correctives: SomaCorrectives
     joint_names_full: list[str]
-    public_skin_weights_full: Float[np.ndarray, "Vf Jp"] | None = None
-    public_skin_weights_active: Float[np.ndarray, "Va Jp"] | None = None
-    procedural: SomaProceduralRig | None = None
+    public: SomaPublicRig | None = None
 
 
 @dataclass(frozen=True)
@@ -340,38 +351,31 @@ def compute_sparse_skin_weights(skin_weights: np.ndarray) -> tuple[np.ndarray, n
     return indices, weights
 
 
+def _dense_skin_weights(rig_data: dict[str, Any]) -> np.ndarray:
+    weights = csc_matrix(
+        (
+            rig_data["skinning_weights_data"],
+            rig_data["skinning_weights_indices"],
+            rig_data["skinning_weights_indptr"],
+        ),
+        shape=tuple(int(x) for x in rig_data["skinning_weights_shape"]),
+    ).toarray()
+    return np.asarray(weights, dtype=np.float32)
+
+
 def active_public_skin_weights(data: SomaWeights, vertex_map: np.ndarray | None) -> np.ndarray | None:
-    if data.public_skin_weights_full is None:
+    if data.public is None:
         return None
     if vertex_map is None:
-        return data.public_skin_weights_full
-    return data.public_skin_weights_full[vertex_map]
+        return data.public.skin_weights_full
+    return data.public.skin_weights_full[vertex_map]
 
 
 def public_joint_metadata(data: SomaWeights) -> tuple[list[int], list[str]]:
-    if data.procedural is None:
+    if data.public is None:
         return [parent - 1 for parent in data.topology.parents_full[1:]], data.joint_names_full[1:]
 
-    public_joint_indices = data.procedural.public_joint_indices_full
-    parents_full = public_parents_full(data)
-    return (
-        [parent - 1 for parent in parents_full[1:]],
-        [data.joint_names_full[int(index)] for index in public_joint_indices[1:]],
-    )
-
-
-def public_parents_full(data: Any) -> list[int]:
-    if data.procedural is None:
-        return data.topology.parents_full
-
-    public_joint_indices = data.procedural.public_joint_indices_full
-    public_lookup = {int(internal): public for public, internal in enumerate(public_joint_indices)}
-    keep_ids = set(public_lookup)
-    parents = []
-    for internal_index in public_joint_indices:
-        parent = _nearest_kept_parent(data.topology.parents_full, int(internal_index), keep_ids)
-        parents.append(public_lookup.get(parent, 0))
-    return parents
+    return [parent - 1 for parent in data.public.parents_full[1:]], data.public.joint_names_full[1:]
 
 
 def _missing_assets(model_dir: Path) -> list[str]:
@@ -1151,27 +1155,8 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         joint_parents_full = np.asarray(rig_data["joint_parent_ids"], dtype=np.int64)
         joint_names_full = [str(name) for name in rig_data["joint_names"]]
 
-        skin_weights = csc_matrix(
-            (
-                rig_data["skinning_weights_data"],
-                rig_data["skinning_weights_indices"],
-                rig_data["skinning_weights_indptr"],
-            ),
-            shape=tuple(int(x) for x in rig_data["skinning_weights_shape"]),
-        ).toarray()
-        skin_weights = np.asarray(skin_weights, dtype=np.float32)
-        public_skin_weights = None
-        if "public_rig_data" in rig_data:
-            public_rig_data = rig_data["public_rig_data"]
-            public_skin_weights = csc_matrix(
-                (
-                    public_rig_data["skinning_weights_data"],
-                    public_rig_data["skinning_weights_indices"],
-                    public_rig_data["skinning_weights_indptr"],
-                ),
-                shape=tuple(int(x) for x in public_rig_data["skinning_weights_shape"]),
-            ).toarray()
-            public_skin_weights = np.asarray(public_skin_weights, dtype=np.float32)
+        skin_weights = _dense_skin_weights(rig_data)
+        public_rig_data = rig_data.get("public_rig_data")
 
         facial_inner = np.concatenate(
             [
@@ -1187,15 +1172,41 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         joint_parents=joint_parents_full,
         vertex_ids_to_exclude=facial_inner,
     )
-    public_joint_regressor = None
-    if public_skin_weights is not None and "public_rig_data" in rig_data:
-        public_rig_data = rig_data["public_rig_data"]
+    public = None
+    if public_rig_data is not None:
+        public_skin_weights = _dense_skin_weights(public_rig_data)
+        public_parents = np.asarray(public_rig_data["joint_parent_ids"], dtype=np.int64)
+        public_parents_full = public_parents.astype(np.int64).tolist()
+        public_joint_children_full = _get_joint_children_ids(public_parents)
+        public_skinned_vertex_indices_full = [
+            np.where(public_skin_weights[:, joint_index] > 0.01)[0].astype(np.int64).tolist()
+            for joint_index in range(public_skin_weights.shape[1])
+        ]
         public_joint_regressor = _build_joint_position_regressor(
             bind_shape=np.asarray(public_rig_data["bind_shape"], dtype=np.float32),
             bind_world_transforms=np.asarray(public_rig_data["bind_pose_world"], dtype=np.float32),
             skin_weights=public_skin_weights,
             joint_parents=np.asarray(public_rig_data["joint_parent_ids"], dtype=np.int64),
             vertex_ids_to_exclude=facial_inner,
+        )
+        public = SomaPublicRig(
+            joint_names_full=[str(name) for name in public_rig_data["joint_names"]],
+            parents_full=public_parents_full,
+            bind_pose_world=np.asarray(public_rig_data["bind_pose_world"], dtype=np.float32),
+            bind_pose_local=np.asarray(public_rig_data["bind_pose_local"], dtype=np.float32),
+            t_pose_world=np.asarray(public_rig_data["t_pose_world"], dtype=np.float32),
+            joint_regressor=public_joint_regressor,
+            skin_weights_full=public_skin_weights,
+            skin_weights_active=public_skin_weights,
+            topology=SomaTopology(
+                parents_full=public_parents_full,
+                joint_children_full=public_joint_children_full,
+                joint_children_indices_full=_pad_indices(public_joint_children_full),
+                skinned_vertex_indices_full=public_skinned_vertex_indices_full,
+                skinned_vertex_indices_full_index=_pad_indices(public_skinned_vertex_indices_full),
+                kinematic_fronts_full=compute_kinematic_fronts(public_parents),
+            ),
+            procedural=rig_data["procedural"],
         )
 
     joint_children_full = _get_joint_children_ids(joint_parents_full)
@@ -1218,7 +1229,6 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         t_pose_world=t_pose_world,
         t_pose_local=t_pose_local,
         joint_regressor=joint_regressor,
-        public_joint_regressor=public_joint_regressor,
         skin_weights_full=skin_weights,
         skin_weights_active=skin_weights,
         skin_joint_indices_active=skin_joint_indices,
@@ -1236,9 +1246,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         ),
         correctives=correctives,
         joint_names_full=joint_names_full,
-        public_skin_weights_full=public_skin_weights,
-        public_skin_weights_active=None,
-        procedural=rig_data.get("procedural"),
+        public=public,
     )
 
 
