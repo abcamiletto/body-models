@@ -21,12 +21,8 @@ class SkinningPayload(TypedDict):
     faces: Any
 
 
-class BodyModel(ABC):
-    """Shared skeleton and pose interface for body-like models.
-
-    Framework-agnostic interface that all backends (torch, numpy, jax) implement.
-    Array types are left as Any to support different frameworks.
-    """
+class SkinnedModel(ABC):
+    """Base class for models that expose one skinned mesh."""
 
     parents: list[int]
     # True for models that expose a hand_pose parameter.
@@ -112,10 +108,6 @@ class BodyModel(ABC):
         """Get parameters for the MHR-style A-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
-
-class SkinnedModel(BodyModel):
-    """Base class for models that expose one skinned mesh."""
-
     @property
     @abstractmethod
     def skin_weights(self) -> Any:
@@ -151,15 +143,98 @@ class SkinnedModel(BodyModel):
         return skinning
 
 
-class RigidBodyModel(BodyModel):
+class RigidBodyModel(ABC):
     """Base class for rigid articulated models."""
 
+    parents: list[int]
+    # True for models that expose a hand_pose parameter.
+    has_hands: bool = False
+    # True for models that expose a head_pose or head_rotation parameter.
+    has_head: bool = False
+    kernels: ClassVar[tuple[str, ...]] = ("numpy",)
+    JOINTS: ClassVar[Mapping[Joint, str]] = {}
     mujoco_to_model: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]] = (
         (1.0, 0.0, 0.0),
         (0.0, 1.0, 0.0),
         (0.0, 0.0, 1.0),
     )
     global_rotation_type: SO3RotationType = "axis_angle"
+
+    @property
+    @abstractmethod
+    def faces(self) -> Any:
+        """Mesh face indices. Shape [F, 3] for triangles or [F, 4] for quads."""
+
+    @property
+    def num_joints(self) -> int:
+        """Number of joints in the skeleton."""
+        return len(self.joint_names)
+
+    @property
+    @abstractmethod
+    def num_vertices(self) -> int:
+        """Number of mesh vertices."""
+
+    @property
+    @abstractmethod
+    def joint_names(self) -> list[str]:
+        """Joint names in joint index order."""
+
+    @property
+    def common_joints(self) -> Mapping[Joint, str]:
+        """Common anatomical joints mapped to this model's native joint names."""
+        return self.JOINTS
+
+    def joint_index(self, joint: Joint) -> int:
+        """Resolve a standard joint to this model's native joint index."""
+        if not isinstance(joint, Joint):
+            raise TypeError("joint_index() expects a body_models.Joint; use joint_names.index(...) for native names.")
+        try:
+            native_name = self.common_joints[joint]
+        except KeyError as exc:
+            raise KeyError(f"{self.__class__.__name__} has no standard joint {joint.value!r}") from exc
+        return self.joint_names.index(native_name)
+
+    @abstractmethod
+    def forward_skeleton(self, *args, **kwargs) -> Any:
+        """
+        Compute skeleton joint transforms.
+
+        Signature varies by model. Outputs use the model's native coordinate system.
+        in meters.
+
+        Returns:
+            World-space 4x4 transformation matrices [B, J, 4, 4] in meters.
+        """
+
+    @abstractmethod
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = ()) -> dict[str, Any]:
+        """
+        Get default rest pose parameters for this model.
+
+        Args:
+            batch_dims: Leading batch dimensions.
+
+        Returns:
+            Dictionary with model-specific parameter keys. All arrays are
+            zero-initialized or set to identity poses.
+        """
+
+    def get_tpose(
+        self,
+        batch_dims: tuple[int, ...] = (),
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Get parameters for the SMPL-style T-pose."""
+        raise NotImplementedError("Canonical body poses are not defined for this model.")
+
+    def get_apose(
+        self,
+        batch_dims: tuple[int, ...] = (),
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Get parameters for the MHR-style A-pose."""
+        raise NotImplementedError("Canonical body poses are not defined for this model.")
 
     @property
     @abstractmethod

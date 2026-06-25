@@ -1,7 +1,7 @@
 from importlib import import_module
 import sys
 
-from .base import BodyModel, RigidBodyModel, SkinnedModel
+from .base import RigidBodyModel, SkinnedModel
 from .constants import Joint
 from .registry import create_model, list_models
 
@@ -41,7 +41,6 @@ __all__ = [
     "smplx",
     "soma",
     # Base class
-    "BodyModel",
     "RigidBodyModel",
     "SkinnedModel",
     "Joint",
