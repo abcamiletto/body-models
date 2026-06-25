@@ -24,7 +24,9 @@ class SmplHumanoid(BodyModel):
     is_rigid_body = True
     JOINTS = SMPL_HUMANOID_JOINTS
 
-    def __init__(self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle") -> None:
+    def __init__(
+        self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle"
+    ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES or rotation_type == "hinge":
             raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         self.rotation_type = rotation_type
@@ -75,7 +77,12 @@ class SmplHumanoid(BodyModel):
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
-        return self.forward_vertices(**self.get_rest_pose(batch_dims=()))
+        params = self.get_rest_pose(batch_dims=())
+        return self.forward_vertices(
+            body_pose=params["body_pose"],
+            global_translation=params["global_translation"],
+            global_rotation=params["global_rotation"],
+        )
 
     def forward_skeleton(
         self,

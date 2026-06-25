@@ -1,6 +1,7 @@
 """PyTorch backend for the procedural SMPL humanoid robot."""
 
 from pathlib import Path
+from typing import cast
 
 import torch
 import torch.nn as nn
@@ -25,15 +26,17 @@ class SmplHumanoid(BodyModel, nn.Module):
     is_rigid_body = True
     JOINTS = SMPL_HUMANOID_JOINTS
 
-    def __init__(self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle") -> None:
+    def __init__(
+        self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle"
+    ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES or rotation_type == "hinge":
             raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.weights = common.torchify(load_model_data(model_path))
-        self.register_buffer("pd_action_offset", torch.zeros(ACTION_SIZE, dtype=torch.float32))
-        self.register_buffer("pd_action_scale", torch.full((ACTION_SIZE,), torch.pi, dtype=torch.float32))
+        self.register_buffer("_pd_action_offset", torch.zeros(ACTION_SIZE, dtype=torch.float32))
+        self.register_buffer("_pd_action_scale", torch.full((ACTION_SIZE,), torch.pi, dtype=torch.float32))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -77,7 +80,20 @@ class SmplHumanoid(BodyModel, nn.Module):
 
     @property
     def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.forward_vertices(**self.get_rest_pose(batch_dims=()))
+        params = self.get_rest_pose(batch_dims=())
+        return self.forward_vertices(
+            body_pose=params["body_pose"],
+            global_translation=params["global_translation"],
+            global_rotation=params["global_rotation"],
+        )
+
+    @property
+    def pd_action_offset(self) -> Tensor:
+        return cast(Tensor, self._pd_action_offset)
+
+    @property
+    def pd_action_scale(self) -> Tensor:
+        return cast(Tensor, self._pd_action_scale)
 
     def forward_skeleton(
         self,

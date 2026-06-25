@@ -282,7 +282,9 @@ def _build_link_meshes(*, dtype) -> tuple[np.ndarray, np.ndarray, dict[str, Any]
             local_offset = 0
             for child_offset in child_offsets:
                 radius = _link_radius(name)
-                verts, faces = _capsule_between(np.zeros(3, dtype=dtype), child_offset.astype(dtype), radius, dtype=dtype)
+                verts, faces = _capsule_between(
+                    np.zeros(3, dtype=dtype), child_offset.astype(dtype), radius, dtype=dtype
+                )
                 mesh_vertices.append(verts)
                 mesh_faces.append(faces + local_offset)
                 local_offset += len(verts)
