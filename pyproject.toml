@@ -79,7 +79,8 @@ exclude = [
     "bench/",
     "tests/",
     "scripts/render_teaser.py",
-    "scripts/visualize_models.py",
+    "scripts/visualize_bodies.py",
+    "scripts/visualize_robots.py",
 ]
 
 [tool.ruff]
