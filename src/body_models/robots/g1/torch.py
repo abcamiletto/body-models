@@ -9,7 +9,8 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import RigidBodyModel
+from trimesh import Trimesh
 from body_models.robots.g1.backends import core
 from body_models.robots.g1.backends import torch as backend
 from body_models.robots.g1.io import load_model_data
@@ -18,10 +19,9 @@ from body_models.robots.g1.constants import G1_BODY_PRESETS, G1_JOINTS
 __all__ = ["G1"]
 
 
-class G1(BodyModel, nn.Module):
+class G1(RigidBodyModel, nn.Module):
     """Unitree G1 as rigid STL links attached to the Kimodo 34-joint skeleton."""
 
-    is_rigid_body = True
     JOINTS = G1_JOINTS
 
     def __init__(
@@ -35,14 +35,15 @@ class G1(BodyModel, nn.Module):
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
-            rotation_type: Rotation representation expected by pose inputs.
+            rotation_type: Rotation representation expected by global_rotation.
             convention: Skeleton convention used when loading rigid model data.
         """
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
-        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
+        self.mujoco_to_model = core.MUJOCO_TO_KIMODO if convention == "soma" else self.mujoco_to_model
         self.convention = convention
         self.weights = common.torchify(load_model_data(model_path, convention=convention))
 
@@ -63,20 +64,16 @@ class G1(BodyModel, nn.Module):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_indices(self) -> list[int]:
-        return self.weights.qpos_joint_indices
+    def actuated_joint_limits(self) -> Float[Tensor, "Q 2"]:
+        return self.weights.actuated_joint_limits
 
     @property
-    def qpos_joint_axes(self) -> Float[Tensor, "Q 3"]:
-        return self.weights.qpos_joint_axes
-
-    @property
-    def qpos_joint_limits(self) -> Float[Tensor, "Q 2"]:
-        return self.weights.qpos_joint_limits
+    def actuated_joint_types(self) -> list[str]:
+        return ["hinge"] * self.num_actuated
 
     @property
     def link_names(self) -> list[str]:
@@ -114,22 +111,9 @@ class G1(BodyModel, nn.Module):
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
 
-    @property
-    def skin_weights(self) -> Float[Tensor, "V J"]:
-        raise NotImplementedError(core.SKIN_WEIGHTS_ERROR)
-
-    @property
-    def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        params = self.get_rest_pose(batch_dims=())
-        return self.forward_vertices(
-            body_pose=params["body_pose"],
-            global_translation=params["global_translation"],
-            global_rotation=params["global_rotation"],
-        )
-
     def forward_skeleton(
         self,
-        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -138,7 +122,7 @@ class G1(BodyModel, nn.Module):
         """Compute posed joint transforms.
 
         Args:
-            body_pose: Local body joint rotations.
+            body_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
             joint_indices: Optional subset of joints to return.
@@ -155,37 +139,34 @@ class G1(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def forward_vertices(
+    def forward_meshes(
         self,
-        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-        vertex_indices: list[int] | None = None,
-    ) -> Float[Tensor, "B V 3"]:
-        """Compute posed mesh vertices.
+    ) -> list[Trimesh]:
+        """Compute posed model meshes.
 
         Args:
-            body_pose: Local body joint rotations.
+            body_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
-            vertex_indices: Optional subset of vertices to return.
 
         Returns:
-            Posed vertex positions.
+            One posed model mesh per batch element.
         """
-        return backend.forward_vertices(
+        return backend.forward_meshes(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
         )
 
     def forward_links(
         self,
-        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -198,44 +179,9 @@ class G1(BodyModel, nn.Module):
             rotation_type=self.rotation_type,
         )
 
-    def link_mesh(self, link_name: str) -> dict[str, Tensor | str | int]:
-        return core.link_mesh(
-            vertices=self.weights.vertices,
-            faces=self.weights.faces,
-            link_joint_indices=self.weights.link_joint_indices,
-            link_vertex_starts=self.weights.link_vertex_starts,
-            link_vertex_counts=self.weights.link_vertex_counts,
-            link_face_starts=self.weights.link_face_starts,
-            link_face_counts=self.weights.link_face_counts,
-            joint_names=self.weights.joint_names,
-            link_names=self.weights.link_names,
-            link_name=link_name,
-        )
-
-    def joint_meshes(self, joint_name: str) -> list[dict[str, Tensor | str | int]]:
-        return core.joint_meshes(
-            vertices=self.weights.vertices,
-            faces=self.weights.faces,
-            link_joint_indices=self.weights.link_joint_indices,
-            link_vertex_starts=self.weights.link_vertex_starts,
-            link_vertex_counts=self.weights.link_vertex_counts,
-            link_face_starts=self.weights.link_face_starts,
-            link_face_counts=self.weights.link_face_counts,
-            joint_names=self.weights.joint_names,
-            link_names=self.weights.link_names,
-            joint_name=joint_name,
-        )
-
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
-        pose_ref = torch.zeros((*batch_dims, len(self.weights.qpos_joint_indices), 3), device=device, dtype=dtype)
         global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
-        body_pose = SO3.identity_as(
-            pose_ref,
-            batch_dims=(*batch_dims, len(self.weights.qpos_joint_indices)),
-            rotation_type=self.rotation_type,
-            xp=torch,
-        )
         global_rotation = SO3.identity_as(
             global_ref,
             batch_dims=batch_dims,
@@ -243,7 +189,7 @@ class G1(BodyModel, nn.Module):
             xp=torch,
         )
         return {
-            "body_pose": body_pose,
+            "body_pose": torch.zeros((*batch_dims, self.num_actuated), device=device, dtype=dtype),
             "global_rotation": global_rotation,
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
@@ -260,14 +206,14 @@ class G1(BodyModel, nn.Module):
             dtype=params["body_pose"].dtype,
         )
         axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"axes": self.weights.actuated_joint_axes}
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
-            dst=self.rotation_type,
+            dst="hinge",
             dst_kwargs=dst_kwargs,
             xp=torch,
-        )
+        )[..., 0]
         return params
 
     def get_apose(
@@ -282,12 +228,12 @@ class G1(BodyModel, nn.Module):
             dtype=params["body_pose"].dtype,
         )
         axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.qpos_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"axes": self.weights.actuated_joint_axes}
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
-            dst=self.rotation_type,
+            dst="hinge",
             dst_kwargs=dst_kwargs,
             xp=torch,
-        )
+        )[..., 0]
         return params

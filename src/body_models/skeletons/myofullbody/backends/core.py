@@ -15,10 +15,11 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
+from trimesh import Trimesh
+from body_models.common import rigid
 
 Array = Any
 
-SKIN_WEIGHTS_ERROR = "MyoFullBody is a rigid articulated model and does not define skin_weights."
 # Matches body_models.skeletons.myofullbody.io.MUJOCO_TO_KIMODO (Ry(+90°) @ kimodo swap)
 # so the qpos round-trip recovers the same world frame the loader produces.
 MUJOCO_TO_KIMODO = (
@@ -33,16 +34,16 @@ MUJOCO_TO_KIMODO = (
 # ----------------------------------------------------------------------------
 
 
-def _qpos_local_transforms(
+def _actuated_local_transforms(
     body_pose: Float[Array, "B Q"],
-    qpos_axes: Float[Array, "Q 3"],
-    qpos_anchors: Float[Array, "Q 3"],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_anchors: Float[Array, "Q 3"],
     hinge_mask: Float[Array, "Q"],
     slide_mask: Float[Array, "Q"],
     *,
     xp: Any,
 ) -> tuple[Float[Array, "B Q 3 3"], Float[Array, "B Q 3"]]:
-    """Compute per-qpos local rotation+translation contributed by each joint.
+    """Compute per-coordinate local rotation+translation contributed by each joint.
 
     Returns ``(R, t)`` where the joint transforms the body frame as
     ``T_joint = T(t) @ R``. For hinge joints with anchor ``p`` and angle ``q``:
@@ -50,15 +51,15 @@ def _qpos_local_transforms(
     ``t = q * axis``.
     """
     angles = body_pose * hinge_mask
-    aa = angles[..., None] * qpos_axes
+    aa = angles[..., None] * actuated_joint_axes
     R = SO3.conversions.from_axis_angle_to_rotmat(aa, xp=xp)
 
     # For a hinge with anchor p, T_joint = T(p) @ R @ T(-p) collapses to (R, p - R@p).
-    p = qpos_anchors
+    p = actuated_joint_anchors
     Rp = xp.squeeze(R @ p[..., None], axis=-1)
     hinge_t = (p - Rp) * hinge_mask[..., None]
 
-    slide_t = (body_pose * slide_mask)[..., None] * qpos_axes
+    slide_t = (body_pose * slide_mask)[..., None] * actuated_joint_axes
     return R, hinge_t + slide_t
 
 
@@ -71,10 +72,10 @@ def forward_skeleton(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     parents: list[int],
-    body_qpos_starts: list[int],
-    body_qpos_counts: list[int],
-    qpos_axes: Float[Array, "Q 3"],
-    qpos_anchors: Float[Array, "Q 3"],
+    body_actuated_starts: list[int],
+    body_actuated_counts: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_anchors: Float[Array, "Q 3"],
     hinge_mask: Float[Array, "Q"],
     slide_mask: Float[Array, "Q"],
     body_pose: Float[Array, "B Q"],
@@ -89,22 +90,31 @@ def forward_skeleton(
         xp = get_namespace(body_pose)
 
     num_joints = len(parents)
-    if body_pose.ndim < 1 or body_pose.shape[-1] != qpos_axes.shape[0]:
-        raise ValueError(f"body_pose must have shape [..., {qpos_axes.shape[0]}], got {tuple(body_pose.shape)}")
+    if body_pose.ndim < 1 or body_pose.shape[-1] != actuated_joint_axes.shape[0]:
+        raise ValueError(
+            f"body_pose must have shape [..., {actuated_joint_axes.shape[0]}], got {tuple(body_pose.shape)}"
+        )
 
     batch_shape = tuple(body_pose.shape[:-1])
     dtype = body_pose.dtype
     if global_translation is None:
         global_translation = common.zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)
 
-    qpos_axes = xp.asarray(qpos_axes, dtype=dtype)
-    qpos_anchors = xp.asarray(qpos_anchors, dtype=dtype)
+    actuated_joint_axes = xp.asarray(actuated_joint_axes, dtype=dtype)
+    actuated_joint_anchors = xp.asarray(actuated_joint_anchors, dtype=dtype)
     hinge_mask = xp.asarray(hinge_mask, dtype=dtype)
     slide_mask = xp.asarray(slide_mask, dtype=dtype)
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
     rest_t = xp.asarray(local_offsets, dtype=dtype)
 
-    R_q, t_q = _qpos_local_transforms(body_pose, qpos_axes, qpos_anchors, hinge_mask, slide_mask, xp=xp)
+    actuated_rot, actuated_trans = _actuated_local_transforms(
+        body_pose,
+        actuated_joint_axes,
+        actuated_joint_anchors,
+        hinge_mask,
+        slide_mask,
+        xp=xp,
+    )
 
     rot_world: list[Array | None] = [None] * num_joints
     pos_world: list[Array | None] = [None] * num_joints
@@ -112,11 +122,11 @@ def forward_skeleton(
     for j in range(num_joints):
         local_rot = xp.broadcast_to(rest_rot[j], (*batch_shape, 3, 3))
         local_t = xp.broadcast_to(rest_t[j], (*batch_shape, 3))
-        start = body_qpos_starts[j]
-        for k in range(start, start + body_qpos_counts[j]):
-            qpos_t = xp.squeeze(local_rot @ t_q[..., k, :, None], axis=-1)
-            local_t = local_t + qpos_t
-            local_rot = local_rot @ R_q[..., k, :, :]
+        start = body_actuated_starts[j]
+        for k in range(start, start + body_actuated_counts[j]):
+            actuated_t = xp.squeeze(local_rot @ actuated_trans[..., k, :, None], axis=-1)
+            local_t = local_t + actuated_t
+            local_rot = local_rot @ actuated_rot[..., k, :, :]
 
         if parents[j] < 0:
             rot_world[j] = local_rot
@@ -152,10 +162,10 @@ def forward_links(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     parents: list[int],
-    body_qpos_starts: list[int],
-    body_qpos_counts: list[int],
-    qpos_axes: Float[Array, "Q 3"],
-    qpos_anchors: Float[Array, "Q 3"],
+    body_actuated_starts: list[int],
+    body_actuated_counts: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_anchors: Float[Array, "Q 3"],
     hinge_mask: Float[Array, "Q"],
     slide_mask: Float[Array, "Q"],
     link_joint_indices: list[int],
@@ -174,10 +184,10 @@ def forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
         parents=parents,
-        body_qpos_starts=body_qpos_starts,
-        body_qpos_counts=body_qpos_counts,
-        qpos_axes=qpos_axes,
-        qpos_anchors=qpos_anchors,
+        body_actuated_starts=body_actuated_starts,
+        body_actuated_counts=body_actuated_counts,
+        actuated_joint_axes=actuated_joint_axes,
+        actuated_joint_anchors=actuated_joint_anchors,
         hinge_mask=hinge_mask,
         slide_mask=slide_mask,
         body_pose=body_pose,
@@ -185,60 +195,51 @@ def forward_links(
         global_rotation=global_rotation,
         xp=xp,
     )
-    joint_rot = skeleton[..., :3, :3]
-    joint_pos = skeleton[..., :3, 3]
-    geom_pos = xp.asarray(link_geom_positions, dtype=body_pose.dtype)
-    geom_rot = xp.asarray(link_geom_rotations, dtype=body_pose.dtype)
-
-    rotations = []
-    translations = []
-    for link_idx, joint_idx in enumerate(link_joint_indices):
-        link_rot = joint_rot[..., joint_idx, :, :]
-        link_pos = xp.squeeze(link_rot @ geom_pos[link_idx][..., None], axis=-1)
-        rotations.append(link_rot @ geom_rot[link_idx])
-        translations.append(joint_pos[..., joint_idx, :] + link_pos)
-
-    rot = xp.stack(rotations, axis=-3)
-    trans = xp.stack(translations, axis=-2)
-    last_row = common.zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
-    last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
-    return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
+    return rigid.forward_link_transforms(
+        skeleton=skeleton,
+        link_joint_indices=link_joint_indices,
+        link_geom_positions=link_geom_positions,
+        link_geom_rotations=link_geom_rotations,
+        xp=xp,
+    )
 
 
-def forward_vertices(
+def forward_meshes(
     vertices: Float[Array, "V 3"],
+    faces: Int[Array, "F 3"],
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
     parents: list[int],
-    body_qpos_starts: list[int],
-    body_qpos_counts: list[int],
-    qpos_axes: Float[Array, "Q 3"],
-    qpos_anchors: Float[Array, "Q 3"],
+    body_actuated_starts: list[int],
+    body_actuated_counts: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_anchors: Float[Array, "Q 3"],
     hinge_mask: Float[Array, "Q"],
     slide_mask: Float[Array, "Q"],
     link_joint_indices: list[int],
     link_vertex_starts: list[int],
     link_vertex_counts: list[int],
+    link_face_starts: list[int],
+    link_face_counts: list[int],
     link_geom_positions: Float[Array, "L 3"],
     link_geom_rotations: Float[Array, "L 3 3"],
     body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    vertex_indices: list[int] | None = None,
     xp: Any = None,
-) -> Float[Array, "B V 3"]:
-    """Rigidly transform per-link STL meshes into the world frame."""
+) -> list[Trimesh]:
+    """Rigidly transform and concatenate all MyoFullBody STL link meshes."""
     if xp is None:
         xp = get_namespace(body_pose)
     links = forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
         parents=parents,
-        body_qpos_starts=body_qpos_starts,
-        body_qpos_counts=body_qpos_counts,
-        qpos_axes=qpos_axes,
-        qpos_anchors=qpos_anchors,
+        body_actuated_starts=body_actuated_starts,
+        body_actuated_counts=body_actuated_counts,
+        actuated_joint_axes=actuated_joint_axes,
+        actuated_joint_anchors=actuated_joint_anchors,
         hinge_mask=hinge_mask,
         slide_mask=slide_mask,
         link_joint_indices=link_joint_indices,
@@ -249,23 +250,16 @@ def forward_vertices(
         global_rotation=global_rotation,
         xp=xp,
     )
-    link_rot = links[..., :3, :3]
-    link_pos = links[..., :3, 3]
-    source_vertices = xp.asarray(vertices, dtype=body_pose.dtype)
-
-    chunks = []
-    for link_idx in range(len(link_joint_indices)):
-        start = link_vertex_starts[link_idx]
-        count = link_vertex_counts[link_idx]
-        local_vertices = source_vertices[start : start + count]
-        transformed = xp.squeeze(link_rot[..., link_idx, None, :, :] @ local_vertices[..., None], axis=-1)
-        transformed = transformed + link_pos[..., link_idx, None, :]
-        chunks.append(transformed)
-
-    out = xp.concat(chunks, axis=-2)
-    if vertex_indices is not None:
-        out = out[..., xp.asarray(vertex_indices), :]
-    return out
+    return rigid.forward_meshes_from_links(
+        links=links,
+        vertices=vertices,
+        faces=faces,
+        link_vertex_starts=link_vertex_starts,
+        link_vertex_counts=link_vertex_counts,
+        link_face_starts=link_face_starts,
+        link_face_counts=link_face_counts,
+        xp=xp,
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -295,106 +289,8 @@ def world_sites(
 
 
 # ----------------------------------------------------------------------------
-# Mesh helpers
-# ----------------------------------------------------------------------------
-
-
-def link_mesh(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    joint_names: list[str],
-    link_names: list[str],
-    link_name: str,
-) -> dict[str, Array | str | int]:
-    """Return the static STL chunk for one link mesh."""
-    link_idx = link_names.index(link_name)
-    vertex_start = link_vertex_starts[link_idx]
-    vertex_count = link_vertex_counts[link_idx]
-    face_start = link_face_starts[link_idx]
-    face_count = link_face_counts[link_idx]
-    joint_idx = link_joint_indices[link_idx]
-    return {
-        "name": link_name,
-        "vertices": vertices[vertex_start : vertex_start + vertex_count],
-        "faces": faces[face_start : face_start + face_count] - vertex_start,
-        "joint_index": joint_idx,
-        "joint_name": joint_names[joint_idx],
-    }
-
-
-def joint_meshes(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    joint_names: list[str],
-    link_names: list[str],
-    joint_name: str,
-) -> list[dict[str, Array | str | int]]:
-    """Return all static STL chunks attached to one body frame."""
-    joint_idx = joint_names.index(joint_name)
-    meshes = []
-    for link_idx, link_name in enumerate(link_names):
-        if link_joint_indices[link_idx] != joint_idx:
-            continue
-        vertex_start = link_vertex_starts[link_idx]
-        vertex_count = link_vertex_counts[link_idx]
-        face_start = link_face_starts[link_idx]
-        face_count = link_face_counts[link_idx]
-        meshes.append(
-            {
-                "name": link_name,
-                "vertices": vertices[vertex_start : vertex_start + vertex_count],
-                "faces": faces[face_start : face_start + face_count] - vertex_start,
-                "joint_index": joint_idx,
-                "joint_name": joint_name,
-            }
-        )
-    return meshes
-
-
-# ----------------------------------------------------------------------------
 # MuJoCo qpos round-trip
 # ----------------------------------------------------------------------------
-
-
-def to_mujoco_qpos(
-    body_pose: Float[Array, "B Q"],
-    global_translation: Float[Array, "B 3"] | None = None,
-    *,
-    global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
-) -> Float[Array, "B 7+Q"]:
-    """Build MuJoCo ``qpos`` (free root + joint scalars) from body-models inputs.
-
-    The first 7 entries are the freejoint values (``xyz`` + ``wxyz``); the rest
-    are scalar joint coordinates in MJCF order.
-    """
-    if xp is None:
-        xp = get_namespace(body_pose)
-    batch_shape = body_pose.shape[:-1]
-    dtype = body_pose.dtype
-    if global_translation is None:
-        global_translation = common.zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)
-    if global_rotation is None:
-        rot_mat = common.eye_as(body_pose, batch_dims=batch_shape, xp=xp)
-    else:
-        rot_mat = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
-
-    coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
-    kimodo_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)
-    root_t = xp.squeeze(kimodo_to_mujoco @ global_translation[..., None], axis=-1)
-    root_rot_mujoco = kimodo_to_mujoco @ rot_mat @ coord
-    root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
-    return xp.concat([root_t, root_quat, body_pose], axis=-1)
 
 
 def from_mujoco_qpos(

@@ -6,7 +6,8 @@ from typing import Any
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models.base import BodyModel
+from body_models.base import RigidBodyModel
+from trimesh import Trimesh
 from body_models.skeletons.myofullbody.backends import core
 from body_models.skeletons.myofullbody.backends import numpy as backend
 from body_models.skeletons.myofullbody.io import load_model_data
@@ -18,11 +19,11 @@ from body_models.skeletons.myofullbody.constants import (
 __all__ = ["MyoFullBody"]
 
 
-class MyoFullBody(BodyModel):
+class MyoFullBody(RigidBodyModel):
     """MyoSuite-derived full-body MJCF model with rigid STL link meshes."""
 
-    is_rigid_body = True
     JOINTS = MYOFULLBODY_JOINTS
+    mujoco_to_model = core.MUJOCO_TO_KIMODO
 
     def __init__(self, model_path: Path | str | None = None) -> None:
         """Initialize the MyoFullBody model.
@@ -49,12 +50,16 @@ class MyoFullBody(BodyModel):
         return self.weights.parents
 
     @property
-    def qpos_joint_names(self) -> list[str]:
-        return self.weights.qpos_joint_names
+    def actuated_joint_names(self) -> list[str]:
+        return self.weights.actuated_joint_names
 
     @property
-    def qpos_joint_types(self) -> list[str]:
-        return self.weights.qpos_joint_types
+    def actuated_joint_types(self) -> list[str]:
+        return self.weights.actuated_joint_types
+
+    @property
+    def actuated_joint_limits(self) -> Float[np.ndarray, "Q 2"]:
+        return self.weights.actuated_joint_limits
 
     @property
     def link_names(self) -> list[str]:
@@ -96,19 +101,6 @@ class MyoFullBody(BodyModel):
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
 
-    @property
-    def num_qpos(self) -> int:
-        return self.weights.qpos_joint_axes.shape[0]
-
-    @property
-    def skin_weights(self) -> Float[np.ndarray, "V J"]:
-        raise NotImplementedError(core.SKIN_WEIGHTS_ERROR)
-
-    @property
-    def rest_vertices(self) -> Float[np.ndarray, "V 3"]:
-        params = self.get_rest_pose(batch_dims=())
-        return self.forward_vertices(**params)
-
     def forward_skeleton(
         self,
         body_pose: Float[np.ndarray, "B Q"],
@@ -136,31 +128,28 @@ class MyoFullBody(BodyModel):
             joint_indices=joint_indices,
         )
 
-    def forward_vertices(
+    def forward_meshes(
         self,
         body_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B 3"] | None = None,
-        vertex_indices: Any | None = None,
-    ) -> Float[np.ndarray, "B V 3"]:
-        """Compute posed mesh vertices.
+    ) -> list[Trimesh]:
+        """Compute posed model meshes.
 
         Args:
             body_pose: Local body joint rotations.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
-            vertex_indices: Optional subset of vertices to return.
 
         Returns:
-            Posed vertex positions.
+            One posed model mesh per batch element.
         """
-        return backend.forward_vertices(
+        return backend.forward_meshes(
             weights=self.weights,
             body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
-            vertex_indices=vertex_indices,
         )
 
     def forward_links(
@@ -180,37 +169,9 @@ class MyoFullBody(BodyModel):
     def world_sites(self, skeleton: Float[np.ndarray, "B J 4 4"]) -> Float[np.ndarray, "B S 3"]:
         return backend.world_sites(self.weights, skeleton)
 
-    def link_mesh(self, link_name: str) -> dict[str, np.ndarray | str | int]:
-        return core.link_mesh(
-            vertices=self.weights.vertices,
-            faces=self.weights.faces,
-            link_joint_indices=self.weights.link_joint_indices,
-            link_vertex_starts=self.weights.link_vertex_starts,
-            link_vertex_counts=self.weights.link_vertex_counts,
-            link_face_starts=self.weights.link_face_starts,
-            link_face_counts=self.weights.link_face_counts,
-            joint_names=self.weights.joint_names,
-            link_names=self.weights.link_names,
-            link_name=link_name,
-        )
-
-    def joint_meshes(self, joint_name: str) -> list[dict[str, np.ndarray | str | int]]:
-        return core.joint_meshes(
-            vertices=self.weights.vertices,
-            faces=self.weights.faces,
-            link_joint_indices=self.weights.link_joint_indices,
-            link_vertex_starts=self.weights.link_vertex_starts,
-            link_vertex_counts=self.weights.link_vertex_counts,
-            link_face_starts=self.weights.link_face_starts,
-            link_face_counts=self.weights.link_face_counts,
-            joint_names=self.weights.joint_names,
-            link_names=self.weights.link_names,
-            joint_name=joint_name,
-        )
-
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
         return {
-            "body_pose": np.zeros((*batch_dims, self.num_qpos), dtype=dtype),
+            "body_pose": np.zeros((*batch_dims, self.num_actuated), dtype=dtype),
             "global_rotation": np.zeros((*batch_dims, 3), dtype=dtype),
             "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }

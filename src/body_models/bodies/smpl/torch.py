@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -21,7 +21,7 @@ from body_models.bodies.smpl.io import get_model_path, load_model_data
 __all__ = ["SMPL"]
 
 
-class SMPL(BodyModel, nn.Module):
+class SMPL(SkinnedModel, nn.Module):
     """SMPL body model with PyTorch backend."""
 
     NUM_BODY_JOINTS = 23

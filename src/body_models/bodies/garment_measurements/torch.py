@@ -10,7 +10,7 @@ from nanomanifold import SO3
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .backends import torch as backend
 from .backends.core import GarmentMeasurementsIdentity, GarmentMeasurementsPreparedPose
@@ -22,7 +22,7 @@ from .pose import pack_pose, unpack_pose
 __all__ = ["GarmentMeasurements"]
 
 
-class GarmentMeasurements(BodyModel, nn.Module):
+class GarmentMeasurements(SkinnedModel, nn.Module):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
     has_hands = True

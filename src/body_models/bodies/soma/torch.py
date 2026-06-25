@@ -13,7 +13,7 @@ from torch import Tensor
 
 from body_models import common
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
@@ -34,7 +34,7 @@ PathLike = Path | str
 __all__ = ["SOMA"]
 
 
-class SOMA(BodyModel, nn.Module):
+class SOMA(SkinnedModel, nn.Module):
     """SOMA body model with PyTorch backend."""
 
     has_hands = True

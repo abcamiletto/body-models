@@ -2,6 +2,13 @@ import numpy as np
 import pytest
 
 import model_cases
+from body_models.base import RigidBodyModel
+
+
+def surface_loss(model, params):
+    if isinstance(model, RigidBodyModel):
+        return model.forward_links(**params)[..., :1, :3, 3].sum()
+    return model.forward_vertices(**params)[..., :8, :].sum()
 
 
 @pytest.mark.parametrize(("name", "_numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.MODELS)
@@ -17,7 +24,7 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     for torch_key in torch_keys:
         torch_value = torch_params[torch_key].clone().requires_grad_(True)
         torch_params[torch_key] = torch_value
-        torch_loss_value = torch_instance.forward_vertices(**torch_params)[..., :8, :].sum()
+        torch_loss_value = surface_loss(torch_instance, torch_params)
         if torch_loss_value.requires_grad:
             break
         torch_params[torch_key] = torch_value.detach()
@@ -33,8 +40,8 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     plus_params[torch_key] = torch.as_tensor(torch_plus, dtype=torch_value.dtype)
     minus_params[torch_key] = torch.as_tensor(torch_minus, dtype=torch_value.dtype)
     with torch.no_grad():
-        torch_plus_loss = torch_instance.forward_vertices(**plus_params)[..., :8, :].sum().item()
-        torch_minus_loss = torch_instance.forward_vertices(**minus_params)[..., :8, :].sum().item()
+        torch_plus_loss = surface_loss(torch_instance, plus_params).item()
+        torch_minus_loss = surface_loss(torch_instance, minus_params).item()
     torch_numeric = (torch_plus_loss - torch_minus_loss) / 2e-4
     np.testing.assert_allclose(torch_auto, torch_numeric, rtol=1e-2, atol=1e-2)
 
@@ -51,7 +58,7 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     def jax_loss(value):
         params = jax_params.copy()
         params[jax_key] = value
-        return jax_instance.forward_vertices(**params)[..., :8, :].sum()
+        return surface_loss(jax_instance, params)
 
     jax_auto = np.asarray(jax.grad(jax_loss)(jax_value)).reshape(-1)[0]
     jax_plus = np.asarray(jax_value).copy()

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from jaxtyping import Float, Int
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.parts.flame.backends import jax as backend
@@ -20,7 +20,7 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 __all__ = ["FLAME"]
 
 
-class FLAME(BodyModel):
+class FLAME(SkinnedModel):
     """FLAME head model with JAX backend."""
 
     has_head = True

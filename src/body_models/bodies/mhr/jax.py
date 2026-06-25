@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from jaxtyping import Float, Int
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.bodies.mhr.backends import jax as backend
 from body_models.bodies.mhr.backends.core import MhrIdentity, MhrPreparedPose
 from body_models.bodies.mhr.constants import (
@@ -26,7 +26,7 @@ __all__ = ["MHR"]
 
 
 @jax.tree_util.register_pytree_node_class
-class MHR(BodyModel):
+class MHR(SkinnedModel):
     """MHR body model with JAX backend."""
 
     has_hands = True

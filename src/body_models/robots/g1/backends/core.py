@@ -9,6 +9,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
+from trimesh import Trimesh
+from body_models.common import rigid
 from body_models.rotations import RotationType as SO3RotationType
 
 Array = Any
@@ -16,7 +18,6 @@ RotationType = SO3RotationType | Literal["hinge"]
 Convention = Literal["soma", "mujoco"]
 
 MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
-SKIN_WEIGHTS_ERROR = "G1 is a rigid articulated model and does not define skin_weights."
 VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat", "hinge")
 GLOBAL_ROTATION_TYPES: dict[RotationType, SO3RotationType] = {
     "axis_angle": "axis_angle",
@@ -28,13 +29,27 @@ GLOBAL_ROTATION_TYPES: dict[RotationType, SO3RotationType] = {
 }
 
 
+def _hinge_rotations(
+    body_pose: Float[Array, "B Q"],
+    actuated_joint_axes: Float[Array, "Q 3"],
+    *,
+    xp: Any,
+) -> Float[Array, "B Q 3 3"]:
+    if body_pose.ndim < 1 or body_pose.shape[-1] != actuated_joint_axes.shape[0]:
+        raise ValueError(
+            f"G1 body_pose must have shape [..., {actuated_joint_axes.shape[0]}], got {tuple(body_pose.shape)}"
+        )
+    axes = xp.asarray(actuated_joint_axes, dtype=body_pose.dtype)
+    return SO3.convert(body_pose[..., None], src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=xp)
+
+
 def forward_skeleton(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    body_joint_indices: list[int],
-    body_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_indices: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
     parents: list[int],
-    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
+    body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -45,18 +60,7 @@ def forward_skeleton(
     """Compute world-space G1 joint transforms from local rotations."""
     if xp is None:
         xp = get_namespace(body_pose)
-    axes = xp.asarray(body_joint_axes, dtype=body_pose.dtype)
-    src_kwargs = {
-        "axis_angle": {},
-        "quat": {},
-        "sixd": {},
-        "matrix": {},
-        "rotmat": {},
-        "hinge": {"axes": axes},
-    }[rotation_type]
-    body_rot = SO3.convert(body_pose, src=rotation_type, dst="rotmat", src_kwargs=src_kwargs, xp=xp)
-    if body_rot.shape[-2:] != (3, 3):
-        raise ValueError("G1 body_pose must convert to shape [..., 29, 3, 3]")
+    body_rot = _hinge_rotations(body_pose, actuated_joint_axes, xp=xp)
     batch_shape = tuple(body_rot.shape[:-3])
     dtype = body_rot.dtype
     num_joints = len(parents)
@@ -65,7 +69,7 @@ def forward_skeleton(
 
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
     local_rot = common.eye_as(body_rot, batch_dims=(*batch_shape, num_joints), xp=xp)
-    local_rot = common.set(local_rot, (..., body_joint_indices, slice(None), slice(None)), body_rot, xp=xp)
+    local_rot = common.set(local_rot, (..., actuated_joint_indices, slice(None), slice(None)), body_rot, xp=xp)
     local_rot = xp.broadcast_to(rest_rot, (*batch_shape, num_joints, 3, 3)) @ local_rot
     local_t = xp.asarray(local_offsets, dtype=dtype)
 
@@ -101,34 +105,36 @@ def forward_skeleton(
     return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
 
 
-def forward_vertices(
+def forward_meshes(
     vertices: Float[Array, "V 3"],
+    faces: Int[Array, "F 3"],
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    body_joint_indices: list[int],
-    body_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_indices: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
     parents: list[int],
     link_joint_indices: list[int],
     link_vertex_starts: list[int],
     link_vertex_counts: list[int],
+    link_face_starts: list[int],
+    link_face_counts: list[int],
     link_geom_positions: Float[Array, "L 3"],
     link_geom_rotations: Float[Array, "L 3 3"],
-    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
+    body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "rotmat",
     xp: Any = None,
-) -> Float[Array, "B V 3"]:
-    """Rigidly transform G1 STL link meshes."""
+) -> list[Trimesh]:
+    """Rigidly transform and concatenate all G1 STL link meshes."""
     if xp is None:
         xp = get_namespace(body_pose)
     links = forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
-        body_joint_indices=body_joint_indices,
-        body_joint_axes=body_joint_axes,
+        actuated_joint_indices=actuated_joint_indices,
+        actuated_joint_axes=actuated_joint_axes,
         parents=parents,
         link_joint_indices=link_joint_indices,
         link_geom_positions=link_geom_positions,
@@ -139,35 +145,28 @@ def forward_vertices(
         rotation_type=rotation_type,
         xp=xp,
     )
-    link_rot = links[..., :3, :3]
-    link_pos = links[..., :3, 3]
-    source_vertices = xp.asarray(vertices, dtype=body_pose.dtype)
-
-    chunks = []
-    for link_idx in range(len(link_joint_indices)):
-        start = link_vertex_starts[link_idx]
-        count = link_vertex_counts[link_idx]
-        local_vertices = source_vertices[start : start + count]
-        transformed = xp.squeeze(link_rot[..., link_idx, None, :, :] @ local_vertices[..., None], axis=-1)
-        transformed = transformed + link_pos[..., link_idx, None, :]
-        chunks.append(transformed)
-
-    out = xp.concat(chunks, axis=-2)
-    if vertex_indices is not None:
-        out = out[..., xp.asarray(vertex_indices), :]
-    return out
+    return rigid.forward_meshes_from_links(
+        links=links,
+        vertices=vertices,
+        faces=faces,
+        link_vertex_starts=link_vertex_starts,
+        link_vertex_counts=link_vertex_counts,
+        link_face_starts=link_face_starts,
+        link_face_counts=link_face_counts,
+        xp=xp,
+    )
 
 
 def forward_links(
     local_offsets: Float[Array, "J 3"],
     rest_local_rotations: Float[Array, "J 3 3"],
-    body_joint_indices: list[int],
-    body_joint_axes: Float[Array, "Q 3"],
+    actuated_joint_indices: list[int],
+    actuated_joint_axes: Float[Array, "Q 3"],
     parents: list[int],
     link_joint_indices: list[int],
     link_geom_positions: Float[Array, "L 3"],
     link_geom_rotations: Float[Array, "L 3 3"],
-    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
+    body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
@@ -180,8 +179,8 @@ def forward_links(
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
-        body_joint_indices=body_joint_indices,
-        body_joint_axes=body_joint_axes,
+        actuated_joint_indices=actuated_joint_indices,
+        actuated_joint_axes=actuated_joint_axes,
         parents=parents,
         body_pose=body_pose,
         global_translation=global_translation,
@@ -189,140 +188,10 @@ def forward_links(
         rotation_type=rotation_type,
         xp=xp,
     )
-    joint_rot = skeleton[..., :3, :3]
-    joint_pos = skeleton[..., :3, 3]
-    geom_pos = xp.asarray(link_geom_positions, dtype=body_pose.dtype)
-    geom_rot = xp.asarray(link_geom_rotations, dtype=body_pose.dtype)
-
-    rotations = []
-    translations = []
-    for link_idx, joint_idx in enumerate(link_joint_indices):
-        link_rot = joint_rot[..., joint_idx, :, :]
-        link_pos = xp.squeeze(link_rot @ geom_pos[link_idx][..., None], axis=-1)
-        rotations.append(link_rot @ geom_rot[link_idx])
-        translations.append(joint_pos[..., joint_idx, :] + link_pos)
-
-    rot = xp.stack(rotations, axis=-3)
-    trans = xp.stack(translations, axis=-2)
-    last_row = common.zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
-    last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
-    return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
-
-
-def link_mesh(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    joint_names: list[str],
-    link_names: list[str],
-    link_name: str,
-) -> dict[str, Array | str | int]:
-    """Return the static STL mesh chunk for one G1 link mesh."""
-    link_idx = link_names.index(link_name)
-    vertex_start = link_vertex_starts[link_idx]
-    vertex_count = link_vertex_counts[link_idx]
-    face_start = link_face_starts[link_idx]
-    face_count = link_face_counts[link_idx]
-    joint_idx = link_joint_indices[link_idx]
-    return {
-        "name": link_name,
-        "vertices": vertices[vertex_start : vertex_start + vertex_count],
-        "faces": faces[face_start : face_start + face_count] - vertex_start,
-        "joint_index": joint_idx,
-        "joint_name": joint_names[joint_idx],
-    }
-
-
-def joint_meshes(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    joint_names: list[str],
-    link_names: list[str],
-    joint_name: str,
-) -> list[dict[str, Array | str | int]]:
-    """Return static STL mesh chunks attached to one G1 skeleton joint."""
-    joint_idx = joint_names.index(joint_name)
-    meshes = []
-    for link_idx, link_name in enumerate(link_names):
-        if link_joint_indices[link_idx] != joint_idx:
-            continue
-
-        vertex_start = link_vertex_starts[link_idx]
-        vertex_count = link_vertex_counts[link_idx]
-        face_start = link_face_starts[link_idx]
-        face_count = link_face_counts[link_idx]
-        meshes.append(
-            {
-                "name": link_name,
-                "vertices": vertices[vertex_start : vertex_start + vertex_count],
-                "faces": faces[face_start : face_start + face_count] - vertex_start,
-                "joint_index": joint_idx,
-                "joint_name": joint_name,
-            }
-        )
-    return meshes
-
-
-def to_mujoco_qpos(
-    qpos_joint_axes: Float[Array, "Q 3"],
-    qpos_joint_limits: Float[Array, "Q 2"],
-    body_pose: Float[Array, "B Q N"] | Float[Array, "B Q 3 3"],
-    global_translation: Float[Array, "B 3"] | None = None,
-    *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    clamp_to_limits: bool = True,
-    rotation_type: RotationType = "rotmat",
-    convention: Convention = "soma",
-    xp: Any = None,
-) -> Float[Array, "B 7+Q"]:
-    """Build MuJoCo qpos from root translation and local joint rotations."""
-    if xp is None:
-        xp = get_namespace(body_pose)
-    axes = xp.asarray(qpos_joint_axes, dtype=body_pose.dtype)
-    src_kwargs = {
-        "axis_angle": {},
-        "quat": {},
-        "sixd": {},
-        "matrix": {},
-        "rotmat": {},
-        "hinge": {"axes": axes},
-    }[rotation_type]
-    body_rot = SO3.convert(body_pose, src=rotation_type, dst="rotmat", src_kwargs=src_kwargs, xp=xp)
-    if body_rot.shape[-2:] != (3, 3):
-        raise ValueError("G1 body_pose must convert to shape [..., 29, 3, 3]")
-    dtype = body_rot.dtype
-    batch_shape = tuple(body_rot.shape[:-3])
-    if global_translation is None:
-        global_translation = common.zeros_as(body_rot, shape=(*batch_shape, 3), xp=xp)
-    if global_rotation is None:
-        root_rot = common.eye_as(body_rot, batch_dims=batch_shape, xp=xp)
-    else:
-        global_rotation_type = GLOBAL_ROTATION_TYPES[rotation_type]
-        root_rot = SO3.convert(global_rotation, src=global_rotation_type, dst="rotmat", xp=xp)
-
-    if convention == "soma":
-        coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
-    elif convention == "mujoco":
-        coord = xp.eye(3, dtype=dtype)
-    else:
-        raise ValueError(f"Invalid convention: {convention}")
-    kimodo_to_mujoco = coord.mT
-    root_t = xp.squeeze(kimodo_to_mujoco @ global_translation[..., None], axis=-1)
-    root_rot_mujoco = kimodo_to_mujoco @ root_rot @ coord
-    root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
-
-    axes = xp.asarray(qpos_joint_axes, dtype=dtype)
-    angles = SO3.convert(body_rot, src="rotmat", dst="hinge", dst_kwargs={"axes": axes}, xp=xp)[..., 0]
-    if clamp_to_limits:
-        limits = xp.asarray(qpos_joint_limits, dtype=dtype)
-        angles = xp.clip(angles, limits[:, 0], limits[:, 1])
-    return xp.concat([root_t, root_quat, angles], axis=-1)
+    return rigid.forward_link_transforms(
+        skeleton=skeleton,
+        link_joint_indices=link_joint_indices,
+        link_geom_positions=link_geom_positions,
+        link_geom_rotations=link_geom_rotations,
+        xp=xp,
+    )

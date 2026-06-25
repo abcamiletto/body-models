@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import struct
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -14,6 +13,7 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.cache import get_cache_dir
+from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 
 PathLike = Path | str
 Convention = Literal["soma", "mujoco"]
@@ -148,10 +148,10 @@ class G1Weights:
     link_geom_positions: Float[Array, "L 3"]
     link_geom_rotations: Float[Array, "L 3 3"]
     link_names: list[str]
-    qpos_joint_indices: list[int]
-    qpos_joint_axes: Float[Array, "Q 3"]
-    qpos_joint_limits: Float[Array, "Q 2"]
-    qpos_joint_names: list[str]
+    actuated_joint_indices: list[int]
+    actuated_joint_axes: Float[Array, "Q 3"]
+    actuated_joint_limits: Float[Array, "Q 2"]
+    actuated_joint_names: list[str]
 
 
 def get_model_path(model_path: PathLike | None = None) -> Path:
@@ -218,7 +218,7 @@ def load_model_data(
     class_axes, class_limits = _parse_joint_defaults(root)
     local_offsets, rest_local_rotations = _parse_joint_rest(root, coord)
     mesh_transforms = _parse_mesh_local_transforms(root, coord)
-    qpos_joint_indices, qpos_joint_axes, qpos_joint_limits, qpos_joint_names = _parse_qpos_joints(
+    actuated_joint_indices, actuated_joint_axes, actuated_joint_limits, actuated_joint_names = _parse_actuated_joints(
         root,
         class_axes,
         class_limits,
@@ -240,10 +240,10 @@ def load_model_data(
         link_geom_positions=link_data["geom_positions"].astype(dtype),
         link_geom_rotations=link_data["geom_rotations"].astype(dtype),
         link_names=link_data["names"],
-        qpos_joint_indices=qpos_joint_indices,
-        qpos_joint_axes=qpos_joint_axes.astype(dtype),
-        qpos_joint_limits=qpos_joint_limits.astype(dtype),
-        qpos_joint_names=qpos_joint_names,
+        actuated_joint_indices=actuated_joint_indices,
+        actuated_joint_axes=actuated_joint_axes.astype(dtype),
+        actuated_joint_limits=actuated_joint_limits.astype(dtype),
+        actuated_joint_names=actuated_joint_names,
     )
 
 
@@ -316,7 +316,7 @@ def _parse_mesh_local_transforms(root: ET.Element, coord: np.ndarray) -> dict[st
     return out
 
 
-def _parse_qpos_joints(
+def _parse_actuated_joints(
     root: ET.Element,
     class_axes: dict[str, np.ndarray],
     class_limits: dict[str, tuple[float, float]],
@@ -410,48 +410,12 @@ def _load_link_meshes(
 
 
 def load_stl_mesh(
-    path: Path, *, coord: np.ndarray = MUJOCO_TO_KIMODO, dtype=np.float32
-) -> tuple[np.ndarray, np.ndarray]:
-    data = path.read_bytes()
-    if _looks_like_binary_stl(data):
-        return _load_binary_stl(data, coord=coord, dtype=dtype)
-    return _load_ascii_stl(data.decode("utf-8"), coord=coord, dtype=dtype)
-
-
-def _load_ascii_stl(text: str, *, coord: np.ndarray, dtype) -> tuple[np.ndarray, np.ndarray]:
-    vertices: list[list[float]] = []
-    for line in text.splitlines():
-        parts = line.strip().split()
-        if len(parts) == 4 and parts[0].lower() == "vertex":
-            vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    if len(vertices) % 3 != 0 or not vertices:
-        raise ValueError("ASCII STL contains no triangular facets")
-    verts = np.asarray(vertices, dtype=dtype) @ coord.T
-    faces = np.arange(len(vertices), dtype=np.int64).reshape(-1, 3)
-    return verts, faces
-
-
-def _load_binary_stl(data: bytes, *, coord: np.ndarray, dtype) -> tuple[np.ndarray, np.ndarray]:
-    n_tri = struct.unpack_from("<I", data, 80)[0]
-    expected = 84 + n_tri * 50
-    if len(data) < expected:
-        raise ValueError("Binary STL is truncated")
-    vertices = np.empty((n_tri * 3, 3), dtype=dtype)
-    offset = 84
-    for tri in range(n_tri):
-        offset += 12
-        for corner in range(3):
-            vertices[tri * 3 + corner] = struct.unpack_from("<fff", data, offset)
-            offset += 12
-        offset += 2
-    return vertices @ coord.T, np.arange(n_tri * 3, dtype=np.int64).reshape(-1, 3)
-
-
-def _looks_like_binary_stl(data: bytes) -> bool:
-    if len(data) < 84:
-        return False
-    n_tri = struct.unpack_from("<I", data, 80)[0]
-    return 84 + n_tri * 50 == len(data)
+    path: Path,
+    *,
+    coord: Float[np.ndarray, "3 3"] = MUJOCO_TO_KIMODO,
+    dtype=np.float32,
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
+    return _load_stl_mesh(path, coord=coord, dtype=dtype)
 
 
 def _body_to_joint_name(body: ET.Element) -> str:
