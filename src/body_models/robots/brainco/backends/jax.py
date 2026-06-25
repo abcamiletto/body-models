@@ -71,7 +71,6 @@ def forward_meshes(
     global_translation: Float[jax.Array, "B 3"] | None = None,
     *,
     global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-    link_indices=None,
     rotation_type: core.RotationType = "rotmat",
 ):
     return core.forward_meshes(
@@ -96,7 +95,6 @@ def forward_meshes(
         pose=pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        link_indices=link_indices,
         rotation_type=rotation_type,
         xp=jnp,
     )

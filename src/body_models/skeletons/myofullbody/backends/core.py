@@ -218,10 +218,9 @@ def forward_meshes(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    link_indices: list[int] | None = None,
     xp: Any = None,
 ) -> list[Trimesh]:
-    """Rigidly transform each MyoFullBody STL link mesh and keep link boundaries."""
+    """Rigidly transform and concatenate all MyoFullBody STL link meshes."""
     if xp is None:
         xp = get_namespace(body_pose)
     links = forward_links(
@@ -250,7 +249,6 @@ def forward_meshes(
         link_vertex_counts=link_vertex_counts,
         link_face_starts=link_face_starts,
         link_face_counts=link_face_counts,
-        link_indices=link_indices,
         xp=xp,
     )
 
@@ -279,61 +277,6 @@ def world_sites(
     local = xp.asarray(site_positions, dtype=skeleton.dtype)
     rotated = xp.squeeze(body_T[..., :3, :3] @ local[..., None], axis=-1)
     return rotated + body_T[..., :3, 3]
-
-
-# ----------------------------------------------------------------------------
-# Mesh helpers
-# ----------------------------------------------------------------------------
-
-
-def link_mesh(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    link_names: list[str],
-    link_name: str,
-) -> Trimesh:
-    """Return the static STL chunk for one link mesh."""
-    return rigid.link_mesh(
-        vertices=vertices,
-        faces=faces,
-        link_vertex_starts=link_vertex_starts,
-        link_vertex_counts=link_vertex_counts,
-        link_face_starts=link_face_starts,
-        link_face_counts=link_face_counts,
-        link_names=link_names,
-        link_name=link_name,
-    )
-
-
-def joint_meshes(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    joint_names: list[str],
-    link_names: list[str],
-    joint_name: str,
-) -> list[Trimesh]:
-    """Return all static STL chunks attached to one body frame."""
-    return rigid.joint_meshes(
-        vertices=vertices,
-        faces=faces,
-        link_joint_indices=link_joint_indices,
-        link_vertex_starts=link_vertex_starts,
-        link_vertex_counts=link_vertex_counts,
-        link_face_starts=link_face_starts,
-        link_face_counts=link_face_counts,
-        joint_names=joint_names,
-        link_names=link_names,
-        joint_name=joint_name,
-    )
 
 
 # ----------------------------------------------------------------------------

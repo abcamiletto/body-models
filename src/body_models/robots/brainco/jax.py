@@ -146,25 +146,22 @@ class BrainCoHand(RigidBodyModel):
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
         global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-        link_indices: list[int] | None = None,
     ) -> list[Trimesh]:
-        """Compute posed link meshes.
+        """Compute posed model meshes.
 
         Args:
             hand_pose: Local hand joint rotations.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
-            link_indices: Optional subset of links to return.
 
         Returns:
-            One posed mesh payload per link.
+            One posed model mesh per batch element.
         """
         return backend.forward_meshes(
             self.weights,
             hand_pose,
             global_translation,
             global_rotation=global_rotation,
-            link_indices=link_indices,
             rotation_type=self.rotation_type,
         )
 
@@ -181,18 +178,6 @@ class BrainCoHand(RigidBodyModel):
             global_translation,
             global_rotation=global_rotation,
             rotation_type=self.rotation_type,
-        )
-
-    def link_mesh(self, link_name: str) -> Trimesh:
-        return core.link_mesh(
-            self.weights.vertices,
-            self.weights.faces,
-            self.weights.link_vertex_starts,
-            self.weights.link_vertex_counts,
-            self.weights.link_face_starts,
-            self.weights.link_face_counts,
-            self.weights.link_names,
-            link_name,
         )
 
     def get_rest_pose(

@@ -50,7 +50,6 @@ def forward_meshes_from_links(
     link_face_starts: list[int],
     link_face_counts: list[int],
     *,
-    link_indices: list[int] | None = None,
     xp: Any,
 ) -> list[Trimesh]:
     """Build one concatenated ``Trimesh`` per batch element."""
@@ -58,11 +57,10 @@ def forward_meshes_from_links(
     link_pos = links[..., :3, 3]
     source_vertices = xp.asarray(vertices, dtype=links.dtype)
     source_faces = xp.asarray(faces)
-    indices = range(len(link_vertex_starts)) if link_indices is None else link_indices
     batch_size = _batch_size(links)
     meshes_by_batch: list[list[Trimesh]] = [[] for _ in range(batch_size)]
 
-    for link_idx in indices:
+    for link_idx in range(len(link_vertex_starts)):
         vertex_start = link_vertex_starts[link_idx]
         vertex_count = link_vertex_counts[link_idx]
         face_start = link_face_starts[link_idx]
@@ -77,61 +75,6 @@ def forward_meshes_from_links(
             meshes_by_batch[batch_idx].append(_make_trimesh(vertices=batch_vertices, faces=faces_np))
 
     return [_concatenate_meshes(batch_meshes) for batch_meshes in meshes_by_batch]
-
-
-def link_mesh(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    link_names: list[str],
-    link_name: str,
-) -> Trimesh:
-    """Return the static mesh chunk for one rigid link."""
-    link_idx = link_names.index(link_name)
-    vertex_start = link_vertex_starts[link_idx]
-    vertex_count = link_vertex_counts[link_idx]
-    face_start = link_face_starts[link_idx]
-    face_count = link_face_counts[link_idx]
-    return _make_trimesh(
-        vertices=vertices[vertex_start : vertex_start + vertex_count],
-        faces=faces[face_start : face_start + face_count] - vertex_start,
-    )
-
-
-def joint_meshes(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    joint_names: list[str],
-    link_names: list[str],
-    joint_name: str,
-) -> list[Trimesh]:
-    """Return all static mesh chunks attached to one rigid joint."""
-    joint_idx = joint_names.index(joint_name)
-    meshes = []
-    for link_idx, link_name in enumerate(link_names):
-        if link_joint_indices[link_idx] != joint_idx:
-            continue
-        meshes.append(
-            link_mesh(
-                vertices=vertices,
-                faces=faces,
-                link_vertex_starts=link_vertex_starts,
-                link_vertex_counts=link_vertex_counts,
-                link_face_starts=link_face_starts,
-                link_face_counts=link_face_counts,
-                link_names=link_names,
-                link_name=link_name,
-            )
-        )
-    return meshes
 
 
 def _make_trimesh(
@@ -151,7 +94,7 @@ def _as_unbatched_vertices(vertices: Float[Array, "... V 3"]) -> Float[np.ndarra
     if vertices.ndim > 2 and int(np.prod(vertices.shape[:-2])) == 1:
         vertices = vertices.reshape(vertices.shape[-2], vertices.shape[-1])
     if vertices.ndim != 2:
-        raise ValueError("link_mesh returns one Trimesh and only supports unbatched vertices.")
+        raise ValueError("Trimesh construction only supports unbatched vertices.")
     return vertices
 
 

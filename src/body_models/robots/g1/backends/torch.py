@@ -63,7 +63,6 @@ def forward_meshes(
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
     global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-    link_indices: list[int] | None = None,
     rotation_type: core.RotationType = "rotmat",
 ):
     return core.forward_meshes(
@@ -84,7 +83,6 @@ def forward_meshes(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        link_indices=link_indices,
         rotation_type=rotation_type,
         xp=torch,
     )

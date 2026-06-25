@@ -66,7 +66,6 @@ def forward_meshes(
     global_translation: Float[np.ndarray, "B 3"] | None = None,
     *,
     global_rotation: Float[np.ndarray, "B 3"] | None = None,
-    link_indices=None,
 ):
     return core.forward_meshes(
         vertices=weights.vertices,
@@ -90,7 +89,6 @@ def forward_meshes(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        link_indices=link_indices,
         xp=np,
     )
 

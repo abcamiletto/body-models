@@ -11,7 +11,6 @@ from torch import Tensor
 from body_models import common
 from body_models.base import RigidBodyModel
 from trimesh import Trimesh
-from body_models.skeletons.myofullbody.backends import core
 from body_models.skeletons.myofullbody.backends import torch as backend
 from body_models.skeletons.myofullbody.io import load_model_data
 from body_models.skeletons.myofullbody.constants import (
@@ -137,25 +136,22 @@ class MyoFullBody(RigidBodyModel, nn.Module):
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B 3"] | None = None,
-        link_indices: Any | None = None,
     ) -> list[Trimesh]:
-        """Compute posed link meshes.
+        """Compute posed model meshes.
 
         Args:
             body_pose: Local body joint rotations.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
-            link_indices: Optional subset of links to return.
 
         Returns:
-            One posed mesh payload per link.
+            One posed model mesh per batch element.
         """
         return backend.forward_meshes(
             weights=self.weights,
             body_pose=body_pose,
             global_translation=global_translation,
             global_rotation=global_rotation,
-            link_indices=link_indices,
         )
 
     def forward_links(
@@ -174,32 +170,6 @@ class MyoFullBody(RigidBodyModel, nn.Module):
 
     def world_sites(self, skeleton: Float[Tensor, "B J 4 4"]) -> Float[Tensor, "B S 3"]:
         return backend.world_sites(self.weights, skeleton)
-
-    def link_mesh(self, link_name: str) -> Trimesh:
-        return core.link_mesh(
-            vertices=self.weights.vertices,
-            faces=self.weights.faces,
-            link_vertex_starts=self.weights.link_vertex_starts,
-            link_vertex_counts=self.weights.link_vertex_counts,
-            link_face_starts=self.weights.link_face_starts,
-            link_face_counts=self.weights.link_face_counts,
-            link_names=self.weights.link_names,
-            link_name=link_name,
-        )
-
-    def joint_meshes(self, joint_name: str) -> list[Trimesh]:
-        return core.joint_meshes(
-            vertices=self.weights.vertices,
-            faces=self.weights.faces,
-            link_joint_indices=self.weights.link_joint_indices,
-            link_vertex_starts=self.weights.link_vertex_starts,
-            link_vertex_counts=self.weights.link_vertex_counts,
-            link_face_starts=self.weights.link_face_starts,
-            link_face_counts=self.weights.link_face_counts,
-            joint_names=self.weights.joint_names,
-            link_names=self.weights.link_names,
-            joint_name=joint_name,
-        )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device

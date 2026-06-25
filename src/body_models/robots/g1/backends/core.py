@@ -121,11 +121,10 @@ def forward_meshes(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    link_indices: list[int] | None = None,
     rotation_type: RotationType = "rotmat",
     xp: Any = None,
 ) -> list[Trimesh]:
-    """Rigidly transform each G1 STL link mesh and keep link boundaries."""
+    """Rigidly transform and concatenate all G1 STL link meshes."""
     if xp is None:
         xp = get_namespace(body_pose)
     links = forward_links(
@@ -151,7 +150,6 @@ def forward_meshes(
         link_vertex_counts=link_vertex_counts,
         link_face_starts=link_face_starts,
         link_face_counts=link_face_counts,
-        link_indices=link_indices,
         xp=xp,
     )
 
@@ -193,56 +191,6 @@ def forward_links(
         link_geom_positions=link_geom_positions,
         link_geom_rotations=link_geom_rotations,
         xp=xp,
-    )
-
-
-def link_mesh(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    link_names: list[str],
-    link_name: str,
-) -> Trimesh:
-    """Return the static STL mesh chunk for one G1 link mesh."""
-    return rigid.link_mesh(
-        vertices=vertices,
-        faces=faces,
-        link_vertex_starts=link_vertex_starts,
-        link_vertex_counts=link_vertex_counts,
-        link_face_starts=link_face_starts,
-        link_face_counts=link_face_counts,
-        link_names=link_names,
-        link_name=link_name,
-    )
-
-
-def joint_meshes(
-    vertices: Float[Array, "V 3"],
-    faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
-    link_vertex_starts: list[int],
-    link_vertex_counts: list[int],
-    link_face_starts: list[int],
-    link_face_counts: list[int],
-    joint_names: list[str],
-    link_names: list[str],
-    joint_name: str,
-) -> list[Trimesh]:
-    """Return static STL mesh chunks attached to one G1 skeleton joint."""
-    return rigid.joint_meshes(
-        vertices=vertices,
-        faces=faces,
-        link_joint_indices=link_joint_indices,
-        link_vertex_starts=link_vertex_starts,
-        link_vertex_counts=link_vertex_counts,
-        link_face_starts=link_face_starts,
-        link_face_counts=link_face_counts,
-        joint_names=joint_names,
-        link_names=link_names,
-        joint_name=joint_name,
     )
 
 

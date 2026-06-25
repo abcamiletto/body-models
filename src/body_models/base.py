@@ -170,7 +170,7 @@ class SkinnedModel(BodyModel):
 
 
 class RigidBodyModel(BodyModel):
-    """Base class for rigid articulated models that expose meshes per link."""
+    """Base class for rigid articulated models."""
 
     @property
     @abstractmethod
@@ -181,10 +181,6 @@ class RigidBodyModel(BodyModel):
     @abstractmethod
     def link_joint_indices(self) -> list[int]:
         """Joint index associated with each link mesh."""
-
-    @abstractmethod
-    def link_mesh(self, link_name: str) -> Trimesh:
-        """Return rest-pose mesh data for a link."""
 
     @abstractmethod
     def forward_links(self, *args, **kwargs) -> Any:
