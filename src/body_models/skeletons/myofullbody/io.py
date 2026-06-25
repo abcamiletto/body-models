@@ -509,7 +509,12 @@ def _build_link_meshes(
     )
 
 
-def load_stl_mesh(path: Path, *, dtype=np.float32, scale: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+def load_stl_mesh(
+    path: Path,
+    *,
+    dtype=np.float32,
+    scale: Float[np.ndarray, "3"] | None = None,
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     """Load an STL into kimodo coordinates, applying an optional per-mesh ``scale``.
 
     ``scale`` is the MJCF ``<mesh scale="...">`` triple, applied in the STL's own

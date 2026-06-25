@@ -150,8 +150,8 @@ def joint_meshes(
 
 def _make_trimesh(
     *,
-    vertices: Any,
-    faces: Any,
+    vertices: Float[Array, "... V 3"],
+    faces: Int[Array, "F 3"],
     name: str,
     joint_index: int,
     joint_name: str,
@@ -171,7 +171,7 @@ def _make_trimesh(
     return mesh
 
 
-def _as_unbatched_vertices(vertices: Any) -> np.ndarray:
+def _as_unbatched_vertices(vertices: Float[Array, "... V 3"]) -> Float[np.ndarray, "V 3"]:
     vertices = _as_numpy(vertices)
     if vertices.ndim > 2 and int(np.prod(vertices.shape[:-2])) == 1:
         vertices = vertices.reshape(vertices.shape[-2], vertices.shape[-1])
@@ -180,7 +180,7 @@ def _as_unbatched_vertices(vertices: Any) -> np.ndarray:
     return vertices
 
 
-def _as_numpy(value: Any) -> np.ndarray:
+def _as_numpy(value: Float[Array, "..."] | Int[Array, "..."]) -> Float[np.ndarray, "..."] | Int[np.ndarray, "..."]:
     if hasattr(value, "detach"):
         value = value.detach()
     if hasattr(value, "cpu"):

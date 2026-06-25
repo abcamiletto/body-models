@@ -3,16 +3,19 @@
 from pathlib import Path
 import struct
 
+from jaxtyping import Float, Int
 import numpy as np
+
+Array = np.ndarray
 
 
 def load_stl_mesh(
     path: Path,
     *,
-    coord: np.ndarray | None = None,
+    coord: Float[Array, "3 3"] | None = None,
     dtype=np.float32,
-    scale: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
+    scale: Float[Array, "3"] | None = None,
+) -> tuple[Float[Array, "V 3"], Int[Array, "F 3"]]:
     """Load an STL mesh, optionally applying MJCF scale and a coordinate transform."""
     data = path.read_bytes()
     if _looks_like_binary_stl(data):
@@ -30,7 +33,7 @@ def load_stl_mesh(
     return vertices, faces
 
 
-def _load_ascii_stl_raw(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _load_ascii_stl_raw(text: str, *, dtype) -> tuple[Float[Array, "V 3"], Int[Array, "F 3"]]:
     vertices: list[list[float]] = []
     for line in text.splitlines():
         parts = line.strip().split()
@@ -47,7 +50,7 @@ def _load_ascii_stl_raw(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
 _BINARY_STL_TRI_DTYPE = np.dtype([("normal", "<f4", 3), ("vertices", "<f4", (3, 3)), ("attr", "<u2")])
 
 
-def _load_binary_stl_raw(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _load_binary_stl_raw(data: bytes, *, dtype) -> tuple[Float[Array, "V 3"], Int[Array, "F 3"]]:
     n_tri = struct.unpack_from("<I", data, 80)[0]
     if len(data) < 84 + n_tri * 50:
         raise ValueError("Binary STL is truncated")

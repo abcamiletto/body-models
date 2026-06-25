@@ -343,7 +343,7 @@ def _load_link_meshes(
     return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
 
 
-def load_stl_mesh(path: Path, *, dtype=np.float32) -> tuple[np.ndarray, np.ndarray]:
+def load_stl_mesh(path: Path, *, dtype=np.float32) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     return _load_stl_mesh(path, coord=MUJOCO_TO_KIMODO, dtype=dtype)
 
 

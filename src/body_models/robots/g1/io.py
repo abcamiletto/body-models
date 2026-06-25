@@ -410,8 +410,11 @@ def _load_link_meshes(
 
 
 def load_stl_mesh(
-    path: Path, *, coord: np.ndarray = MUJOCO_TO_KIMODO, dtype=np.float32
-) -> tuple[np.ndarray, np.ndarray]:
+    path: Path,
+    *,
+    coord: Float[np.ndarray, "3 3"] = MUJOCO_TO_KIMODO,
+    dtype=np.float32,
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     return _load_stl_mesh(path, coord=coord, dtype=dtype)
 
 
