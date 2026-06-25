@@ -12,12 +12,12 @@ def mesh_vertices(meshes):
 
 
 def assert_pose_helpers_round_trip(model, pose) -> None:
-    pose_by_joint = model.split_pose(pose)
+    pose_by_joint = model.unpack_pose(pose)
     assert list(pose_by_joint) == list(dict.fromkeys(model.actuated_joint_names))
     assert sum(value.shape[-1] for value in pose_by_joint.values()) == model.num_actuated
     for value in pose_by_joint.values():
         assert value.shape[:-1] == pose.shape[:-1]
-    np.testing.assert_array_equal(np.asarray(model.merge_pose(pose_by_joint)), np.asarray(pose))
+    np.testing.assert_array_equal(np.asarray(model.pack_pose(pose_by_joint)), np.asarray(pose))
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)

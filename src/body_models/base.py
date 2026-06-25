@@ -202,14 +202,14 @@ class RigidBodyModel(BodyModel):
             start = stop
         return slices
 
-    def split_pose(self, pose: Any) -> dict[str, Any]:
-        """Split a flattened pose ``[..., Q]`` into ``name -> [..., dof]`` arrays."""
+    def unpack_pose(self, pose: Any) -> dict[str, Any]:
+        """Unpack a flattened pose ``[..., Q]`` into ``name -> [..., dof]`` arrays."""
         if pose.shape[-1] != self.num_actuated:
             raise ValueError(f"pose must have shape [..., {self.num_actuated}], got {tuple(pose.shape)}")
         return {name: pose[..., joint_slice] for name, joint_slice in self.actuated_joint_slices.items()}
 
-    def merge_pose(self, pose_by_joint: Mapping[str, Any]) -> Any:
-        """Merge ``name -> [..., dof]`` arrays into a flattened pose ``[..., Q]``."""
+    def pack_pose(self, pose_by_joint: Mapping[str, Any]) -> Any:
+        """Pack ``name -> [..., dof]`` arrays into a flattened pose ``[..., Q]``."""
         pieces = []
         expected_names = set(self.actuated_joint_slices)
         extra_names = set(pose_by_joint) - expected_names
