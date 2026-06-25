@@ -74,7 +74,8 @@ def apply_pose_correctives(
     z = feat @ correctives.corrective_W1
     z = xp.maximum(z, xp.asarray(0.0, dtype=feat.dtype))
 
-    return xp.asarray(z @ correctives.corrective_W2).reshape(*batch_shape, data.mean_full.shape[0], 3)
+    z_flat = z.reshape(-1, z.shape[-1])
+    return xp.asarray(z_flat @ correctives.corrective_W2).reshape(*batch_shape, data.mean_full.shape[0], 3)
 
 
 def linear_blend_skinning(

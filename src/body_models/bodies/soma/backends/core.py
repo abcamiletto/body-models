@@ -45,6 +45,53 @@ def prepare_identity_from_rest_shape(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool = False,
 ) -> SomaIdentity:
+    if data.procedural is not None and data.public_joint_regressor is not None:
+        public_parents = public_parents_full(data)
+        public_children = _joint_children(public_parents)
+        public_skinned_vertices = [
+            _index_list(xp.where(data.public_skin_weights_full[:, joint_index] > 0.01)[0])
+            for joint_index in range(data.public_skin_weights_full.shape[1])
+        ]
+        rest_shape_full, public_world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
+            xp=xp,
+            bind_shape=data.bind_shape_full,
+            bind_pose_world=_public_joint_values(xp, data.bind_pose_world, data),
+            joint_regressor=data.public_joint_regressor,
+            joint_children_full=public_children,
+            joint_children_indices_full=_pad_indices(xp, public_children),
+            skinned_vertex_indices_full=public_skinned_vertices,
+            skinned_vertex_indices_full_index=_pad_indices(xp, public_skinned_vertices),
+            parents_full=public_parents,
+            rest_shape=rest_shape_full,
+            match_warp=match_warp,
+        )
+        public_skin_weights_active = (
+            data.public_skin_weights_full if data.vertex_map is None else data.public_skin_weights_full[data.vertex_map]
+        )
+        public_bind_pose_local = _joint_world_to_local(
+            xp,
+            _public_joint_values(xp, data.bind_pose_world, data),
+            public_parents,
+        )
+        bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
+            xp=xp,
+            rest_shape=rest_shape_active,
+            skin_weights=public_skin_weights_active,
+            world_bind_pose_fit=public_world_bind_pose_fit,
+            bind_pose_local=public_bind_pose_local,
+            kinematic_fronts=compute_fronts(public_parents),
+            parents_full=public_parents,
+            linear_blend_skinning_fn=linear_blend_skinning_fn,
+        )
+        public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
+        world_bind_pose = _expand_public_bind_pose(xp, data, public_world_bind_pose)
+        inverse_world_bind_pose = _invert_transforms(xp, world_bind_pose)
+        identity: SomaIdentity = {"world_bind_pose": world_bind_pose}
+        if not skip_vertices:
+            identity["rest_vertices"] = bind_shape_active * 0.01
+            identity["inverse_world_bind_pose"] = inverse_world_bind_pose
+        return identity
+
     rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
         xp=xp,
         bind_shape=data.bind_shape_full,
@@ -76,6 +123,71 @@ def prepare_identity_from_rest_shape(
         identity["rest_vertices"] = bind_shape_active * 0.01
         identity["inverse_world_bind_pose"] = inverse_world_bind_pose
     return identity
+
+
+def _public_joint_values(xp: Any, values: Array, data: Any) -> Array:
+    return values[xp.asarray(data.procedural.public_joint_indices_full)]
+
+
+def _joint_children(parents: list[int]) -> list[list[int]]:
+    children = [[] for _ in parents]
+    for joint, parent in enumerate(parents):
+        if joint != parent:
+            children[parent].append(joint)
+    return children
+
+
+def _index_list(indices: Any) -> list[int]:
+    if hasattr(indices, "detach"):
+        return [int(value) for value in indices.detach().cpu().tolist()]
+    return [int(value) for value in indices.tolist()]
+
+
+def _pad_indices(xp: Any, indices: list[list[int]]) -> Array:
+    width = max((len(row) for row in indices), default=0)
+    dtype = getattr(xp, "int32", int)
+    out = xp.zeros((len(indices), width), dtype=dtype)
+    for row_index, row in enumerate(indices):
+        if row:
+            out = common.set(out, (row_index, slice(0, len(row))), xp.asarray(row, dtype=dtype), xp=xp)
+    return out
+
+
+def compute_fronts(parents: list[int]) -> list[Front]:
+    processed: set[int] = set()
+    fronts: list[Front] = []
+    while len(processed) < len(parents):
+        joints = []
+        joint_parents = []
+        for joint, parent in enumerate(parents):
+            if joint in processed:
+                continue
+            if parent == joint or parent in processed:
+                joints.append(joint)
+                joint_parents.append(-1 if parent == joint else parent)
+        if not joints:
+            raise ValueError(f"Invalid SOMA parent chain: {parents}")
+        fronts.append((joints, joint_parents))
+        processed.update(joints)
+    return fronts
+
+
+def _pin_root_transform(xp: Any, transforms: Array) -> Array:
+    eye = common.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
+    return common.set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
+
+
+def _expand_public_bind_pose(xp: Any, data: Any, public_world_bind_pose: Array) -> Array:
+    public_indices = xp.asarray(data.procedural.public_joint_indices_full)
+    batch_shape = public_world_bind_pose.shape[:-3]
+    target = xp.broadcast_to(data.bind_pose_world, (*batch_shape, *data.bind_pose_world.shape))
+    if hasattr(target, "clone"):
+        target = target.clone()
+    elif hasattr(target, "copy"):
+        target = target.copy()
+    target = common.set(target, (..., public_indices, slice(None), slice(None)), public_world_bind_pose, xp=xp)
+    translations = xp.asarray(data.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
+    return common.set(target, (..., slice(None), slice(None, 3), 3), translations, xp=xp)
 
 
 def forward_vertices(
@@ -633,7 +745,11 @@ def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
 
 def _joint_world_to_local(xp, world: Float[Array, "B J 4 4"], parents_full: list[int]) -> Float[Array, "B J 4 4"]:
     inv = _invert_transforms(xp, world)
-    return inv[..., xp.asarray(parents_full), :, :] @ world
+    local = inv[..., xp.asarray(parents_full), :, :] @ world
+    for joint, parent in enumerate(parents_full):
+        if joint == parent:
+            local = common.set(local, (..., joint, slice(None), slice(None)), world[..., joint, :, :], xp=xp)
+    return local
 
 
 def linear_blend_skinning(

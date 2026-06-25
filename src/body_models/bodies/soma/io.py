@@ -93,6 +93,7 @@ class SomaTopology:
 class SomaProceduralRig:
     public_joint_indices_full: Int[np.ndarray, "Jp"]
     rotation_matrix: Float[np.ndarray, "T Jp"]
+    translation_matrix: Float[np.ndarray, "Jf Jf"]
     source_axis_ids: Int[np.ndarray, "Jp"]
     source_axis_signs: Float[np.ndarray, "Jp"]
     twist_joint_indices: Int[np.ndarray, "T"]
@@ -113,6 +114,7 @@ class SomaWeights:
     t_pose_world: Float[np.ndarray, "Jf 4 4"]
     t_pose_local: Float[np.ndarray, "Jf 4 4"]
     joint_regressor: Float[np.ndarray, "Jf Vf"]
+    public_joint_regressor: Float[np.ndarray, "Jp Vf"] | None
     skin_weights_full: Float[np.ndarray, "Vf Jf"]
     skin_weights_active: Float[np.ndarray, "Va Jf"]
     skin_joint_indices_active: Int[np.ndarray, "Va K"]
@@ -543,11 +545,14 @@ def _load_soma_02_procedural_data(asset_dir: Path, joint_names: list[str]) -> tu
     segments = data.get("segments")
     rotation_matrix = data.get("parameter_matrices", {}).get("rotation", {})
     rotation_entries = rotation_matrix.get("entries")
+    translation_matrix = data.get("parameter_matrices", {}).get("translation", {})
+    translation_entries = translation_matrix.get("entries")
     if (
         not isinstance(public_names, list)
         or not all(isinstance(name, str) for name in public_names)
         or not isinstance(segments, list)
         or not isinstance(rotation_entries, list)
+        or not isinstance(translation_entries, list)
     ):
         raise ValueError(
             f"Invalid SOMA procedural transform definition: {asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET}"
@@ -582,9 +587,20 @@ def _load_soma_02_procedural_data(asset_dir: Path, joint_names: list[str]) -> tu
         column = public_index[str(entry["column"])]
         procedural_rotation_matrix[row, column] = float(entry["value"])
 
+    procedural_translation_matrix = np.eye(len(joint_names), dtype=np.float32)
+    cleared_rows: set[int] = set()
+    for entry in translation_entries:
+        row = joint_index[str(entry["row"])]
+        column = joint_index[str(entry["column"])]
+        if row not in cleared_rows:
+            procedural_translation_matrix[row] = 0.0
+            cleared_rows.add(row)
+        procedural_translation_matrix[row, column] = float(entry["value"])
+
     return public_names, SomaProceduralRig(
         public_joint_indices_full=public_indices,
         rotation_matrix=procedural_rotation_matrix,
+        translation_matrix=procedural_translation_matrix,
         source_axis_ids=source_axis_ids,
         source_axis_signs=source_axis_signs,
         twist_joint_indices=twist_indices,
@@ -1177,6 +1193,16 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         joint_parents=joint_parents_full,
         vertex_ids_to_exclude=facial_inner,
     )
+    public_joint_regressor = None
+    if public_skin_weights is not None and "public_rig_data" in rig_data:
+        public_rig_data = rig_data["public_rig_data"]
+        public_joint_regressor = _build_joint_position_regressor(
+            bind_shape=np.asarray(public_rig_data["bind_shape"], dtype=np.float32),
+            bind_world_transforms=np.asarray(public_rig_data["bind_pose_world"], dtype=np.float32),
+            skin_weights=public_skin_weights,
+            joint_parents=np.asarray(public_rig_data["joint_parent_ids"], dtype=np.int64),
+            vertex_ids_to_exclude=facial_inner,
+        )
 
     joint_children_full = _get_joint_children_ids(joint_parents_full)
     skinned_vertex_indices_full = [
@@ -1198,6 +1224,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         t_pose_world=t_pose_world,
         t_pose_local=t_pose_local,
         joint_regressor=joint_regressor,
+        public_joint_regressor=public_joint_regressor,
         skin_weights_full=skin_weights,
         skin_weights_active=skin_weights,
         skin_joint_indices_active=skin_joint_indices,
