@@ -269,6 +269,8 @@ class ANNY(SkinnedModel, nn.Module):
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(torch, pose)
         if hands != "default":
+            if self.num_joints != pose_utils.DEFAULT_NUM_JOINTS:
+                raise ValueError(f"ANNY hands={hands!r} presets are only available for the default rig.")
             preset = ANNY_HAND_PRESETS[hands]
             axis_angle = torch.asarray(preset, device=device, dtype=dtype).reshape(-1, 3)
             axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
@@ -288,6 +290,8 @@ class ANNY(SkinnedModel, nn.Module):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, Tensor]:
+        if self.num_joints != pose_utils.DEFAULT_NUM_JOINTS:
+            raise ValueError("ANNY t-pose preset is only available for the default rig.")
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = torch.as_tensor(
             ANNY_BODY_PRESETS["t_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype

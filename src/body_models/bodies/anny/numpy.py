@@ -258,6 +258,8 @@ class ANNY(SkinnedModel):
         )
         global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(np, pose)
         if hands != "default":
+            if self.num_joints != pose_utils.DEFAULT_NUM_JOINTS:
+                raise ValueError(f"ANNY hands={hands!r} presets are only available for the default rig.")
             axis_angle = np.asarray(ANNY_HAND_PRESETS[hands], dtype=dtype).reshape(-1, 3)
             axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np).copy()
@@ -276,6 +278,8 @@ class ANNY(SkinnedModel):
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs,
     ) -> dict[str, np.ndarray]:
+        if self.num_joints != pose_utils.DEFAULT_NUM_JOINTS:
+            raise ValueError("ANNY t-pose preset is only available for the default rig.")
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = np.asarray(ANNY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
