@@ -35,18 +35,6 @@ class BodyModel(ABC):
     has_head: bool = False
     kernels: ClassVar[tuple[str, ...]] = ("numpy",)
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
-    POSE_PARAMETER_NAMES: ClassVar[frozenset[str]] = frozenset(
-        {
-            "body_pose",
-            "hand_pose",
-            "head_pose",
-            "pelvis_rotation",
-            "head_rotation",
-            "wrist_rotation",
-            "global_rotation",
-            "global_translation",
-        }
-    )
 
     @property
     @abstractmethod
@@ -123,17 +111,6 @@ class BodyModel(ABC):
     ) -> dict[str, Any]:
         """Get parameters for the MHR-style A-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
-
-    def get_bind_params(self, **forward_kwargs: Any) -> dict[str, Any]:
-        """Return rest-pose params with identity/shape params copied from current params."""
-        if not forward_kwargs:
-            return self.get_rest_pose()
-
-        bind_params = self.get_rest_pose()
-        for name, value in forward_kwargs.items():
-            if name in bind_params and name not in self.POSE_PARAMETER_NAMES:
-                bind_params[name] = value
-        return bind_params
 
 
 class SkinnedModel(BodyModel):
