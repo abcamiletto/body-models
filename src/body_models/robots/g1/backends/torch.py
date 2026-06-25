@@ -10,7 +10,7 @@ from body_models.robots.g1.io import G1Weights
 
 def forward_skeleton(
     weights: G1Weights,
-    body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+    body_pose: Float[Tensor, "B Q"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
     global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -34,7 +34,7 @@ def forward_skeleton(
 
 def forward_links(
     weights: G1Weights,
-    body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+    body_pose: Float[Tensor, "B Q"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
     global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -59,7 +59,7 @@ def forward_links(
 
 def forward_meshes(
     weights: G1Weights,
-    body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+    body_pose: Float[Tensor, "B Q"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
     global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,

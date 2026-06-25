@@ -37,13 +37,12 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         Args:
             model_path: Path to model assets, or the default assets when omitted.
             side: Hand side to load.
-            rotation_type: Rotation representation expected by pose inputs.
+            rotation_type: Rotation representation expected by global_rotation.
         """
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
-        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.weights = common.torchify(load_model_data(model_path, side=side))
 
     @property
@@ -112,7 +111,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
 
     def forward_skeleton(
         self,
-        hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        hand_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -121,7 +120,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         """Compute posed joint transforms.
 
         Args:
-            hand_pose: Local hand joint rotations.
+            hand_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
             joint_indices: Optional subset of joints to return.
@@ -140,7 +139,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
 
     def forward_meshes(
         self,
-        hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        hand_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -148,7 +147,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         """Compute posed model meshes.
 
         Args:
-            hand_pose: Local hand joint rotations.
+            hand_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
 
@@ -165,7 +164,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
 
     def forward_links(
         self,
-        hand_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        hand_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -189,20 +188,10 @@ class BrainCoHand(RigidBodyModel, nn.Module):
 
         device = self.weights.vertices.device
         global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
-        qpos = torch.zeros((self.num_actuated, 1), device=device, dtype=dtype)
+        hand_pose = torch.zeros((self.num_actuated,), device=device, dtype=dtype)
         if hands != "default":
-            qpos = torch.as_tensor(BRAINCO_HAND_PRESETS[self.side][hands], device=device, dtype=dtype).reshape(-1, 1)
-        qpos = torch.broadcast_to(qpos, (*batch_dims, *qpos.shape))
-        axes = self.weights.actuated_joint_axes
-        rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=torch)
-        dst_kwargs = {"hinge": {"axes": axes}}.get(self.rotation_type, {})
-        hand_pose = SO3.convert(
-            rotmat,
-            src="rotmat",
-            dst=self.rotation_type,
-            dst_kwargs=dst_kwargs,
-            xp=torch,
-        )
+            hand_pose = torch.as_tensor(BRAINCO_HAND_PRESETS[self.side][hands], device=device, dtype=dtype)
+        hand_pose = torch.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))
         return {
             "hand_pose": hand_pose,
             "global_rotation": SO3.identity_as(

@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, NotRequired, TypedDict
 
+from array_api_compat import get_namespace
 from body_models.constants import Joint
 from trimesh import Trimesh
 
@@ -181,6 +182,48 @@ class RigidBodyModel(BodyModel):
     def num_actuated(self) -> int:
         """Number of actuated pose coordinates."""
         return len(self.actuated_joint_names)
+
+    @property
+    def actuated_joint_slices(self) -> Mapping[str, slice]:
+        """Consecutive scalar coordinate slices keyed by actuated joint name."""
+        slices = {}
+        seen = set()
+        start = 0
+        names = self.actuated_joint_names
+        while start < len(names):
+            name = names[start]
+            if name in seen:
+                raise ValueError(f"Actuated joint name {name!r} is repeated in non-consecutive groups.")
+            seen.add(name)
+            stop = start + 1
+            while stop < len(names) and names[stop] == name:
+                stop += 1
+            slices[name] = slice(start, stop)
+            start = stop
+        return slices
+
+    def split_pose(self, pose: Any) -> dict[str, Any]:
+        """Split a flattened pose ``[..., Q]`` into ``name -> [..., dof]`` arrays."""
+        if pose.shape[-1] != self.num_actuated:
+            raise ValueError(f"pose must have shape [..., {self.num_actuated}], got {tuple(pose.shape)}")
+        return {name: pose[..., joint_slice] for name, joint_slice in self.actuated_joint_slices.items()}
+
+    def merge_pose(self, pose_by_joint: Mapping[str, Any]) -> Any:
+        """Merge ``name -> [..., dof]`` arrays into a flattened pose ``[..., Q]``."""
+        pieces = []
+        expected_names = set(self.actuated_joint_slices)
+        extra_names = set(pose_by_joint) - expected_names
+        if extra_names:
+            raise KeyError(f"Unknown actuated joint names: {sorted(extra_names)}")
+        for name, joint_slice in self.actuated_joint_slices.items():
+            if name not in pose_by_joint:
+                raise KeyError(f"Missing actuated joint name: {name!r}")
+            value = pose_by_joint[name]
+            dof = joint_slice.stop - joint_slice.start
+            if value.shape[-1] != dof:
+                raise ValueError(f"{name!r} must have shape [..., {dof}], got {tuple(value.shape)}")
+            pieces.append(value)
+        return get_namespace(*pieces).concat(pieces, axis=-1)
 
     @property
     @abstractmethod

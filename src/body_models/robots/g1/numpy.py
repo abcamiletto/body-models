@@ -32,13 +32,12 @@ class G1(RigidBodyModel):
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
-            rotation_type: Rotation representation expected by pose inputs.
+            rotation_type: Rotation representation expected by global_rotation.
             convention: Skeleton convention used when loading rigid model data.
         """
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
-        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.convention = convention
         self.weights = load_model_data(model_path, convention=convention)
 
@@ -108,7 +107,7 @@ class G1(RigidBodyModel):
 
     def forward_skeleton(
         self,
-        body_pose: Float[np.ndarray, "B Q N"] | Float[np.ndarray, "B Q 3 3"],
+        body_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -117,7 +116,7 @@ class G1(RigidBodyModel):
         """Compute posed joint transforms.
 
         Args:
-            body_pose: Local body joint rotations.
+            body_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
             joint_indices: Optional subset of joints to return.
@@ -136,7 +135,7 @@ class G1(RigidBodyModel):
 
     def forward_meshes(
         self,
-        body_pose: Float[np.ndarray, "B Q N"] | Float[np.ndarray, "B Q 3 3"],
+        body_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -144,7 +143,7 @@ class G1(RigidBodyModel):
         """Compute posed model meshes.
 
         Args:
-            body_pose: Local body joint rotations.
+            body_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
 
@@ -161,7 +160,7 @@ class G1(RigidBodyModel):
 
     def forward_links(
         self,
-        body_pose: Float[np.ndarray, "B Q N"] | Float[np.ndarray, "B Q 3 3"],
+        body_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -175,14 +174,7 @@ class G1(RigidBodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
-        pose_ref = np.zeros((*batch_dims, self.num_actuated, 3), dtype=dtype)
         global_ref = np.zeros((*batch_dims, 3), dtype=dtype)
-        body_pose = SO3.identity_as(
-            pose_ref,
-            batch_dims=(*batch_dims, self.num_actuated),
-            rotation_type=self.rotation_type,
-            xp=np,
-        ).copy()
         global_rotation = SO3.identity_as(
             global_ref,
             batch_dims=batch_dims,
@@ -190,7 +182,7 @@ class G1(RigidBodyModel):
             xp=np,
         ).copy()
         return {
-            "body_pose": body_pose,
+            "body_pose": np.zeros((*batch_dims, self.num_actuated), dtype=dtype),
             "global_rotation": global_rotation,
             "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }
@@ -203,14 +195,14 @@ class G1(RigidBodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(G1_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.weights.actuated_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"axes": self.weights.actuated_joint_axes}
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
-            dst=self.rotation_type,
+            dst="hinge",
             dst_kwargs=dst_kwargs,
             xp=np,
-        ).copy()
+        )[..., 0].copy()
         return params
 
     def get_apose(
@@ -221,12 +213,12 @@ class G1(RigidBodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(G1_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.weights.actuated_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"axes": self.weights.actuated_joint_axes}
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
-            dst=self.rotation_type,
+            dst="hinge",
             dst_kwargs=dst_kwargs,
             xp=np,
-        ).copy()
+        )[..., 0].copy()
         return params

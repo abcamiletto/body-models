@@ -35,14 +35,13 @@ class G1(RigidBodyModel, nn.Module):
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
-            rotation_type: Rotation representation expected by pose inputs.
+            rotation_type: Rotation representation expected by global_rotation.
             convention: Skeleton convention used when loading rigid model data.
         """
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
-        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.convention = convention
         self.weights = common.torchify(load_model_data(model_path, convention=convention))
 
@@ -112,7 +111,7 @@ class G1(RigidBodyModel, nn.Module):
 
     def forward_skeleton(
         self,
-        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -121,7 +120,7 @@ class G1(RigidBodyModel, nn.Module):
         """Compute posed joint transforms.
 
         Args:
-            body_pose: Local body joint rotations.
+            body_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
             joint_indices: Optional subset of joints to return.
@@ -140,7 +139,7 @@ class G1(RigidBodyModel, nn.Module):
 
     def forward_meshes(
         self,
-        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -148,7 +147,7 @@ class G1(RigidBodyModel, nn.Module):
         """Compute posed model meshes.
 
         Args:
-            body_pose: Local body joint rotations.
+            body_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
 
@@ -165,7 +164,7 @@ class G1(RigidBodyModel, nn.Module):
 
     def forward_links(
         self,
-        body_pose: Float[Tensor, "B Q N"] | Float[Tensor, "B Q 3 3"],
+        body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
         global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
@@ -180,14 +179,7 @@ class G1(RigidBodyModel, nn.Module):
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
-        pose_ref = torch.zeros((*batch_dims, self.num_actuated, 3), device=device, dtype=dtype)
         global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
-        body_pose = SO3.identity_as(
-            pose_ref,
-            batch_dims=(*batch_dims, self.num_actuated),
-            rotation_type=self.rotation_type,
-            xp=torch,
-        )
         global_rotation = SO3.identity_as(
             global_ref,
             batch_dims=batch_dims,
@@ -195,7 +187,7 @@ class G1(RigidBodyModel, nn.Module):
             xp=torch,
         )
         return {
-            "body_pose": body_pose,
+            "body_pose": torch.zeros((*batch_dims, self.num_actuated), device=device, dtype=dtype),
             "global_rotation": global_rotation,
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
@@ -212,14 +204,14 @@ class G1(RigidBodyModel, nn.Module):
             dtype=params["body_pose"].dtype,
         )
         axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.weights.actuated_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"axes": self.weights.actuated_joint_axes}
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
-            dst=self.rotation_type,
+            dst="hinge",
             dst_kwargs=dst_kwargs,
             xp=torch,
-        )
+        )[..., 0]
         return params
 
     def get_apose(
@@ -234,12 +226,12 @@ class G1(RigidBodyModel, nn.Module):
             dtype=params["body_pose"].dtype,
         )
         axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        dst_kwargs = {"hinge": {"axes": self.weights.actuated_joint_axes}}.get(self.rotation_type, {})
+        dst_kwargs = {"axes": self.weights.actuated_joint_axes}
         params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
-            dst=self.rotation_type,
+            dst="hinge",
             dst_kwargs=dst_kwargs,
             xp=torch,
-        )
+        )[..., 0]
         return params

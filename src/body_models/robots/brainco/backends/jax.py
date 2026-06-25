@@ -10,7 +10,7 @@ from body_models.robots.brainco.io import BrainCoWeights
 
 def forward_skeleton(
     weights: BrainCoWeights,
-    pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
+    pose: Float[jax.Array, "B Q"],
     global_translation: Float[jax.Array, "B 3"] | None = None,
     *,
     global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
@@ -38,7 +38,7 @@ def forward_skeleton(
 
 def forward_links(
     weights: BrainCoWeights,
-    pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
+    pose: Float[jax.Array, "B Q"],
     global_translation: Float[jax.Array, "B 3"] | None = None,
     *,
     global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
@@ -67,7 +67,7 @@ def forward_links(
 
 def forward_meshes(
     weights: BrainCoWeights,
-    pose: Float[jax.Array, "B Q N"] | Float[jax.Array, "B Q 3 3"],
+    pose: Float[jax.Array, "B Q"],
     global_translation: Float[jax.Array, "B 3"] | None = None,
     *,
     global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,

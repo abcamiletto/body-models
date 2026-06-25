@@ -34,12 +34,11 @@ class BrainCoHand(RigidBodyModel):
         Args:
             model_path: Path to model assets, or the default assets when omitted.
             side: Hand side to load.
-            rotation_type: Rotation representation expected by pose inputs.
+            rotation_type: Rotation representation expected by global_rotation.
         """
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
-        self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.weights = load_model_data(model_path, side=side)
 
     @property
@@ -108,7 +107,7 @@ class BrainCoHand(RigidBodyModel):
 
     def forward_skeleton(
         self,
-        hand_pose: Float[np.ndarray, "B Q N"] | Float[np.ndarray, "B Q 3 3"],
+        hand_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -117,7 +116,7 @@ class BrainCoHand(RigidBodyModel):
         """Compute posed joint transforms.
 
         Args:
-            hand_pose: Local hand joint rotations.
+            hand_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
             joint_indices: Optional subset of joints to return.
@@ -136,7 +135,7 @@ class BrainCoHand(RigidBodyModel):
 
     def forward_meshes(
         self,
-        hand_pose: Float[np.ndarray, "B Q N"] | Float[np.ndarray, "B Q 3 3"],
+        hand_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -144,7 +143,7 @@ class BrainCoHand(RigidBodyModel):
         """Compute posed model meshes.
 
         Args:
-            hand_pose: Local hand joint rotations.
+            hand_pose: Local hinge coordinates.
             global_translation: Global model translation.
             global_rotation: Global model rotation.
 
@@ -161,7 +160,7 @@ class BrainCoHand(RigidBodyModel):
 
     def forward_links(
         self,
-        hand_pose: Float[np.ndarray, "B Q N"] | Float[np.ndarray, "B Q 3 3"],
+        hand_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
         global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
@@ -184,20 +183,10 @@ class BrainCoHand(RigidBodyModel):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         global_ref = np.zeros((*batch_dims, 3), dtype=dtype)
-        qpos = np.zeros((self.num_actuated, 1), dtype=dtype)
+        hand_pose = np.zeros((self.num_actuated,), dtype=dtype)
         if hands != "default":
-            qpos = np.asarray(BRAINCO_HAND_PRESETS[self.side][hands], dtype=dtype).reshape(-1, 1)
-        qpos = np.broadcast_to(qpos, (*batch_dims, *qpos.shape))
-        axes = self.weights.actuated_joint_axes
-        rotmat = SO3.convert(qpos, src="hinge", dst="rotmat", src_kwargs={"axes": axes}, xp=np)
-        dst_kwargs = {"hinge": {"axes": axes}}.get(self.rotation_type, {})
-        hand_pose = SO3.convert(
-            rotmat,
-            src="rotmat",
-            dst=self.rotation_type,
-            dst_kwargs=dst_kwargs,
-            xp=np,
-        )
+            hand_pose = np.asarray(BRAINCO_HAND_PRESETS[self.side][hands], dtype=dtype)
+        hand_pose = np.broadcast_to(hand_pose, (*batch_dims, self.num_actuated)).copy()
         return {
             "hand_pose": hand_pose,
             "global_rotation": SO3.identity_as(
