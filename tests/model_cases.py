@@ -41,6 +41,7 @@ from body_models.smplx import torch as smplx_torch
 from body_models.soma import jax as soma_jax
 from body_models.soma import numpy as soma_numpy
 from body_models.soma import torch as soma_torch
+from body_models.base import RigidBodyModel, SkinnedModel
 
 ASSETS = Path(__file__).parent / "assets"
 
@@ -77,5 +78,9 @@ MODELS = [
     ("smplx", smplx_numpy.SMPLX, smplx_torch.SMPLX, smplx_jax.SMPLX, {"gender": "neutral"}),
     ("soma", soma_numpy.SOMA, soma_torch.SOMA, soma_jax.SOMA, {}),
 ]
+
+RIGID_BODY_MODELS = [model for model in MODELS if issubclass(model[1], RigidBodyModel)]
+
+SKINNED_MODELS = [model for model in MODELS if issubclass(model[1], SkinnedModel)]
 
 REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" / "0.json").exists()]

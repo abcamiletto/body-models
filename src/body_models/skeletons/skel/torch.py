@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.skeletons.skel.backends import torch as backend
 from body_models.skeletons.skel.backends.core import SkelIdentity, SkelPreparedPose
 from body_models.skeletons.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
@@ -25,7 +25,7 @@ from body_models.skeletons.skel.pose import (
 __all__ = ["SKEL"]
 
 
-class SKEL(BodyModel, nn.Module):
+class SKEL(SkinnedModel, nn.Module):
     """SKEL body model with PyTorch backend."""
 
     NUM_BETAS = 10

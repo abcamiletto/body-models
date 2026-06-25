@@ -6,7 +6,7 @@ from typing import Any, Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.bodies.mhr.backends import numpy as backend
 from body_models.bodies.mhr.backends.core import MhrIdentity, MhrPreparedPose
 from body_models.bodies.mhr.constants import (
@@ -23,7 +23,7 @@ from body_models.bodies.mhr.pose import pack_pose, unpack_pose
 __all__ = ["MHR"]
 
 
-class MHR(BodyModel):
+class MHR(SkinnedModel):
     """MHR body model with NumPy backend."""
 
     has_hands = True

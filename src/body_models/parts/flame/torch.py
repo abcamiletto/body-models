@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.parts.flame.backends import torch as torch_backend
@@ -21,7 +21,7 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 __all__ = ["FLAME"]
 
 
-class FLAME(BodyModel, nn.Module):
+class FLAME(SkinnedModel, nn.Module):
     """FLAME head model with PyTorch backend."""
 
     has_head = True

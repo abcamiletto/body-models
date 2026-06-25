@@ -6,7 +6,7 @@ from typing import Any, Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -19,7 +19,7 @@ from body_models.bodies.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PR
 __all__ = ["SMPLH"]
 
 
-class SMPLH(BodyModel):
+class SMPLH(SkinnedModel):
     """SMPL-H body model with NumPy backend."""
 
     has_hands = True

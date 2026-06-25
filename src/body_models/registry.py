@@ -6,7 +6,7 @@ from fnmatch import fnmatchcase
 from importlib import import_module
 from typing import Any, Literal
 
-from body_models.base import BodyModel
+from body_models.base import RigidBodyModel, SkinnedModel
 
 Backend = Literal["numpy", "torch", "jax"]
 ModelInfo = tuple[str, str, dict[str, Any]]
@@ -28,7 +28,13 @@ _MODELS: dict[str, ModelInfo] = {
 }
 
 
-def create_model(model_name: str, *, backend: Backend = "numpy", pretrained: bool = False, **kwargs: Any) -> BodyModel:
+def create_model(
+    model_name: str,
+    *,
+    backend: Backend = "numpy",
+    pretrained: bool = False,
+    **kwargs: Any,
+) -> SkinnedModel | RigidBodyModel:
     """Create a body model by name."""
     name = model_name.strip().lower().replace("-", "_")
     try:

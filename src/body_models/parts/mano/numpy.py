@@ -6,7 +6,7 @@ from typing import Any, Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.parts.mano.backends import numpy as numpy_backend
@@ -19,7 +19,7 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 __all__ = ["MANO"]
 
 
-class MANO(BodyModel):
+class MANO(SkinnedModel):
     """MANO hand model with NumPy backend."""
 
     has_hands = True

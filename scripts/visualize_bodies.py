@@ -13,7 +13,7 @@ import viser
 from nanomanifold import SO3
 
 from body_models.anny.numpy import ANNY
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.flame.numpy import FLAME
 from body_models.garment_measurements.numpy import GarmentMeasurements
 from body_models.mano.numpy import MANO
@@ -28,7 +28,7 @@ from body_models.soma.numpy import SOMA
 DISPLAY_GLOBAL_ROTATIONS = {
     "ANNY": (-np.pi / 2, 0.0, 0.0),
 }
-MODEL_FACTORIES: dict[str, Callable[[], BodyModel]] = {
+MODEL_FACTORIES: dict[str, Callable[[], SkinnedModel]] = {
     "SMPL": lambda: SMPL(gender="neutral"),
     "SMPLH": lambda: SMPLH(gender="neutral"),
     "MANO": lambda: MANO(side="right"),
@@ -133,7 +133,7 @@ CANONICAL_POSE_MODELS = ("SMPL", "SMPLH", "SMPLX", "SKEL", "ANNY", "MHR", "Garme
 
 @dataclass
 class ModelState:
-    model: BodyModel
+    model: SkinnedModel
     params: dict[str, np.ndarray]
     bounds_vertices: np.ndarray
     body_handle: bmv.BodyModelHandle
@@ -217,7 +217,7 @@ def main() -> None:
                 sync_body_handle(state)
 
 
-def load_models(names: list[str] | None) -> dict[str, BodyModel]:
+def load_models(names: list[str] | None) -> dict[str, SkinnedModel]:
     models = {}
     for name in names or list(MODEL_FACTORIES):
         print(f"Loading {name}", flush=True)
@@ -225,7 +225,7 @@ def load_models(names: list[str] | None) -> dict[str, BodyModel]:
     return models
 
 
-def init_states(server: viser.ViserServer, models: dict[str, BodyModel]) -> dict[str, ModelState]:
+def init_states(server: viser.ViserServer, models: dict[str, SkinnedModel]) -> dict[str, ModelState]:
     n = len(models)
     num_rows = (n + GRID_COLS - 1) // GRID_COLS
     states = {}

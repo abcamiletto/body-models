@@ -9,7 +9,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from body_models import common
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.parts.mano.backends import torch as torch_backend
@@ -21,7 +21,7 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 __all__ = ["MANO"]
 
 
-class MANO(BodyModel, nn.Module):
+class MANO(SkinnedModel, nn.Module):
     """MANO hand model with PyTorch backend."""
 
     has_hands = True

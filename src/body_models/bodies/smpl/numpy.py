@@ -6,7 +6,7 @@ from typing import Any, Literal
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
@@ -19,7 +19,7 @@ from body_models.bodies.smpl.io import get_model_path, load_model_data
 __all__ = ["SMPL"]
 
 
-class SMPL(BodyModel):
+class SMPL(SkinnedModel):
     """SMPL body model with NumPy backend."""
 
     NUM_BODY_JOINTS = 23

@@ -8,7 +8,7 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
@@ -32,7 +32,7 @@ SomaPreparedPose = core.SomaPreparedPose
 __all__ = ["SOMA"]
 
 
-class SOMA(BodyModel):
+class SOMA(SkinnedModel):
     """SOMA body model with NumPy backend."""
 
     has_hands = True

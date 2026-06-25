@@ -9,7 +9,6 @@ The upstream model is the ``musclemimic_models`` package from
 from __future__ import annotations
 
 from dataclasses import dataclass
-import struct
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -20,6 +19,7 @@ from nanomanifold import SO3
 
 from body_models import config
 from body_models.cache import download_and_extract, get_cache_dir
+from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 
 # MUJOCO_TO_KIMODO maps MuJoCo's Z-up world to body-models Y-up. MyoFullBody's
 # OpenSim-derived bodies still come out with their lateral axis on Z, so an
@@ -40,15 +40,15 @@ class MyoFullBodyWeights:
     parents: list[int]
     local_offsets: Float[Array, "J 3"]
     rest_local_rotations: Float[Array, "J 3 3"]
-    qpos_joint_names: list[str]
-    qpos_joint_axes: Float[Array, "Q 3"]
-    qpos_joint_anchors: Float[Array, "Q 3"]
-    qpos_joint_types: list[str]
-    qpos_joint_limits: Float[Array, "Q 2"]
+    actuated_joint_names: list[str]
+    actuated_joint_axes: Float[Array, "Q 3"]
+    actuated_joint_anchors: Float[Array, "Q 3"]
+    actuated_joint_types: list[str]
+    actuated_joint_limits: Float[Array, "Q 2"]
     hinge_mask: Float[Array, "Q"]
     slide_mask: Float[Array, "Q"]
-    body_qpos_starts: list[int]
-    body_qpos_counts: list[int]
+    body_actuated_starts: list[int]
+    body_actuated_counts: list[int]
     vertices: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     link_joint_indices: list[int]
@@ -143,21 +143,21 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     local_offsets = np.stack([b["pos"] for b in body_records])
     rest_local_rotations = np.stack([b["rot"] for b in body_records])
 
-    body_qpos_starts: list[int] = []
-    body_qpos_counts: list[int] = []
+    body_actuated_starts: list[int] = []
+    body_actuated_counts: list[int] = []
     cursor = 0
     for body in body_records:
-        body_qpos_starts.append(cursor)
-        body_qpos_counts.append(body["qpos_count"])
+        body_actuated_starts.append(cursor)
+        body_actuated_counts.append(body["qpos_count"])
         cursor += body["qpos_count"]
 
-    qpos_joint_names = [q["name"] for q in qpos_records]
-    qpos_joint_axes = _stack_or_empty(qpos_records, "axis", (0, 3))
-    qpos_joint_anchors = _stack_or_empty(qpos_records, "anchor", (0, 3))
-    qpos_joint_types = [q["type"] for q in qpos_records]
-    qpos_joint_limits = _stack_or_empty(qpos_records, "range", (0, 2))
-    hinge_mask = np.asarray([t == "hinge" for t in qpos_joint_types], dtype=np.float32)
-    slide_mask = np.asarray([t == "slide" for t in qpos_joint_types], dtype=np.float32)
+    actuated_joint_names = [q["name"] for q in qpos_records]
+    actuated_joint_axes = _stack_or_empty(qpos_records, "axis", (0, 3))
+    actuated_joint_anchors = _stack_or_empty(qpos_records, "anchor", (0, 3))
+    actuated_joint_types = [q["type"] for q in qpos_records]
+    actuated_joint_limits = _stack_or_empty(qpos_records, "range", (0, 2))
+    hinge_mask = np.asarray([t == "hinge" for t in actuated_joint_types], dtype=np.float32)
+    slide_mask = np.asarray([t == "slide" for t in actuated_joint_types], dtype=np.float32)
 
     vertices, faces, link_meta = _build_link_meshes(
         link_records,
@@ -176,15 +176,15 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
         parents=parents,
         local_offsets=local_offsets.astype(dtype),
         rest_local_rotations=rest_local_rotations.astype(dtype),
-        qpos_joint_names=qpos_joint_names,
-        qpos_joint_axes=qpos_joint_axes.astype(dtype),
-        qpos_joint_anchors=qpos_joint_anchors.astype(dtype),
-        qpos_joint_types=qpos_joint_types,
-        qpos_joint_limits=qpos_joint_limits.astype(dtype),
+        actuated_joint_names=actuated_joint_names,
+        actuated_joint_axes=actuated_joint_axes.astype(dtype),
+        actuated_joint_anchors=actuated_joint_anchors.astype(dtype),
+        actuated_joint_types=actuated_joint_types,
+        actuated_joint_limits=actuated_joint_limits.astype(dtype),
         hinge_mask=hinge_mask.astype(dtype),
         slide_mask=slide_mask.astype(dtype),
-        body_qpos_starts=body_qpos_starts,
-        body_qpos_counts=body_qpos_counts,
+        body_actuated_starts=body_actuated_starts,
+        body_actuated_counts=body_actuated_counts,
         vertices=vertices.astype(dtype),
         faces=faces.astype(np.int64),
         link_joint_indices=link_meta["joint_indices"],
@@ -509,56 +509,19 @@ def _build_link_meshes(
     )
 
 
-def load_stl_mesh(path: Path, *, dtype=np.float32, scale: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+def load_stl_mesh(
+    path: Path,
+    *,
+    dtype=np.float32,
+    scale: Float[np.ndarray, "3"] | None = None,
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     """Load an STL into kimodo coordinates, applying an optional per-mesh ``scale``.
 
     ``scale`` is the MJCF ``<mesh scale="...">`` triple, applied in the STL's own
     (mujoco) frame before rotating into kimodo. Reflective scales (``det < 0``)
     flip triangle winding so outward normals stay consistent.
     """
-    data = path.read_bytes()
-    if _looks_like_binary_stl(data):
-        raw_verts, faces = _load_binary_stl_raw(data, dtype=dtype)
-    else:
-        raw_verts, faces = _load_ascii_stl_raw(data.decode("utf-8"), dtype=dtype)
-    if scale is not None and not np.allclose(scale, 1.0):
-        raw_verts = raw_verts * scale.astype(raw_verts.dtype, copy=False)
-        if float(np.prod(scale)) < 0.0:
-            faces = faces[:, ::-1].copy()
-    return raw_verts @ MUJOCO_TO_KIMODO.T, faces
-
-
-def _load_ascii_stl_raw(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    vertices: list[list[float]] = []
-    for line in text.splitlines():
-        parts = line.strip().split()
-        if len(parts) == 4 and parts[0].lower() == "vertex":
-            vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    if len(vertices) % 3 != 0 or not vertices:
-        raise ValueError("ASCII STL contains no triangular facets")
-    return (
-        np.asarray(vertices, dtype=dtype),
-        np.arange(len(vertices), dtype=np.int64).reshape(-1, 3),
-    )
-
-
-_BINARY_STL_TRI_DTYPE = np.dtype([("normal", "<f4", 3), ("vertices", "<f4", (3, 3)), ("attr", "<u2")])
-
-
-def _load_binary_stl_raw(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    n_tri = struct.unpack_from("<I", data, 80)[0]
-    if len(data) < 84 + n_tri * 50:
-        raise ValueError("Binary STL is truncated")
-    triangles = np.frombuffer(data, dtype=_BINARY_STL_TRI_DTYPE, count=n_tri, offset=84)
-    vertices = triangles["vertices"].reshape(-1, 3).astype(dtype, copy=False)
-    return vertices, np.arange(n_tri * 3, dtype=np.int64).reshape(-1, 3)
-
-
-def _looks_like_binary_stl(data: bytes) -> bool:
-    if len(data) < 84:
-        return False
-    n_tri = struct.unpack_from("<I", data, 80)[0]
-    return 84 + n_tri * 50 == len(data)
+    return _load_stl_mesh(path, coord=MUJOCO_TO_KIMODO, dtype=dtype, scale=scale)
 
 
 # ----------------------------------------------------------------------------

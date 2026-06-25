@@ -12,7 +12,7 @@ from nanomanifold import SO3
 
 from body_models import common
 
-from body_models.base import BodyModel
+from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
@@ -34,7 +34,7 @@ PathLike = Path | str
 __all__ = ["SOMA"]
 
 
-class SOMA(BodyModel):
+class SOMA(SkinnedModel):
     """SOMA body model with JAX backend."""
 
     has_hands = True
