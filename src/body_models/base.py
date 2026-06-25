@@ -3,7 +3,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, NotRequired, TypedDict
 
 from array_api_compat import get_namespace
+from nanomanifold import SO3
+
+from body_models.common import set as array_set
+from body_models.common import zeros_as
 from body_models.constants import Joint
+from body_models.rotations import RotationType as SO3RotationType
 from trimesh import Trimesh
 
 
@@ -173,6 +178,13 @@ class SkinnedModel(BodyModel):
 class RigidBodyModel(BodyModel):
     """Base class for rigid articulated models."""
 
+    mujoco_to_model: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]] = (
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+    )
+    global_rotation_type: SO3RotationType = "axis_angle"
+
     @property
     @abstractmethod
     def actuated_joint_names(self) -> list[str]:
@@ -224,6 +236,51 @@ class RigidBodyModel(BodyModel):
                 raise ValueError(f"{name!r} must have shape [..., {dof}], got {tuple(value.shape)}")
             pieces.append(value)
         return get_namespace(*pieces).concat(pieces, axis=-1)
+
+    def to_mujoco_qpos(
+        self,
+        pose: Any | None = None,
+        global_translation: Any | None = None,
+        *,
+        global_rotation: Any | None = None,
+        clamp_to_limits: bool = False,
+        body_pose: Any | None = None,
+        hand_pose: Any | None = None,
+    ) -> Any:
+        """Build full MuJoCo ``qpos`` as ``[root_xyz, root_wxyz, pose]``.
+
+        ``pose`` is the model's flattened scalar coordinate vector ``[..., Q]``.
+        The root prefix is converted from the model coordinate frame to MuJoCo's
+        coordinate frame.
+        """
+        pose_candidates = [value for value in (pose, body_pose, hand_pose) if value is not None]
+        if len(pose_candidates) != 1:
+            raise ValueError("to_mujoco_qpos() expects exactly one of pose, body_pose, or hand_pose.")
+        pose = pose_candidates[0]
+        if pose.shape[-1] != self.num_actuated:
+            raise ValueError(f"pose must have shape [..., {self.num_actuated}], got {tuple(pose.shape)}")
+
+        xp = get_namespace(pose)
+        batch_shape = tuple(pose.shape[:-1])
+        if global_translation is None:
+            global_translation = zeros_as(pose, shape=(*batch_shape, 3), xp=xp)
+        if global_rotation is None:
+            root_rot = zeros_as(pose, shape=(*batch_shape, 3, 3), xp=xp)
+            for i in range(3):
+                root_rot = array_set(root_rot, (..., i, i), 1.0, xp=xp)
+        else:
+            root_rot = SO3.convert(global_rotation, src=self.global_rotation_type, dst="rotmat", xp=xp)
+
+        coord = xp.asarray(self.mujoco_to_model, dtype=pose.dtype)
+        model_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)
+        root_t = xp.squeeze(model_to_mujoco @ global_translation[..., None], axis=-1)
+        root_rot_mujoco = model_to_mujoco @ root_rot @ coord
+        root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
+
+        if clamp_to_limits:
+            limits = xp.asarray(self.actuated_joint_limits, dtype=pose.dtype)
+            pose = xp.clip(pose, limits[:, 0], limits[:, 1])
+        return xp.concat([root_t, root_quat, pose], axis=-1)
 
     @property
     @abstractmethod

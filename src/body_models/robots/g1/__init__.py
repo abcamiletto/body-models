@@ -2,8 +2,6 @@
 
 from typing import Any
 
-from body_models.robots.g1.backends import core as _core
-
 __all__ = ["to_mujoco_qpos"]
 
 
@@ -13,16 +11,12 @@ def to_mujoco_qpos(
     global_translation: Any | None = None,
     *,
     global_rotation: Any | None = None,
-    clamp_to_limits: bool = True,
+    clamp_to_limits: bool = False,
 ) -> Any:
     """Convert a G1 body pose to MuJoCo qpos."""
-    return _core.to_mujoco_qpos(
-        actuated_joint_axes=model.weights.actuated_joint_axes,
-        actuated_joint_limits=model.actuated_joint_limits,
-        body_pose=body_pose,
+    return model.to_mujoco_qpos(
+        body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
         clamp_to_limits=clamp_to_limits,
-        rotation_type=model.rotation_type,
-        convention=model.convention,
     )

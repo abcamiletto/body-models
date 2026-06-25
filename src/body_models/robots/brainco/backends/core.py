@@ -15,6 +15,7 @@ from body_models.rotations import RotationType as SO3RotationType
 
 Array = Any
 RotationType = SO3RotationType | Literal["hinge"]
+MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
 VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat", "hinge")
 GLOBAL_ROTATION_TYPES: dict[RotationType, SO3RotationType] = {
     "axis_angle": "axis_angle",

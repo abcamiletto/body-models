@@ -10,6 +10,7 @@ from jaxtyping import Float, Int
 from body_models import common
 from body_models.base import RigidBodyModel
 from trimesh import Trimesh
+from body_models.skeletons.myofullbody.backends import core
 from body_models.skeletons.myofullbody.backends import jax as backend
 from body_models.skeletons.myofullbody.io import load_model_data
 from body_models.skeletons.myofullbody.constants import (
@@ -24,6 +25,7 @@ class MyoFullBody(RigidBodyModel):
     """MyoSuite-derived full-body MJCF model with rigid STL link meshes."""
 
     JOINTS = MYOFULLBODY_JOINTS
+    mujoco_to_model = core.MUJOCO_TO_KIMODO
 
     def __init__(self, model_path: Path | str | None = None) -> None:
         """Initialize the MyoFullBody model.

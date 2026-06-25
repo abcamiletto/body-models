@@ -20,6 +20,17 @@ def assert_pose_helpers_round_trip(model, pose) -> None:
     np.testing.assert_array_equal(np.asarray(model.pack_pose(pose_by_joint)), np.asarray(pose))
 
 
+def assert_mujoco_qpos_matches_pose(model, params) -> None:
+    pose_name = "hand_pose" if "hand_pose" in params else "body_pose"
+    qpos = model.to_mujoco_qpos(
+        **{pose_name: params[pose_name]},
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
+    )
+    assert qpos.shape == (*params[pose_name].shape[:-1], 7 + model.num_actuated)
+    np.testing.assert_allclose(np.asarray(qpos[..., 7:]), np.asarray(params[pose_name]))
+
+
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_torch_and_jax_match_numpy(name, numpy_model, torch_model, jax_model, kwargs) -> None:
     numpy_instance = numpy_model(**kwargs)
@@ -58,6 +69,7 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
     assert_pose_helpers_round_trip(
         torch_instance, torch_params["hand_pose" if "hand_pose" in torch_params else "body_pose"]
     )
+    assert_mujoco_qpos_matches_pose(torch_instance, torch_params)
     with torch.no_grad():
         torch_meshes = torch_instance.forward_meshes(**torch_params)
     assert all(isinstance(mesh, Trimesh) for mesh in torch_meshes)
@@ -71,6 +83,7 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
     jax_instance = jax_model(**kwargs)
     jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     assert_pose_helpers_round_trip(jax_instance, jax_params["hand_pose" if "hand_pose" in jax_params else "body_pose"])
+    assert_mujoco_qpos_matches_pose(jax_instance, jax_params)
     jax_meshes = jax_instance.forward_meshes(**jax_params)
     assert all(isinstance(mesh, Trimesh) for mesh in jax_meshes)
     assert len(jax_meshes) == 2
@@ -98,6 +111,7 @@ def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_mode
     assert params[pose_name].shape == (2, model.num_actuated)
 
     assert_pose_helpers_round_trip(model, params[pose_name])
+    assert_mujoco_qpos_matches_pose(model, params)
 
     assert not hasattr(model, "qpos_joint_names")
     assert not hasattr(model, "qpos_joint_indices")

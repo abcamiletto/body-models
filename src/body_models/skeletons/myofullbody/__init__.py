@@ -21,15 +21,9 @@ def to_mujoco_qpos(
     *,
     global_rotation: Any | None = None,
 ) -> Any:
-    """Convert MyoFullBody body-models inputs to MuJoCo ``qpos`` (length ``7 + Q``).
-
-    ``model`` is accepted for parity with :func:`body_models.robots.g1.to_mujoco_qpos`
-    but is not consulted: ``body_pose`` is already in MJCF qpos order, so only
-    the free-root prefix is computed here.
-    """
-    del model
-    return _core.to_mujoco_qpos(
-        body_pose=body_pose,
+    """Convert MyoFullBody body-models inputs to MuJoCo ``qpos`` (length ``7 + Q``)."""
+    return model.to_mujoco_qpos(
+        body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
     )

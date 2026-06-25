@@ -40,6 +40,8 @@ class G1(RigidBodyModel):
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
+        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
+        self.mujoco_to_model = core.MUJOCO_TO_KIMODO if convention == "soma" else self.mujoco_to_model
         self.convention = convention
         self.weights = common.jaxify(load_model_data(model_path, convention=convention))
 

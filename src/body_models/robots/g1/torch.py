@@ -42,6 +42,8 @@ class G1(RigidBodyModel, nn.Module):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
+        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
+        self.mujoco_to_model = core.MUJOCO_TO_KIMODO if convention == "soma" else self.mujoco_to_model
         self.convention = convention
         self.weights = common.torchify(load_model_data(model_path, convention=convention))
 

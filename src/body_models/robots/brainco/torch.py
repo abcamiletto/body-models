@@ -24,6 +24,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
     """BrainCo Revo 2 as rigid STL links attached to its MuJoCo hand skeleton."""
 
     has_hands = True
+    mujoco_to_model = core.MUJOCO_TO_KIMODO
 
     def __init__(
         self,
@@ -43,6 +44,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
         self.rotation_type = rotation_type
+        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
         self.weights = common.torchify(load_model_data(model_path, side=side))
 
     @property

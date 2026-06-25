@@ -23,6 +23,7 @@ class BrainCoHand(RigidBodyModel):
     """BrainCo Revo 2 as rigid STL links attached to its MuJoCo hand skeleton."""
 
     has_hands = True
+    mujoco_to_model = core.MUJOCO_TO_KIMODO
 
     def __init__(
         self,
@@ -41,6 +42,7 @@ class BrainCoHand(RigidBodyModel):
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         self.rotation_type = rotation_type
+        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
         self.weights = common.jaxify(load_model_data(model_path, side=side))
 
     @property
