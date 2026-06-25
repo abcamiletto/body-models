@@ -54,21 +54,23 @@ def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, k
         np.testing.assert_allclose(skeleton[0, ..., :3, 3], expected, rtol=1e-4, atol=1e-4)
 
 
-def test_soma_021_matches_upstream_pure_lbs() -> None:
+def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
     torch = pytest.importorskip("torch")
     upstream_soma = pytest.importorskip("soma")
 
     model_path = model_assets.get_model_file("soma")
-    required_assets = [
-        model_path / "SOMA_neutral.npz",
-        model_path / "SOMA_template_rig.usda",
-        model_path / "SOMA_procedural_transforms.json",
-    ]
+    upstream_model_path = tmp_path / "soma-upstream"
+    upstream_model_path.mkdir()
+    upstream_npz = model_path / "SOMA_neutral.upstream-0.2.1.npz"
+    required_assets = [upstream_npz, model_path / "SOMA_template_rig.usda", model_path / "SOMA_procedural_transforms.json"]
     if not all(path.exists() for path in required_assets):
         pytest.skip("SOMA 0.2.1 assets are not available")
+    (upstream_model_path / "SOMA_neutral.npz").symlink_to(upstream_npz)
+    for asset in required_assets[1:]:
+        (upstream_model_path / asset.name).symlink_to(asset)
 
     upstream = upstream_soma.SOMALayer(
-        data_root=model_path,
+        data_root=upstream_model_path,
         device="cpu",
         identity_model_type="soma",
         mode="dense",

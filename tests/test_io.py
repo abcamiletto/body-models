@@ -10,9 +10,9 @@ def test_model_loads(name, numpy_model, _torch_model, _jax_model, kwargs) -> Non
     numpy_model(**kwargs)
 
 
-def test_soma_slim_npz_asset_layout_requires_sidecars(tmp_path) -> None:
+def test_soma_slim_npz_asset_layout_requires_rig_fields(tmp_path) -> None:
     np.savez(tmp_path / "SOMA_neutral.npz", mean=np.zeros((1, 3), dtype=np.float32))
     (tmp_path / "correctives_model.pt").touch()
 
-    with pytest.raises(FileNotFoundError, match="Missing sidecars"):
+    with pytest.raises(FileNotFoundError, match="missing required NPZ fields"):
         validate_path(tmp_path)
