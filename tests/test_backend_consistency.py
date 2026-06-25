@@ -8,7 +8,7 @@ LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
 
 def mesh_vertices(meshes):
-    return np.concatenate([np.asarray(mesh.vertices) for mesh in meshes], axis=-2)
+    return np.stack([np.asarray(mesh.vertices) for mesh in meshes], axis=0)
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
@@ -37,17 +37,19 @@ def test_torch_and_jax_match_numpy(name, numpy_model, torch_model, jax_model, kw
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.RIGID_BODY_MODELS)
 def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model, kwargs) -> None:
     numpy_instance = numpy_model(**kwargs)
-    numpy_params = numpy_instance.get_rest_pose(dtype=np.float32)
+    numpy_params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
     expected_meshes = numpy_instance.forward_meshes(**numpy_params)
     assert all(isinstance(mesh, Trimesh) for mesh in expected_meshes)
+    assert len(expected_meshes) == 2
     expected = mesh_vertices(expected_meshes)
 
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
-    torch_params = torch_instance.get_rest_pose(dtype=torch.float32)
+    torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     with torch.no_grad():
         torch_meshes = torch_instance.forward_meshes(**torch_params)
     assert all(isinstance(mesh, Trimesh) for mesh in torch_meshes)
+    assert len(torch_meshes) == 2
     np.testing.assert_allclose(mesh_vertices(torch_meshes), expected, rtol=1e-4, atol=1e-4)
 
     pytest.importorskip("jax")
@@ -55,9 +57,10 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
     import jax.numpy as jnp
 
     jax_instance = jax_model(**kwargs)
-    jax_params = jax_instance.get_rest_pose(dtype=jnp.float32)
+    jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     jax_meshes = jax_instance.forward_meshes(**jax_params)
     assert all(isinstance(mesh, Trimesh) for mesh in jax_meshes)
+    assert len(jax_meshes) == 2
     np.testing.assert_allclose(mesh_vertices(jax_meshes), expected, rtol=1e-4, atol=1e-4)
 
 

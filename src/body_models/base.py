@@ -192,4 +192,4 @@ class RigidBodyModel(BodyModel):
 
     @abstractmethod
     def forward_meshes(self, *args, **kwargs) -> Sequence[Trimesh]:
-        """Build unbatched renderer-facing meshes from link transforms."""
+        """Build one renderer-facing mesh per batch element from link transforms."""

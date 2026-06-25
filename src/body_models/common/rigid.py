@@ -5,6 +5,7 @@ from typing import Any
 from jaxtyping import Float, Int
 import numpy as np
 from trimesh import Trimesh
+from trimesh.util import concatenate
 
 from body_models.common.ops import set, zeros_as
 
@@ -44,7 +45,6 @@ def forward_meshes_from_links(
     links: Float[Array, "... L 4 4"],
     vertices: Float[Array, "V 3"],
     faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
     link_vertex_starts: list[int],
     link_vertex_counts: list[int],
     link_face_starts: list[int],
@@ -53,14 +53,15 @@ def forward_meshes_from_links(
     link_indices: list[int] | None = None,
     xp: Any,
 ) -> list[Trimesh]:
-    """Build one unbatched ``Trimesh`` per requested rigid link."""
+    """Build one concatenated ``Trimesh`` per batch element."""
     link_rot = links[..., :3, :3]
     link_pos = links[..., :3, 3]
     source_vertices = xp.asarray(vertices, dtype=links.dtype)
     source_faces = xp.asarray(faces)
-    indices = range(len(link_joint_indices)) if link_indices is None else link_indices
+    indices = range(len(link_vertex_starts)) if link_indices is None else link_indices
+    batch_size = _batch_size(links)
+    meshes_by_batch: list[list[Trimesh]] = [[] for _ in range(batch_size)]
 
-    meshes = []
     for link_idx in indices:
         vertex_start = link_vertex_starts[link_idx]
         vertex_count = link_vertex_counts[link_idx]
@@ -70,14 +71,17 @@ def forward_meshes_from_links(
         transformed = xp.squeeze(link_rot[..., link_idx, None, :, :] @ local_vertices[..., None], axis=-1)
         mesh_vertices = transformed + link_pos[..., link_idx, None, :]
         mesh_faces = source_faces[face_start : face_start + face_count] - vertex_start
-        meshes.append(_make_trimesh(vertices=mesh_vertices, faces=mesh_faces))
-    return meshes
+        batched_vertices = _as_batched_vertices(mesh_vertices, batch_size=batch_size)
+        faces_np = _as_numpy(mesh_faces)
+        for batch_idx, batch_vertices in enumerate(batched_vertices):
+            meshes_by_batch[batch_idx].append(_make_trimesh(vertices=batch_vertices, faces=faces_np))
+
+    return [_concatenate_meshes(batch_meshes) for batch_meshes in meshes_by_batch]
 
 
 def link_mesh(
     vertices: Float[Array, "V 3"],
     faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
     link_vertex_starts: list[int],
     link_vertex_counts: list[int],
     link_face_starts: list[int],
@@ -119,7 +123,6 @@ def joint_meshes(
             link_mesh(
                 vertices=vertices,
                 faces=faces,
-                link_joint_indices=link_joint_indices,
                 link_vertex_starts=link_vertex_starts,
                 link_vertex_counts=link_vertex_counts,
                 link_face_starts=link_face_starts,
@@ -148,8 +151,30 @@ def _as_unbatched_vertices(vertices: Float[Array, "... V 3"]) -> Float[np.ndarra
     if vertices.ndim > 2 and int(np.prod(vertices.shape[:-2])) == 1:
         vertices = vertices.reshape(vertices.shape[-2], vertices.shape[-1])
     if vertices.ndim != 2:
-        raise ValueError("forward_meshes returns Trimesh objects and only supports unbatched poses.")
+        raise ValueError("link_mesh returns one Trimesh and only supports unbatched vertices.")
     return vertices
+
+
+def _as_batched_vertices(vertices: Float[Array, "... V 3"], *, batch_size: int) -> Float[np.ndarray, "B V 3"]:
+    vertices = _as_numpy(vertices)
+    if vertices.ndim == 2:
+        vertices = vertices[None]
+    if vertices.ndim < 3:
+        raise ValueError("forward_meshes expects vertices with shape [..., V, 3].")
+    return vertices.reshape(batch_size, vertices.shape[-2], vertices.shape[-1])
+
+
+def _batch_size(links: Float[Array, "... L 4 4"]) -> int:
+    batch_shape = links.shape[:-3]
+    if not batch_shape:
+        return 1
+    return int(np.prod(batch_shape))
+
+
+def _concatenate_meshes(meshes: list[Trimesh]) -> Trimesh:
+    if not meshes:
+        return Trimesh(vertices=np.empty((0, 3)), faces=np.empty((0, 3), dtype=np.int64), process=False)
+    return concatenate(meshes)
 
 
 def _as_numpy(value: Any) -> Float[np.ndarray, "..."] | Int[np.ndarray, "..."]:

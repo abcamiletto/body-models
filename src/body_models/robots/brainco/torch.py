@@ -189,7 +189,6 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         return core.link_mesh(
             self.weights.vertices,
             self.weights.faces,
-            self.weights.link_joint_indices,
             self.weights.link_vertex_starts,
             self.weights.link_vertex_counts,
             self.weights.link_face_starts,

@@ -177,7 +177,6 @@ class MyoFullBody(RigidBodyModel):
         return core.link_mesh(
             vertices=self.weights.vertices,
             faces=self.weights.faces,
-            link_joint_indices=self.weights.link_joint_indices,
             link_vertex_starts=self.weights.link_vertex_starts,
             link_vertex_counts=self.weights.link_vertex_counts,
             link_face_starts=self.weights.link_face_starts,

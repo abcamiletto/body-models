@@ -147,7 +147,6 @@ def forward_meshes(
         links=links,
         vertices=vertices,
         faces=faces,
-        link_joint_indices=link_joint_indices,
         link_vertex_starts=link_vertex_starts,
         link_vertex_counts=link_vertex_counts,
         link_face_starts=link_face_starts,
@@ -200,7 +199,6 @@ def forward_links(
 def link_mesh(
     vertices: Float[Array, "V 3"],
     faces: Int[Array, "F 3"],
-    link_joint_indices: list[int],
     link_vertex_starts: list[int],
     link_vertex_counts: list[int],
     link_face_starts: list[int],
@@ -212,7 +210,6 @@ def link_mesh(
     return rigid.link_mesh(
         vertices=vertices,
         faces=faces,
-        link_joint_indices=link_joint_indices,
         link_vertex_starts=link_vertex_starts,
         link_vertex_counts=link_vertex_counts,
         link_face_starts=link_face_starts,

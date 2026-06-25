@@ -16,7 +16,7 @@ def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, k
     model = numpy_model(**kwargs)
     inputs = reference_inputs(name)
     if isinstance(model, RigidBodyModel):
-        vertices = np.concatenate([mesh.vertices for mesh in model.forward_meshes(**inputs)], axis=-2)[None]
+        vertices = np.stack([mesh.vertices for mesh in model.forward_meshes(**inputs)], axis=0)
     else:
         vertices = model.forward_vertices(**inputs)
     if name == "mhr":

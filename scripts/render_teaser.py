@@ -140,17 +140,9 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
     if isinstance(model, RigidBodyModel):
         params = model.get_tpose() if family in TPOSE_FAMILIES else model.get_rest_pose()
-        meshes = model.forward_meshes(**params)
-        vertices = []
-        faces = []
-        vertex_offset = 0
-        for mesh in meshes:
-            mesh_vertices = np.asarray(mesh.vertices, dtype=np.float32)
-            vertices.append(mesh_vertices)
-            faces.append(np.asarray(mesh.faces, dtype=np.int32) + vertex_offset)
-            vertex_offset += mesh_vertices.shape[0]
-        verts = np.concatenate(vertices, axis=0)
-        face_array = np.concatenate(faces, axis=0)
+        mesh = model.forward_meshes(**params)[0]
+        verts = np.asarray(mesh.vertices, dtype=np.float32)
+        face_array = np.asarray(mesh.faces, dtype=np.int32)
     elif family in TPOSE_FAMILIES:
         params = model.get_tpose()
         if family == "anny":
