@@ -23,7 +23,7 @@ def assert_pose_helpers_round_trip(model, pose) -> None:
 def assert_mujoco_qpos_matches_pose(model, params) -> None:
     pose_name = "hand_pose" if "hand_pose" in params else "body_pose"
     qpos = model.to_mujoco_qpos(
-        **{pose_name: params[pose_name]},
+        params[pose_name],
         global_rotation=params["global_rotation"],
         global_translation=params["global_translation"],
     )

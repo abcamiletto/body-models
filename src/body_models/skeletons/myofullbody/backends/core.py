@@ -293,37 +293,6 @@ def world_sites(
 # ----------------------------------------------------------------------------
 
 
-def to_mujoco_qpos(
-    body_pose: Float[Array, "B Q"],
-    global_translation: Float[Array, "B 3"] | None = None,
-    *,
-    global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
-) -> Float[Array, "B 7+Q"]:
-    """Build MuJoCo ``qpos`` (free root + joint scalars) from body-models inputs.
-
-    The first 7 entries are the freejoint values (``xyz`` + ``wxyz``); the rest
-    are scalar joint coordinates in MJCF order.
-    """
-    if xp is None:
-        xp = get_namespace(body_pose)
-    batch_shape = body_pose.shape[:-1]
-    dtype = body_pose.dtype
-    if global_translation is None:
-        global_translation = common.zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)
-    if global_rotation is None:
-        rot_mat = common.eye_as(body_pose, batch_dims=batch_shape, xp=xp)
-    else:
-        rot_mat = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
-
-    coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=dtype)
-    kimodo_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)
-    root_t = xp.squeeze(kimodo_to_mujoco @ global_translation[..., None], axis=-1)
-    root_rot_mujoco = kimodo_to_mujoco @ rot_mat @ coord
-    root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
-    return xp.concat([root_t, root_quat, body_pose], axis=-1)
-
-
 def from_mujoco_qpos(
     qpos: Float[Array, "B 7+Q"],
     *,
