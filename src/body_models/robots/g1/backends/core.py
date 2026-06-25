@@ -10,6 +10,7 @@ from nanomanifold import SO3
 
 from body_models import common
 from body_models.base import MeshPayload
+from body_models.common import rigid
 from body_models.rotations import RotationType as SO3RotationType
 
 Array = Any
@@ -144,31 +145,20 @@ def forward_meshes(
         rotation_type=rotation_type,
         xp=xp,
     )
-    link_rot = links[..., :3, :3]
-    link_pos = links[..., :3, 3]
-    source_vertices = xp.asarray(vertices, dtype=body_pose.dtype)
-    source_faces = xp.asarray(faces)
-    indices = range(len(link_names)) if link_indices is None else link_indices
-
-    meshes = []
-    for link_idx in indices:
-        vertex_start = link_vertex_starts[link_idx]
-        vertex_count = link_vertex_counts[link_idx]
-        face_start = link_face_starts[link_idx]
-        face_count = link_face_counts[link_idx]
-        local_vertices = source_vertices[vertex_start : vertex_start + vertex_count]
-        transformed = xp.squeeze(link_rot[..., link_idx, None, :, :] @ local_vertices[..., None], axis=-1)
-        joint_idx = link_joint_indices[link_idx]
-        meshes.append(
-            {
-                "name": link_names[link_idx],
-                "vertices": transformed + link_pos[..., link_idx, None, :],
-                "faces": source_faces[face_start : face_start + face_count] - vertex_start,
-                "joint_index": joint_idx,
-                "joint_name": joint_names[joint_idx],
-            }
-        )
-    return meshes
+    return rigid.forward_meshes_from_links(
+        links=links,
+        vertices=vertices,
+        faces=faces,
+        link_joint_indices=link_joint_indices,
+        link_vertex_starts=link_vertex_starts,
+        link_vertex_counts=link_vertex_counts,
+        link_face_starts=link_face_starts,
+        link_face_counts=link_face_counts,
+        link_names=link_names,
+        joint_names=joint_names,
+        link_indices=link_indices,
+        xp=xp,
+    )
 
 
 def forward_links(
@@ -202,24 +192,13 @@ def forward_links(
         rotation_type=rotation_type,
         xp=xp,
     )
-    joint_rot = skeleton[..., :3, :3]
-    joint_pos = skeleton[..., :3, 3]
-    geom_pos = xp.asarray(link_geom_positions, dtype=body_pose.dtype)
-    geom_rot = xp.asarray(link_geom_rotations, dtype=body_pose.dtype)
-
-    rotations = []
-    translations = []
-    for link_idx, joint_idx in enumerate(link_joint_indices):
-        link_rot = joint_rot[..., joint_idx, :, :]
-        link_pos = xp.squeeze(link_rot @ geom_pos[link_idx][..., None], axis=-1)
-        rotations.append(link_rot @ geom_rot[link_idx])
-        translations.append(joint_pos[..., joint_idx, :] + link_pos)
-
-    rot = xp.stack(rotations, axis=-3)
-    trans = xp.stack(translations, axis=-2)
-    last_row = common.zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
-    last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
-    return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
+    return rigid.forward_link_transforms(
+        skeleton=skeleton,
+        link_joint_indices=link_joint_indices,
+        link_geom_positions=link_geom_positions,
+        link_geom_rotations=link_geom_rotations,
+        xp=xp,
+    )
 
 
 def link_mesh(
@@ -235,19 +214,18 @@ def link_mesh(
     link_name: str,
 ) -> MeshPayload:
     """Return the static STL mesh chunk for one G1 link mesh."""
-    link_idx = link_names.index(link_name)
-    vertex_start = link_vertex_starts[link_idx]
-    vertex_count = link_vertex_counts[link_idx]
-    face_start = link_face_starts[link_idx]
-    face_count = link_face_counts[link_idx]
-    joint_idx = link_joint_indices[link_idx]
-    return {
-        "name": link_name,
-        "vertices": vertices[vertex_start : vertex_start + vertex_count],
-        "faces": faces[face_start : face_start + face_count] - vertex_start,
-        "joint_index": joint_idx,
-        "joint_name": joint_names[joint_idx],
-    }
+    return rigid.link_mesh(
+        vertices=vertices,
+        faces=faces,
+        link_joint_indices=link_joint_indices,
+        link_vertex_starts=link_vertex_starts,
+        link_vertex_counts=link_vertex_counts,
+        link_face_starts=link_face_starts,
+        link_face_counts=link_face_counts,
+        joint_names=joint_names,
+        link_names=link_names,
+        link_name=link_name,
+    )
 
 
 def joint_meshes(
@@ -263,26 +241,18 @@ def joint_meshes(
     joint_name: str,
 ) -> list[MeshPayload]:
     """Return static STL mesh chunks attached to one G1 skeleton joint."""
-    joint_idx = joint_names.index(joint_name)
-    meshes = []
-    for link_idx, link_name in enumerate(link_names):
-        if link_joint_indices[link_idx] != joint_idx:
-            continue
-
-        vertex_start = link_vertex_starts[link_idx]
-        vertex_count = link_vertex_counts[link_idx]
-        face_start = link_face_starts[link_idx]
-        face_count = link_face_counts[link_idx]
-        meshes.append(
-            {
-                "name": link_name,
-                "vertices": vertices[vertex_start : vertex_start + vertex_count],
-                "faces": faces[face_start : face_start + face_count] - vertex_start,
-                "joint_index": joint_idx,
-                "joint_name": joint_name,
-            }
-        )
-    return meshes
+    return rigid.joint_meshes(
+        vertices=vertices,
+        faces=faces,
+        link_joint_indices=link_joint_indices,
+        link_vertex_starts=link_vertex_starts,
+        link_vertex_counts=link_vertex_counts,
+        link_face_starts=link_face_starts,
+        link_face_counts=link_face_counts,
+        joint_names=joint_names,
+        link_names=link_names,
+        joint_name=joint_name,
+    )
 
 
 def to_mujoco_qpos(

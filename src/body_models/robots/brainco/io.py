@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import shutil
-import struct
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
@@ -16,6 +15,7 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.cache import get_cache_dir
+from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 
 PathLike = Path | str
 Side = Literal["left", "right"]
@@ -344,40 +344,7 @@ def _load_link_meshes(
 
 
 def load_stl_mesh(path: Path, *, dtype=np.float32) -> tuple[np.ndarray, np.ndarray]:
-    data = path.read_bytes()
-    if _looks_like_binary_stl(data):
-        return _load_binary_stl(data, dtype=dtype)
-    return _load_ascii_stl(data.decode("utf-8"), dtype=dtype)
-
-
-def _load_ascii_stl(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    vertices = []
-    for line in text.splitlines():
-        parts = line.strip().split()
-        if len(parts) == 4 and parts[0].lower() == "vertex":
-            vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    if len(vertices) % 3 != 0 or not vertices:
-        raise ValueError("ASCII STL contains no triangular facets")
-    return np.asarray(vertices, dtype=dtype) @ MUJOCO_TO_KIMODO.T, np.arange(len(vertices), dtype=np.int64).reshape(
-        -1, 3
-    )
-
-
-def _load_binary_stl(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    n_tri = struct.unpack_from("<I", data, 80)[0]
-    vertices = np.empty((n_tri * 3, 3), dtype=dtype)
-    offset = 84
-    for tri in range(n_tri):
-        offset += 12
-        for corner in range(3):
-            vertices[tri * 3 + corner] = struct.unpack_from("<fff", data, offset)
-            offset += 12
-        offset += 2
-    return vertices @ MUJOCO_TO_KIMODO.T, np.arange(n_tri * 3, dtype=np.int64).reshape(-1, 3)
-
-
-def _looks_like_binary_stl(data: bytes) -> bool:
-    return len(data) >= 84 and 84 + struct.unpack_from("<I", data, 80)[0] * 50 == len(data)
+    return _load_stl_mesh(path, coord=MUJOCO_TO_KIMODO, dtype=dtype)
 
 
 def _add_mesh_transforms(

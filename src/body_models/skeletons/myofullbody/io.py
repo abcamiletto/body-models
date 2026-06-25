@@ -9,7 +9,6 @@ The upstream model is the ``musclemimic_models`` package from
 from __future__ import annotations
 
 from dataclasses import dataclass
-import struct
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -20,6 +19,7 @@ from nanomanifold import SO3
 
 from body_models import config
 from body_models.cache import download_and_extract, get_cache_dir
+from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 
 # MUJOCO_TO_KIMODO maps MuJoCo's Z-up world to body-models Y-up. MyoFullBody's
 # OpenSim-derived bodies still come out with their lateral axis on Z, so an
@@ -516,49 +516,7 @@ def load_stl_mesh(path: Path, *, dtype=np.float32, scale: np.ndarray | None = No
     (mujoco) frame before rotating into kimodo. Reflective scales (``det < 0``)
     flip triangle winding so outward normals stay consistent.
     """
-    data = path.read_bytes()
-    if _looks_like_binary_stl(data):
-        raw_verts, faces = _load_binary_stl_raw(data, dtype=dtype)
-    else:
-        raw_verts, faces = _load_ascii_stl_raw(data.decode("utf-8"), dtype=dtype)
-    if scale is not None and not np.allclose(scale, 1.0):
-        raw_verts = raw_verts * scale.astype(raw_verts.dtype, copy=False)
-        if float(np.prod(scale)) < 0.0:
-            faces = faces[:, ::-1].copy()
-    return raw_verts @ MUJOCO_TO_KIMODO.T, faces
-
-
-def _load_ascii_stl_raw(text: str, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    vertices: list[list[float]] = []
-    for line in text.splitlines():
-        parts = line.strip().split()
-        if len(parts) == 4 and parts[0].lower() == "vertex":
-            vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    if len(vertices) % 3 != 0 or not vertices:
-        raise ValueError("ASCII STL contains no triangular facets")
-    return (
-        np.asarray(vertices, dtype=dtype),
-        np.arange(len(vertices), dtype=np.int64).reshape(-1, 3),
-    )
-
-
-_BINARY_STL_TRI_DTYPE = np.dtype([("normal", "<f4", 3), ("vertices", "<f4", (3, 3)), ("attr", "<u2")])
-
-
-def _load_binary_stl_raw(data: bytes, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    n_tri = struct.unpack_from("<I", data, 80)[0]
-    if len(data) < 84 + n_tri * 50:
-        raise ValueError("Binary STL is truncated")
-    triangles = np.frombuffer(data, dtype=_BINARY_STL_TRI_DTYPE, count=n_tri, offset=84)
-    vertices = triangles["vertices"].reshape(-1, 3).astype(dtype, copy=False)
-    return vertices, np.arange(n_tri * 3, dtype=np.int64).reshape(-1, 3)
-
-
-def _looks_like_binary_stl(data: bytes) -> bool:
-    if len(data) < 84:
-        return False
-    n_tri = struct.unpack_from("<I", data, 80)[0]
-    return 84 + n_tri * 50 == len(data)
+    return _load_stl_mesh(path, coord=MUJOCO_TO_KIMODO, dtype=dtype, scale=scale)
 
 
 # ----------------------------------------------------------------------------
