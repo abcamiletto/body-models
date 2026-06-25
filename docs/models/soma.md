@@ -7,13 +7,15 @@ SOMA provides a native implementation for SOMA-X assets with identity, pose, and
 SOMA downloads automatically on first use. To prefetch and save the path:
 
 ```bash
-# Download the SOMA-X asset used by the native SOMA implementation.
+# Download the SOMA-X assets used by the native SOMA implementation.
 body-models download soma
 ```
 
 ## Notes
 
 The native implementation does not require installing `py-soma-x`.
+
+`body-models` supports both the legacy SOMA-X NPZ rig asset layout and the SOMA-X 0.2 asset split, where rig data lives in `SOMA_template_rig.usda` and public-rig derivation metadata lives in `SOMA_procedural_transforms.json`. With 0.2 assets, the native backend keeps the expanded internal twist-joint rig for skinning while preserving the existing 77-joint public pose API.
 
 `cache_identity=True` can be passed to the constructor for interactive viewers that repeatedly evaluate the same identity with different poses. The default is `False`, which keeps training and JAX-transformed calls graph-safe unless caching is explicitly requested.
 

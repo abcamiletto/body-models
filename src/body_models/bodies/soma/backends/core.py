@@ -8,6 +8,7 @@ from nanomanifold import SO3
 
 from body_models import common
 from body_models.common import get_namespace
+from body_models.bodies.soma.io import public_parents_full
 from body_models.rotations import RotationType
 
 Array = Any
@@ -155,8 +156,9 @@ def prepare_pose(
     apply_pose_correctives_fn: Any,
 ) -> SomaPreparedPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
-    pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    pose_rot_full = _orient_pose_rot_full(xp, pose_rot, data.t_pose_world, data.topology.parents_full)
+    pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+    pose_rot_internal = _expand_public_pose_rotations(xp, data, pose_rot_public)
+    pose_rot_full = _orient_pose_rot_full(xp, pose_rot_internal, data.t_pose_world, data.topology.parents_full)
     skeleton_transforms_full = _pose_skeleton_from_oriented_pose(
         xp=xp,
         world_bind_pose=world_bind_pose,
@@ -170,7 +172,8 @@ def prepare_pose(
         skeleton_transforms_full[..., :3, 3] * 0.01,
         xp=xp,
     )
-    prepared_pose: SomaPreparedPose = {"skeleton_transforms": skeleton_transforms_full[..., 1:, :, :]}
+    skeleton_public = _public_joint_transforms(xp, data, skeleton_transforms_full)
+    prepared_pose: SomaPreparedPose = {"skeleton_transforms": skeleton_public}
     if skip_vertices:
         return prepared_pose
     assert inverse_world_bind_pose is not None
@@ -182,11 +185,124 @@ def prepare_pose(
     )
     skinning_transforms = skeleton_transforms_full @ inverse_world_bind_pose
     prepared_pose["skinning_transforms"] = skinning_transforms[..., 1:, :, :]
-    pose_offsets = apply_pose_correctives_fn(data, pose_rot_full, xp=xp)
+    correctives_pose_rot = pose_rot_full
+    if data.procedural is not None:
+        public_indices = data.procedural.public_joint_indices_full
+        correctives_pose_rot = _orient_pose_rot_full(
+            xp,
+            pose_rot_public,
+            data.t_pose_world[xp.asarray(public_indices)],
+            public_parents_full(data),
+        )
+    pose_offsets = apply_pose_correctives_fn(data, correctives_pose_rot, xp=xp)
     if data.vertex_map is not None:
         pose_offsets = pose_offsets[..., data.vertex_map, :]
     prepared_pose["pose_offsets"] = pose_offsets * 0.01
     return prepared_pose
+
+
+def _public_joint_transforms(xp, data: Any, transforms_full: Float[Array, "*batch Jf 4 4"]) -> Float[Array, "*batch J 4 4"]:
+    if data.procedural is None:
+        return transforms_full[..., 1:, :, :]
+    public_joint_indices = data.procedural.public_joint_indices_full
+    indices = xp.asarray(public_joint_indices[1:])
+    return transforms_full[..., indices, :, :]
+
+
+def _expand_public_pose_rotations(xp, data: Any, pose_rot: Float[Array, "*batch J 3 3"]) -> Float[Array, "*batch Ji 3 3"]:
+    if data.procedural is None:
+        return pose_rot
+
+    procedural = data.procedural
+    public_joint_indices = procedural.public_joint_indices_full
+    batch_shape = pose_rot.shape[:-3]
+    root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
+    pose_rot_public = xp.concat([root_identity, pose_rot], axis=-3)
+    internal_joint_count = len(data.topology.parents_full)
+    pose_rot_internal = common.eye_as(pose_rot, batch_dims=(*batch_shape, internal_joint_count), xp=xp)
+    pose_rot_internal = common.set(
+        pose_rot_internal,
+        (..., xp.asarray(public_joint_indices), slice(None), slice(None)),
+        pose_rot_public,
+        xp=xp,
+    )
+
+    source_axis_ids = xp.asarray(procedural.source_axis_ids)
+    source_axis_signs = xp.asarray(procedural.source_axis_signs, dtype=pose_rot.dtype)
+    twist_values = _local_axis_twist_angles(xp, pose_rot_public, source_axis_ids) * source_axis_signs
+    twist_angles = twist_values @ xp.asarray(procedural.rotation_matrix, dtype=pose_rot.dtype).swapaxes(-2, -1)
+    twist_rot = _single_axis_rotation_matrices(
+        xp,
+        twist_angles,
+        xp.asarray(procedural.twist_axis_ids),
+        xp.asarray(procedural.twist_axis_signs, dtype=pose_rot.dtype),
+    )
+    twist_indices = xp.asarray(procedural.twist_joint_indices)
+    current_twist_rot = pose_rot_internal[..., twist_indices, :, :]
+    pose_rot_internal = common.set(
+        pose_rot_internal,
+        (..., twist_indices, slice(None), slice(None)),
+        current_twist_rot @ twist_rot,
+        xp=xp,
+    )
+    return pose_rot_internal[..., 1:, :, :]
+
+
+def _local_axis_twist_angles(xp, rotations: Float[Array, "*batch J 3 3"], axis_ids: Int[Array, "J"]) -> Float[Array, "*batch J"]:
+    x = xp.atan2(rotations[..., :, 2, 1], rotations[..., :, 1, 1])
+    y = xp.atan2(rotations[..., :, 0, 2], rotations[..., :, 0, 0])
+    z = xp.atan2(rotations[..., :, 1, 0], rotations[..., :, 0, 0])
+    angles = xp.stack([x, y, z], axis=-1)
+    index = axis_ids.reshape(*((1,) * (angles.ndim - 2)), -1, 1)
+    index = xp.broadcast_to(index, (*angles.shape[:-1], 1))
+    return _take_along_axis(xp, angles, index, axis=-1)[..., 0]
+
+
+def _single_axis_rotation_matrices(
+    xp,
+    angles: Float[Array, "*batch T"],
+    axis_ids: Int[Array, "T"],
+    axis_signs: Float[Array, "T"],
+) -> Float[Array, "*batch T 3 3"]:
+    angles = angles * axis_signs
+    c = xp.cos(angles)
+    s = xp.sin(angles)
+    zeros = xp.zeros_like(angles)
+    ones = xp.ones_like(angles)
+    rx = xp.stack(
+        [
+            xp.stack([ones, zeros, zeros], axis=-1),
+            xp.stack([zeros, c, -s], axis=-1),
+            xp.stack([zeros, s, c], axis=-1),
+        ],
+        axis=-2,
+    )
+    ry = xp.stack(
+        [
+            xp.stack([c, zeros, s], axis=-1),
+            xp.stack([zeros, ones, zeros], axis=-1),
+            xp.stack([-s, zeros, c], axis=-1),
+        ],
+        axis=-2,
+    )
+    rz = xp.stack(
+        [
+            xp.stack([c, -s, zeros], axis=-1),
+            xp.stack([s, c, zeros], axis=-1),
+            xp.stack([zeros, zeros, ones], axis=-1),
+        ],
+        axis=-2,
+    )
+    matrices = xp.stack([rx, ry, rz], axis=-3)
+    gather = axis_ids.reshape(*((1,) * (matrices.ndim - 4)), -1, 1, 1, 1)
+    gather = xp.broadcast_to(gather, (*matrices.shape[:-4], matrices.shape[-4], 1, 3, 3))
+    return _take_along_axis(xp, matrices, gather, axis=-3)[..., 0, :, :]
+
+
+def _take_along_axis(xp, array: Array, indices: Array, axis: int) -> Array:
+    if hasattr(xp, "take_along_axis"):
+        return xp.take_along_axis(array, indices, axis=axis)
+    return xp.gather(array, dim=axis, index=indices)
 
 
 def fit_rigid_transform(

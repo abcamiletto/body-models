@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -24,11 +25,28 @@ Front = tuple[list[int], list[int]]
 
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
+SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
+SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
+SOMA_LEGACY_NPZ_FIELDS = (
+    "bind_shape",
+    "bind_pose_world",
+    "bind_pose_local",
+    "t_pose_world",
+    "t_pose_local",
+    "joint_parent_ids",
+    "joint_names",
+    "skinning_weights_data",
+    "skinning_weights_indices",
+    "skinning_weights_indptr",
+    "skinning_weights_shape",
+)
+SOMA_02_RIG_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
 
 __all__ = [
     "SomaIdentityTransfer",
+    "SomaProceduralRig",
     "SomaWeights",
     "get_model_path",
     "download_model",
@@ -36,6 +54,9 @@ __all__ = [
     "get_identity_model_path",
     "load_identity_transfer_data",
     "compute_kinematic_fronts",
+    "active_public_skin_weights",
+    "public_joint_metadata",
+    "public_parents_full",
     "simplify_mesh",
 ]
 
@@ -68,6 +89,17 @@ class SomaTopology:
 
 
 @dataclass(frozen=True)
+class SomaProceduralRig:
+    public_joint_indices_full: Int[np.ndarray, "Jp"]
+    rotation_matrix: Float[np.ndarray, "T Jp"]
+    source_axis_ids: Int[np.ndarray, "Jp"]
+    source_axis_signs: Float[np.ndarray, "Jp"]
+    twist_joint_indices: Int[np.ndarray, "T"]
+    twist_axis_ids: Int[np.ndarray, "T"]
+    twist_axis_signs: Float[np.ndarray, "T"]
+
+
+@dataclass(frozen=True)
 class SomaWeights:
     mean_full: Float[np.ndarray, "Vf 3"]
     mean_active: Float[np.ndarray, "Va 3"]
@@ -90,6 +122,9 @@ class SomaWeights:
     topology: SomaTopology
     correctives: SomaCorrectives
     joint_names_full: list[str]
+    public_skin_weights_full: Float[np.ndarray, "Vf Jp"] | None = None
+    public_skin_weights_active: Float[np.ndarray, "Va Jp"] | None = None
+    procedural: SomaProceduralRig | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +215,14 @@ def validate_path(model_path: PathLike) -> Path:
     missing = _missing_assets(model_path)
     if missing:
         raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
+    unsupported = _missing_legacy_npz_fields(model_path)
+    if unsupported:
+        missing_sidecars = [name for name in SOMA_02_RIG_ASSETS if not (model_path / name).exists()]
+        if missing_sidecars:
+            raise FileNotFoundError(
+                f"SOMA model path {model_path} is missing legacy NPZ rig fields and 0.2 rig sidecars. "
+                f"Missing NPZ fields: {', '.join(unsupported)}. Missing sidecars: {', '.join(missing_sidecars)}."
+            )
     return model_path
 
 
@@ -196,7 +239,7 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 
     cache_path = get_cache_dir() / "soma"
     if not _missing_assets(cache_path):
-        return cache_path
+        return validate_path(cache_path)
 
     return download_model()
 
@@ -213,7 +256,7 @@ def download_model(model_dir: PathLike | None = None) -> Path:
         for name in missing:
             urllib.request.urlretrieve(f"{SOMA_BASE_URL}/{name}", cache_dir / name)
         print("Done")
-    return cache_dir
+    return validate_path(cache_dir)
 
 
 def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
@@ -299,8 +342,318 @@ def compute_sparse_skin_weights(skin_weights: np.ndarray) -> tuple[np.ndarray, n
     return indices, weights
 
 
+def active_public_skin_weights(data: SomaWeights, vertex_map: np.ndarray | None) -> np.ndarray | None:
+    if data.public_skin_weights_full is None:
+        return None
+    if vertex_map is None:
+        return data.public_skin_weights_full
+    return data.public_skin_weights_full[vertex_map]
+
+
+def public_joint_metadata(data: SomaWeights) -> tuple[list[int], list[str]]:
+    if data.procedural is None:
+        return [parent - 1 for parent in data.topology.parents_full[1:]], data.joint_names_full[1:]
+
+    public_joint_indices = data.procedural.public_joint_indices_full
+    parents_full = public_parents_full(data)
+    return (
+        [parent - 1 for parent in parents_full[1:]],
+        [data.joint_names_full[int(index)] for index in public_joint_indices[1:]],
+    )
+
+
+def public_parents_full(data: Any) -> list[int]:
+    if data.procedural is None:
+        return data.topology.parents_full
+
+    public_joint_indices = data.procedural.public_joint_indices_full
+    public_lookup = {int(internal): public for public, internal in enumerate(public_joint_indices)}
+    keep_ids = set(public_lookup)
+    parents = []
+    for internal_index in public_joint_indices:
+        parent = _nearest_kept_parent(data.topology.parents_full, int(internal_index), keep_ids)
+        parents.append(public_lookup.get(parent, 0))
+    return parents
+
+
 def _missing_assets(model_dir: Path) -> list[str]:
     return [name for name in SOMA_ASSETS if not (model_dir / name).exists()]
+
+
+def _missing_legacy_npz_fields(model_dir: Path) -> list[str]:
+    core_asset = model_dir / SOMA_CORE_ASSET
+    if not core_asset.exists():
+        return []
+    with np.load(core_asset, allow_pickle=False) as data:
+        return [name for name in SOMA_LEGACY_NPZ_FIELDS if name not in data]
+
+
+def _joint_world_to_local_np(world: np.ndarray, parents: np.ndarray) -> np.ndarray:
+    local = np.empty_like(world)
+    for joint, parent in enumerate(parents.tolist()):
+        if parent == joint:
+            local[joint] = world[joint]
+        else:
+            local[joint] = np.linalg.inv(world[parent]) @ world[joint]
+    return local
+
+
+def _forward_kinematics_np(local: np.ndarray, parents: np.ndarray) -> np.ndarray:
+    world = np.empty_like(local)
+    for joint, parent in enumerate(parents.tolist()):
+        if parent == joint:
+            world[joint] = local[joint]
+        else:
+            world[joint] = world[parent] @ local[joint]
+    return world
+
+
+def _nearest_kept_parent(parent_ids: np.ndarray | list[int], old_index: int, keep_ids: set[int]) -> int:
+    parent = int(parent_ids[old_index])
+    while parent not in keep_ids and parent != int(parent_ids[parent]):
+        parent = int(parent_ids[parent])
+    return parent
+
+
+def _find_soma_skin_mesh(stage: Any) -> Any:
+    from pxr import UsdGeom
+
+    for prim in stage.Traverse():
+        if prim.IsA(UsdGeom.Mesh) and prim.GetPath().name == "c_skin_mid":
+            return prim
+
+    available = sorted({prim.GetPath().name for prim in stage.Traverse() if prim.IsA(UsdGeom.Mesh)})
+    raise ValueError(f"Could not find c_skin_mid in {SOMA_TEMPLATE_RIG_ASSET}. Available meshes: {available}")
+
+
+def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
+    from pxr import Usd, UsdGeom, UsdSkel
+
+    usd_path = asset_dir / SOMA_TEMPLATE_RIG_ASSET
+    stage = Usd.Stage.Open(str(usd_path))
+    if not stage:
+        raise RuntimeError(f"Failed to open SOMA template rig: {usd_path}")
+
+    skel_prim = next((prim for prim in stage.Traverse() if prim.IsA(UsdSkel.Skeleton)), None)
+    if skel_prim is None:
+        raise RuntimeError(f"No UsdSkelSkeleton prim found in SOMA template rig: {usd_path}")
+    skeleton = UsdSkel.Skeleton(skel_prim)
+
+    joint_paths = list(skeleton.GetJointsAttr().Get() or [])
+    if not joint_paths:
+        raise RuntimeError(f"SOMA template rig has no skeleton joints: {usd_path}")
+
+    bind_xforms = skeleton.GetBindTransformsAttr().Get()
+    if bind_xforms is None or len(bind_xforms) != len(joint_paths):
+        raise RuntimeError(f"SOMA template rig has invalid bind transforms: {usd_path}")
+    rest_xforms = skeleton.GetRestTransformsAttr().Get()
+    if rest_xforms is not None and len(rest_xforms) != len(joint_paths):
+        raise RuntimeError(f"SOMA template rig has invalid rest transforms: {usd_path}")
+
+    parent_lookup = {path: idx for idx, path in enumerate(joint_paths)}
+    parent_ids = np.asarray(
+        [parent_lookup.get(path.rsplit("/", 1)[0] if "/" in path else "", -1) for path in joint_paths],
+        dtype=np.int32,
+    )
+    parent_ids[parent_ids < 0] = 0
+    joint_names = np.asarray([path.split("/")[-1] for path in joint_paths])
+
+    bind_pose_world = np.asarray(bind_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).swapaxes(-2, -1)
+    if rest_xforms is None:
+        t_pose_local = bind_pose_world.copy()
+    else:
+        t_pose_local = np.asarray(rest_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).swapaxes(-2, -1)
+    t_pose_world = _forward_kinematics_np(t_pose_local, parent_ids)
+    bind_pose_local = _joint_world_to_local_np(bind_pose_world, parent_ids)
+
+    skin_prim = _find_soma_skin_mesh(stage)
+    skin_mesh = UsdGeom.Mesh(skin_prim)
+    skin_points = skin_mesh.GetPointsAttr().Get()
+    if not skin_points:
+        raise ValueError(f"SOMA skin mesh has no points: {skin_prim.GetPath()}")
+    bind_shape = np.asarray(skin_points, dtype=np.float32)
+
+    binding = UsdSkel.BindingAPI(skin_prim)
+    joint_indices = binding.GetJointIndicesPrimvar()
+    joint_weights = binding.GetJointWeightsPrimvar()
+    if not joint_indices or not joint_weights:
+        raise RuntimeError(f"SOMA skin mesh has no skinning primvars: {skin_prim.GetPath()}")
+
+    num_vertices = bind_shape.shape[0]
+    num_weights = joint_indices.GetElementSize()
+    indices = np.asarray(joint_indices.Get(), dtype=np.int32)
+    weights = np.asarray(joint_weights.Get(), dtype=np.float32)
+    if indices.size != num_vertices * num_weights or weights.size != num_vertices * num_weights:
+        raise RuntimeError(
+            f"SOMA skinning primvars have inconsistent shapes: expected {num_vertices * num_weights}, "
+            f"got jointIndices={indices.size}, jointWeights={weights.size}"
+        )
+    indices = indices.reshape(num_vertices, num_weights)
+    weights = weights.reshape(num_vertices, num_weights)
+
+    joint_path_to_index = {path: idx for idx, path in enumerate(joint_paths)}
+    binding_joints = binding.GetJointsAttr().Get()
+    if binding_joints and len(binding_joints) > 0:
+        binding_to_skeleton = np.asarray([joint_path_to_index.get(str(path), -1) for path in binding_joints], dtype=np.int32)
+    else:
+        binding_to_skeleton = np.arange(len(joint_paths), dtype=np.int32)
+
+    vertex_indices = np.repeat(np.arange(num_vertices, dtype=np.int32), num_weights)
+    skeleton_indices = binding_to_skeleton[indices.ravel()]
+    values = weights.ravel()
+    valid = (values > 0) & (skeleton_indices >= 0)
+    dense_weights = np.zeros((num_vertices, len(joint_paths)), dtype=np.float32)
+    np.add.at(dense_weights, (vertex_indices[valid], skeleton_indices[valid]), values[valid])
+    sparse_weights = csc_matrix(dense_weights)
+
+    return {
+        "joint_names": joint_names,
+        "joint_parent_ids": parent_ids,
+        "bind_pose_world": bind_pose_world.astype(np.float32),
+        "bind_pose_local": bind_pose_local.astype(np.float32),
+        "t_pose_world": t_pose_world.astype(np.float32),
+        "t_pose_local": t_pose_local.astype(np.float32),
+        "bind_shape": bind_shape.astype(np.float32),
+        "skinning_weights_data": sparse_weights.data.astype(np.float32),
+        "skinning_weights_indices": sparse_weights.indices.astype(np.int32),
+        "skinning_weights_indptr": sparse_weights.indptr.astype(np.int32),
+        "skinning_weights_shape": np.asarray(sparse_weights.shape, dtype=np.int32),
+    }
+
+
+def _axis_id(axis: str) -> int:
+    axes = {"x": 0, "y": 1, "z": 2}
+    normalized = axis.lower()
+    if normalized not in axes:
+        raise ValueError(f"Unsupported SOMA twist axis: {axis!r}")
+    return axes[normalized]
+
+
+def _load_soma_02_procedural_data(asset_dir: Path, joint_names: list[str]) -> tuple[list[str], SomaProceduralRig]:
+    with (asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET).open() as file:
+        data = json.load(file)
+
+    public_names = data.get("public_rig_derivation", {}).get("main_joint_names")
+    segments = data.get("segments")
+    rotation_matrix = data.get("parameter_matrices", {}).get("rotation", {})
+    rotation_entries = rotation_matrix.get("entries")
+    if (
+        not isinstance(public_names, list)
+        or not all(isinstance(name, str) for name in public_names)
+        or not isinstance(segments, list)
+        or not isinstance(rotation_entries, list)
+    ):
+        raise ValueError(f"Invalid SOMA procedural transform definition: {asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET}")
+
+    joint_index = {name: index for index, name in enumerate(joint_names)}
+    public_indices = np.asarray([joint_index[str(name)] for name in public_names], dtype=np.int64)
+    public_index = {str(name): index for index, name in enumerate(public_names)}
+
+    source_axis_ids = np.zeros((len(public_names),), dtype=np.int64)
+    source_axis_signs = np.ones((len(public_names),), dtype=np.float32)
+    twist_names: list[str] = []
+    twist_axis_ids: list[int] = []
+    twist_axis_signs: list[float] = []
+    for segment in segments:
+        axis = _axis_id(str(segment.get("source_axis", "x")))
+        sign = float(segment.get("source_sign", 1.0))
+        for source_name in (segment["start_joint"], segment["end_joint"]):
+            if source_name in public_index:
+                source_axis_ids[public_index[source_name]] = axis
+                source_axis_signs[public_index[source_name]] = sign
+        for twist_name in segment["twist_joints"]:
+            twist_names.append(str(twist_name))
+            twist_axis_ids.append(axis)
+            twist_axis_signs.append(sign)
+
+    twist_indices = np.asarray([joint_index[name] for name in twist_names], dtype=np.int64)
+    twist_index = {name: index for index, name in enumerate(twist_names)}
+    procedural_rotation_matrix = np.zeros((len(twist_names), len(public_names)), dtype=np.float32)
+    for entry in rotation_entries:
+        row = twist_index[str(entry["row"])]
+        column = public_index[str(entry["column"])]
+        procedural_rotation_matrix[row, column] = float(entry["value"])
+
+    return public_names, SomaProceduralRig(
+        public_joint_indices_full=public_indices,
+        rotation_matrix=procedural_rotation_matrix,
+        source_axis_ids=source_axis_ids,
+        source_axis_signs=source_axis_signs,
+        twist_joint_indices=twist_indices,
+        twist_axis_ids=np.asarray(twist_axis_ids, dtype=np.int64),
+        twist_axis_signs=np.asarray(twist_axis_signs, dtype=np.float32),
+    )
+
+
+def _derive_public_soma_rig(rig_data: dict[str, Any], public_joint_names: list[str]) -> dict[str, Any]:
+    joint_names = [str(name) for name in rig_data["joint_names"]]
+    name_to_index = {name: index for index, name in enumerate(joint_names)}
+    missing = [name for name in public_joint_names if name not in name_to_index]
+    if missing:
+        raise ValueError(f"SOMA template rig is missing public joints: {', '.join(missing)}")
+
+    keep_ids = np.asarray([name_to_index[name] for name in public_joint_names], dtype=np.int64)
+    keep_id_set = {int(index) for index in keep_ids}
+    remove_ids = {index for index in range(len(joint_names)) if index not in keep_id_set}
+    if not remove_ids:
+        return rig_data
+
+    parent_ids = np.asarray(rig_data["joint_parent_ids"], dtype=np.int64)
+    old_to_new = {int(old_index): new_index for new_index, old_index in enumerate(keep_ids)}
+
+    new_parent_ids = np.zeros((len(keep_ids),), dtype=np.int32)
+    for new_index, old_index_np in enumerate(keep_ids):
+        old_index = int(old_index_np)
+        parent = int(parent_ids[old_index])
+        if parent == old_index:
+            new_parent_ids[new_index] = new_index
+            continue
+        parent = _nearest_kept_parent(parent_ids, old_index, keep_id_set)
+        new_parent_ids[new_index] = old_to_new[parent]
+
+    dense_weights = np.asarray(
+        csc_matrix(
+            (
+                rig_data["skinning_weights_data"],
+                rig_data["skinning_weights_indices"],
+                rig_data["skinning_weights_indptr"],
+            ),
+            shape=tuple(int(x) for x in rig_data["skinning_weights_shape"]),
+        ).todense(),
+        dtype=np.float32,
+    )
+    for removed_index in sorted(remove_ids):
+        dense_weights[:, _nearest_kept_parent(parent_ids, removed_index, keep_id_set)] += dense_weights[:, removed_index]
+    dense_weights = dense_weights[:, keep_ids]
+    sparse_weights = csc_matrix(dense_weights)
+
+    bind_pose_world = np.asarray(rig_data["bind_pose_world"], dtype=np.float32)[keep_ids]
+    t_pose_world = np.asarray(rig_data["t_pose_world"], dtype=np.float32)[keep_ids]
+
+    out = dict(rig_data)
+    out.update(
+        joint_names=np.asarray(public_joint_names),
+        joint_parent_ids=new_parent_ids,
+        bind_pose_world=bind_pose_world,
+        bind_pose_local=_joint_world_to_local_np(bind_pose_world, new_parent_ids).astype(np.float32),
+        t_pose_world=t_pose_world,
+        t_pose_local=_joint_world_to_local_np(t_pose_world, new_parent_ids).astype(np.float32),
+        skinning_weights_data=sparse_weights.data.astype(np.float32),
+        skinning_weights_indices=sparse_weights.indices.astype(np.int32),
+        skinning_weights_indptr=sparse_weights.indptr.astype(np.int32),
+        skinning_weights_shape=np.asarray(sparse_weights.shape, dtype=np.int32),
+    )
+    return out
+
+
+def _load_soma_02_rig_data(asset_dir: Path) -> dict[str, Any]:
+    expanded_rig = _load_soma_02_rig_from_usd(asset_dir)
+    public_joint_names, procedural = _load_soma_02_procedural_data(
+        asset_dir, [str(name) for name in expanded_rig["joint_names"]]
+    )
+    expanded_rig["procedural"] = procedural
+    expanded_rig["public_rig_data"] = _derive_public_soma_rig(expanded_rig, public_joint_names)
+    return expanded_rig
 
 
 def _soma_preprocessed_cache_dir() -> Path:
@@ -513,12 +866,17 @@ def _correctives_cache_file(asset_dir: Path) -> Path:
     return preprocessed_dir / f"correctives_{key}.npz"
 
 
-def _joint_regressor_cache_file(asset_dir: Path) -> Path:
+def _joint_regressor_cache_file(asset_dir: Path, joint_count: int) -> Path:
     preprocessed_dir = _soma_preprocessed_cache_dir()
     asset_path = asset_dir / SOMA_CORE_ASSET
     stat = asset_path.stat()
+    sidecar_path = asset_dir / SOMA_TEMPLATE_RIG_ASSET
+    sidecar_state = ""
+    if sidecar_path.exists():
+        sidecar_stat = sidecar_path.stat()
+        sidecar_state = f":{sidecar_path.resolve()}:{sidecar_stat.st_size}:{sidecar_stat.st_mtime_ns}"
     key = hashlib.md5(
-        f"joint-regressor-v1:{asset_path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}".encode()
+        f"joint-regressor-v2:{joint_count}:{asset_path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}{sidecar_state}".encode()
     ).hexdigest()
     return preprocessed_dir / f"joint_regressor_{key}.npz"
 
@@ -728,7 +1086,7 @@ def _load_or_build_joint_position_regressor(
     joint_parents: Int[np.ndarray, "J"],
     vertex_ids_to_exclude: Int[np.ndarray, "N"] | None,
 ) -> Float[np.ndarray, "J V"]:
-    cache_file = _joint_regressor_cache_file(asset_dir)
+    cache_file = _joint_regressor_cache_file(asset_dir, bind_world_transforms.shape[0])
     if cache_file.exists():
         with np.load(cache_file, allow_pickle=False) as data:
             return np.asarray(data["joint_regressor"], dtype=np.float32).copy()
@@ -754,23 +1112,46 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         shapedirs = np.asarray(data["shapedirs"], dtype=np.float32).reshape(-1, num_vertices, 3)
         eigenvalues = np.asarray(data["eigenvalues"], dtype=np.float32)
         faces = np.asarray(data["triangles"], dtype=np.int64)
-        bind_shape = np.asarray(data["bind_shape"], dtype=np.float32)
-        bind_pose_world = np.asarray(data["bind_pose_world"], dtype=np.float32)
-        bind_pose_local = np.asarray(data["bind_pose_local"], dtype=np.float32)
-        t_pose_world = np.asarray(data["t_pose_world"], dtype=np.float32)
-        t_pose_local = np.asarray(data["t_pose_local"], dtype=np.float32)
-        joint_parents_full = np.asarray(data["joint_parent_ids"], dtype=np.int64)
-        joint_names_full = [str(name) for name in data["joint_names"]]
+        if missing_soma_fields := [name for name in SOMA_LEGACY_NPZ_FIELDS if name not in data]:
+            missing_sidecars = [name for name in SOMA_02_RIG_ASSETS if not (asset_dir / name).exists()]
+            if missing_sidecars:
+                raise FileNotFoundError(
+                    f"SOMA asset {asset_dir / SOMA_CORE_ASSET} is missing rig fields: "
+                    f"{', '.join(missing_soma_fields)}. Missing 0.2 sidecars: {', '.join(missing_sidecars)}."
+                )
+            rig_data = _load_soma_02_rig_data(asset_dir)
+        else:
+            rig_data = {name: data[name] for name in SOMA_LEGACY_NPZ_FIELDS}
+
+        bind_shape = np.asarray(rig_data["bind_shape"], dtype=np.float32)
+        bind_pose_world = np.asarray(rig_data["bind_pose_world"], dtype=np.float32)
+        bind_pose_local = np.asarray(rig_data["bind_pose_local"], dtype=np.float32)
+        t_pose_world = np.asarray(rig_data["t_pose_world"], dtype=np.float32)
+        t_pose_local = np.asarray(rig_data["t_pose_local"], dtype=np.float32)
+        joint_parents_full = np.asarray(rig_data["joint_parent_ids"], dtype=np.int64)
+        joint_names_full = [str(name) for name in rig_data["joint_names"]]
 
         skin_weights = csc_matrix(
             (
-                data["skinning_weights_data"],
-                data["skinning_weights_indices"],
-                data["skinning_weights_indptr"],
+                rig_data["skinning_weights_data"],
+                rig_data["skinning_weights_indices"],
+                rig_data["skinning_weights_indptr"],
             ),
-            shape=tuple(int(x) for x in data["skinning_weights_shape"]),
+            shape=tuple(int(x) for x in rig_data["skinning_weights_shape"]),
         ).toarray()
         skin_weights = np.asarray(skin_weights, dtype=np.float32)
+        public_skin_weights = None
+        if "public_rig_data" in rig_data:
+            public_rig_data = rig_data["public_rig_data"]
+            public_skin_weights = csc_matrix(
+                (
+                    public_rig_data["skinning_weights_data"],
+                    public_rig_data["skinning_weights_indices"],
+                    public_rig_data["skinning_weights_indptr"],
+                ),
+                shape=tuple(int(x) for x in public_rig_data["skinning_weights_shape"]),
+            ).toarray()
+            public_skin_weights = np.asarray(public_skin_weights, dtype=np.float32)
 
         facial_inner = np.concatenate(
             [
@@ -824,6 +1205,9 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         ),
         correctives=correctives,
         joint_names_full=joint_names_full,
+        public_skin_weights_full=public_skin_weights,
+        public_skin_weights_active=None,
+        procedural=rig_data.get("procedural"),
     )
 
 
