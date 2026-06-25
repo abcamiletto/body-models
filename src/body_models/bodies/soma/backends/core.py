@@ -201,7 +201,9 @@ def prepare_pose(
     return prepared_pose
 
 
-def _public_joint_transforms(xp, data: Any, transforms_full: Float[Array, "*batch Jf 4 4"]) -> Float[Array, "*batch J 4 4"]:
+def _public_joint_transforms(
+    xp, data: Any, transforms_full: Float[Array, "*batch Jf 4 4"]
+) -> Float[Array, "*batch J 4 4"]:
     if data.procedural is None:
         return transforms_full[..., 1:, :, :]
     public_joint_indices = data.procedural.public_joint_indices_full
@@ -209,7 +211,9 @@ def _public_joint_transforms(xp, data: Any, transforms_full: Float[Array, "*batc
     return transforms_full[..., indices, :, :]
 
 
-def _expand_public_pose_rotations(xp, data: Any, pose_rot: Float[Array, "*batch J 3 3"]) -> Float[Array, "*batch Ji 3 3"]:
+def _expand_public_pose_rotations(
+    xp, data: Any, pose_rot: Float[Array, "*batch J 3 3"]
+) -> Float[Array, "*batch Ji 3 3"]:
     if data.procedural is None:
         return pose_rot
 
@@ -248,7 +252,9 @@ def _expand_public_pose_rotations(xp, data: Any, pose_rot: Float[Array, "*batch 
     return pose_rot_internal[..., 1:, :, :]
 
 
-def _local_axis_twist_angles(xp, rotations: Float[Array, "*batch J 3 3"], axis_ids: Int[Array, "J"]) -> Float[Array, "*batch J"]:
+def _local_axis_twist_angles(
+    xp, rotations: Float[Array, "*batch J 3 3"], axis_ids: Int[Array, "J"]
+) -> Float[Array, "*batch J"]:
     x = xp.atan2(rotations[..., :, 2, 1], rotations[..., :, 1, 1])
     y = xp.atan2(rotations[..., :, 0, 2], rotations[..., :, 0, 0])
     z = xp.atan2(rotations[..., :, 1, 0], rotations[..., :, 0, 0])

@@ -17,7 +17,7 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.common import simplify_mesh
-from body_models.cache import get_cache_dir
+from body_models.cache import HF_DATASET_BASE_URL, download_file, get_cache_dir
 
 PathLike = Path | str
 
@@ -28,7 +28,9 @@ SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
 SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
 SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
-SOMA_BASE_URL = "https://huggingface.co/nvidia/SOMA-X/resolve/main"
+SOMA_02_RIG_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
+SOMA_DOWNLOAD_ASSETS = (*SOMA_ASSETS, *SOMA_02_RIG_ASSETS)
+SOMA_BASE_URL = f"{HF_DATASET_BASE_URL}/soma"
 SOMA_LEGACY_NPZ_FIELDS = (
     "bind_shape",
     "bind_pose_world",
@@ -42,7 +44,6 @@ SOMA_LEGACY_NPZ_FIELDS = (
     "skinning_weights_indptr",
     "skinning_weights_shape",
 )
-SOMA_02_RIG_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
 
 __all__ = [
     "SomaIdentityTransfer",
@@ -246,23 +247,19 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 
 def download_model(model_dir: PathLike | None = None) -> Path:
     """Download SOMA assets from Hugging Face."""
-    import urllib.request
-
     cache_dir = Path(model_dir) if model_dir is not None else get_cache_dir() / "soma"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    missing = _missing_assets(cache_dir)
+    missing = [name for name in SOMA_DOWNLOAD_ASSETS if not (cache_dir / name).exists()]
     if missing:
         print(f"Downloading SOMA model to {cache_dir}...")
         for name in missing:
-            urllib.request.urlretrieve(f"{SOMA_BASE_URL}/{name}", cache_dir / name)
+            download_file(f"{SOMA_BASE_URL}/{name}", cache_dir / name)
         print("Done")
     return validate_path(cache_dir)
 
 
 def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
     """Ensure supplementary SOMA assets exist for a given identity backend."""
-    import urllib.request
-
     normalized = model_type.lower()
     spec = MODEL_TYPE_SPECS.get(normalized)
     if spec is None or spec.asset_dir is None:
@@ -278,8 +275,7 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
         print(f"Downloading SOMA {normalized} assets to {asset_dir}...")
         for name in missing:
             path = asset_dir / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            urllib.request.urlretrieve(f"{SOMA_BASE_URL}/{name}", path)
+            download_file(f"{SOMA_BASE_URL}/{name}", path)
         print("Done")
 
 
@@ -416,7 +412,9 @@ def _nearest_kept_parent(parent_ids: np.ndarray | list[int], old_index: int, kee
 
 
 def _find_soma_skin_mesh(stage: Any) -> Any:
-    from pxr import UsdGeom
+    from pxr import UsdGeom as _UsdGeom
+
+    UsdGeom = cast(Any, _UsdGeom)
 
     for prim in stage.Traverse():
         if prim.IsA(UsdGeom.Mesh) and prim.GetPath().name == "c_skin_mid":
@@ -427,7 +425,13 @@ def _find_soma_skin_mesh(stage: Any) -> Any:
 
 
 def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
-    from pxr import Usd, UsdGeom, UsdSkel
+    from pxr import Usd as _Usd
+    from pxr import UsdGeom as _UsdGeom
+    from pxr import UsdSkel as _UsdSkel
+
+    Usd = cast(Any, _Usd)
+    UsdGeom = cast(Any, _UsdGeom)
+    UsdSkel = cast(Any, _UsdSkel)
 
     usd_path = asset_dir / SOMA_TEMPLATE_RIG_ASSET
     stage = Usd.Stage.Open(str(usd_path))
@@ -494,7 +498,9 @@ def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
     joint_path_to_index = {path: idx for idx, path in enumerate(joint_paths)}
     binding_joints = binding.GetJointsAttr().Get()
     if binding_joints and len(binding_joints) > 0:
-        binding_to_skeleton = np.asarray([joint_path_to_index.get(str(path), -1) for path in binding_joints], dtype=np.int32)
+        binding_to_skeleton = np.asarray(
+            [joint_path_to_index.get(str(path), -1) for path in binding_joints], dtype=np.int32
+        )
     else:
         binding_to_skeleton = np.arange(len(joint_paths), dtype=np.int32)
 
@@ -543,7 +549,9 @@ def _load_soma_02_procedural_data(asset_dir: Path, joint_names: list[str]) -> tu
         or not isinstance(segments, list)
         or not isinstance(rotation_entries, list)
     ):
-        raise ValueError(f"Invalid SOMA procedural transform definition: {asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET}")
+        raise ValueError(
+            f"Invalid SOMA procedural transform definition: {asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET}"
+        )
 
     joint_index = {name: index for index, name in enumerate(joint_names)}
     public_indices = np.asarray([joint_index[str(name)] for name in public_names], dtype=np.int64)
@@ -623,7 +631,9 @@ def _derive_public_soma_rig(rig_data: dict[str, Any], public_joint_names: list[s
         dtype=np.float32,
     )
     for removed_index in sorted(remove_ids):
-        dense_weights[:, _nearest_kept_parent(parent_ids, removed_index, keep_id_set)] += dense_weights[:, removed_index]
+        dense_weights[:, _nearest_kept_parent(parent_ids, removed_index, keep_id_set)] += dense_weights[
+            :, removed_index
+        ]
     dense_weights = dense_weights[:, keep_ids]
     sparse_weights = csc_matrix(dense_weights)
 
