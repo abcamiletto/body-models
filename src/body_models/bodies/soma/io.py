@@ -453,22 +453,19 @@ def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
     if bind_xforms is None or len(bind_xforms) != len(joint_paths):
         raise RuntimeError(f"SOMA template rig has invalid bind transforms: {usd_path}")
     rest_xforms = skeleton.GetRestTransformsAttr().Get()
-    if rest_xforms is not None and len(rest_xforms) != len(joint_paths):
+    if rest_xforms is None or len(rest_xforms) != len(joint_paths):
         raise RuntimeError(f"SOMA template rig has invalid rest transforms: {usd_path}")
 
     parent_lookup = {path: idx for idx, path in enumerate(joint_paths)}
-    parent_ids = np.asarray(
-        [parent_lookup.get(path.rsplit("/", 1)[0] if "/" in path else "", -1) for path in joint_paths],
-        dtype=np.int32,
-    )
-    parent_ids[parent_ids < 0] = 0
+    parent_ids = np.zeros((len(joint_paths),), dtype=np.int32)
+    for index, path in enumerate(joint_paths):
+        if "/" in path:
+            parent_path = path.rsplit("/", 1)[0]
+            parent_ids[index] = parent_lookup[parent_path]
     joint_names = np.asarray([path.split("/")[-1] for path in joint_paths])
 
     bind_pose_world = np.asarray(bind_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).swapaxes(-2, -1)
-    if rest_xforms is None:
-        t_pose_local = bind_pose_world.copy()
-    else:
-        t_pose_local = np.asarray(rest_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).swapaxes(-2, -1)
+    t_pose_local = np.asarray(rest_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).swapaxes(-2, -1)
     t_pose_world = _forward_kinematics_np(t_pose_local, parent_ids)
     bind_pose_local = _joint_world_to_local_np(bind_pose_world, parent_ids)
 
@@ -499,12 +496,9 @@ def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
 
     joint_path_to_index = {path: idx for idx, path in enumerate(joint_paths)}
     binding_joints = binding.GetJointsAttr().Get()
-    if binding_joints and len(binding_joints) > 0:
-        binding_to_skeleton = np.asarray(
-            [joint_path_to_index.get(str(path), -1) for path in binding_joints], dtype=np.int32
-        )
-    else:
-        binding_to_skeleton = np.arange(len(joint_paths), dtype=np.int32)
+    if not binding_joints:
+        raise RuntimeError(f"SOMA skin mesh has no joint binding list: {skin_prim.GetPath()}")
+    binding_to_skeleton = np.asarray([joint_path_to_index[str(path)] for path in binding_joints], dtype=np.int32)
 
     vertex_indices = np.repeat(np.arange(num_vertices, dtype=np.int32), num_weights)
     skeleton_indices = binding_to_skeleton[indices.ravel()]
@@ -568,8 +562,8 @@ def _load_soma_02_procedural_data(asset_dir: Path, joint_names: list[str]) -> tu
     twist_axis_ids: list[int] = []
     twist_axis_signs: list[float] = []
     for segment in segments:
-        axis = _axis_id(str(segment.get("source_axis", "x")))
-        sign = float(segment.get("source_sign", 1.0))
+        axis = _axis_id(str(segment["source_axis"]))
+        sign = float(segment["source_sign"])
         for source_name in (segment["start_joint"], segment["end_joint"]):
             if source_name in public_index:
                 source_axis_ids[public_index[source_name]] = axis

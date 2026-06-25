@@ -45,7 +45,7 @@ def prepare_identity_from_rest_shape(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool = False,
 ) -> SomaIdentity:
-    if data.procedural is not None and data.public_joint_regressor is not None:
+    if data.procedural is not None:
         return _prepare_procedural_identity(
             data,
             rest_shape_full=rest_shape_full,
