@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
@@ -44,16 +44,17 @@ SOMA_LEGACY_NPZ_FIELDS = (
     "skinning_weights_indptr",
     "skinning_weights_shape",
 )
-SOMA_PROCEDURAL_NPZ_FIELDS = (
-    "procedural_public_joint_indices_full",
-    "procedural_rotation_matrix",
-    "procedural_translation_matrix",
-    "procedural_source_axis_ids",
-    "procedural_source_axis_signs",
-    "procedural_twist_joint_indices",
-    "procedural_twist_axis_ids",
-    "procedural_twist_axis_signs",
+SOMA_PROCEDURAL_RIG_FIELDS = (
+    "public_joint_indices_full",
+    "rotation_matrix",
+    "translation_matrix",
+    "source_axis_ids",
+    "source_axis_signs",
+    "twist_joint_indices",
+    "twist_axis_ids",
+    "twist_axis_signs",
 )
+SOMA_PROCEDURAL_NPZ_FIELDS = tuple(f"procedural_{name}" for name in SOMA_PROCEDURAL_RIG_FIELDS)
 
 __all__ = [
     "SomaIdentityTransfer",
@@ -67,8 +68,8 @@ __all__ = [
     "load_identity_transfer_data",
     "preprocess_model",
     "compute_kinematic_fronts",
-    "active_public_skin_weights",
     "public_joint_metadata",
+    "with_active_mesh",
     "simplify_mesh",
 ]
 
@@ -128,6 +129,12 @@ class SomaPublicRig:
 
 @dataclass(frozen=True)
 class SomaWeights:
+    """SOMA weights loaded from normalized assets.
+
+    ``public`` is present for procedural SOMA-X 0.2.1 rigs. In that case poses are provided in public-joint
+    space and expanded to the internal skinning rig at runtime.
+    """
+
     mean_full: Float[np.ndarray, "Vf 3"]
     mean_active: Float[np.ndarray, "Va 3"]
     shapedirs_full: Float[np.ndarray, "S Vf 3"]
@@ -242,13 +249,7 @@ def validate_path(model_path: PathLike) -> Path:
         raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
     unsupported = _missing_legacy_npz_fields(model_path)
     if unsupported:
-        missing_sidecars = [name for name in SOMA_UPSTREAM_02_ASSETS if not (model_path / name).exists()]
-        if not missing_sidecars:
-            raise FileNotFoundError(_preprocess_required_message(model_path, unsupported))
-        raise FileNotFoundError(
-            f"SOMA model path {model_path} is missing required NPZ fields: {', '.join(unsupported)}. "
-            f"Missing upstream 0.2.1 sidecars: {', '.join(missing_sidecars)}."
-        )
+        raise _missing_rig_fields_error(model_path, unsupported)
     return model_path
 
 
@@ -404,19 +405,55 @@ def _prefixed_rig_data(data: Any, prefix: str) -> dict[str, Any] | None:
 def _procedural_rig_data(data: Any) -> SomaProceduralRig | None:
     if not all(name in data for name in SOMA_PROCEDURAL_NPZ_FIELDS):
         return None
+    dtypes = {
+        "public_joint_indices_full": np.int64,
+        "rotation_matrix": np.float32,
+        "translation_matrix": np.float32,
+        "source_axis_ids": np.int64,
+        "source_axis_signs": np.float32,
+        "twist_joint_indices": np.int64,
+        "twist_axis_ids": np.int64,
+        "twist_axis_signs": np.float32,
+    }
+    values = {name: np.asarray(data[f"procedural_{name}"], dtype=dtypes[name]) for name in SOMA_PROCEDURAL_RIG_FIELDS}
     return SomaProceduralRig(
-        public_joint_indices_full=np.asarray(data["procedural_public_joint_indices_full"], dtype=np.int64),
-        rotation_matrix=np.asarray(data["procedural_rotation_matrix"], dtype=np.float32),
-        translation_matrix=np.asarray(data["procedural_translation_matrix"], dtype=np.float32),
-        source_axis_ids=np.asarray(data["procedural_source_axis_ids"], dtype=np.int64),
-        source_axis_signs=np.asarray(data["procedural_source_axis_signs"], dtype=np.float32),
-        twist_joint_indices=np.asarray(data["procedural_twist_joint_indices"], dtype=np.int64),
-        twist_axis_ids=np.asarray(data["procedural_twist_axis_ids"], dtype=np.int64),
-        twist_axis_signs=np.asarray(data["procedural_twist_axis_signs"], dtype=np.float32),
+        public_joint_indices_full=values["public_joint_indices_full"],
+        rotation_matrix=values["rotation_matrix"],
+        translation_matrix=values["translation_matrix"],
+        source_axis_ids=values["source_axis_ids"],
+        source_axis_signs=values["source_axis_signs"],
+        twist_joint_indices=values["twist_joint_indices"],
+        twist_axis_ids=values["twist_axis_ids"],
+        twist_axis_signs=values["twist_axis_signs"],
     )
 
 
-def active_public_skin_weights(data: SomaWeights, vertex_map: np.ndarray | None) -> np.ndarray | None:
+def with_active_mesh(
+    data: SomaWeights,
+    *,
+    mean_active: np.ndarray,
+    shapedirs_active: np.ndarray,
+    skin_weights_active: np.ndarray,
+    faces: np.ndarray,
+    vertex_map: np.ndarray | None,
+) -> SomaWeights:
+    skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
+    public_skin_weights_active = _active_public_skin_weights(data, vertex_map)
+    public = None if data.public is None else replace(data.public, skin_weights_active=public_skin_weights_active)
+    return replace(
+        data,
+        mean_active=np.asarray(mean_active, dtype=np.float32),
+        shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
+        skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
+        skin_joint_indices_active=skin_joint_indices_active,
+        skin_joint_weights_active=skin_joint_weights_active,
+        faces=np.asarray(faces, dtype=np.int64),
+        vertex_map=vertex_map,
+        public=public,
+    )
+
+
+def _active_public_skin_weights(data: SomaWeights, vertex_map: np.ndarray | None) -> np.ndarray | None:
     if data.public is None:
         return None
     if vertex_map is None:
@@ -426,9 +463,12 @@ def active_public_skin_weights(data: SomaWeights, vertex_map: np.ndarray | None)
 
 def public_joint_metadata(data: SomaWeights) -> tuple[list[int], list[str]]:
     if data.public is None:
-        return [parent - 1 for parent in data.topology.parents_full[1:]], data.joint_names_full[1:]
-
-    return [parent - 1 for parent in data.public.parents_full[1:]], data.public.joint_names_full[1:]
+        parents = data.topology.parents_full
+        names = data.joint_names_full
+    else:
+        parents = data.public.parents_full
+        names = data.public.joint_names_full
+    return [parent - 1 for parent in parents[1:]], names[1:]
 
 
 def _missing_assets(model_dir: Path) -> list[str]:
@@ -449,6 +489,16 @@ def _preprocess_required_message(model_path: Path, missing_fields: list[str]) ->
         f"SOMA model path {model_path} has upstream 0.2.1 assets but {SOMA_CORE_ASSET} is missing normalized "
         f"rig fields: {', '.join(missing_fields)}. Run "
         f"`body-models preprocess-soma {model_path} {output_dir}`."
+    )
+
+
+def _missing_rig_fields_error(asset_dir: Path, missing_fields: list[str]) -> FileNotFoundError:
+    missing_sidecars = [name for name in SOMA_UPSTREAM_02_ASSETS if not (asset_dir / name).exists()]
+    if not missing_sidecars:
+        return FileNotFoundError(_preprocess_required_message(asset_dir, missing_fields))
+    return FileNotFoundError(
+        f"SOMA model path {asset_dir} is missing required NPZ fields: {', '.join(missing_fields)}. "
+        f"Missing upstream 0.2.1 sidecars: {', '.join(missing_sidecars)}."
     )
 
 
@@ -904,15 +954,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         eigenvalues = np.asarray(data["eigenvalues"], dtype=np.float32)
         faces = np.asarray(data["triangles"], dtype=np.int64)
         if missing_soma_fields := [name for name in SOMA_LEGACY_NPZ_FIELDS if name not in data]:
-            missing_sidecars = [name for name in SOMA_UPSTREAM_02_ASSETS if not (asset_dir / name).exists()]
-            if missing_sidecars:
-                sidecar_message = f" Missing upstream 0.2.1 sidecars: {', '.join(missing_sidecars)}."
-            else:
-                raise FileNotFoundError(_preprocess_required_message(asset_dir, missing_soma_fields))
-            raise FileNotFoundError(
-                f"SOMA asset {asset_dir / SOMA_CORE_ASSET} is missing rig fields: "
-                f"{', '.join(missing_soma_fields)}.{sidecar_message}"
-            )
+            raise _missing_rig_fields_error(asset_dir, missing_soma_fields)
         rig_data = {name: data[name] for name in SOMA_LEGACY_NPZ_FIELDS}
         public_rig_data = _prefixed_rig_data(data, "public_")
         procedural = _procedural_rig_data(data)

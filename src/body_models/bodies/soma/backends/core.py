@@ -241,6 +241,7 @@ def prepare_pose(
         skeleton_transforms_full[..., :3, 3] * 0.01,
         xp=xp,
     )
+    # Public rigs expose public skeleton joints, while skinning still uses the expanded internal rig.
     skeleton_public = _public_joint_transforms(xp, data, skeleton_transforms_full)
     prepared_pose: SomaPreparedPose = {"skeleton_transforms": skeleton_public}
     if skip_vertices:

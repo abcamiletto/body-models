@@ -41,6 +41,16 @@ SOMA_RIG_FIELDS = (
     "skinning_weights_indptr",
     "skinning_weights_shape",
 )
+SOMA_PROCEDURAL_RIG_FIELDS = (
+    "public_joint_indices_full",
+    "rotation_matrix",
+    "translation_matrix",
+    "source_axis_ids",
+    "source_axis_signs",
+    "twist_joint_indices",
+    "twist_axis_ids",
+    "twist_axis_signs",
+)
 
 
 def main() -> None:
@@ -66,16 +76,8 @@ def generate_asset(upstream_dir: Path, output_dir: Path) -> Path:
         arrays[f"public_{name}"] = public_rig[name]
 
     procedural = rig_data["procedural"]
-    arrays.update(
-        procedural_public_joint_indices_full=procedural["public_joint_indices_full"],
-        procedural_rotation_matrix=procedural["rotation_matrix"],
-        procedural_translation_matrix=procedural["translation_matrix"],
-        procedural_source_axis_ids=procedural["source_axis_ids"],
-        procedural_source_axis_signs=procedural["source_axis_signs"],
-        procedural_twist_joint_indices=procedural["twist_joint_indices"],
-        procedural_twist_axis_ids=procedural["twist_axis_ids"],
-        procedural_twist_axis_signs=procedural["twist_axis_signs"],
-    )
+    for name in SOMA_PROCEDURAL_RIG_FIELDS:
+        arrays[f"procedural_{name}"] = procedural[name]
     np.savez(output_npz, **arrays)
 
     correctives = upstream_dir / SOMA_CORRECTIVES_ASSET

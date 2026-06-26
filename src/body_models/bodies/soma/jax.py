@@ -1,6 +1,5 @@
 """JAX backend for SOMA model."""
 
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -16,13 +15,12 @@ from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
-    active_public_skin_weights,
-    compute_sparse_skin_weights,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
     public_joint_metadata,
     simplify_mesh,
+    with_active_mesh,
 )
 from body_models.bodies.soma.backends import jax as backend
 from body_models.bodies.soma.backends import core
@@ -98,19 +96,13 @@ class SOMA(SkinnedModel):
             skin_weights_active = skin_weights_full
             vertex_map = None
 
-        skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
-        public_skin_weights_active = active_public_skin_weights(data, vertex_map)
-        public = None if data.public is None else replace(data.public, skin_weights_active=public_skin_weights_active)
-        weights = replace(
+        weights = with_active_mesh(
             data,
-            mean_active=np.asarray(mean_active, dtype=np.float32),
-            shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
-            skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
-            skin_joint_indices_active=skin_joint_indices_active,
-            skin_joint_weights_active=skin_joint_weights_active,
-            faces=np.asarray(faces, dtype=np.int64),
+            mean_active=mean_active,
+            shapedirs_active=shapedirs_active,
+            skin_weights_active=skin_weights_active,
+            faces=faces,
             vertex_map=vertex_map,
-            public=public,
         )
         self.weights = common.jaxify(weights)
         self.parents, self._joint_names = public_joint_metadata(data)
