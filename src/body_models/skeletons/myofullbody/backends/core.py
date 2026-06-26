@@ -83,12 +83,9 @@ def forward_skeleton(
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space body transforms ``[B, J, 4, 4]`` in meters."""
-    if xp is None:
-        xp = get_namespace(body_pose)
-
     num_joints = len(parents)
     if body_pose.ndim < 1 or body_pose.shape[-1] != actuated_joint_axes.shape[0]:
         raise ValueError(
@@ -175,11 +172,9 @@ def forward_links(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "B L 4 4"]:
     """Compute world-space transforms for each STL link mesh."""
-    if xp is None:
-        xp = get_namespace(body_pose)
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
@@ -227,11 +222,9 @@ def forward_meshes(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> list[Trimesh]:
     """Rigidly transform and concatenate all MyoFullBody STL link meshes."""
-    if xp is None:
-        xp = get_namespace(body_pose)
     links = forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
@@ -272,7 +265,7 @@ def world_sites(
     site_positions: Float[Array, "S 3"],
     site_body_indices: list[int],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "B S 3"]:
     """Apply each site's parent-body world transform to its body-local position.
 
@@ -280,8 +273,6 @@ def world_sites(
     :func:`forward_skeleton`. This is just a gather + affine transform — no FK
     is recomputed — so muscle visualisation reuses the existing forward pass.
     """
-    if xp is None:
-        xp = get_namespace(skeleton)
     body_T = skeleton[..., xp.asarray(site_body_indices), :, :]
     local = xp.asarray(site_positions, dtype=skeleton.dtype)
     rotated = xp.squeeze(body_T[..., :3, :3] @ local[..., None], axis=-1)

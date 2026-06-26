@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 from trimesh import Trimesh
@@ -34,11 +33,9 @@ def forward_skeleton(
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space SMPL humanoid joint transforms."""
-    if xp is None:
-        xp = get_namespace(body_pose)
     body_rot = _body_rotations(body_pose, len(actuated_joint_indices), xp=xp)
     return rigid.forward_skeleton_from_local_rotations(
         body_rot,
@@ -65,11 +62,9 @@ def forward_links(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "B L 4 4"]:
     """Compute world-space transforms for each SMPL humanoid link mesh."""
-    if xp is None:
-        xp = get_namespace(body_pose)
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
@@ -107,11 +102,9 @@ def forward_meshes(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> list[Trimesh]:
     """Rigidly transform and concatenate all SMPL humanoid link meshes."""
-    if xp is None:
-        xp = get_namespace(body_pose)
     links = forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,

@@ -11,22 +11,7 @@ from typing import Any
 
 from .backends import core as _core
 
-__all__ = ["to_qpos", "from_mujoco_qpos"]
-
-
-def to_qpos(
-    model: Any,
-    body_pose: Any,
-    global_translation: Any | None = None,
-    *,
-    global_rotation: Any | None = None,
-) -> Any:
-    """Convert MyoFullBody body-models inputs to MuJoCo ``qpos`` (length ``7 + Q``)."""
-    return model.to_qpos(
-        body_pose,
-        global_translation=global_translation,
-        global_rotation=global_rotation,
-    )
+__all__ = ["from_mujoco_qpos"]
 
 
 def from_mujoco_qpos(qpos: Any) -> dict[str, Any]:
