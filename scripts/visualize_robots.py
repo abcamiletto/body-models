@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -11,12 +10,8 @@ import numpy as np
 import viser
 
 from body_models.base import RigidBodyModel
-from body_models.brainco.numpy import BrainCoHand
-from body_models.g1.numpy import G1
-from body_models.myofullbody.numpy import MyoFullBody
 from body_models.registry import create_model
 from body_models.robots.smpl_humanoid import SMPL_HUMANOID_VARIANTS
-from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
 def model_label(name: str) -> str:
@@ -25,15 +20,12 @@ def model_label(name: str) -> str:
 
 
 SMPL_HUMANOID = model_label("humenv")
-SMPL_HUMANOID_FACTORIES = {
-    model_label(name): (lambda model_name=name: create_model(model_name)) for name in SMPL_HUMANOID_VARIANTS
-}
-MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
-    "G1": G1,
-    "BrainCo Right": lambda: BrainCoHand(side="right"),
-    "BrainCo Left": lambda: BrainCoHand(side="left"),
-    "MyoFullBody": MyoFullBody,
-    **SMPL_HUMANOID_FACTORIES,
+MODEL_SPECS: dict[str, tuple[str, dict[str, Any]]] = {
+    "G1": ("g1", {}),
+    "BrainCo Right": ("brainco", {"side": "right"}),
+    "BrainCo Left": ("brainco", {"side": "left"}),
+    "MyoFullBody": ("myofullbody", {}),
+    **{model_label(name): (name, {}) for name in SMPL_HUMANOID_VARIANTS},
 }
 SMPL_HUMANOID_COLOR = (190, 190, 205)
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
@@ -79,19 +71,19 @@ def main() -> None:
     parser.add_argument(
         "--model",
         action="append",
-        choices=sorted(MODEL_FACTORIES),
+        choices=sorted(MODEL_SPECS),
         help="Robot model to load.",
     )
     parser.add_argument("--smpl-humanoid-model-path", help="MJCF XML path for SmplHumanoid.")
     args = parser.parse_args()
-    factories = model_factories(args.smpl_humanoid_model_path)
+    model_specs = specs(args.smpl_humanoid_model_path)
 
     server = viser.ViserServer(port=args.port)
     server.scene.set_up_direction("+y")
     server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
     server.gui.configure_theme(control_layout="fixed", control_width="large")
 
-    models = load_models(factories, args.model)
+    models = load_models(model_specs, args.model)
     states = init_states(server, models)
     tabs = server.gui.add_tab_group()
     selected_model = next(iter(states))
@@ -130,20 +122,24 @@ def main() -> None:
                 update_robot_mesh(server, state)
 
 
-def model_factories(smpl_humanoid_model_path: str | None) -> dict[str, Callable[[], RigidBodyModel]]:
-    factories = dict(MODEL_FACTORIES)
+def specs(smpl_humanoid_model_path: str | None) -> dict[str, tuple[str, dict[str, Any]]]:
+    model_specs = {name: (model_id, dict(kwargs)) for name, (model_id, kwargs) in MODEL_SPECS.items()}
     if smpl_humanoid_model_path is not None:
-        factories[SMPL_HUMANOID] = lambda: SmplHumanoid(smpl_humanoid_model_path)
-    return factories
+        model_specs[SMPL_HUMANOID] = ("smpl_humanoid", {"source": smpl_humanoid_model_path})
+    return model_specs
 
 
 def load_models(
-    factories: dict[str, Callable[[], RigidBodyModel]], names: list[str] | None
+    model_specs: dict[str, tuple[str, dict[str, Any]]], names: list[str] | None
 ) -> dict[str, RigidBodyModel]:
     models = {}
-    for name in names or list(factories):
+    for name in names or list(model_specs):
         print(f"Loading {name}", flush=True)
-        models[name] = factories[name]()
+        model_id, kwargs = model_specs[name]
+        model = create_model(model_id, backend="numpy", **kwargs)
+        if not isinstance(model, RigidBodyModel):
+            raise TypeError(f"{name} is not a rigid body model")
+        models[name] = model
     return models
 
 

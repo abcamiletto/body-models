@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -12,33 +11,24 @@ import numpy as np
 import viser
 from nanomanifold import SO3
 
-from body_models.anny.numpy import ANNY
 from body_models.base import SkinnedModel
-from body_models.flame.numpy import FLAME
-from body_models.garment_measurements.numpy import GarmentMeasurements
-from body_models.mano.numpy import MANO
-from body_models.mhr.numpy import MHR
-from body_models.skel.numpy import SKEL
-from body_models.smpl.numpy import SMPL
-from body_models.smplh.numpy import SMPLH
-from body_models.smplx.numpy import SMPLX
-from body_models.soma.numpy import SOMA
+from body_models.registry import create_model
 
 
 DISPLAY_GLOBAL_ROTATIONS = {
     "ANNY": (-np.pi / 2, 0.0, 0.0),
 }
-MODEL_FACTORIES: dict[str, Callable[[], SkinnedModel]] = {
-    "SMPL": lambda: SMPL(gender="neutral"),
-    "SMPLH": lambda: SMPLH(gender="neutral"),
-    "MANO": lambda: MANO(side="right"),
-    "SMPLX": lambda: SMPLX(gender="neutral"),
-    "SKEL": lambda: SKEL(gender="male"),
-    "ANNY": ANNY,
-    "MHR": MHR,
-    "FLAME": FLAME,
-    "GarmentMeasurements": GarmentMeasurements,
-    "SOMA": SOMA,
+MODEL_IDS: dict[str, str] = {
+    "SMPL": "smpl",
+    "SMPLH": "smplh",
+    "MANO": "mano",
+    "SMPLX": "smplx",
+    "SKEL": "skel",
+    "ANNY": "anny",
+    "MHR": "mhr",
+    "FLAME": "flame",
+    "GarmentMeasurements": "garment_measurements",
+    "SOMA": "soma",
 }
 
 SMPL_POSE_JOINTS = [
@@ -169,7 +159,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize body models with body-models-viser.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("_VISER_PORT_OVERRIDE", "8080")))
     parser.add_argument("--share", action="store_true", help="Request a public Viser share URL.")
-    parser.add_argument("--model", action="append", choices=sorted(MODEL_FACTORIES), help="Model to load.")
+    parser.add_argument("--model", action="append", choices=sorted(MODEL_IDS), help="Model to load.")
     args = parser.parse_args()
 
     server = viser.ViserServer(port=args.port)
@@ -231,9 +221,12 @@ def main() -> None:
 
 def load_models(names: list[str] | None) -> dict[str, SkinnedModel]:
     models = {}
-    for name in names or list(MODEL_FACTORIES):
+    for name in names or list(MODEL_IDS):
         print(f"Loading {name}", flush=True)
-        models[name] = MODEL_FACTORIES[name]()
+        model = create_model(MODEL_IDS[name], backend="numpy")
+        if not isinstance(model, SkinnedModel):
+            raise TypeError(f"{name} is not a skinned model")
+        models[name] = model
     return models
 
 
@@ -472,7 +465,6 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
             with server.gui.add_folder("Head Pose"):
                 handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
         elif name == "GarmentMeasurements":
-            assert isinstance(state.model, GarmentMeasurements)
             with server.gui.add_folder("Shape"):
                 handles += betas(server, state, key="shape", count=state.model.num_shape_components)
             with server.gui.add_folder("Body Pose"):
@@ -492,7 +484,6 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     max_joints=state.params["head_pose"].shape[0],
                 )
         elif name == "SOMA":
-            assert isinstance(state.model, SOMA)
             shape_default = float(state.params["shape"][0])
             with server.gui.add_folder("Identity"):
                 handles += betas(
