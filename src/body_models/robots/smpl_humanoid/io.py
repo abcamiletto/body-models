@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 from jaxtyping import Float, Int
 
+from body_models.robots import mjcf
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS
 
 Array = Any
@@ -83,7 +84,7 @@ def _load_xml_model_data(path: Path, *, dtype) -> SmplHumanoidWeights:
     if not path.is_file():
         raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
 
-    root = ET.parse(path).getroot()
+    root = mjcf.parse_xml(path)
     worldbody = root.find("worldbody")
     if worldbody is None:
         raise ValueError(f"SMPL humanoid XML is missing a worldbody: {path}")
@@ -105,9 +106,9 @@ def _load_xml_model_data(path: Path, *, dtype) -> SmplHumanoidWeights:
         body = parsed_bodies[name]
         parent_name = parsed_parents[name]
         parsed_parent_indices.append(-1 if parent_name is None else by_name[parent_name])
-        local_offsets[joint_idx] = _parse_vec(body.get("pos"), size=3, default=np.zeros(3, dtype=dtype))
-        rest_local_rotations[joint_idx] = _quat_wxyz_to_matrix(
-            _parse_vec(body.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
+        local_offsets[joint_idx] = mjcf.parse_vec(body.get("pos"), size=3, default=np.zeros(3, dtype=dtype))
+        rest_local_rotations[joint_idx] = mjcf.quat_wxyz_to_matrix(
+            mjcf.parse_vec(body.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
         )
     if parsed_parent_indices != PARENTS:
         raise ValueError("SMPL humanoid XML body hierarchy does not match the canonical SMPL hierarchy.")
@@ -164,10 +165,10 @@ def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray
             vertex_counts.append(vertices.shape[0])
             face_starts.append(face_offset)
             face_counts.append(faces.shape[0])
-            geom_positions.append(_parse_vec(geom.get("pos"), size=3, default=np.zeros(3, dtype=dtype)))
+            geom_positions.append(mjcf.parse_vec(geom.get("pos"), size=3, default=np.zeros(3, dtype=dtype)))
             geom_rotations.append(
-                _quat_wxyz_to_matrix(
-                    _parse_vec(geom.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
+                mjcf.quat_wxyz_to_matrix(
+                    mjcf.parse_vec(geom.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
                 )
             )
             names.append(geom.get("name") or f"{name}_{geom_idx}")
@@ -192,7 +193,7 @@ def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray
 
 def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     geom_type = geom.get("type", "sphere")
-    size = _parse_vec(geom.get("size"), size=None, default=np.ones(3, dtype=dtype))
+    size = mjcf.parse_vec(geom.get("size"), size=None, default=np.ones(3, dtype=dtype))
     if geom_type == "box":
         return _box(tuple(size[:3]), dtype=dtype)
     if geom_type == "sphere":
@@ -200,7 +201,7 @@ def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     if geom_type == "capsule":
         fromto = geom.get("fromto")
         if fromto is not None:
-            capsule = _parse_vec(fromto, size=6, default=np.zeros(6, dtype=dtype))
+            capsule = mjcf.parse_vec(fromto, size=6, default=np.zeros(6, dtype=dtype))
             return _capsule_between(capsule[:3], capsule[3:], float(size[0]), dtype=dtype)
         return _capsule_between(
             np.array([0.0, 0.0, -float(size[1])], dtype=dtype),
@@ -331,29 +332,6 @@ def _cylinder(radius: float, half_height: float, *, dtype) -> tuple[np.ndarray, 
         faces.append([2 * sections, section, nxt])
         faces.append([2 * sections + 1, sections + nxt, sections + section])
     return np.asarray(vertices, dtype=dtype), np.asarray(faces, dtype=np.int64)
-
-
-def _parse_vec(value: str | None, *, size: int | None, default: np.ndarray) -> np.ndarray:
-    if value is None:
-        return default.astype(default.dtype, copy=True)
-    parsed = np.asarray([float(x) for x in value.split()], dtype=default.dtype)
-    if size is not None and parsed.shape != (size,):
-        raise ValueError(f"Expected vector with {size} values, got {value!r}")
-    return parsed
-
-
-def _quat_wxyz_to_matrix(q: np.ndarray) -> np.ndarray:
-    q = q.astype(np.float32, copy=False)
-    q = q / max(float(np.linalg.norm(q)), 1e-8)
-    w, x, y, z = q
-    return np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ],
-        dtype=q.dtype,
-    )
 
 
 __all__ = [

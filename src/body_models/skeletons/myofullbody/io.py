@@ -15,11 +15,11 @@ from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
 from body_models import config
 from body_models.cache import download_and_extract, get_cache_dir
 from body_models.common.stl import load_stl_mesh as _load_stl_mesh
+from body_models.robots import mjcf
 
 # MUJOCO_TO_KIMODO maps MuJoCo's Z-up world to body-models Y-up. MyoFullBody's
 # OpenSim-derived bodies still come out with their lateral axis on Z, so an
@@ -116,8 +116,8 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     model_dir = get_model_path(model_path)
     xml_path = model_dir / MAIN_XML_RELPATH
 
-    root = _parse_with_includes(xml_path)
-    mesh_files = _parse_mesh_assets(root)
+    root = mjcf.parse_xml(xml_path, inline_includes=True)
+    mesh_files = mjcf.mesh_assets(root)
     class_defaults = _parse_class_defaults(root)
 
     body_xml = _find_root_body_in_root(root, xml_path)
@@ -209,40 +209,6 @@ def _stack_or_empty(records: list[dict], key: str, empty_shape: tuple[int, ...])
 
 
 # ----------------------------------------------------------------------------
-# Recursive XML <include> resolution
-# ----------------------------------------------------------------------------
-
-
-def _parse_with_includes(path: Path) -> ET.Element:
-    """Parse an MJCF file, recursively inlining ``<include file="..."/>`` elements."""
-    tree = ET.parse(path)
-    root = tree.getroot()
-    _inline_includes(root, path.parent, set())
-    return root
-
-
-def _inline_includes(element: ET.Element, base_dir: Path, visited: set[Path]) -> None:
-    children = list(element)
-    new_children: list[ET.Element] = []
-    for child in children:
-        if child.tag == "include":
-            file_attr = child.get("file")
-            if not file_attr:
-                continue
-            include_path = (base_dir / file_attr).resolve()
-            if include_path in visited:
-                raise RuntimeError(f"Cyclic <include> at {include_path}")
-            sub_tree = ET.parse(include_path)
-            sub_root = sub_tree.getroot()
-            _inline_includes(sub_root, include_path.parent, visited | {include_path})
-            new_children.extend(list(sub_root))
-        else:
-            _inline_includes(child, base_dir, visited)
-            new_children.append(child)
-    element[:] = new_children
-
-
-# ----------------------------------------------------------------------------
 # Class defaults & mesh assets
 # ----------------------------------------------------------------------------
 
@@ -265,7 +231,7 @@ def _parse_class_defaults(root: ET.Element) -> dict[str, dict]:
         if joint is not None:
             axis = joint.get("axis")
             if axis:
-                local["axis"] = _parse_vec(axis, default=local["axis"])
+                local["axis"] = mjcf.parse_vec(axis, default=local["axis"])
             limit = joint.get("range")
             if limit:
                 local["range"] = tuple(float(x) for x in limit.split())
@@ -310,24 +276,6 @@ def _parse_tendons(root: ET.Element, site_names: list[str], class_defaults: dict
                 "width": float(spatial.get("width") or default["tendon_width"]),
             }
         )
-    return out
-
-
-def _parse_mesh_assets(root: ET.Element) -> dict[str, tuple[str, np.ndarray]]:
-    """Return ``{mesh_name: (file_path, scale_xyz)}`` from all ``<asset><mesh>`` entries.
-
-    MyoFullBody mirrors right-side STLs to make left-side bones (e.g.
-    ``<mesh name="humerus_l" file="meshes/humerus.stl" scale="1 1 -1"/>``), so we
-    must propagate the per-mesh scale into the loader.
-    """
-    out: dict[str, tuple[str, np.ndarray]] = {}
-    for mesh in root.findall(".//asset/mesh"):
-        name = mesh.get("name")
-        file = mesh.get("file")
-        if not name or not file:
-            continue
-        scale = _parse_vec(mesh.get("scale"), default=np.ones(3, dtype=np.float32))
-        out[name] = (file, scale)
     return out
 
 
@@ -377,8 +325,8 @@ def _walk_body(
         pos = np.zeros(3, dtype=np.float32)
         rot = np.eye(3, dtype=np.float32)
     else:
-        raw_pos = _parse_vec(elem.get("pos"), default=np.zeros(3, dtype=np.float32))
-        raw_rot = _parse_orientation(elem)
+        raw_pos = mjcf.parse_vec(elem.get("pos"), default=np.zeros(3, dtype=np.float32))
+        raw_rot = mjcf.parse_orientation(elem)
         pos = MUJOCO_TO_KIMODO @ raw_pos
         rot = MUJOCO_TO_KIMODO @ raw_rot @ MUJOCO_TO_KIMODO.T
 
@@ -392,9 +340,9 @@ def _walk_body(
         # Ball/freejoint-typed entries fall outside our hinge+slide chain composition.
         if joint_type not in {"hinge", "slide"}:
             continue
-        axis_raw = _parse_vec(joint.get("axis"), default=np.asarray(cls_default["axis"], dtype=np.float32))
+        axis_raw = mjcf.parse_vec(joint.get("axis"), default=np.asarray(cls_default["axis"], dtype=np.float32))
         axis_raw = axis_raw / max(float(np.linalg.norm(axis_raw)), 1e-12)
-        anchor_raw = _parse_vec(joint.get("pos"), default=np.zeros(3, dtype=np.float32))
+        anchor_raw = mjcf.parse_vec(joint.get("pos"), default=np.zeros(3, dtype=np.float32))
         rng = joint.get("range")
         lo, hi = (float(x) for x in rng.split()) if rng else cls_default["range"]
         qpos.append(
@@ -412,8 +360,8 @@ def _walk_body(
         mesh = geom.get("mesh")
         if not mesh:
             continue
-        gpos_raw = _parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32))
-        grot_raw = _parse_orientation(geom)
+        gpos_raw = mjcf.parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32))
+        grot_raw = mjcf.parse_orientation(geom)
         links.append(
             {
                 "body": body_idx,
@@ -428,7 +376,7 @@ def _walk_body(
         name = site.get("name")
         if not name:
             continue
-        spos_raw = _parse_vec(site.get("pos"), default=np.zeros(3, dtype=np.float32))
+        spos_raw = mjcf.parse_vec(site.get("pos"), default=np.zeros(3, dtype=np.float32))
         sites.append(
             {
                 "name": name,
@@ -522,33 +470,3 @@ def load_stl_mesh(
     flip triangle winding so outward normals stay consistent.
     """
     return _load_stl_mesh(path, coord=MUJOCO_TO_KIMODO, dtype=dtype, scale=scale)
-
-
-# ----------------------------------------------------------------------------
-# Small parsing helpers
-# ----------------------------------------------------------------------------
-
-
-def _parse_vec(value: str | None, *, default: np.ndarray) -> np.ndarray:
-    if value is None:
-        return default.astype(np.float32, copy=True)
-    return np.asarray([float(x) for x in value.split()], dtype=np.float32)
-
-
-def _parse_orientation(elem: ET.Element) -> np.ndarray:
-    """Return a 3x3 rotation matrix from a ``quat`` or ``euler`` attribute.
-
-    MuJoCo's default ``eulerseq="xyz"`` means *intrinsic* XYZ rotations
-    (``R = Rx(a) @ Ry(b) @ Rz(c)``); in nanomanifold this is the uppercase
-    ``"XYZ"`` convention, distinct from lowercase ``"xyz"`` (extrinsic).
-    """
-    quat = elem.get("quat")
-    if quat:
-        q = np.asarray([float(x) for x in quat.split()], dtype=np.float32)
-        q = q / max(float(np.linalg.norm(q)), 1e-12)
-        return SO3.conversions.from_quat_to_rotmat(q, convention="wxyz", xp=np).astype(np.float32)
-    euler = elem.get("euler")
-    if euler:
-        e = np.asarray([float(x) for x in euler.split()], dtype=np.float32)
-        return SO3.conversions.from_euler_to_rotmat(e, convention="XYZ", xp=np).astype(np.float32)
-    return np.eye(3, dtype=np.float32)

@@ -14,6 +14,7 @@ from jaxtyping import Float, Int
 from body_models import config
 from body_models.cache import get_cache_dir
 from body_models.common.stl import load_stl_mesh as _load_stl_mesh
+from body_models.robots import mjcf
 
 PathLike = Path | str
 Convention = Literal["soma", "mujoco"]
@@ -202,12 +203,11 @@ def load_model_data(
         raise ValueError(f"Invalid convention: {convention}")
     coord = MUJOCO_TO_KIMODO if convention == "soma" else np.eye(3, dtype=np.float32)
     xml_path = get_model_path(model_path)
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
+    root = mjcf.parse_xml(xml_path)
 
-    class_axes, class_limits = _parse_joint_defaults(root)
+    class_axes, class_limits = mjcf.joint_defaults(root)
     local_offsets, rest_local_rotations = _parse_joint_rest(root, coord)
-    mesh_base = _mesh_base_dir(root, xml_path)
+    mesh_base = mjcf.mesh_base_dir(root, xml_path)
     mesh_transforms = _parse_mesh_local_transforms(root, mesh_base, coord)
     actuated_joint_indices, actuated_joint_axes, actuated_joint_limits, actuated_joint_names = _parse_actuated_joints(
         root,
@@ -238,26 +238,6 @@ def load_model_data(
     )
 
 
-def _parse_joint_defaults(root: ET.Element) -> tuple[dict[str, np.ndarray], dict[str, tuple[float, float]]]:
-    class_axes: dict[str, np.ndarray] = {}
-    class_limits: dict[str, tuple[float, float]] = {}
-    for xml_class in root.findall(".//default"):
-        class_name = xml_class.get("class")
-        if not class_name:
-            continue
-        joint = xml_class.find("joint")
-        if joint is None:
-            continue
-        axis = joint.get("axis")
-        if axis:
-            class_axes[class_name] = np.array([float(x) for x in axis.split()], dtype=np.float32)
-        limit = joint.get("range")
-        if limit:
-            lo, hi = [float(x) for x in limit.split()]
-            class_limits[class_name] = (lo, hi)
-    return class_axes, class_limits
-
-
 def _parse_joint_rest(root: ET.Element, coord: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     local_offsets = np.zeros((len(JOINT_NAMES), 3), dtype=np.float32)
     rest_local_rotations = np.repeat(np.eye(3, dtype=np.float32)[None], len(JOINT_NAMES), axis=0)
@@ -269,9 +249,9 @@ def _parse_joint_rest(root: ET.Element, coord: np.ndarray) -> tuple[np.ndarray, 
 
     def walk(body: ET.Element) -> None:
         joint_name = _body_to_joint_name(body)
-        body_pos = _parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32))
-        body_quat = _parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32))
-        body_rot = _quat_wxyz_to_matrix(body_quat)
+        body_pos = mjcf.parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
+        body_quat = mjcf.parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32), size=4)
+        body_rot = mjcf.quat_wxyz_to_matrix(body_quat)
         offset_k = coord @ body_pos
         rot_k = coord @ body_rot @ coord.T
         if joint_name in by_name:
@@ -293,11 +273,7 @@ def _parse_mesh_local_transforms(
     mesh_base: Path,
     coord: np.ndarray,
 ) -> dict[str, tuple[np.ndarray, np.ndarray, Path]]:
-    mesh_file_by_name = {
-        mesh.get("name"): mesh.get("file")
-        for mesh in root.findall(".//asset/mesh")
-        if mesh.get("name") and mesh.get("file")
-    }
+    mesh_file_by_name = mjcf.mesh_files_by_name(root)
     out: dict[str, tuple[np.ndarray, np.ndarray, Path]] = {}
     for geom in root.findall(".//geom"):
         mesh_name = geom.get("mesh")
@@ -307,9 +283,9 @@ def _parse_mesh_local_transforms(
         key = Path(mesh_file).name
         if key in out:
             continue
-        pos = _parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32))
-        quat = _parse_vec(geom.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32))
-        rot = _quat_wxyz_to_matrix(quat)
+        pos = mjcf.parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
+        quat = mjcf.parse_vec(geom.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32), size=4)
+        rot = mjcf.quat_wxyz_to_matrix(quat)
         mesh_path = Path(mesh_file)
         if not mesh_path.is_absolute():
             mesh_path = mesh_base / mesh_path
@@ -408,12 +384,6 @@ def _load_link_meshes(
     return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
 
 
-def _mesh_base_dir(root: ET.Element, xml_path: Path) -> Path:
-    compiler = root.find("compiler")
-    meshdir = compiler.get("meshdir") if compiler is not None else None
-    return (xml_path.parent / meshdir).resolve() if meshdir else xml_path.parent.resolve()
-
-
 def load_stl_mesh(
     path: Path,
     *,
@@ -437,7 +407,7 @@ def _body_to_joint_name(body: ET.Element) -> str:
 def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndarray:
     axis = joint.get("axis")
     if axis:
-        return np.asarray([float(x) for x in axis.split()], dtype=np.float32)
+        return mjcf.parse_vec(axis, default=np.zeros(3, dtype=np.float32), size=3)
     class_name = joint.get("class")
     if class_name in class_axes:
         return class_axes[class_name]
@@ -453,23 +423,3 @@ def _joint_limit(joint: ET.Element, class_limits: dict[str, tuple[float, float]]
     if class_name in class_limits:
         return class_limits[class_name]
     return -np.inf, np.inf
-
-
-def _parse_vec(value: str | None, *, default: np.ndarray) -> np.ndarray:
-    if value is None:
-        return default.astype(np.float32, copy=True)
-    return np.asarray([float(x) for x in value.split()], dtype=np.float32)
-
-
-def _quat_wxyz_to_matrix(q: np.ndarray) -> np.ndarray:
-    q = q.astype(np.float32, copy=False)
-    q = q / max(float(np.linalg.norm(q)), 1e-8)
-    w, x, y, z = q
-    return np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ],
-        dtype=np.float32,
-    )
