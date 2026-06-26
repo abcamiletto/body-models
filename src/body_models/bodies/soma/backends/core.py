@@ -44,6 +44,17 @@ def prepare_identity_from_rest_shape(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool = False,
 ) -> SomaIdentity:
+    if data.public is not None:
+        return _prepare_procedural_identity(
+            data,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
+            match_warp=match_warp,
+            xp=xp,
+            linear_blend_skinning_fn=linear_blend_skinning_fn,
+            skip_vertices=skip_vertices,
+        )
+
     rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
         xp=xp,
         bind_shape=data.bind_shape_full,
@@ -75,6 +86,65 @@ def prepare_identity_from_rest_shape(
         identity["rest_vertices"] = bind_shape_active * 0.01
         identity["inverse_world_bind_pose"] = inverse_world_bind_pose
     return identity
+
+
+def _prepare_procedural_identity(
+    data: Any,
+    *,
+    rest_shape_full: Float[Array, "B Vf 3"],
+    rest_shape_active: Float[Array, "B Va 3"],
+    match_warp: bool,
+    xp: Any,
+    linear_blend_skinning_fn: Any,
+    skip_vertices: bool,
+) -> SomaIdentity:
+    public = data.public
+
+    rest_shape_full, public_world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
+        xp=xp,
+        bind_shape=data.bind_shape_full,
+        bind_pose_world=public.bind_pose_world,
+        joint_regressor=public.joint_regressor,
+        joint_children_full=public.topology.joint_children_full,
+        joint_children_indices_full=public.topology.joint_children_indices_full,
+        skinned_vertex_indices_full=public.topology.skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=public.topology.skinned_vertex_indices_full_index,
+        parents_full=public.topology.parents_full,
+        rest_shape=rest_shape_full,
+        match_warp=match_warp,
+    )
+    bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
+        xp=xp,
+        rest_shape=rest_shape_active,
+        skin_weights=public.skin_weights_active,
+        world_bind_pose_fit=public_world_bind_pose_fit,
+        bind_pose_local=public.bind_pose_local,
+        kinematic_fronts=public.topology.kinematic_fronts_full,
+        parents_full=public.topology.parents_full,
+        linear_blend_skinning_fn=linear_blend_skinning_fn,
+    )
+    public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
+    world_bind_pose = _expand_public_bind_pose(xp, data, public_world_bind_pose)
+
+    identity: SomaIdentity = {"world_bind_pose": world_bind_pose}
+    if not skip_vertices:
+        identity["rest_vertices"] = bind_shape_active * 0.01
+        identity["inverse_world_bind_pose"] = _invert_transforms(xp, world_bind_pose)
+    return identity
+
+
+def _pin_root_transform(xp: Any, transforms: Array) -> Array:
+    eye = common.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
+    return common.set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
+
+
+def _expand_public_bind_pose(xp: Any, data: Any, public_world_bind_pose: Array) -> Array:
+    public_indices = xp.asarray(data.public.procedural.public_joint_indices_full)
+    batch_shape = public_world_bind_pose.shape[:-3]
+    target = xp.broadcast_to(data.bind_pose_world, (*batch_shape, *data.bind_pose_world.shape))
+    target = common.set(target, (..., public_indices, slice(None), slice(None)), public_world_bind_pose, xp=xp)
+    translations = xp.asarray(data.public.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
+    return common.set(target, (..., slice(None), slice(None, 3), 3), translations, xp=xp)
 
 
 def forward_vertices(
@@ -155,8 +225,9 @@ def prepare_pose(
     apply_pose_correctives_fn: Any,
 ) -> SomaPreparedPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
-    pose_rot = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    pose_rot_full = _orient_pose_rot_full(xp, pose_rot, data.t_pose_world, data.topology.parents_full)
+    pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+    pose_rot_internal = _expand_public_pose_rotations(xp, data, pose_rot_public)
+    pose_rot_full = _orient_pose_rot_full(xp, pose_rot_internal, data.t_pose_world, data.topology.parents_full)
     skeleton_transforms_full = _pose_skeleton_from_oriented_pose(
         xp=xp,
         world_bind_pose=world_bind_pose,
@@ -170,7 +241,9 @@ def prepare_pose(
         skeleton_transforms_full[..., :3, 3] * 0.01,
         xp=xp,
     )
-    prepared_pose: SomaPreparedPose = {"skeleton_transforms": skeleton_transforms_full[..., 1:, :, :]}
+    # Public rigs expose public skeleton joints, while skinning still uses the expanded internal rig.
+    skeleton_public = _public_joint_transforms(xp, data, skeleton_transforms_full)
+    prepared_pose: SomaPreparedPose = {"skeleton_transforms": skeleton_public}
     if skip_vertices:
         return prepared_pose
     assert inverse_world_bind_pose is not None
@@ -182,11 +255,129 @@ def prepare_pose(
     )
     skinning_transforms = skeleton_transforms_full @ inverse_world_bind_pose
     prepared_pose["skinning_transforms"] = skinning_transforms[..., 1:, :, :]
-    pose_offsets = apply_pose_correctives_fn(data, pose_rot_full, xp=xp)
+    correctives_pose_rot = pose_rot_full
+    if data.public is not None:
+        correctives_pose_rot = _orient_pose_rot_full(
+            xp,
+            pose_rot_public,
+            data.public.t_pose_world,
+            data.public.topology.parents_full,
+        )
+    pose_offsets = apply_pose_correctives_fn(data, correctives_pose_rot, xp=xp)
     if data.vertex_map is not None:
         pose_offsets = pose_offsets[..., data.vertex_map, :]
     prepared_pose["pose_offsets"] = pose_offsets * 0.01
     return prepared_pose
+
+
+def _public_joint_transforms(
+    xp, data: Any, transforms_full: Float[Array, "*batch Jf 4 4"]
+) -> Float[Array, "*batch J 4 4"]:
+    if data.public is None:
+        return transforms_full[..., 1:, :, :]
+    public_joint_indices = data.public.procedural.public_joint_indices_full
+    indices = xp.asarray(public_joint_indices[1:])
+    return transforms_full[..., indices, :, :]
+
+
+def _expand_public_pose_rotations(
+    xp, data: Any, pose_rot: Float[Array, "*batch J 3 3"]
+) -> Float[Array, "*batch Ji 3 3"]:
+    if data.public is None:
+        return pose_rot
+
+    procedural = data.public.procedural
+    public_joint_indices = procedural.public_joint_indices_full
+    batch_shape = pose_rot.shape[:-3]
+    root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
+    pose_rot_public = xp.concat([root_identity, pose_rot], axis=-3)
+    internal_joint_count = len(data.topology.parents_full)
+    pose_rot_internal = common.eye_as(pose_rot, batch_dims=(*batch_shape, internal_joint_count), xp=xp)
+    pose_rot_internal = common.set(
+        pose_rot_internal,
+        (..., xp.asarray(public_joint_indices), slice(None), slice(None)),
+        pose_rot_public,
+        xp=xp,
+    )
+
+    source_axis_ids = xp.asarray(procedural.source_axis_ids)
+    source_axis_signs = xp.asarray(procedural.source_axis_signs, dtype=pose_rot.dtype)
+    twist_values = _local_axis_twist_angles(xp, pose_rot_public, source_axis_ids) * source_axis_signs
+    twist_angles = twist_values @ xp.asarray(procedural.rotation_matrix, dtype=pose_rot.dtype).swapaxes(-2, -1)
+    twist_rot = _single_axis_rotation_matrices(
+        xp,
+        twist_angles,
+        xp.asarray(procedural.twist_axis_ids),
+        xp.asarray(procedural.twist_axis_signs, dtype=pose_rot.dtype),
+    )
+    twist_indices = xp.asarray(procedural.twist_joint_indices)
+    current_twist_rot = pose_rot_internal[..., twist_indices, :, :]
+    pose_rot_internal = common.set(
+        pose_rot_internal,
+        (..., twist_indices, slice(None), slice(None)),
+        current_twist_rot @ twist_rot,
+        xp=xp,
+    )
+    return pose_rot_internal[..., 1:, :, :]
+
+
+def _local_axis_twist_angles(
+    xp, rotations: Float[Array, "*batch J 3 3"], axis_ids: Int[Array, "J"]
+) -> Float[Array, "*batch J"]:
+    x = xp.atan2(rotations[..., :, 2, 1], rotations[..., :, 1, 1])
+    y = xp.atan2(rotations[..., :, 0, 2], rotations[..., :, 0, 0])
+    z = xp.atan2(rotations[..., :, 1, 0], rotations[..., :, 0, 0])
+    angles = xp.stack([x, y, z], axis=-1)
+    index = axis_ids.reshape(*((1,) * (angles.ndim - 2)), -1, 1)
+    index = xp.broadcast_to(index, (*angles.shape[:-1], 1))
+    return _take_along_axis(xp, angles, index, axis=-1)[..., 0]
+
+
+def _single_axis_rotation_matrices(
+    xp,
+    angles: Float[Array, "*batch T"],
+    axis_ids: Int[Array, "T"],
+    axis_signs: Float[Array, "T"],
+) -> Float[Array, "*batch T 3 3"]:
+    angles = angles * axis_signs
+    c = xp.cos(angles)
+    s = xp.sin(angles)
+    zeros = xp.zeros_like(angles)
+    ones = xp.ones_like(angles)
+    rx = xp.stack(
+        [
+            xp.stack([ones, zeros, zeros], axis=-1),
+            xp.stack([zeros, c, -s], axis=-1),
+            xp.stack([zeros, s, c], axis=-1),
+        ],
+        axis=-2,
+    )
+    ry = xp.stack(
+        [
+            xp.stack([c, zeros, s], axis=-1),
+            xp.stack([zeros, ones, zeros], axis=-1),
+            xp.stack([-s, zeros, c], axis=-1),
+        ],
+        axis=-2,
+    )
+    rz = xp.stack(
+        [
+            xp.stack([c, -s, zeros], axis=-1),
+            xp.stack([s, c, zeros], axis=-1),
+            xp.stack([zeros, zeros, ones], axis=-1),
+        ],
+        axis=-2,
+    )
+    matrices = xp.stack([rx, ry, rz], axis=-3)
+    gather = axis_ids.reshape(*((1,) * (matrices.ndim - 4)), -1, 1, 1, 1)
+    gather = xp.broadcast_to(gather, (*matrices.shape[:-4], matrices.shape[-4], 1, 3, 3))
+    return _take_along_axis(xp, matrices, gather, axis=-3)[..., 0, :, :]
+
+
+def _take_along_axis(xp, array: Array, indices: Array, axis: int) -> Array:
+    if hasattr(xp, "take_along_axis"):
+        return xp.take_along_axis(array, indices, axis=axis)
+    return xp.gather(array, dim=axis, index=indices)
 
 
 def fit_rigid_transform(
@@ -511,7 +702,11 @@ def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
 
 def _joint_world_to_local(xp, world: Float[Array, "B J 4 4"], parents_full: list[int]) -> Float[Array, "B J 4 4"]:
     inv = _invert_transforms(xp, world)
-    return inv[..., xp.asarray(parents_full), :, :] @ world
+    local = inv[..., xp.asarray(parents_full), :, :] @ world
+    for joint, parent in enumerate(parents_full):
+        if joint == parent:
+            local = common.set(local, (..., joint, slice(None), slice(None)), world[..., joint, :, :], xp=xp)
+    return local
 
 
 def linear_blend_skinning(
