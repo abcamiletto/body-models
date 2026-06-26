@@ -2,9 +2,15 @@ from pathlib import Path
 
 from platformdirs import user_cache_dir
 
-__all__ = ["get_cache_dir", "get_cached_path", "download_file", "download_and_extract"]
+__all__ = [
+    "HF_MODEL_BASE_URL",
+    "get_cache_dir",
+    "get_cached_path",
+    "download_file",
+    "download_and_extract",
+]
 
-HF_DATASET_BASE_URL = "https://huggingface.co/datasets/abcamiletto/body-models-assets/resolve/main/models_hub"
+HF_MODEL_BASE_URL = "https://huggingface.co/abcamiletto/body-models/resolve/main"
 
 
 def get_cache_dir() -> Path:
@@ -34,19 +40,8 @@ def download_file(url: str, dest: Path) -> None:
         shutil.copyfileobj(src, dst)
 
 
-def download_and_extract(
-    url: str,
-    dest: Path,
-    extract_subdir: str | None = None,
-) -> None:
-    """Download a zip file and extract it to dest.
-
-    Args:
-        url: URL to download from.
-        dest: Destination directory for extracted files.
-        extract_subdir: If specified, only extract files from this subdirectory
-            within the zip archive. The subdirectory prefix is stripped.
-    """
+def download_and_extract(url: str, dest: Path) -> None:
+    """Download a zip file and extract it to dest."""
     import tempfile
     import zipfile
 
@@ -59,27 +54,6 @@ def download_and_extract(
         download_file(url, tmp_path)
 
         with zipfile.ZipFile(tmp_path) as zf:
-            if extract_subdir is None:
-                zf.extractall(dest)
-            else:
-                # Normalize the subdir path
-                if not extract_subdir.endswith("/"):
-                    extract_subdir = extract_subdir + "/"
-
-                for member in zf.namelist():
-                    if member.startswith(extract_subdir):
-                        # Strip the subdirectory prefix
-                        relative_path = member[len(extract_subdir) :]
-                        if not relative_path:
-                            continue
-
-                        target_path = dest / relative_path
-
-                        if member.endswith("/"):
-                            target_path.mkdir(parents=True, exist_ok=True)
-                        else:
-                            target_path.parent.mkdir(parents=True, exist_ok=True)
-                            with zf.open(member) as src, open(target_path, "wb") as dst:
-                                dst.write(src.read())
+            zf.extractall(dest)
     finally:
         tmp_path.unlink(missing_ok=True)

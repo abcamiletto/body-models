@@ -11,14 +11,14 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import config
-from body_models.cache import download_and_extract, get_cache_dir
+from body_models.cache import HF_MODEL_BASE_URL, download_and_extract, get_cache_dir
 
 PathLike = Path | str
 Array = Any
 
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
-ANNY_URL = "https://github.com/naver/anny/archive/refs/heads/main.zip"
+ANNY_URL = f"{HF_MODEL_BASE_URL}/anny/assets.zip"
 
 PHENOTYPE_VARIATIONS = {
     "race": ["african", "asian", "caucasian"],
@@ -83,7 +83,7 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 def download_model() -> Path:
     cache_dir = get_cache_dir() / "anny"
     print(f"Downloading ANNY model to {cache_dir}...")
-    download_and_extract(url=ANNY_URL, dest=cache_dir, extract_subdir="anny-main/src/anny/")
+    download_and_extract(url=ANNY_URL, dest=cache_dir)
     print("Done")
     return cache_dir
 

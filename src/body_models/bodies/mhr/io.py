@@ -11,7 +11,7 @@ from nanomanifold import SO3
 
 from body_models import config
 from body_models.common import simplify_mesh
-from body_models.cache import download_and_extract, get_cache_dir
+from body_models.cache import HF_MODEL_BASE_URL, download_and_extract, get_cache_dir
 
 PathLike = Path | str
 
@@ -28,7 +28,8 @@ __all__ = [
     "load_pose_correctives",
 ]
 
-MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
+MHR_URL = f"{HF_MODEL_BASE_URL}/mhr/assets.zip"
+SUPPORTED_LODS = tuple(range(7))
 
 
 @dataclass(frozen=True)
@@ -71,17 +72,17 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
         return validate_path(model_path)
 
     cache_path = get_cache_dir() / "mhr"
-    if (cache_path / "mhr_model.pt").exists():
+    if _has_hosted_assets(cache_path):
         return cache_path
 
     return download_model()
 
 
 def download_model() -> Path:
-    """Download MHR model from GitHub releases."""
+    """Download MHR model assets."""
     cache_dir = get_cache_dir() / "mhr"
     print(f"Downloading MHR model to {cache_dir}...")
-    download_and_extract(url=MHR_URL, dest=cache_dir, extract_subdir="assets/")
+    download_and_extract(url=MHR_URL, dest=cache_dir)
     print("Done")
     return cache_dir
 
@@ -89,10 +90,11 @@ def download_model() -> Path:
 def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrWeights:
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
-    if lod != 1:
-        raise ValueError("MHR lod values other than 1 are not supported.")
+    if lod not in SUPPORTED_LODS:
+        raise ValueError(f"MHR lod must be one of {SUPPORTED_LODS}, got {lod}")
 
-    data = _load_raw_model_data(asset_dir)
+    shared_data = _load_raw_model_data(asset_dir)
+    data = shared_data if lod == 1 else _load_preprocessed_lod_data(asset_dir, lod, shared_data)
     base_vertices = data["base_vertices"]
     blendshape_dirs = data["blendshape_dirs"]
     skin_weights = data["skin_weights"]
@@ -100,6 +102,10 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
     faces = data["faces"].astype(np.int64)
     corrective_weights = load_pose_correctives_weights(asset_dir, lod)
     corrective_W2 = corrective_weights["W2"]
+    if corrective_W2.shape[0] != len(base_vertices) * 3:
+        raise ValueError(
+            f"MHR lod{lod} corrective W2 has {corrective_W2.shape[0]} rows, expected {len(base_vertices) * 3}"
+        )
 
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
@@ -167,6 +173,43 @@ def _load_raw_model_data(asset_dir: Path) -> dict[str, Any]:
         "inverse_bind_pose": lbs.inverse_bind_pose,
         "faces": character.mesh.faces,
     }
+
+
+def _load_preprocessed_lod_data(asset_dir: Path, lod: int, shared_data: dict[str, Any]) -> dict[str, Any]:
+    path = asset_dir / f"mhr_lod{lod}.npz"
+    with np.load(path, allow_pickle=False) as asset:
+        joint_names = [str(name) for name in asset["skin_joint_names"].tolist()]
+        checkpoint_joint_index = {name: index for index, name in enumerate(shared_data["joint_names"])}
+        missing = sorted(name for name in joint_names if name not in checkpoint_joint_index)
+        if missing:
+            raise ValueError(f"{path} references joints missing from mhr_model.pt: {missing}")
+
+        skin_joint_indices = np.asarray(asset["skin_joint_indices"], dtype=np.int64)
+        mapped_joint_indices = np.asarray([checkpoint_joint_index[joint_names[index]] for index in skin_joint_indices])
+        base_vertices = np.asarray(asset["base_vertices"], dtype=np.float32)
+        skin_indices, skin_weights = _build_dense_skinning(
+            asset["skin_vertex_indices"],
+            mapped_joint_indices,
+            asset["skin_weights"],
+            len(base_vertices),
+        )
+
+        return shared_data | {
+            "base_vertices": base_vertices,
+            "blendshape_dirs": np.asarray(asset["blendshape_dirs"], dtype=np.float32),
+            "skin_weights": skin_weights,
+            "skin_indices": skin_indices,
+            "faces": np.asarray(asset["faces"], dtype=np.int64),
+        }
+
+
+def _has_hosted_assets(model_path: Path) -> bool:
+    asset_names = [
+        "mhr_model.pt",
+        "corrective_activation.npz",
+        *(f"mhr_lod{lod}.npz" for lod in SUPPORTED_LODS),
+    ]
+    return all((model_path / name).is_file() for name in asset_names)
 
 
 def _get_attr(obj: Any, path: str) -> Any:

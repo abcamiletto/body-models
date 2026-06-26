@@ -66,7 +66,7 @@ work can use `skip_vertices=True` to avoid preparing rest vertices.
 - Anatomicals: SKEL, MyoFullBody
 - Heads: FLAME
 - Hands: MANO
-- Robots: BrainCo, G1
+- Robots: BrainCo, G1, SmplHumanoid
 
 See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)
 for setup, supported backends, inputs, and model-specific behavior.

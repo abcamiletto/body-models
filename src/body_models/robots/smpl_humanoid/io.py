@@ -12,13 +12,14 @@ from jaxtyping import Float, Int
 import trimesh.creation
 from trimesh import Trimesh
 
+from body_models import config
+from body_models.cache import HF_MODEL_BASE_URL, download_and_extract, get_cache_dir
 from body_models.robots import mjcf
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 
 Array = Any
 PathLike = Path | str
-XML_DIR = Path(__file__).parent / "assets" / "xml"
-SMPL_HUMANOID_SOURCES: dict[str, Path] = {name: XML_DIR / f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS}
+SMPL_HUMANOID_URL = f"{HF_MODEL_BASE_URL}/smpl_humanoid/assets.zip"
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,18 @@ class SmplHumanoidWeights:
     actuated_joint_limits: Float[Array, "Q 2"]
     actuated_joint_names: list[str]
     actuated_joint_types: list[str]
+
+
+@dataclass(frozen=True)
+class LinkData:
+    joint_indices: list[int]
+    vertex_starts: list[int]
+    vertex_counts: list[int]
+    face_starts: list[int]
+    face_counts: list[int]
+    geom_positions: Float[Array, "L 3"]
+    geom_rotations: Float[Array, "L 3 3"]
+    names: list[str]
 
 
 def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHumanoidWeights:
@@ -76,7 +89,7 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
     if parsed_parent_indices != PARENTS:
         raise ValueError("SMPL humanoid XML body hierarchy does not match the canonical SMPL hierarchy.")
 
-    vertices, faces, link_data = _load_xml_geoms(parsed_bodies, dtype=dtype)
+    vertices, faces, links = _load_xml_geoms(parsed_bodies, dtype=dtype)
     actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
     actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
     num_actuated = 3 * len(BODY_JOINTS)
@@ -90,14 +103,14 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
         rest_local_rotations=rest_local_rotations.astype(dtype),
         vertices=vertices.astype(dtype),
         faces=faces.astype(np.int64),
-        link_joint_indices=link_data["joint_indices"],
-        link_vertex_starts=link_data["vertex_starts"],
-        link_vertex_counts=link_data["vertex_counts"],
-        link_face_starts=link_data["face_starts"],
-        link_face_counts=link_data["face_counts"],
-        link_geom_positions=link_data["geom_positions"].astype(dtype),
-        link_geom_rotations=link_data["geom_rotations"].astype(dtype),
-        link_names=link_data["names"],
+        link_joint_indices=links.joint_indices,
+        link_vertex_starts=links.vertex_starts,
+        link_vertex_counts=links.vertex_counts,
+        link_face_starts=links.face_starts,
+        link_face_counts=links.face_counts,
+        link_geom_positions=links.geom_positions.astype(dtype),
+        link_geom_rotations=links.geom_rotations.astype(dtype),
+        link_names=links.names,
         actuated_joint_indices=actuated_joint_indices,
         actuated_joint_limits=actuated_joint_limits,
         actuated_joint_names=actuated_joint_names,
@@ -105,19 +118,58 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
     )
 
 
+def validate_path(path: PathLike) -> Path:
+    path = Path(path)
+    if path.is_file():
+        raise ValueError(f"Expected an SMPL humanoid XML directory, got file: {path}")
+    if not path.is_dir():
+        raise FileNotFoundError(f"SMPL humanoid model path not found: {path}")
+    missing = [f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS if not (path / f"{name}.xml").is_file()]
+    if missing:
+        raise FileNotFoundError(f"SMPL humanoid model path {path} is missing: {', '.join(missing)}")
+    return path
+
+
+def get_model_path(model_path: PathLike | None = None) -> Path:
+    if model_path is None:
+        model_path = config.get_model_path("smpl-humanoid")
+    if model_path is not None:
+        return validate_path(model_path)
+
+    cache_path = get_cache_dir() / "smpl_humanoid"
+    if all((cache_path / f"{name}.xml").is_file() for name in SMPL_HUMANOID_VARIANTS):
+        config.set_model_path("smpl-humanoid", cache_path)
+        return validate_path(cache_path)
+    return download_model()
+
+
+def download_model() -> Path:
+    cache_dir = get_cache_dir() / "smpl_humanoid"
+    print(f"Downloading SMPL humanoid model to {cache_dir}...")
+    download_and_extract(url=SMPL_HUMANOID_URL, dest=cache_dir)
+    print("Done")
+    path = validate_path(cache_dir)
+    config.set_model_path("smpl-humanoid", path)
+    return path
+
+
 def _model_source(source: PathLike) -> Path:
     if isinstance(source, str):
         name = source.strip().lower().replace("-", "_")
-        if name in SMPL_HUMANOID_SOURCES:
-            return SMPL_HUMANOID_SOURCES[name]
+        if name in SMPL_HUMANOID_VARIANTS:
+            return get_model_path() / f"{name}.xml"
         path = Path(source)
-        if path.is_file():
-            return path
-        if not path.parent.parts:
+        if path.parent == Path(".") and path.suffix == "":
             variants = ", ".join(SMPL_HUMANOID_VARIANTS)
             raise ValueError(f"Unknown SMPL humanoid source {source!r}. Available sources: {variants}")
+    else:
+        path = Path(source)
 
-    return Path(source)
+    if not path.is_file():
+        raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
+    if path.suffix.lower() != ".xml":
+        raise ValueError(f"Expected an SMPL humanoid XML file, got: {path}")
+    return path
 
 
 def _walk_xml_bodies(
@@ -137,7 +189,7 @@ def _walk_xml_bodies(
         _walk_xml_bodies(child, parent_name=parent_name, bodies=bodies, parents=parents)
 
 
-def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray, np.ndarray, LinkData]:
     vertices_by_link = []
     faces_by_link = []
     joint_indices = []
@@ -171,17 +223,17 @@ def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray
     if not vertices_by_link:
         raise ValueError("SMPL humanoid XML does not contain any primitive geoms.")
 
-    link_data = {
-        "joint_indices": joint_indices,
-        "vertex_starts": vertex_starts,
-        "vertex_counts": vertex_counts,
-        "face_starts": face_starts,
-        "face_counts": face_counts,
-        "geom_positions": np.asarray(geom_positions, dtype=dtype),
-        "geom_rotations": np.asarray(geom_rotations, dtype=dtype),
-        "names": names,
-    }
-    return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
+    links = LinkData(
+        joint_indices=joint_indices,
+        vertex_starts=vertex_starts,
+        vertex_counts=vertex_counts,
+        face_starts=face_starts,
+        face_counts=face_counts,
+        geom_positions=np.asarray(geom_positions, dtype=dtype),
+        geom_rotations=np.asarray(geom_rotations, dtype=dtype),
+        names=names,
+    )
+    return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), links
 
 
 def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
@@ -236,7 +288,6 @@ def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
 
 
 __all__ = [
-    "SMPL_HUMANOID_SOURCES",
     "SmplHumanoidWeights",
     "load_model_data",
 ]

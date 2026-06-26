@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Literal
@@ -12,7 +11,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.cache import get_cache_dir
+from body_models.cache import HF_MODEL_BASE_URL, download_and_extract, get_cache_dir
 from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 from body_models.robots import mjcf
 
@@ -22,8 +21,7 @@ Array = Any
 
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 VALID_CONVENTIONS = ("soma", "mujoco")
-G1_HF_BASE_URL = "https://huggingface.co/lerobot/unitree-g1-mujoco/resolve/main/assets"
-G1_HF_XML = "g1_29dof_no_hand.xml"
+G1_URL = f"{HF_MODEL_BASE_URL}/g1/assets.zip"
 
 JOINT_NAMES = [
     "pelvis_skel",
@@ -172,14 +170,8 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 def download_model() -> Path:
     """Download G1 XML and STL assets from Hugging Face."""
     cache_dir = get_cache_dir() / "g1"
-    mesh_dir = cache_dir / "meshes"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    mesh_dir.mkdir(parents=True, exist_ok=True)
-
     print(f"Downloading G1 model to {cache_dir}...")
-    urllib.request.urlretrieve(f"{G1_HF_BASE_URL}/{G1_HF_XML}", cache_dir / "g1.xml")
-    for mesh_name in sorted({mesh for meshes in G1_MESH_JOINT_MAP.values() for mesh in meshes}):
-        urllib.request.urlretrieve(f"{G1_HF_BASE_URL}/meshes/{mesh_name}", mesh_dir / mesh_name)
+    download_and_extract(url=G1_URL, dest=cache_dir)
     print("Done")
     return cache_dir / "g1.xml"
 
