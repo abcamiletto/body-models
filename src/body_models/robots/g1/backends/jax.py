@@ -3,6 +3,7 @@
 import jax
 import jax.numpy as jnp
 from jaxtyping import Float
+from trimesh import Trimesh
 
 from body_models.robots.g1.backends import core
 from body_models.robots.g1.io import G1Weights
@@ -13,10 +14,9 @@ def forward_skeleton(
     body_pose: Float[jax.Array, "B Q"],
     global_translation: Float[jax.Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+    global_rotation: Float[jax.Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
-    rotation_type: core.RotationType = "rotmat",
-):
+) -> Float[jax.Array, "B J 4 4"]:
     return core.forward_skeleton(
         local_offsets=weights.local_offsets,
         rest_local_rotations=weights.rest_local_rotations,
@@ -27,7 +27,6 @@ def forward_skeleton(
         global_translation=global_translation,
         global_rotation=global_rotation,
         joint_indices=joint_indices,
-        rotation_type=rotation_type,
         xp=jnp,
     )
 
@@ -37,9 +36,8 @@ def forward_links(
     body_pose: Float[jax.Array, "B Q"],
     global_translation: Float[jax.Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-    rotation_type: core.RotationType = "rotmat",
-):
+    global_rotation: Float[jax.Array, "B 3"] | None = None,
+) -> Float[jax.Array, "B L 4 4"]:
     return core.forward_links(
         local_offsets=weights.local_offsets,
         rest_local_rotations=weights.rest_local_rotations,
@@ -52,7 +50,6 @@ def forward_links(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=jnp,
     )
 
@@ -62,9 +59,8 @@ def forward_meshes(
     body_pose: Float[jax.Array, "B Q"],
     global_translation: Float[jax.Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
-    rotation_type: core.RotationType = "rotmat",
-):
+    global_rotation: Float[jax.Array, "B 3"] | None = None,
+) -> list[Trimesh]:
     return core.forward_meshes(
         vertices=weights.vertices,
         faces=weights.faces,
@@ -83,6 +79,5 @@ def forward_meshes(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=jnp,
     )

@@ -86,7 +86,7 @@ def test_smpl_humanoid_pose_uses_reference_joint_order(smpl_humanoid_xml) -> Non
     body_pose_by_smpl = np.arange(23 * 3, dtype=np.float32).reshape(23, 3)
     body_pose = np.concatenate([body_pose_by_smpl[smpl_index] for _, smpl_index in BODY_JOINTS])
 
-    qpos = model.to_mujoco_qpos(body_pose)
+    qpos = model.to_qpos(body_pose)
 
     np.testing.assert_array_equal(qpos[:3], np.zeros(3, dtype=np.float32))
     expected = SO3.conversions.from_axis_angle_to_euler(
@@ -102,7 +102,7 @@ def test_smpl_humanoid_mujoco_qpos_converts_axis_angle_to_xml_hinges(smpl_humano
     body_pose = np.zeros(model.num_actuated, dtype=np.float32)
     body_pose[:3] = np.array([0.4, 0.5, -0.2], dtype=np.float32)
 
-    qpos = model.to_mujoco_qpos(body_pose)
+    qpos = model.to_qpos(body_pose)
     hinge_angles = qpos[7:10]
     expected = SO3.conversions.from_axis_angle_to_euler(body_pose[:3], convention="XYZ", xp=np)
 

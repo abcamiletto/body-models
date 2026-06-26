@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from array_api_compat import get_namespace
 from jaxtyping import Float, Int
@@ -11,20 +11,9 @@ from nanomanifold import SO3
 from body_models import common
 from trimesh import Trimesh
 from body_models.common import rigid
-from body_models.rotations import RotationType as SO3RotationType
 
 Array = Any
-RotationType = SO3RotationType | Literal["hinge"]
 MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
-VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat", "hinge")
-GLOBAL_ROTATION_TYPES: dict[RotationType, SO3RotationType] = {
-    "axis_angle": "axis_angle",
-    "quat": "quat",
-    "sixd": "sixd",
-    "matrix": "matrix",
-    "rotmat": "rotmat",
-    "hinge": "rotmat",
-}
 
 
 def _hinge_rotations(
@@ -52,9 +41,8 @@ def forward_skeleton(
     pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_rotation: Float[Array, "B 3"] | None = None,
     skeleton_indices: list[int] | None = None,
-    rotation_type: RotationType = "rotmat",
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space BrainCo hand joint transforms."""
@@ -106,8 +94,7 @@ def forward_skeleton(
     rot = xp.stack(rot_world, axis=-3)
     trans = xp.stack(pos_world, axis=-2)
     if global_rotation is not None:
-        global_rotation_type = GLOBAL_ROTATION_TYPES[rotation_type]
-        global_rot = SO3.convert(global_rotation, src=global_rotation_type, dst="rotmat", xp=xp)
+        global_rot = SO3.convert(global_rotation, src="axis_angle", dst="rotmat", xp=xp)
         rot = global_rot[..., None, :, :] @ rot
         trans = xp.squeeze(global_rot[..., None, :, :] @ trans[..., None], axis=-1)
     trans = trans + global_translation[..., None, :]
@@ -139,8 +126,7 @@ def forward_links(
     pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    rotation_type: RotationType = "rotmat",
+    global_rotation: Float[Array, "B 3"] | None = None,
     xp: Any = None,
 ) -> Float[Array, "B L 4 4"]:
     """Compute world-space transforms for each BrainCo STL link mesh."""
@@ -159,7 +145,6 @@ def forward_links(
         pose=pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=xp,
     )
     return rigid.forward_link_transforms(
@@ -193,8 +178,7 @@ def forward_meshes(
     pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    rotation_type: RotationType = "rotmat",
+    global_rotation: Float[Array, "B 3"] | None = None,
     xp: Any = None,
 ) -> list[Trimesh]:
     """Rigidly transform and concatenate all BrainCo STL link meshes."""
@@ -216,7 +200,6 @@ def forward_meshes(
         pose=pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=xp,
     )
     return rigid.forward_meshes_from_links(

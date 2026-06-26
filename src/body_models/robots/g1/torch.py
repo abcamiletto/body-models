@@ -28,21 +28,15 @@ class G1(RigidBodyModel, nn.Module):
         self,
         model_path: Path | str | None = None,
         *,
-        rotation_type: core.RotationType = "rotmat",
         convention: core.Convention = "soma",
     ) -> None:
         """Initialize the G1 model.
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
-            rotation_type: Rotation representation expected by global_rotation.
             convention: Skeleton convention used when loading rigid model data.
         """
-        if rotation_type not in core.VALID_ROTATION_TYPES:
-            raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
-        self.rotation_type = rotation_type
-        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
         self.mujoco_to_model = core.MUJOCO_TO_KIMODO if convention == "soma" else self.mujoco_to_model
         self.convention = convention
         self.weights = common.torchify(load_model_data(model_path, convention=convention))
@@ -116,7 +110,7 @@ class G1(RigidBodyModel, nn.Module):
         body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Tensor, "B J 4 4"]:
         """Compute posed joint transforms.
@@ -136,7 +130,6 @@ class G1(RigidBodyModel, nn.Module):
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
         )
 
     def forward_meshes(
@@ -144,7 +137,7 @@ class G1(RigidBodyModel, nn.Module):
         body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
     ) -> list[Trimesh]:
         """Compute posed model meshes.
 
@@ -161,7 +154,6 @@ class G1(RigidBodyModel, nn.Module):
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def forward_links(
@@ -169,28 +161,20 @@ class G1(RigidBodyModel, nn.Module):
         body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B L 4 4"]:
         return backend.forward_links(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
-        global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
-        global_rotation = SO3.identity_as(
-            global_ref,
-            batch_dims=batch_dims,
-            rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
-            xp=torch,
-        )
         return {
             "body_pose": torch.zeros((*batch_dims, self.num_actuated), device=device, dtype=dtype),
-            "global_rotation": global_rotation,
+            "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 
