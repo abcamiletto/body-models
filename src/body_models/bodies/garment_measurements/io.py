@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,7 +19,6 @@ Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, paren
 
 PREPROCESSED_FILENAME = "garment_measurements.npz"
 GARMENT_MEASUREMENTS_URL = f"{HF_DATASET_BASE_URL}/garment_measurements/{PREPROCESSED_FILENAME}"
-GENERATOR_PYTHON = "3.11"
 
 
 @dataclass(frozen=True)
@@ -83,7 +79,7 @@ def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32)
 
     upstream_data = _find_upstream_data_dir(resolved_path)
     if upstream_data is not None:
-        return load_preprocessed_model(preprocess_model(upstream_data), dtype=dtype)
+        raise RuntimeError(_preprocess_message(upstream_data))
 
     raise FileNotFoundError(
         f"Missing {PREPROCESSED_FILENAME} under {resolved_path}. Provide either a preprocessed model file "
@@ -91,8 +87,8 @@ def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32)
     )
 
 
-def preprocess_model(upstream_data: PathLike, output_dir: PathLike | None = None) -> Path:
-    """Generate ``garment_measurements.npz`` from an upstream GarmentMeasurements data directory."""
+def preprocess_model(upstream_data: PathLike, output_dir: PathLike) -> Path:
+    """Raise instructions for generating ``garment_measurements.npz`` from upstream data."""
     resolved_upstream = _find_upstream_data_dir(Path(upstream_data))
     if resolved_upstream is None:
         raise FileNotFoundError(
@@ -100,16 +96,12 @@ def preprocess_model(upstream_data: PathLike, output_dir: PathLike | None = None
             "pca/point.pca, pca/mean.obj, and template/male.fbx"
         )
 
-    output_dir = Path(output_dir) if output_dir is not None else _preprocessed_output_dir(resolved_upstream)
+    output_dir = Path(output_dir)
     output_file = output_dir / PREPROCESSED_FILENAME
     if output_file.is_file():
         return output_file
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _run_asset_generator(resolved_upstream, output_dir)
-    if not output_file.is_file():
-        raise RuntimeError(f"GarmentMeasurements preprocessing did not produce {output_file}")
-    return output_file
+    raise RuntimeError(_preprocess_message(resolved_upstream, output_dir))
 
 
 def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> GarmentMeasurementsWeights:
@@ -227,39 +219,20 @@ def _find_preprocessed_file(model_path: Path) -> Path | None:
     return None
 
 
-def _preprocessed_output_dir(upstream_data: Path) -> Path:
-    resolved = str(upstream_data.resolve())
-    digest = hashlib.sha256(resolved.encode()).hexdigest()[:12]
-    return get_cache_dir() / "garment_measurements" / "processed" / digest
-
-
-def _run_asset_generator(upstream_data: Path, output_dir: Path) -> None:
-    uv = shutil.which("uv")
-    if uv is None:
-        raise RuntimeError(
-            "GarmentMeasurements preprocessing requires `uv` on PATH because the FBX converter "
-            "is a self-contained PEP 723 script that installs bpy outside the runtime environment."
+def _preprocess_message(upstream_data: Path, output_dir: Path | None = None) -> str:
+    script = Path(__file__).with_name("tools") / "generate_asset.py"
+    if output_dir is None:
+        return (
+            f"GarmentMeasurements requires a preprocessed {PREPROCESSED_FILENAME} asset. "
+            "Generate it from the upstream files with:\n"
+            f"uv run --python 3.11 --no-project {script} {upstream_data} /path/to/output-dir\n"
+            "Then run `body-models set garment-measurements /path/to/output-dir`."
         )
-
-    script = Path(__file__).with_name("generate_asset.py")
-    output_file = output_dir / PREPROCESSED_FILENAME
-    command = [
-        uv,
-        "run",
-        "--python",
-        GENERATOR_PYTHON,
-        "--no-project",
-        str(script),
-        str(upstream_data),
-        str(output_dir),
-    ]
-
-    print("GarmentMeasurements: preprocessing upstream FBX data with bpy via uv.")
-    print(f"GarmentMeasurements: generated asset will be saved to {output_file}")
-    print(f"GarmentMeasurements: running {' '.join(command)}")
-    subprocess.run(command, check=True)
-    print(f"GarmentMeasurements: generated {output_file}")
-    print(f"GarmentMeasurements: to reuse it directly, run `body-models set garment-measurements {output_dir}`")
+    return (
+        f"GarmentMeasurements preprocessed asset not found: {output_dir / PREPROCESSED_FILENAME}\n"
+        "Generate it with:\n"
+        f"uv run --python 3.11 --no-project {script} {upstream_data} {output_dir}"
+    )
 
 
 def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
@@ -288,7 +261,6 @@ __all__ = [
     "Front",
     "GarmentMeasurementsWeights",
     "GARMENT_MEASUREMENTS_URL",
-    "GENERATOR_PYTHON",
     "PREPROCESSED_FILENAME",
     "compute_kinematic_fronts",
     "download_model",
