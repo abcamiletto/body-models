@@ -4,7 +4,7 @@ import pytest
 from body_models.base import RigidBodyModel
 from body_models.registry import create_model, list_models
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
-from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_MODEL_TYPES
+from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_SOURCES
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -24,8 +24,8 @@ def test_smpl_humanoid_factory_loads() -> None:
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
-def test_smpl_humanoid_model_types_are_source_variants() -> None:
-    assert tuple(SMPL_HUMANOID_MODEL_TYPES) == SMPL_HUMANOID_VARIANTS
+def test_smpl_humanoid_sources_are_variants() -> None:
+    assert tuple(SMPL_HUMANOID_SOURCES) == SMPL_HUMANOID_VARIANTS
 
 
 @pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_VARIANTS))
@@ -38,17 +38,25 @@ def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
-@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_MODEL_TYPES))
+@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_SOURCES))
 def test_smpl_humanoid_variants_are_y_up(model_name: str) -> None:
     model = SmplHumanoid(model_name)
     assert_smpl_humanoid_is_y_up(model)
 
 
 def test_smpl_humanoid_custom_xml_loads() -> None:
-    xml_path = SMPL_HUMANOID_MODEL_TYPES["phc"]
+    xml_path = SMPL_HUMANOID_SOURCES["phc"]
     model = SmplHumanoid(xml_path)
 
     assert_smpl_humanoid_is_y_up(model)
+
+
+def test_smpl_humanoid_custom_bare_xml_filename_loads(smpl_humanoid_xml, monkeypatch) -> None:
+    monkeypatch.chdir(smpl_humanoid_xml.parent)
+
+    model = SmplHumanoid(smpl_humanoid_xml.name)
+
+    assert model.num_joints == 24
 
 
 def assert_smpl_humanoid_is_y_up(model: SmplHumanoid) -> None:

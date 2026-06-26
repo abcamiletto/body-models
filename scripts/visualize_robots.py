@@ -14,18 +14,20 @@ from body_models.registry import create_model
 from body_models.robots.smpl_humanoid import SMPL_HUMANOID_VARIANTS
 
 
-def model_label(name: str) -> str:
-    label = name.replace("_", " ").title()
-    return label.replace("Smplsim", "SMPLSim").replace("Smpl", "SMPL").replace("Phc", "PHC")
+SMPL_HUMANOID_LABELS = {
+    "humenv": "HumEnv",
+    "phc": "PHC",
+    "smplsim": "SMPLSim",
+}
 
 
-SMPL_HUMANOID = model_label("humenv")
+SMPL_HUMANOID = SMPL_HUMANOID_LABELS["humenv"]
 MODEL_SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "G1": ("g1", {}),
     "BrainCo Right": ("brainco", {"side": "right"}),
     "BrainCo Left": ("brainco", {"side": "left"}),
     "MyoFullBody": ("myofullbody", {}),
-    **{model_label(name): (name, {}) for name in SMPL_HUMANOID_VARIANTS},
+    **{SMPL_HUMANOID_LABELS[name]: (name, {}) for name in SMPL_HUMANOID_VARIANTS},
 }
 SMPL_HUMANOID_COLOR = (190, 190, 205)
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
@@ -209,7 +211,7 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
             for coord_index in range(state.model.num_actuated):
                 lo, hi = slider_limits(state.model.actuated_joint_limits[coord_index])
                 initial = float(state.params[key][coord_index])
-                label = pose_slider_label(state.model.actuated_joint_names, coord_index)
+                label = pose_slider_label(state.model, coord_index)
                 handles.append(
                     add_slider(
                         server,
@@ -227,19 +229,16 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
     return RobotControls(folder, handles)
 
 
-def pose_slider_label(names: list[str], index: int) -> str:
-    name = names[index]
-    start = index
-    while start > 0 and names[start - 1] == name:
-        start -= 1
-    stop = index + 1
-    while stop < len(names) and names[stop] == name:
-        stop += 1
-    if stop - start == 3:
-        return f"{name}_{'xyz'[index - start]}"
-    if stop - start > 1:
-        return f"{name}_{index - start}"
-    return name
+def pose_slider_label(model: RigidBodyModel, index: int) -> str:
+    for name, joint_slice in model.actuated_joint_slices.items():
+        if joint_slice.start <= index < joint_slice.stop:
+            dof = joint_slice.stop - joint_slice.start
+            if dof == 3:
+                return f"{name}_{'xyz'[index - joint_slice.start]}"
+            if dof > 1:
+                return f"{name}_{index - joint_slice.start}"
+            return name
+    raise IndexError(f"Pose coordinate index out of range: {index}")
 
 
 def slider_limits(limits: np.ndarray) -> tuple[float, float]:

@@ -18,7 +18,7 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 Array = Any
 PathLike = Path | str
 XML_DIR = Path(__file__).parent / "assets" / "xml"
-SMPL_HUMANOID_MODEL_TYPES: dict[str, Path] = {name: XML_DIR / f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS}
+SMPL_HUMANOID_SOURCES: dict[str, Path] = {name: XML_DIR / f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS}
 
 
 @dataclass(frozen=True)
@@ -80,6 +80,8 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
     actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
     actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
     num_actuated = 3 * len(BODY_JOINTS)
+    # The XML encodes each ball joint as three hinges, while this API exposes
+    # each SMPL joint as one axis-angle coordinate.
     actuated_joint_limits = np.repeat(np.array([[-np.pi, np.pi]], dtype=dtype), num_actuated, axis=0)
     return SmplHumanoidWeights(
         joint_names=JOINT_NAMES.copy(),
@@ -106,9 +108,12 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
 def _model_source(source: PathLike) -> Path:
     if isinstance(source, str):
         name = source.strip().lower().replace("-", "_")
-        if name in SMPL_HUMANOID_MODEL_TYPES:
-            return SMPL_HUMANOID_MODEL_TYPES[name]
-        if not Path(source).parent.parts:
+        if name in SMPL_HUMANOID_SOURCES:
+            return SMPL_HUMANOID_SOURCES[name]
+        path = Path(source)
+        if path.is_file():
+            return path
+        if not path.parent.parts:
             variants = ", ".join(SMPL_HUMANOID_VARIANTS)
             raise ValueError(f"Unknown SMPL humanoid source {source!r}. Available sources: {variants}")
 
@@ -231,7 +236,7 @@ def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
 
 
 __all__ = [
-    "SMPL_HUMANOID_MODEL_TYPES",
+    "SMPL_HUMANOID_SOURCES",
     "SmplHumanoidWeights",
     "load_model_data",
 ]
