@@ -155,16 +155,15 @@ class G1Weights:
 
 
 def get_model_path(model_path: PathLike | None = None) -> Path:
-    """Resolve a G1 asset directory containing ``xml/g1.xml`` and ``meshes/g1``."""
+    """Resolve the G1 XML file."""
     if model_path is None:
         model_path = config.get_model_path("g1")
-
     if model_path is not None:
         return validate_path(model_path)
 
     cache_path = get_cache_dir() / "g1"
-    if (cache_path / "xml" / "g1.xml").exists() and (cache_path / "meshes" / "g1").is_dir():
-        return cache_path
+    if (cache_path / "g1.xml").exists():
+        return cache_path / "g1.xml"
 
     return download_model()
 
@@ -172,31 +171,24 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 def download_model() -> Path:
     """Download G1 XML and STL assets from Hugging Face."""
     cache_dir = get_cache_dir() / "g1"
-    xml_dir = cache_dir / "xml"
-    mesh_dir = cache_dir / "meshes" / "g1"
-    xml_dir.mkdir(parents=True, exist_ok=True)
+    mesh_dir = cache_dir / "meshes"
+    cache_dir.mkdir(parents=True, exist_ok=True)
     mesh_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Downloading G1 model to {cache_dir}...")
-    urllib.request.urlretrieve(f"{G1_HF_BASE_URL}/{G1_HF_XML}", xml_dir / "g1.xml")
+    urllib.request.urlretrieve(f"{G1_HF_BASE_URL}/{G1_HF_XML}", cache_dir / "g1.xml")
     for mesh_name in sorted({mesh for meshes in G1_MESH_JOINT_MAP.values() for mesh in meshes}):
         urllib.request.urlretrieve(f"{G1_HF_BASE_URL}/meshes/{mesh_name}", mesh_dir / mesh_name)
     print("Done")
-    return cache_dir
+    return cache_dir / "g1.xml"
 
 
 def validate_path(path: PathLike) -> Path:
     path = Path(path)
-    if path.is_file():
-        raise ValueError(f"Expected a G1 asset directory, got file: {path}")
-    if not path.is_dir():
-        raise FileNotFoundError(f"G1 model directory not found: {path}")
-    xml_path = path / "xml" / "g1.xml"
-    mesh_dir = path / "meshes" / "g1"
-    if not xml_path.exists():
-        raise FileNotFoundError(f"G1 XML not found: {xml_path}")
-    if not mesh_dir.is_dir():
-        raise FileNotFoundError(f"G1 mesh directory not found: {mesh_dir}")
+    if path.suffix.lower() != ".xml":
+        raise ValueError(f"Expected a G1 XML file, got: {path}")
+    if not path.is_file():
+        raise FileNotFoundError(f"G1 XML not found: {path}")
     return path
 
 
@@ -209,22 +201,21 @@ def load_model_data(
     if convention not in VALID_CONVENTIONS:
         raise ValueError(f"Invalid convention: {convention}")
     coord = MUJOCO_TO_KIMODO if convention == "soma" else np.eye(3, dtype=np.float32)
-    model_dir = get_model_path(model_path)
-    xml_path = model_dir / "xml" / "g1.xml"
-    mesh_dir = model_dir / "meshes" / "g1"
+    xml_path = get_model_path(model_path)
     tree = ET.parse(xml_path)
     root = tree.getroot()
 
     class_axes, class_limits = _parse_joint_defaults(root)
     local_offsets, rest_local_rotations = _parse_joint_rest(root, coord)
-    mesh_transforms = _parse_mesh_local_transforms(root, coord)
+    mesh_base = _mesh_base_dir(root, xml_path)
+    mesh_transforms = _parse_mesh_local_transforms(root, mesh_base, coord)
     actuated_joint_indices, actuated_joint_axes, actuated_joint_limits, actuated_joint_names = _parse_actuated_joints(
         root,
         class_axes,
         class_limits,
         coord,
     )
-    vertices, faces, link_data = _load_link_meshes(mesh_dir, mesh_transforms, coord, dtype=dtype)
+    vertices, faces, link_data = _load_link_meshes(mesh_transforms, coord, dtype=dtype)
     return G1Weights(
         joint_names=JOINT_NAMES.copy(),
         parents=PARENTS.copy(),
@@ -297,22 +288,32 @@ def _parse_joint_rest(root: ET.Element, coord: np.ndarray) -> tuple[np.ndarray, 
     return local_offsets, rest_local_rotations
 
 
-def _parse_mesh_local_transforms(root: ET.Element, coord: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+def _parse_mesh_local_transforms(
+    root: ET.Element,
+    mesh_base: Path,
+    coord: np.ndarray,
+) -> dict[str, tuple[np.ndarray, np.ndarray, Path]]:
     mesh_file_by_name = {
         mesh.get("name"): mesh.get("file")
         for mesh in root.findall(".//asset/mesh")
         if mesh.get("name") and mesh.get("file")
     }
-    out: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    out: dict[str, tuple[np.ndarray, np.ndarray, Path]] = {}
     for geom in root.findall(".//geom"):
         mesh_name = geom.get("mesh")
         mesh_file = mesh_file_by_name.get(mesh_name)
-        if mesh_file is None or mesh_file in out:
+        if mesh_file is None:
+            continue
+        key = Path(mesh_file).name
+        if key in out:
             continue
         pos = _parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32))
         quat = _parse_vec(geom.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32))
         rot = _quat_wxyz_to_matrix(quat)
-        out[mesh_file] = (coord @ pos, coord @ rot @ coord.T)
+        mesh_path = Path(mesh_file)
+        if not mesh_path.is_absolute():
+            mesh_path = mesh_base / mesh_path
+        out[key] = (coord @ pos, coord @ rot @ coord.T, mesh_path.resolve())
     return out
 
 
@@ -351,8 +352,7 @@ def _parse_actuated_joints(
 
 
 def _load_link_meshes(
-    mesh_dir: Path,
-    mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]],
+    mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray, Path]],
     coord: np.ndarray,
     *,
     dtype,
@@ -376,13 +376,12 @@ def _load_link_meshes(
         for mesh_file in mesh_files:
             if mesh_file not in mesh_transforms:
                 raise FileNotFoundError(f"G1 XML does not reference expected mesh: {mesh_file}")
-            path = mesh_dir / mesh_file
-            if not path.exists():
-                raise FileNotFoundError(f"G1 mesh not found: {path}")
-            vertices, faces = load_stl_mesh(path, coord=coord, dtype=dtype)
+            geom_pos, geom_rot, mesh_path = mesh_transforms[mesh_file]
+            if not mesh_path.exists():
+                raise FileNotFoundError(f"G1 mesh not found: {mesh_path}")
+            vertices, faces = load_stl_mesh(mesh_path, coord=coord, dtype=dtype)
             vertices_by_link.append(vertices)
             faces_by_link.append(faces + vertex_offset)
-            geom_pos, geom_rot = mesh_transforms[mesh_file]
             joint_indices.append(joint_idx)
             vertex_starts.append(vertex_offset)
             vertex_counts.append(vertices.shape[0])
@@ -395,7 +394,7 @@ def _load_link_meshes(
             face_offset += faces.shape[0]
 
     if not vertices_by_link:
-        raise FileNotFoundError(f"No G1 STL link meshes found in {mesh_dir}")
+        raise FileNotFoundError("No G1 STL link meshes found")
     link_data = {
         "joint_indices": joint_indices,
         "vertex_starts": vertex_starts,
@@ -407,6 +406,12 @@ def _load_link_meshes(
         "names": names,
     }
     return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
+
+
+def _mesh_base_dir(root: ET.Element, xml_path: Path) -> Path:
+    compiler = root.find("compiler")
+    meshdir = compiler.get("meshdir") if compiler is not None else None
+    return (xml_path.parent / meshdir).resolve() if meshdir else xml_path.parent.resolve()
 
 
 def load_stl_mesh(
