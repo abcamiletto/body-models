@@ -198,6 +198,10 @@ def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     if geom_type == "sphere":
         return _sphere(float(size[0]), dtype=dtype)
     if geom_type == "capsule":
+        fromto = geom.get("fromto")
+        if fromto is not None:
+            capsule = _parse_vec(fromto, size=6, default=np.zeros(6, dtype=dtype))
+            return _capsule_between(capsule[:3], capsule[3:], float(size[0]), dtype=dtype)
         return _capsule_between(
             np.array([0.0, 0.0, -float(size[1])], dtype=dtype),
             np.array([0.0, 0.0, float(size[1])], dtype=dtype),
