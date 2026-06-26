@@ -1,0 +1,76 @@
+<mujoco>
+  <worldbody>
+    <body name="Pelvis" pos="0 0 0">
+      <geom name="Pelvis_geom" type="sphere" size="0.01"/>
+      <body name="L_Hip" pos="0 0 0">
+        <geom name="L_Hip_geom" type="sphere" size="0.01"/>
+        <body name="L_Knee" pos="0 0 0">
+          <geom name="L_Knee_geom" type="sphere" size="0.01"/>
+          <body name="L_Ankle" pos="0 0 0">
+            <geom name="L_Ankle_geom" type="sphere" size="0.01"/>
+            <body name="L_Toe" pos="0 0 0">
+              <geom name="L_Toe_geom" type="sphere" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="R_Hip" pos="0 0 0">
+        <geom name="R_Hip_geom" type="sphere" size="0.01"/>
+        <body name="R_Knee" pos="0 0 0">
+          <geom name="R_Knee_geom" type="sphere" size="0.01"/>
+          <body name="R_Ankle" pos="0 0 0">
+            <geom name="R_Ankle_geom" type="sphere" size="0.01"/>
+            <body name="R_Toe" pos="0 0 0">
+              <geom name="R_Toe_geom" type="sphere" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="Torso" pos="0 0 0">
+        <geom name="Torso_geom" type="sphere" size="0.01"/>
+        <body name="Spine" pos="0 0 0">
+          <geom name="Spine_geom" type="sphere" size="0.01"/>
+          <body name="Chest" pos="0 0 0">
+            <geom name="Chest_geom" type="sphere" size="0.01"/>
+            <body name="Neck" pos="0 0 0">
+              <geom name="Neck_geom" type="sphere" size="0.01"/>
+              <body name="Head" pos="0 0 0">
+                <geom name="Head_geom" type="sphere" size="0.01"/>
+              </body>
+            </body>
+            <body name="L_Thorax" pos="0 0 0">
+              <geom name="L_Thorax_geom" type="sphere" size="0.01"/>
+              <body name="L_Shoulder" pos="0 0 0">
+                <geom name="L_Shoulder_geom" type="sphere" size="0.01"/>
+                <body name="L_Elbow" pos="0 0 0">
+                  <geom name="L_Elbow_geom" type="sphere" size="0.01"/>
+                  <body name="L_Wrist" pos="0 0 0">
+                    <geom name="L_Wrist_geom" type="sphere" size="0.01"/>
+                    <body name="L_Hand" pos="0 0 0">
+                      <geom name="L_Hand_geom" type="sphere" size="0.01"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+            <body name="R_Thorax" pos="0 0 0">
+              <geom name="R_Thorax_geom" type="sphere" size="0.01"/>
+              <body name="R_Shoulder" pos="0 0 0">
+                <geom name="R_Shoulder_geom" type="sphere" size="0.01"/>
+                <body name="R_Elbow" pos="0 0 0">
+                  <geom name="R_Elbow_geom" type="sphere" size="0.01"/>
+                  <body name="R_Wrist" pos="0 0 0">
+                    <geom name="R_Wrist_geom" type="sphere" size="0.01"/>
+                    <body name="R_Hand" pos="0 0 0">
+                      <geom name="R_Hand_geom" type="sphere" size="0.01"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

@@ -82,7 +82,7 @@ MODELS = [
         smpl_humanoid_numpy.SmplHumanoid,
         smpl_humanoid_torch.SmplHumanoid,
         smpl_humanoid_jax.SmplHumanoid,
-        {},
+        {"model_path": Path(__file__).parent / "smpl_humanoid.xml"},
     ),
     ("smplh", smplh_numpy.SMPLH, smplh_torch.SMPLH, smplh_jax.SMPLH, {"gender": "neutral"}),
     ("smplx", smplx_numpy.SMPLX, smplx_torch.SMPLX, smplx_jax.SMPLX, {"gender": "neutral"}),

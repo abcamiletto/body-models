@@ -1,50 +1,57 @@
 import numpy as np
 import pytest
 
+from body_models.base import RigidBodyModel
 from body_models.registry import create_model
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
 
 
-def test_smpl_humanoid_factory_loads() -> None:
-    model = create_model("smpl-humanoid")
-
-    assert isinstance(model, SmplHumanoid)
-    assert model.num_joints == 24
-    assert model.forward_vertices(**model.get_rest_pose()).shape == (model.num_vertices, 3)
-
-
-def test_smpl_humanoid_qpos_uses_reference_joint_order() -> None:
-    model = SmplHumanoid()
-    body_pose = np.arange(23 * 3, dtype=np.float32).reshape(23, 3)
-
-    qpos = model.to_qpos(body_pose)
-    expected_joint_pos = np.concatenate([body_pose[smpl_index] for _, smpl_index in BODY_JOINTS])
-
-    np.testing.assert_array_equal(qpos[:3], np.zeros(3, dtype=np.float32))
-    np.testing.assert_array_equal(qpos[7:], expected_joint_pos)
-
-
-def test_smpl_humanoid_apose_is_canonical_smpl_order() -> None:
-    body_pose = SmplHumanoid().get_apose()["body_pose"]
-
-    assert body_pose.shape == (23, 3)
-    np.testing.assert_array_equal(body_pose[12], np.array([0.0, 0.0, 0.45], dtype=np.float32))
-    np.testing.assert_array_equal(body_pose[13], np.array([0.0, 0.0, -0.45], dtype=np.float32))
-    np.testing.assert_array_equal(body_pose[15], np.array([0.0, 0.0, 0.35], dtype=np.float32))
-    np.testing.assert_array_equal(body_pose[16], np.array([0.0, 0.0, -0.35], dtype=np.float32))
-
-
-def test_smpl_humanoid_loads_mjcf_primitive_xml(tmp_path) -> None:
+@pytest.fixture
+def smpl_humanoid_xml(tmp_path):
     xml_path = tmp_path / "smpl_humanoid.xml"
     xml_path.write_text(_smpl_humanoid_xml(), encoding="utf-8")
+    return xml_path
 
-    model = SmplHumanoid(xml_path)
+
+def test_smpl_humanoid_factory_loads(smpl_humanoid_xml) -> None:
+    model = create_model("smpl-humanoid", model_path=smpl_humanoid_xml)
+
+    assert isinstance(model, SmplHumanoid)
+    assert isinstance(model, RigidBodyModel)
+    assert model.num_joints == 24
+    assert len(model.forward_meshes(**model.get_rest_pose())) == 1
+
+
+def test_smpl_humanoid_pose_uses_reference_joint_order(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(smpl_humanoid_xml)
+    body_pose_by_smpl = np.arange(23 * 3, dtype=np.float32).reshape(23, 3)
+    body_pose = np.concatenate([body_pose_by_smpl[smpl_index] for _, smpl_index in BODY_JOINTS])
+
+    qpos = model.to_mujoco_qpos(body_pose)
+
+    np.testing.assert_array_equal(qpos[:3], np.zeros(3, dtype=np.float32))
+    np.testing.assert_array_equal(qpos[7:], body_pose)
+
+
+def test_smpl_humanoid_apose_is_canonical_smpl_order(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(smpl_humanoid_xml)
+    body_pose = model.unpack_pose(model.get_apose()["body_pose"])
+
+    np.testing.assert_array_equal(body_pose["L_Thorax"], np.array([0.0, 0.0, 0.45], dtype=np.float32))
+    np.testing.assert_array_equal(body_pose["R_Thorax"], np.array([0.0, 0.0, -0.45], dtype=np.float32))
+    np.testing.assert_array_equal(body_pose["L_Shoulder"], np.array([0.0, 0.0, 0.35], dtype=np.float32))
+    np.testing.assert_array_equal(body_pose["R_Shoulder"], np.array([0.0, 0.0, -0.35], dtype=np.float32))
+
+
+def test_smpl_humanoid_loads_mjcf_primitive_xml(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(smpl_humanoid_xml)
     params = model.get_rest_pose()
 
     assert model.link_names == [f"{name}_geom" for name in JOINT_NAMES]
     assert model.num_vertices > 0
-    assert model.forward_vertices(**params).shape == (model.num_vertices, 3)
+    mesh = model.forward_meshes(**params)[0]
+    assert mesh.vertices.shape == (model.num_vertices, 3)
 
 
 def test_smpl_humanoid_xml_requires_canonical_hierarchy(tmp_path) -> None:

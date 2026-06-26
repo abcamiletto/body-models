@@ -1,4 +1,4 @@
-"""Procedural assets for the rigid SMPL humanoid model."""
+"""MJCF loading for the rigid SMPL humanoid model."""
 
 from __future__ import annotations
 
@@ -14,44 +14,6 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 
 Array = Any
 PathLike = Path | str
-
-ROOT_QPOS_SIZE = 7
-ROOT_QVEL_SIZE = 6
-JOINT_POS_SIZE = 3 * len(BODY_JOINTS)
-BODY_COUNT = len(JOINT_NAMES)
-QPOS_SIZE = ROOT_QPOS_SIZE + JOINT_POS_SIZE
-QVEL_SIZE = ROOT_QVEL_SIZE + JOINT_POS_SIZE
-ACTION_SIZE = JOINT_POS_SIZE
-
-LOCAL_OFFSETS = np.array(
-    [
-        [0.000, 0.000, 0.000],
-        [0.090, 0.000, -0.090],
-        [-0.090, 0.000, -0.090],
-        [0.000, 0.000, 0.120],
-        [0.010, 0.000, -0.410],
-        [-0.010, 0.000, -0.410],
-        [0.000, 0.000, 0.150],
-        [0.000, 0.000, -0.400],
-        [0.000, 0.000, -0.400],
-        [0.000, 0.000, 0.160],
-        [0.000, 0.090, -0.060],
-        [0.000, 0.090, -0.060],
-        [0.000, 0.000, 0.130],
-        [0.075, 0.000, 0.110],
-        [-0.075, 0.000, 0.110],
-        [0.000, 0.000, 0.120],
-        [0.170, 0.000, 0.000],
-        [-0.170, 0.000, 0.000],
-        [0.270, 0.000, 0.000],
-        [-0.270, 0.000, 0.000],
-        [0.250, 0.000, 0.000],
-        [-0.250, 0.000, 0.000],
-        [0.100, 0.000, 0.000],
-        [-0.100, 0.000, 0.000],
-    ],
-    dtype=np.float32,
-)
 
 
 @dataclass(frozen=True)
@@ -70,26 +32,15 @@ class SmplHumanoidWeights:
     link_geom_positions: Float[Array, "L 3"]
     link_geom_rotations: Float[Array, "L 3 3"]
     link_names: list[str]
-    qpos_joint_indices: list[int]
-    qpos_joint_axes: Float[Array, "Q 3"]
-    qpos_joint_limits: Float[Array, "Q 2"]
-    qpos_joint_names: list[str]
+    actuated_joint_indices: list[int]
+    actuated_joint_limits: Float[Array, "Q 2"]
+    actuated_joint_names: list[str]
+    actuated_joint_types: list[str]
 
 
-def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> SmplHumanoidWeights:
-    """Build a lightweight rigid SMPL humanoid from procedural link meshes."""
-    if model_path is not None:
-        return _load_xml_model_data(Path(model_path), dtype=dtype)
-
-    vertices, faces, link_data = _build_link_meshes(dtype=dtype)
-    return _weights_from_parts(
-        local_offsets=LOCAL_OFFSETS.astype(dtype),
-        rest_local_rotations=np.repeat(np.eye(3, dtype=dtype)[None], len(JOINT_NAMES), axis=0),
-        vertices=vertices,
-        faces=faces,
-        link_data=link_data,
-        dtype=dtype,
-    )
+def load_model_data(model_path: PathLike, *, dtype=np.float32) -> SmplHumanoidWeights:
+    """Load a rigid SMPL humanoid from an MJCF XML file."""
+    return _load_xml_model_data(Path(model_path), dtype=dtype)
 
 
 def _weights_from_parts(
@@ -102,9 +53,10 @@ def _weights_from_parts(
     dtype,
 ) -> SmplHumanoidWeights:
     by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
-    qpos_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
-    qpos_joint_names = [name for name, _ in BODY_JOINTS]
-    qpos_joint_limits = np.repeat(np.array([[-np.pi, np.pi]], dtype=dtype), len(BODY_JOINTS), axis=0)
+    actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
+    actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
+    num_actuated = 3 * len(BODY_JOINTS)
+    actuated_joint_limits = np.repeat(np.array([[-np.pi, np.pi]], dtype=dtype), num_actuated, axis=0)
     return SmplHumanoidWeights(
         joint_names=JOINT_NAMES.copy(),
         parents=PARENTS.copy(),
@@ -120,10 +72,10 @@ def _weights_from_parts(
         link_geom_positions=link_data["geom_positions"].astype(dtype),
         link_geom_rotations=link_data["geom_rotations"].astype(dtype),
         link_names=link_data["names"],
-        qpos_joint_indices=qpos_joint_indices,
-        qpos_joint_axes=np.zeros((len(BODY_JOINTS), 3), dtype=dtype),
-        qpos_joint_limits=qpos_joint_limits,
-        qpos_joint_names=qpos_joint_names,
+        actuated_joint_indices=actuated_joint_indices,
+        actuated_joint_limits=actuated_joint_limits,
+        actuated_joint_names=actuated_joint_names,
+        actuated_joint_types=["axis_angle"] * num_actuated,
     )
 
 
@@ -255,86 +207,6 @@ def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     if geom_type == "cylinder":
         return _cylinder(float(size[0]), float(size[1]), dtype=dtype)
     raise ValueError(f"Unsupported SMPL humanoid XML geom type: {geom_type}")
-
-
-def _build_link_meshes(*, dtype) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    children = {idx: [] for idx in range(len(JOINT_NAMES))}
-    for joint_idx, parent in enumerate(PARENTS):
-        if parent >= 0:
-            children[parent].append(joint_idx)
-
-    vertices_by_link = []
-    faces_by_link = []
-    joint_indices = []
-    vertex_starts = []
-    vertex_counts = []
-    face_starts = []
-    face_counts = []
-    names = []
-    vertex_offset = 0
-    face_offset = 0
-
-    for joint_idx, name in enumerate(JOINT_NAMES):
-        child_offsets = [LOCAL_OFFSETS[child] for child in children[joint_idx]]
-        if child_offsets:
-            mesh_vertices = []
-            mesh_faces = []
-            local_offset = 0
-            for child_offset in child_offsets:
-                radius = _link_radius(name)
-                verts, faces = _capsule_between(
-                    np.zeros(3, dtype=dtype), child_offset.astype(dtype), radius, dtype=dtype
-                )
-                mesh_vertices.append(verts)
-                mesh_faces.append(faces + local_offset)
-                local_offset += len(verts)
-            vertices = np.concatenate(mesh_vertices, axis=0)
-            faces = np.concatenate(mesh_faces, axis=0)
-        else:
-            vertices, faces = _box(_leaf_size(name), dtype=dtype)
-
-        vertices_by_link.append(vertices)
-        faces_by_link.append(faces + vertex_offset)
-        joint_indices.append(joint_idx)
-        vertex_starts.append(vertex_offset)
-        vertex_counts.append(vertices.shape[0])
-        face_starts.append(face_offset)
-        face_counts.append(faces.shape[0])
-        names.append(name)
-        vertex_offset += vertices.shape[0]
-        face_offset += faces.shape[0]
-
-    link_data = {
-        "joint_indices": joint_indices,
-        "vertex_starts": vertex_starts,
-        "vertex_counts": vertex_counts,
-        "face_starts": face_starts,
-        "face_counts": face_counts,
-        "geom_positions": np.zeros((len(joint_indices), 3), dtype=dtype),
-        "geom_rotations": np.repeat(np.eye(3, dtype=dtype)[None], len(joint_indices), axis=0),
-        "names": names,
-    }
-    return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
-
-
-def _link_radius(name: str) -> float:
-    if name in {"Pelvis", "Torso", "Spine", "Chest"}:
-        return 0.055
-    if "Hip" in name or "Knee" in name or "Ankle" in name:
-        return 0.040
-    if "Thorax" in name or "Shoulder" in name or "Elbow" in name:
-        return 0.032
-    return 0.025
-
-
-def _leaf_size(name: str) -> tuple[float, float, float]:
-    if "Toe" in name:
-        return (0.055, 0.140, 0.035)
-    if "Hand" in name:
-        return (0.080, 0.035, 0.055)
-    if name == "Head":
-        return (0.120, 0.100, 0.130)
-    return (0.050, 0.050, 0.050)
 
 
 def _capsule_between(start: np.ndarray, end: np.ndarray, radius: float, *, dtype) -> tuple[np.ndarray, np.ndarray]:
@@ -481,13 +353,6 @@ def _quat_wxyz_to_matrix(q: np.ndarray) -> np.ndarray:
 
 
 __all__ = [
-    "ACTION_SIZE",
-    "BODY_COUNT",
-    "JOINT_POS_SIZE",
-    "QPOS_SIZE",
-    "QVEL_SIZE",
-    "ROOT_QPOS_SIZE",
-    "ROOT_QVEL_SIZE",
     "SmplHumanoidWeights",
     "load_model_data",
 ]

@@ -14,6 +14,7 @@ from body_models.base import RigidBodyModel
 from body_models.brainco.numpy import BrainCoHand
 from body_models.g1.numpy import G1
 from body_models.myofullbody.numpy import MyoFullBody
+from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
 MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
@@ -22,11 +23,13 @@ MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
     "BrainCo Left": lambda: BrainCoHand(side="left"),
     "MyoFullBody": MyoFullBody,
 }
+SMPL_HUMANOID = "SmplHumanoid"
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "G1": (152, 190, 255),
     "BrainCo Right": (238, 180, 120),
     "BrainCo Left": (238, 180, 120),
     "MyoFullBody": (175, 210, 165),
+    SMPL_HUMANOID: (190, 190, 205),
 }
 GRID_COLS = 2
 GRID_SPACING_X = 1.6
@@ -62,15 +65,24 @@ class RobotControls:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize rigid robot models.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("_VISER_PORT_OVERRIDE", "8080")))
-    parser.add_argument("--model", action="append", choices=sorted(MODEL_FACTORIES), help="Robot model to load.")
+    parser.add_argument(
+        "--model",
+        action="append",
+        choices=sorted((*MODEL_FACTORIES, SMPL_HUMANOID)),
+        help="Robot model to load.",
+    )
+    parser.add_argument("--smpl-humanoid-model-path", help="MJCF XML path for SmplHumanoid.")
     args = parser.parse_args()
+    factories = model_factories(args.smpl_humanoid_model_path)
+    if args.model and SMPL_HUMANOID in args.model and args.smpl_humanoid_model_path is None:
+        parser.error("--model SmplHumanoid requires --smpl-humanoid-model-path")
 
     server = viser.ViserServer(port=args.port)
     server.scene.set_up_direction("+y")
     server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
     server.gui.configure_theme(control_layout="fixed", control_width="large")
 
-    models = load_models(args.model)
+    models = load_models(factories, args.model)
     states = init_states(server, models)
     tabs = server.gui.add_tab_group()
     selected_model = next(iter(states))
@@ -109,11 +121,20 @@ def main() -> None:
                 update_robot_mesh(server, state)
 
 
-def load_models(names: list[str] | None) -> dict[str, RigidBodyModel]:
+def model_factories(smpl_humanoid_model_path: str | None) -> dict[str, Callable[[], RigidBodyModel]]:
+    factories = dict(MODEL_FACTORIES)
+    if smpl_humanoid_model_path is not None:
+        factories[SMPL_HUMANOID] = lambda: SmplHumanoid(smpl_humanoid_model_path)
+    return factories
+
+
+def load_models(
+    factories: dict[str, Callable[[], RigidBodyModel]], names: list[str] | None
+) -> dict[str, RigidBodyModel]:
     models = {}
-    for name in names or list(MODEL_FACTORIES):
+    for name in names or list(factories):
         print(f"Loading {name}", flush=True)
-        models[name] = MODEL_FACTORIES[name]()
+        models[name] = factories[name]()
     return models
 
 
@@ -180,6 +201,9 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
         with server.gui.add_folder("Pose"):
             for coord_index, coord_name in enumerate(state.model.actuated_joint_names):
                 lo, hi = slider_limits(state.model.actuated_joint_limits[coord_index])
+                initial = float(state.params[key][coord_index])
+                lo = min(lo, initial)
+                hi = max(hi, initial)
                 handles.append(
                     add_slider(
                         server,
@@ -188,7 +212,7 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
                         lo=lo,
                         hi=hi,
                         step=0.01,
-                        initial=float(state.params[key][coord_index]),
+                        initial=initial,
                         key=key,
                         indices=(coord_index,),
                     )
