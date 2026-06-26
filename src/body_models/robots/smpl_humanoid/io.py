@@ -20,13 +20,9 @@ PathLike = Path | str
 VerticalAxis = Literal["x", "y", "z"]
 XML_DIR = Path(__file__).parent / "assets" / "xml"
 SMPL_HUMANOID_MODEL_TYPES: dict[str, tuple[Path, VerticalAxis]] = {
-    "smpl_humanoid": (XML_DIR / "smpl_humanoid.xml", "y"),
-    "phc_smpl_humanoid": (XML_DIR / "phc_smpl_humanoid.xml", "y"),
-    "phc_smpl_0_humanoid": (XML_DIR / "phc_smpl_0_humanoid.xml", "z"),
-    "phc_smpl_1_humanoid": (XML_DIR / "phc_smpl_1_humanoid.xml", "z"),
-    "phc_smpl_2_humanoid": (XML_DIR / "phc_smpl_2_humanoid.xml", "z"),
-    "phc_smpl_humanoid_1": (XML_DIR / "phc_smpl_humanoid_1.xml", "z"),
-    "smplsim_smpl_humanoid": (XML_DIR / "smplsim_smpl_humanoid.xml", "y"),
+    "meta_motivo": (XML_DIR / "meta_motivo.xml", "y"),
+    "phc": (XML_DIR / "phc.xml", "y"),
+    "smplsim": (XML_DIR / "smplsim.xml", "y"),
 }
 VERTICAL_AXIS_TO_Y_UP: dict[VerticalAxis, np.ndarray] = {
     "x": np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
@@ -58,7 +54,7 @@ class SmplHumanoidWeights:
 
 
 def load_model_data(
-    model: PathLike = "smpl_humanoid", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
+    model: PathLike = "meta_motivo", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
 ) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
     path, vertical_axis = _model_source(model, vertical_axis)

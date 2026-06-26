@@ -26,7 +26,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
 
     def __init__(
         self,
-        model: Path | str = "smpl_humanoid",
+        model: Path | str = "meta_motivo",
         *,
         vertical_axis: VerticalAxis | None = None,
         rotation_type: core.RotationType = "axis_angle",

@@ -7,7 +7,7 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_MODEL_TYPES
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
 
-SMPL_HUMANOID_VARIANTS = tuple(name for name in SMPL_HUMANOID_MODEL_TYPES if name != "smpl_humanoid")
+SMPL_HUMANOID_VARIANTS = ("meta_motivo", "phc", "smplsim")
 
 
 @pytest.fixture
@@ -26,6 +26,10 @@ def test_smpl_humanoid_factory_loads() -> None:
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
+def test_smpl_humanoid_model_types_are_source_variants() -> None:
+    assert tuple(SMPL_HUMANOID_MODEL_TYPES) == SMPL_HUMANOID_VARIANTS
+
+
 @pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_VARIANTS))
 def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
     model = create_model(model_name)
@@ -42,9 +46,9 @@ def test_smpl_humanoid_variants_are_y_up(model_name: str) -> None:
     assert_smpl_humanoid_is_y_up(model)
 
 
-def test_smpl_humanoid_custom_z_up_xml_loads() -> None:
-    xml_path, _ = SMPL_HUMANOID_MODEL_TYPES["phc_smpl_humanoid_1"]
-    model = SmplHumanoid(xml_path, vertical_axis="z")
+def test_smpl_humanoid_custom_xml_loads() -> None:
+    xml_path, _ = SMPL_HUMANOID_MODEL_TYPES["phc"]
+    model = SmplHumanoid(xml_path)
 
     assert_smpl_humanoid_is_y_up(model)
 
