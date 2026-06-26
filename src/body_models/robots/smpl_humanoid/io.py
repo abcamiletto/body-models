@@ -20,18 +20,14 @@ PathLike = Path | str
 VerticalAxis = Literal["x", "y", "z"]
 XML_DIR = Path(__file__).parent / "assets" / "xml"
 SMPL_HUMANOID_MODEL_TYPES: dict[str, tuple[Path, VerticalAxis]] = {
-    "smpl_humanoid": (XML_DIR / "body_models_physical.xml", "y"),
+    "smpl_humanoid": (XML_DIR / "smpl_humanoid.xml", "y"),
     "phc_smpl_humanoid": (XML_DIR / "phc_smpl_humanoid.xml", "y"),
     "phc_smpl_0_humanoid": (XML_DIR / "phc_smpl_0_humanoid.xml", "z"),
     "phc_smpl_1_humanoid": (XML_DIR / "phc_smpl_1_humanoid.xml", "z"),
     "phc_smpl_2_humanoid": (XML_DIR / "phc_smpl_2_humanoid.xml", "z"),
-    "phc_smpl_humanoid_1": (XML_DIR / "smpl_humanoid_1.xml", "z"),
-    "phc_smpl_humanoid_test": (XML_DIR / "phc_test.xml", "z"),
-    "phc_smpl_humanoid_test_good": (XML_DIR / "phc_test_good.xml", "z"),
+    "phc_smpl_humanoid_1": (XML_DIR / "phc_smpl_humanoid_1.xml", "z"),
     "smplsim_smpl_humanoid": (XML_DIR / "smplsim_smpl_humanoid.xml", "y"),
-    "smplsim_smpl_humanoid_1": (XML_DIR / "smpl_humanoid_1.xml", "z"),
 }
-SMPL_HUMANOID_REGISTRY_MODEL_TYPES = tuple(name for name in SMPL_HUMANOID_MODEL_TYPES if name != "smpl_humanoid")
 VERTICAL_AXIS_TO_Y_UP: dict[VerticalAxis, np.ndarray] = {
     "x": np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
     "y": np.eye(3),
@@ -62,14 +58,10 @@ class SmplHumanoidWeights:
 
 
 def load_model_data(
-    model_path: PathLike | None = None,
-    *,
-    model_type: str | None = None,
-    vertical_axis: VerticalAxis = "y",
-    dtype=np.float32,
+    model: PathLike = "smpl_humanoid", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
 ) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
-    path, vertical_axis = _model_source(model_path, model_type, vertical_axis)
+    path, vertical_axis = _model_source(model, vertical_axis)
     if not path.is_file():
         raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
 
@@ -136,25 +128,18 @@ def load_model_data(
     )
 
 
-def _model_source(
-    model_path: PathLike | None, model_type: str | None, vertical_axis: VerticalAxis
-) -> tuple[Path, VerticalAxis]:
+def _model_source(model: PathLike, vertical_axis: VerticalAxis | None) -> tuple[Path, VerticalAxis]:
+    if isinstance(model, str):
+        name = model.strip().lower().replace("-", "_")
+        if name in SMPL_HUMANOID_MODEL_TYPES:
+            if vertical_axis is not None:
+                raise ValueError("vertical_axis is only supported for custom XML paths.")
+            return SMPL_HUMANOID_MODEL_TYPES[name]
+
+    vertical_axis = "y" if vertical_axis is None else vertical_axis
     if vertical_axis not in VERTICAL_AXIS_TO_Y_UP:
         raise ValueError(f"Invalid vertical_axis: {vertical_axis!r}")
-    if model_path is not None and model_type is not None:
-        raise ValueError("Pass either model_path or model_type, not both.")
-    if model_path is not None:
-        return Path(model_path), vertical_axis
-
-    model_type = "smpl_humanoid" if model_type is None else model_type
-    name = model_type.strip().lower().replace("-", "_")
-    try:
-        return SMPL_HUMANOID_MODEL_TYPES[name]
-    except KeyError as exc:
-        available = ", ".join(sorted(SMPL_HUMANOID_MODEL_TYPES))
-        raise ValueError(
-            f"Unknown SMPL humanoid model_type {model_type!r}. Available model types: {available}"
-        ) from exc
+    return Path(model), vertical_axis
 
 
 def _walk_xml_bodies(
@@ -284,7 +269,6 @@ def _transform_rotations(rotations: np.ndarray, transform: np.ndarray) -> np.nda
 
 __all__ = [
     "SMPL_HUMANOID_MODEL_TYPES",
-    "SMPL_HUMANOID_REGISTRY_MODEL_TYPES",
     "SmplHumanoidWeights",
     "VerticalAxis",
     "load_model_data",

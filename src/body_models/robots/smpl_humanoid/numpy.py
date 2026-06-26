@@ -23,17 +23,16 @@ class SmplHumanoid(RigidBodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
+        model: Path | str = "smpl_humanoid",
         *,
-        model_type: str | None = None,
-        vertical_axis: VerticalAxis = "y",
+        vertical_axis: VerticalAxis | None = None,
         rotation_type: core.RotationType = "axis_angle",
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         self.rotation_type = rotation_type
         self.global_rotation_type = rotation_type
-        self.weights = load_model_data(model_path, model_type=model_type, vertical_axis=vertical_axis)
+        self.weights = load_model_data(model, vertical_axis=vertical_axis)
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:

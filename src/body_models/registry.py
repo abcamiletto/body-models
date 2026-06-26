@@ -7,7 +7,6 @@ from importlib import import_module
 from typing import Any, Literal
 
 from body_models.base import RigidBodyModel, SkinnedModel
-from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_REGISTRY_MODEL_TYPES
 
 Backend = Literal["numpy", "torch", "jax"]
 ModelInfo = tuple[str, str, dict[str, Any]]
@@ -24,17 +23,24 @@ _MODELS: dict[str, ModelInfo] = {
     "skel": ("body_models.skeletons.skel", "SKEL", {"gender": "male"}),
     "smpl": ("body_models.bodies.smpl", "SMPL", {"gender": "neutral"}),
     "smpl_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {}),
+    "phc_smpl_0_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "phc_smpl_0_humanoid"}),
+    "phc_smpl_1_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "phc_smpl_1_humanoid"}),
+    "phc_smpl_2_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "phc_smpl_2_humanoid"}),
+    "phc_smpl_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "phc_smpl_humanoid"}),
+    "phc_smpl_humanoid_1": (
+        "body_models.robots.smpl_humanoid",
+        "SmplHumanoid",
+        {"model": "phc_smpl_humanoid_1"},
+    ),
+    "smplsim_smpl_humanoid": (
+        "body_models.robots.smpl_humanoid",
+        "SmplHumanoid",
+        {"model": "smplsim_smpl_humanoid"},
+    ),
     "smplh": ("body_models.bodies.smplh", "SMPLH", {"gender": "neutral"}),
     "smplx": ("body_models.bodies.smplx", "SMPLX", {"gender": "neutral"}),
     "soma": ("body_models.bodies.soma", "SOMA", {}),
 }
-
-_MODELS.update(
-    {
-        name: ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model_type": name})
-        for name in SMPL_HUMANOID_REGISTRY_MODEL_TYPES
-    }
-)
 
 
 def create_model(
