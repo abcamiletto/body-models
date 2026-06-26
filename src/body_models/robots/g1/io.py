@@ -277,6 +277,8 @@ def _parse_mesh_local_transforms(
     out: dict[str, tuple[np.ndarray, np.ndarray, Path]] = {}
     for geom in root.findall(".//geom"):
         mesh_name = geom.get("mesh")
+        if mesh_name is None:
+            continue
         mesh_file = mesh_file_by_name.get(mesh_name)
         if mesh_file is None:
             continue
