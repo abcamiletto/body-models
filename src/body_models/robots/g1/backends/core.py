@@ -10,22 +10,11 @@ from nanomanifold import SO3
 
 from trimesh import Trimesh
 from body_models.common import rigid
-from body_models.rotations import RotationType as SO3RotationType
 
 Array = Any
-RotationType = SO3RotationType | Literal["hinge"]
 Convention = Literal["soma", "mujoco"]
 
 MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
-VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat", "hinge")
-GLOBAL_ROTATION_TYPES: dict[RotationType, SO3RotationType] = {
-    "axis_angle": "axis_angle",
-    "quat": "quat",
-    "sixd": "sixd",
-    "matrix": "matrix",
-    "rotmat": "rotmat",
-    "hinge": "rotmat",
-}
 
 
 def _hinge_rotations(
@@ -51,9 +40,8 @@ def forward_skeleton(
     body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_rotation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
-    rotation_type: RotationType = "rotmat",
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space G1 joint transforms from local rotations."""
@@ -68,7 +56,6 @@ def forward_skeleton(
         parents=parents,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        global_rotation_type=GLOBAL_ROTATION_TYPES[rotation_type],
         joint_indices=joint_indices,
         xp=xp,
     )
@@ -92,8 +79,7 @@ def forward_meshes(
     body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    rotation_type: RotationType = "rotmat",
+    global_rotation: Float[Array, "B 3"] | None = None,
     xp: Any = None,
 ) -> list[Trimesh]:
     """Rigidly transform and concatenate all G1 STL link meshes."""
@@ -111,7 +97,6 @@ def forward_meshes(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=xp,
     )
     return rigid.forward_meshes_from_links(
@@ -138,8 +123,7 @@ def forward_links(
     body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    rotation_type: RotationType = "rotmat",
+    global_rotation: Float[Array, "B 3"] | None = None,
     xp: Any = None,
 ) -> Float[Array, "B L 4 4"]:
     """Compute world-space transforms for each STL link mesh."""
@@ -154,7 +138,6 @@ def forward_links(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=xp,
     )
     return rigid.forward_link_transforms(

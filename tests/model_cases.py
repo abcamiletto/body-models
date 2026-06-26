@@ -55,7 +55,7 @@ MODELS = [
         brainco_numpy.BrainCoHand,
         brainco_torch.BrainCoHand,
         brainco_jax.BrainCoHand,
-        {"rotation_type": "hinge"},
+        {},
     ),
     ("flame", flame_numpy.FLAME, flame_torch.FLAME, flame_jax.FLAME, {}),
     ("g1", g1_numpy.G1, g1_torch.G1, g1_jax.G1, {}),

@@ -10,7 +10,6 @@ from nanomanifold import SO3
 from trimesh import Trimesh
 
 from body_models.common import rigid
-from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 Array = Any
 
@@ -33,9 +32,8 @@ def forward_skeleton(
     body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
+    global_rotation: Float[Array, "B 3"] | None = None,
     joint_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
     xp: Any = None,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space SMPL humanoid joint transforms."""
@@ -50,7 +48,6 @@ def forward_skeleton(
         parents=parents,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        global_rotation_type=rotation_type,
         joint_indices=joint_indices,
         xp=xp,
     )
@@ -67,8 +64,7 @@ def forward_links(
     body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    rotation_type: RotationType = "axis_angle",
+    global_rotation: Float[Array, "B 3"] | None = None,
     xp: Any = None,
 ) -> Float[Array, "B L 4 4"]:
     """Compute world-space transforms for each SMPL humanoid link mesh."""
@@ -82,7 +78,6 @@ def forward_links(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=xp,
     )
     return rigid.forward_link_transforms(
@@ -111,8 +106,7 @@ def forward_meshes(
     body_pose: Float[Array, "B Q"],
     global_translation: Float[Array, "B 3"] | None = None,
     *,
-    global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None = None,
-    rotation_type: RotationType = "axis_angle",
+    global_rotation: Float[Array, "B 3"] | None = None,
     xp: Any = None,
 ) -> list[Trimesh]:
     """Rigidly transform and concatenate all SMPL humanoid link meshes."""
@@ -129,7 +123,6 @@ def forward_meshes(
         body_pose=body_pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=xp,
     )
     return rigid.forward_meshes_from_links(
@@ -145,8 +138,6 @@ def forward_meshes(
 
 
 __all__ = [
-    "VALID_ROTATION_TYPES",
-    "RotationType",
     "forward_links",
     "forward_meshes",
     "forward_skeleton",

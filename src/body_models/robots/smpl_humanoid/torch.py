@@ -11,7 +11,6 @@ from trimesh import Trimesh
 
 from body_models import common
 from body_models.base import RigidBodyModel
-from body_models.robots.smpl_humanoid.backends import core
 from body_models.robots.smpl_humanoid.backends import torch as backend
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
 from body_models.robots.smpl_humanoid.io import load_model_data
@@ -27,14 +26,8 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
     def __init__(
         self,
         source: Path | str = "humenv",
-        *,
-        rotation_type: core.RotationType = "axis_angle",
     ) -> None:
-        if rotation_type not in core.VALID_ROTATION_TYPES:
-            raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         super().__init__()
-        self.rotation_type = rotation_type
-        self.global_rotation_type = rotation_type
         self.weights = common.torchify(load_model_data(source))
 
     @property
@@ -106,7 +99,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
         body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Tensor, "B 24 4 4"]:
         return backend.forward_skeleton(
@@ -115,7 +108,6 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
         )
 
     def forward_meshes(
@@ -123,14 +115,13 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
         body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
     ) -> list[Trimesh]:
         return backend.forward_meshes(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def forward_links(
@@ -138,27 +129,26 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
         body_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B 24 4 4"]:
         return backend.forward_links(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
-    def to_mujoco_qpos(
+    def to_qpos(
         self,
         pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
         clamp_to_limits: bool = False,
     ) -> Float[Tensor, "B 76"]:
         axis_angle = pose.reshape(*pose.shape[:-1], len(BODY_JOINTS), 3)
         euler = SO3.conversions.from_axis_angle_to_euler(axis_angle, convention="XYZ", xp=torch)
-        return super().to_mujoco_qpos(
+        return super().to_qpos(
             euler.reshape(*pose.shape),
             global_translation,
             global_rotation=global_rotation,
@@ -167,15 +157,9 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
-        global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
         return {
             "body_pose": torch.zeros((*batch_dims, self.num_actuated), device=device, dtype=dtype),
-            "global_rotation": SO3.identity_as(
-                global_ref,
-                batch_dims=batch_dims,
-                rotation_type=self.rotation_type,
-                xp=torch,
-            ),
+            "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }
 

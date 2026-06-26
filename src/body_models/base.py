@@ -7,7 +7,6 @@ from nanomanifold import SO3
 
 from body_models.common import eye_as, zeros_as
 from body_models.constants import Joint
-from body_models.rotations import RotationType as SO3RotationType
 from trimesh import Trimesh
 
 
@@ -158,7 +157,6 @@ class RigidBodyModel(ABC):
         (0.0, 1.0, 0.0),
         (0.0, 0.0, 1.0),
     )
-    global_rotation_type: SO3RotationType = "axis_angle"
 
     @property
     @abstractmethod
@@ -288,7 +286,7 @@ class RigidBodyModel(ABC):
             pieces.append(value)
         return get_namespace(*pieces).concat(pieces, axis=-1)
 
-    def to_mujoco_qpos(
+    def to_qpos(
         self,
         pose: Any,
         global_translation: Any | None = None,
@@ -313,7 +311,7 @@ class RigidBodyModel(ABC):
             root_ref = zeros_as(pose, shape=(*batch_shape, 3), xp=xp)
             root_rot = eye_as(root_ref, batch_dims=batch_shape, xp=xp)
         else:
-            root_rot = SO3.convert(global_rotation, src=self.global_rotation_type, dst="rotmat", xp=xp)
+            root_rot = SO3.convert(global_rotation, src="axis_angle", dst="rotmat", xp=xp)
 
         coord = xp.asarray(self.mujoco_to_model, dtype=pose.dtype)
         model_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)

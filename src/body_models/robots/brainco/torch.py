@@ -6,7 +6,6 @@ from typing import Literal
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 from torch import Tensor
 
 from body_models import common
@@ -31,20 +30,14 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         model_path: Path | str | None = None,
         *,
         side: Side = "right",
-        rotation_type: core.RotationType = "rotmat",
     ) -> None:
         """Initialize the BrainCoHand model.
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
             side: Hand side to load.
-            rotation_type: Rotation representation expected by global_rotation.
         """
-        if rotation_type not in core.VALID_ROTATION_TYPES:
-            raise ValueError(f"Invalid rotation_type: {rotation_type}")
         super().__init__()
-        self.rotation_type = rotation_type
-        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
         self.weights = common.torchify(load_model_data(model_path, side=side))
 
     @property
@@ -116,7 +109,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         hand_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Tensor, "B J 4 4"]:
         """Compute posed joint transforms.
@@ -136,7 +129,6 @@ class BrainCoHand(RigidBodyModel, nn.Module):
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
         )
 
     def forward_meshes(
@@ -144,7 +136,7 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         hand_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
     ) -> list[Trimesh]:
         """Compute posed model meshes.
 
@@ -161,7 +153,6 @@ class BrainCoHand(RigidBodyModel, nn.Module):
             hand_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def forward_links(
@@ -169,14 +160,13 @@ class BrainCoHand(RigidBodyModel, nn.Module):
         hand_pose: Float[Tensor, "B Q"],
         global_translation: Float[Tensor, "B 3"] | None = None,
         *,
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
     ) -> Float[Tensor, "B L 4 4"]:
         return backend.forward_links(
             self.weights,
             hand_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(
@@ -189,18 +179,12 @@ class BrainCoHand(RigidBodyModel, nn.Module):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
         device = self.weights.vertices.device
-        global_ref = torch.zeros((*batch_dims, 3), device=device, dtype=dtype)
         hand_pose = torch.zeros((self.num_actuated,), device=device, dtype=dtype)
         if hands != "default":
             hand_pose = torch.as_tensor(BRAINCO_HAND_PRESETS[self.side][hands], device=device, dtype=dtype)
         hand_pose = torch.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))
         return {
             "hand_pose": hand_pose,
-            "global_rotation": SO3.identity_as(
-                global_ref,
-                batch_dims=batch_dims,
-                rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
-                xp=torch,
-            ),
+            "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
             "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
         }

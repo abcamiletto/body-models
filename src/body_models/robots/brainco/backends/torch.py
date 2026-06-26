@@ -2,6 +2,7 @@
 
 import torch
 from jaxtyping import Float
+from trimesh import Trimesh
 from torch import Tensor
 
 from body_models.robots.brainco.backends import core
@@ -13,10 +14,9 @@ def forward_skeleton(
     pose: Float[Tensor, "B Q"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
-    global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-    joint_indices=None,
-    rotation_type: core.RotationType = "rotmat",
-):
+    global_rotation: Float[Tensor, "B 3"] | None = None,
+    joint_indices: list[int] | None = None,
+) -> Float[Tensor, "B J 4 4"]:
     return core.forward_skeleton(
         local_offsets=weights.local_offsets,
         rest_local_rotations=weights.rest_local_rotations,
@@ -31,7 +31,6 @@ def forward_skeleton(
         global_translation=global_translation,
         global_rotation=global_rotation,
         skeleton_indices=joint_indices,
-        rotation_type=rotation_type,
         xp=torch,
     )
 
@@ -41,9 +40,8 @@ def forward_links(
     pose: Float[Tensor, "B Q"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
-    global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-    rotation_type: core.RotationType = "rotmat",
-):
+    global_rotation: Float[Tensor, "B 3"] | None = None,
+) -> Float[Tensor, "B L 4 4"]:
     return core.forward_links(
         local_offsets=weights.local_offsets,
         rest_local_rotations=weights.rest_local_rotations,
@@ -60,7 +58,6 @@ def forward_links(
         pose=pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=torch,
     )
 
@@ -70,9 +67,8 @@ def forward_meshes(
     pose: Float[Tensor, "B Q"],
     global_translation: Float[Tensor, "B 3"] | None = None,
     *,
-    global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
-    rotation_type: core.RotationType = "rotmat",
-):
+    global_rotation: Float[Tensor, "B 3"] | None = None,
+) -> list[Trimesh]:
     return core.forward_meshes(
         vertices=weights.vertices,
         faces=weights.faces,
@@ -95,6 +91,5 @@ def forward_meshes(
         pose=pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        rotation_type=rotation_type,
         xp=torch,
     )

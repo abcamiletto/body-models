@@ -27,20 +27,14 @@ class G1(RigidBodyModel):
         self,
         model_path: Path | str | None = None,
         *,
-        rotation_type: core.RotationType = "rotmat",
         convention: core.Convention = "soma",
     ) -> None:
         """Initialize the G1 model.
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
-            rotation_type: Rotation representation expected by global_rotation.
             convention: Skeleton convention used when loading rigid model data.
         """
-        if rotation_type not in core.VALID_ROTATION_TYPES:
-            raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        self.rotation_type = rotation_type
-        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
         self.mujoco_to_model = core.MUJOCO_TO_KIMODO if convention == "soma" else self.mujoco_to_model
         self.convention = convention
         self.weights = common.jaxify(load_model_data(model_path, convention=convention))
@@ -114,7 +108,7 @@ class G1(RigidBodyModel):
         body_pose: Float[jax.Array, "B Q"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B J 4 4"]:
         """Compute posed joint transforms.
@@ -134,7 +128,6 @@ class G1(RigidBodyModel):
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
         )
 
     def forward_meshes(
@@ -142,7 +135,7 @@ class G1(RigidBodyModel):
         body_pose: Float[jax.Array, "B Q"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
     ) -> list[Trimesh]:
         """Compute posed model meshes.
 
@@ -159,7 +152,6 @@ class G1(RigidBodyModel):
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def forward_links(
@@ -167,27 +159,19 @@ class G1(RigidBodyModel):
         body_pose: Float[jax.Array, "B Q"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B L 4 4"]:
         return backend.forward_links(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
-        global_ref = jnp.zeros((*batch_dims, 3), dtype=dtype)
-        global_rotation = SO3.identity_as(
-            global_ref,
-            batch_dims=batch_dims,
-            rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
-            xp=jnp,
-        )
         return {
             "body_pose": jnp.zeros((*batch_dims, self.num_actuated), dtype=dtype),
-            "global_rotation": global_rotation,
+            "global_rotation": jnp.zeros((*batch_dims, 3), dtype=dtype),
             "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
 
