@@ -21,9 +21,6 @@ def _body_rotations(
     *,
     xp: Any,
 ) -> Float[Array, "B A 3 3"]:
-    expected = 3 * num_actuated_joints
-    if body_pose.ndim < 1 or body_pose.shape[-1] != expected:
-        raise ValueError(f"SMPL humanoid body_pose must have shape [..., {expected}], got {tuple(body_pose.shape)}")
     axis_angle = body_pose.reshape(*body_pose.shape[:-1], num_actuated_joints, 3)
     return SO3.conversions.from_axis_angle_to_rotmat(axis_angle, xp=xp)
 
