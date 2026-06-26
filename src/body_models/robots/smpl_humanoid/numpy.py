@@ -144,6 +144,23 @@ class SmplHumanoid(RigidBodyModel):
             rotation_type=self.rotation_type,
         )
 
+    def to_mujoco_qpos(
+        self,
+        pose: Float[np.ndarray, "B Q"],
+        global_translation: Float[np.ndarray, "B 3"] | None = None,
+        *,
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        clamp_to_limits: bool = False,
+    ) -> Float[np.ndarray, "B 76"]:
+        axis_angle = pose.reshape(*pose.shape[:-1], len(BODY_JOINTS), 3)
+        euler = SO3.conversions.from_axis_angle_to_euler(axis_angle, convention="XYZ", xp=np)
+        return super().to_mujoco_qpos(
+            euler.reshape(*pose.shape),
+            global_translation,
+            global_rotation=global_rotation,
+            clamp_to_limits=clamp_to_limits,
+        )
+
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
         global_ref = np.zeros((*batch_dims, 3), dtype=dtype)
         return {

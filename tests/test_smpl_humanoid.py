@@ -1,5 +1,8 @@
+import xml.etree.ElementTree as ET
+
 import numpy as np
 import pytest
+from nanomanifold import SO3
 
 from body_models.base import RigidBodyModel
 from body_models.registry import create_model, list_models
@@ -26,6 +29,15 @@ def test_smpl_humanoid_factory_loads() -> None:
 
 def test_smpl_humanoid_sources_are_variants() -> None:
     assert tuple(SMPL_HUMANOID_SOURCES) == SMPL_HUMANOID_VARIANTS
+
+
+@pytest.mark.parametrize("source", sorted(SMPL_HUMANOID_SOURCES))
+def test_smpl_humanoid_xml_uses_xyz_hinge_order(source: str) -> None:
+    root = ET.parse(SMPL_HUMANOID_SOURCES[source]).getroot()
+    bodies = {body.get("name"): body for body in root.findall(".//body")}
+    for joint_name, _ in BODY_JOINTS:
+        joints = [joint.get("name") for joint in bodies[joint_name].findall("joint")]
+        assert joints == [f"{joint_name}_x", f"{joint_name}_y", f"{joint_name}_z"]
 
 
 @pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_VARIANTS))
@@ -77,7 +89,29 @@ def test_smpl_humanoid_pose_uses_reference_joint_order(smpl_humanoid_xml) -> Non
     qpos = model.to_mujoco_qpos(body_pose)
 
     np.testing.assert_array_equal(qpos[:3], np.zeros(3, dtype=np.float32))
-    np.testing.assert_array_equal(qpos[7:], body_pose)
+    expected = SO3.conversions.from_axis_angle_to_euler(
+        body_pose.reshape(len(BODY_JOINTS), 3),
+        convention="XYZ",
+        xp=np,
+    ).reshape(-1)
+    np.testing.assert_array_equal(qpos[7:], expected)
+
+
+def test_smpl_humanoid_mujoco_qpos_converts_axis_angle_to_xml_hinges(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(smpl_humanoid_xml)
+    body_pose = np.zeros(model.num_actuated, dtype=np.float32)
+    body_pose[:3] = np.array([0.4, 0.5, -0.2], dtype=np.float32)
+
+    qpos = model.to_mujoco_qpos(body_pose)
+    hinge_angles = qpos[7:10]
+    expected = SO3.conversions.from_axis_angle_to_euler(body_pose[:3], convention="XYZ", xp=np)
+
+    np.testing.assert_allclose(hinge_angles, expected, rtol=1e-6, atol=1e-6)
+    assert not np.allclose(hinge_angles, body_pose[:3])
+
+    axis_angle_rot = SO3.conversions.from_axis_angle_to_rotmat(body_pose[:3], xp=np)
+    hinge_rot = SO3.conversions.from_euler_to_rotmat(hinge_angles, convention="XYZ", xp=np)
+    np.testing.assert_allclose(hinge_rot, axis_angle_rot, rtol=1e-6, atol=1e-6)
 
 
 def test_smpl_humanoid_apose_is_canonical_smpl_order(smpl_humanoid_xml) -> None:
