@@ -250,8 +250,7 @@ def _parse_joint_rest(root: ET.Element, coord: np.ndarray) -> tuple[np.ndarray, 
     def walk(body: ET.Element) -> None:
         joint_name = _body_to_joint_name(body)
         body_pos = mjcf.parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
-        body_quat = mjcf.parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32), size=4)
-        body_rot = mjcf.quat_wxyz_to_matrix(body_quat)
+        body_rot = mjcf.parse_orientation(body)
         offset_k = coord @ body_pos
         rot_k = coord @ body_rot @ coord.T
         if joint_name in by_name:
@@ -281,13 +280,12 @@ def _parse_mesh_local_transforms(
             continue
         mesh_file = mesh_file_by_name.get(mesh_name)
         if mesh_file is None:
-            continue
+            raise FileNotFoundError(f"G1 XML references missing mesh asset: {mesh_name}")
         key = Path(mesh_file).name
         if key in out:
             continue
         pos = mjcf.parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
-        quat = mjcf.parse_vec(geom.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32), size=4)
-        rot = mjcf.quat_wxyz_to_matrix(quat)
+        rot = mjcf.parse_orientation(geom)
         mesh_path = Path(mesh_file)
         if not mesh_path.is_absolute():
             mesh_path = mesh_base / mesh_path

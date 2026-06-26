@@ -289,19 +289,14 @@ def _find_root_body_in_root(root: ET.Element, xml_path: Path) -> ET.Element:
 
     After ``<include>`` resolution the merged document can contain multiple
     ``<worldbody>`` siblings (one per source file); we scan all of them and
-    pick the first body that hosts a ``<freejoint>`` or matches the expected
-    root name, falling back to the first body otherwise.
+    pick the body that hosts a ``<freejoint>`` or matches the expected root
+    name.
     """
-    fallback: ET.Element | None = None
     for worldbody in root.findall("worldbody"):
         for body in worldbody.findall("body"):
             if body.find("freejoint") is not None or body.get("name") == ROOT_BODY_NAME:
                 return body
-            if fallback is None:
-                fallback = body
-    if fallback is None:
-        raise ValueError(f"{xml_path} has no <body> in any <worldbody>")
-    return fallback
+    raise ValueError(f"{xml_path} has no root body named {ROOT_BODY_NAME!r} or containing a <freejoint>")
 
 
 def _walk_body(

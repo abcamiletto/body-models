@@ -24,7 +24,7 @@ def _inline_includes(element: ET.Element, base_dir: Path, visited: set[Path]) ->
         if child.tag == "include":
             file_attr = child.get("file")
             if not file_attr:
-                continue
+                raise ValueError("<include> is missing required file attribute")
             include_path = (base_dir / file_attr).resolve()
             if include_path in visited:
                 raise RuntimeError(f"Cyclic <include> at {include_path}")
@@ -48,21 +48,6 @@ def parse_vec(value: str | None, *, default: Float[np.ndarray, "..."], size: int
     return parsed
 
 
-def quat_wxyz_to_matrix(q: Float[np.ndarray, "4"]) -> Float[np.ndarray, "3 3"]:
-    dtype = q.dtype if np.issubdtype(q.dtype, np.floating) else np.float32
-    q = q.astype(dtype, copy=False)
-    q = q / max(float(np.linalg.norm(q)), 1e-8)
-    w, x, y, z = q
-    return np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ],
-        dtype=dtype,
-    )
-
-
 def parse_orientation(element: ET.Element) -> Float[np.ndarray, "3 3"]:
     """Parse an MJCF orientation as a rotation matrix.
 
@@ -72,7 +57,8 @@ def parse_orientation(element: ET.Element) -> Float[np.ndarray, "3 3"]:
     """
     quat = element.get("quat")
     if quat:
-        return quat_wxyz_to_matrix(parse_vec(quat, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)))
+        q = parse_vec(quat, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32), size=4)
+        return SO3.conversions.from_quat_to_rotmat(q, convention="wxyz", xp=np).astype(np.float32)
 
     euler = element.get("euler")
     if euler:
@@ -98,7 +84,7 @@ def mesh_assets(root: ET.Element) -> dict[str, tuple[str, np.ndarray]]:
         name = mesh.get("name")
         file = mesh.get("file")
         if not name or not file:
-            continue
+            raise ValueError("<asset><mesh> entries must define both name and file")
         out[name] = (file, parse_vec(mesh.get("scale"), default=np.ones(3, dtype=np.float32), size=3))
     return out
 

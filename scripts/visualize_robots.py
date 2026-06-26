@@ -41,7 +41,6 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "BrainCo Right": (238, 180, 120),
     "BrainCo Left": (238, 180, 120),
     "MyoFullBody": (175, 210, 165),
-    SMPL_HUMANOID: SMPL_HUMANOID_COLOR,
 }
 GRID_COLS = 2
 GRID_SPACING_X = 1.6
@@ -211,11 +210,9 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
     key = pose_key(state.params)
     with server.gui.add_folder(name, expand_by_default=True) as folder:
         with server.gui.add_folder("Pose"):
-            for coord_index, coord_name in enumerate(state.model.actuated_joint_names):
+            for coord_index in range(state.model.num_actuated):
                 lo, hi = slider_limits(state.model.actuated_joint_limits[coord_index])
                 initial = float(state.params[key][coord_index])
-                lo = min(lo, initial)
-                hi = max(hi, initial)
                 label = pose_slider_label(state.model.actuated_joint_names, coord_index)
                 handles.append(
                     add_slider(

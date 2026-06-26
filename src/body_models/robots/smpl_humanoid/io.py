@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -17,18 +17,8 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 
 Array = Any
 PathLike = Path | str
-VerticalAxis = Literal["x", "y", "z"]
 XML_DIR = Path(__file__).parent / "assets" / "xml"
-SMPL_HUMANOID_MODEL_TYPES: dict[str, tuple[Path, VerticalAxis]] = {
-    "humenv": (XML_DIR / "humenv.xml", "y"),
-    "phc": (XML_DIR / "phc.xml", "y"),
-    "smplsim": (XML_DIR / "smplsim.xml", "y"),
-}
-VERTICAL_AXIS_TO_Y_UP: dict[VerticalAxis, np.ndarray] = {
-    "x": np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
-    "y": np.eye(3),
-    "z": np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
-}
+SMPL_HUMANOID_MODEL_TYPES: dict[str, Path] = {name: XML_DIR / f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS}
 
 
 @dataclass(frozen=True)
@@ -53,11 +43,9 @@ class SmplHumanoidWeights:
     actuated_joint_types: list[str]
 
 
-def load_model_data(
-    source: PathLike = "humenv", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
-) -> SmplHumanoidWeights:
+def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
-    path, vertical_axis = _model_source(source, vertical_axis)
+    path = _model_source(source)
     if not path.is_file():
         raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
 
@@ -84,20 +72,11 @@ def load_model_data(
         parent_name = parsed_parents[name]
         parsed_parent_indices.append(-1 if parent_name is None else by_name[parent_name])
         local_offsets[joint_idx] = mjcf.parse_vec(body.get("pos"), size=3, default=np.zeros(3, dtype=dtype))
-        rest_local_rotations[joint_idx] = mjcf.quat_wxyz_to_matrix(
-            mjcf.parse_vec(body.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
-        )
+        rest_local_rotations[joint_idx] = mjcf.parse_orientation(body).astype(dtype)
     if parsed_parent_indices != PARENTS:
         raise ValueError("SMPL humanoid XML body hierarchy does not match the canonical SMPL hierarchy.")
 
     vertices, faces, link_data = _load_xml_geoms(parsed_bodies, dtype=dtype)
-    frame = VERTICAL_AXIS_TO_Y_UP[vertical_axis].astype(dtype)
-    if vertical_axis != "y":
-        local_offsets = _transform_vectors(local_offsets, frame)
-        rest_local_rotations = _transform_rotations(rest_local_rotations, frame)
-        vertices = _transform_vectors(vertices, frame)
-        link_data["geom_positions"] = _transform_vectors(link_data["geom_positions"], frame)
-        link_data["geom_rotations"] = _transform_rotations(link_data["geom_rotations"], frame)
     actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
     actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
     num_actuated = 3 * len(BODY_JOINTS)
@@ -124,21 +103,16 @@ def load_model_data(
     )
 
 
-def _model_source(source: PathLike, vertical_axis: VerticalAxis | None) -> tuple[Path, VerticalAxis]:
+def _model_source(source: PathLike) -> Path:
     if isinstance(source, str):
         name = source.strip().lower().replace("-", "_")
         if name in SMPL_HUMANOID_MODEL_TYPES:
-            if vertical_axis is not None:
-                raise ValueError("vertical_axis is only supported for custom XML paths.")
             return SMPL_HUMANOID_MODEL_TYPES[name]
         if not Path(source).parent.parts:
             variants = ", ".join(SMPL_HUMANOID_VARIANTS)
             raise ValueError(f"Unknown SMPL humanoid source {source!r}. Available sources: {variants}")
 
-    vertical_axis = "y" if vertical_axis is None else vertical_axis
-    if vertical_axis not in VERTICAL_AXIS_TO_Y_UP:
-        raise ValueError(f"Invalid vertical_axis: {vertical_axis!r}")
-    return Path(source), vertical_axis
+    return Path(source)
 
 
 def _walk_xml_bodies(
@@ -229,9 +203,7 @@ def _geom_transform(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]
     fromto = geom.get("fromto")
     if fromto is None:
         position = mjcf.parse_vec(geom.get("pos"), size=3, default=np.zeros(3, dtype=dtype))
-        rotation = mjcf.quat_wxyz_to_matrix(
-            mjcf.parse_vec(geom.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
-        )
+        rotation = mjcf.parse_orientation(geom).astype(dtype)
         return position, rotation
 
     capsule = mjcf.parse_vec(fromto, size=6, default=np.zeros(6, dtype=dtype))
@@ -258,17 +230,8 @@ def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(mesh.vertices, dtype=dtype), np.asarray(mesh.faces, dtype=np.int64)
 
 
-def _transform_vectors(vectors: np.ndarray, transform: np.ndarray) -> np.ndarray:
-    return vectors @ transform.T
-
-
-def _transform_rotations(rotations: np.ndarray, transform: np.ndarray) -> np.ndarray:
-    return transform @ rotations @ transform.T
-
-
 __all__ = [
     "SMPL_HUMANOID_MODEL_TYPES",
     "SmplHumanoidWeights",
-    "VerticalAxis",
     "load_model_data",
 ]

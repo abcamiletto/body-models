@@ -14,7 +14,7 @@ from body_models.base import RigidBodyModel
 from body_models.robots.smpl_humanoid.backends import core
 from body_models.robots.smpl_humanoid.backends import torch as backend
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
-from body_models.robots.smpl_humanoid.io import VerticalAxis, load_model_data
+from body_models.robots.smpl_humanoid.io import load_model_data
 
 __all__ = ["SmplHumanoid"]
 
@@ -28,7 +28,6 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
         self,
         source: Path | str = "humenv",
         *,
-        vertical_axis: VerticalAxis | None = None,
         rotation_type: core.RotationType = "axis_angle",
     ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
@@ -36,7 +35,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
         super().__init__()
         self.rotation_type = rotation_type
         self.global_rotation_type = rotation_type
-        self.weights = common.torchify(load_model_data(source, vertical_axis=vertical_axis))
+        self.weights = common.torchify(load_model_data(source))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:

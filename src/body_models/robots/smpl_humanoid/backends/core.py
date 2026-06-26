@@ -10,12 +10,9 @@ from nanomanifold import SO3
 from trimesh import Trimesh
 
 from body_models.common import rigid
-from body_models.rotations import RotationType as SO3RotationType
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
 Array = Any
-RotationType = SO3RotationType
-
-VALID_ROTATION_TYPES = ("axis_angle", "quat", "sixd", "matrix", "rotmat")
 
 
 def _body_rotations(

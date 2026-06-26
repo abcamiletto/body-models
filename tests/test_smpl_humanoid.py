@@ -45,7 +45,7 @@ def test_smpl_humanoid_variants_are_y_up(model_name: str) -> None:
 
 
 def test_smpl_humanoid_custom_xml_loads() -> None:
-    xml_path, _ = SMPL_HUMANOID_MODEL_TYPES["phc"]
+    xml_path = SMPL_HUMANOID_MODEL_TYPES["phc"]
     model = SmplHumanoid(xml_path)
 
     assert_smpl_humanoid_is_y_up(model)

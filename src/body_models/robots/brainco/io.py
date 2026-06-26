@@ -193,17 +193,13 @@ def _parse_rest_and_mesh_transforms(
         raise ValueError("BrainCo XML is missing a root hand body")
 
     by_name = {name: i for i, name in enumerate(names)}
-    base_rot = mjcf.quat_wxyz_to_matrix(
-        mjcf.parse_vec(base.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32), size=4)
-    )
+    base_rot = mjcf.parse_orientation(base)
     rotations[0] = MUJOCO_TO_KIMODO @ base_rot @ MUJOCO_TO_KIMODO.T
     _add_mesh_transforms(base, side, mesh_file_by_name, base_rot, mesh_transforms)
 
     def walk(body: ET.Element, parent_pos: np.ndarray, parent_rot: np.ndarray, fold_parent: bool) -> None:
         body_pos = mjcf.parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
-        body_rot = mjcf.quat_wxyz_to_matrix(
-            mjcf.parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32), size=4)
-        )
+        body_rot = mjcf.parse_orientation(body)
         local_pos = parent_pos + parent_rot @ body_pos if fold_parent else body_pos
         local_rot = parent_rot @ body_rot if fold_parent else body_rot
         name = _side_name(side, _body_to_joint_name(body))
@@ -343,14 +339,12 @@ def _add_mesh_transforms(
             continue
         mesh_file = mesh_file_by_name.get(mesh_name)
         if mesh_file is None:
-            continue
+            raise FileNotFoundError(f"BrainCo XML references missing mesh asset: {mesh_name}")
         name = _mesh_name(side, Path(mesh_file).name)
         if name in out:
             continue
         pos = mjcf.parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
-        rot = mjcf.quat_wxyz_to_matrix(
-            mjcf.parse_vec(geom.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32), size=4)
-        )
+        rot = mjcf.parse_orientation(geom)
         out[name] = (MUJOCO_TO_KIMODO @ (base_rot @ pos), MUJOCO_TO_KIMODO @ (base_rot @ rot) @ MUJOCO_TO_KIMODO.T)
 
 
