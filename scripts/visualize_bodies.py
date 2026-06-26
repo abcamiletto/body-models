@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -12,33 +11,24 @@ import numpy as np
 import viser
 from nanomanifold import SO3
 
-from body_models.anny.numpy import ANNY
 from body_models.base import SkinnedModel
-from body_models.flame.numpy import FLAME
-from body_models.garment_measurements.numpy import GarmentMeasurements
-from body_models.mano.numpy import MANO
-from body_models.mhr.numpy import MHR
-from body_models.skel.numpy import SKEL
-from body_models.smpl.numpy import SMPL
-from body_models.smplh.numpy import SMPLH
-from body_models.smplx.numpy import SMPLX
-from body_models.soma.numpy import SOMA
+from body_models.registry import create_model
 
 
 DISPLAY_GLOBAL_ROTATIONS = {
     "ANNY": (-np.pi / 2, 0.0, 0.0),
 }
-MODEL_FACTORIES: dict[str, Callable[[], SkinnedModel]] = {
-    "SMPL": lambda: SMPL(gender="neutral"),
-    "SMPLH": lambda: SMPLH(gender="neutral"),
-    "MANO": lambda: MANO(side="right"),
-    "SMPLX": lambda: SMPLX(gender="neutral"),
-    "SKEL": lambda: SKEL(gender="male"),
-    "ANNY": ANNY,
-    "MHR": MHR,
-    "FLAME": FLAME,
-    "GarmentMeasurements": GarmentMeasurements,
-    "SOMA": SOMA,
+MODEL_IDS: dict[str, str] = {
+    "SMPL": "smpl",
+    "SMPLH": "smplh",
+    "MANO": "mano",
+    "SMPLX": "smplx",
+    "SKEL": "skel",
+    "ANNY": "anny",
+    "MHR": "mhr",
+    "FLAME": "flame",
+    "GarmentMeasurements": "garment_measurements",
+    "SOMA": "soma",
 }
 
 SMPL_POSE_JOINTS = [
@@ -128,7 +118,16 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "GarmentMeasurements": (176, 224, 230),
     "SOMA": (250, 200, 200),
 }
-CANONICAL_POSE_MODELS = ("SMPL", "SMPLH", "SMPLX", "SKEL", "ANNY", "MHR", "GarmentMeasurements", "SOMA")
+CANONICAL_POSE_MODELS = (
+    "SMPL",
+    "SMPLH",
+    "SMPLX",
+    "SKEL",
+    "ANNY",
+    "MHR",
+    "GarmentMeasurements",
+    "SOMA",
+)
 
 
 @dataclass
@@ -159,10 +158,13 @@ class ModelControls:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize body models with body-models-viser.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("_VISER_PORT_OVERRIDE", "8080")))
-    parser.add_argument("--model", action="append", choices=sorted(MODEL_FACTORIES), help="Model to load.")
+    parser.add_argument("--share", action="store_true", help="Request a public Viser share URL.")
+    parser.add_argument("--model", action="append", choices=sorted(MODEL_IDS), help="Model to load.")
     args = parser.parse_args()
 
     server = viser.ViserServer(port=args.port)
+    if args.share:
+        server.request_share_url()
     server.scene.set_up_direction("+y")
     server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
     server.gui.configure_theme(control_layout="fixed", control_width="large")
@@ -219,9 +221,12 @@ def main() -> None:
 
 def load_models(names: list[str] | None) -> dict[str, SkinnedModel]:
     models = {}
-    for name in names or list(MODEL_FACTORIES):
+    for name in names or list(MODEL_IDS):
         print(f"Loading {name}", flush=True)
-        models[name] = MODEL_FACTORIES[name]()
+        model = create_model(MODEL_IDS[name], backend="numpy")
+        if not isinstance(model, SkinnedModel):
+            raise TypeError(f"{name} is not a skinned model")
+        models[name] = model
     return models
 
 
@@ -239,7 +244,7 @@ def init_states(server: viser.ViserServer, models: dict[str, SkinnedModel]) -> d
             params["global_rotation"] = display_global_rotation.copy()
         mesh_path = f"/meshes/{name}"
         body_handle = bmv.add_body_model(server.scene, mesh_path, model, color=MODEL_COLORS[name])
-        bounds_vertices = runtime_vertices(server, mesh_path, params)
+        bounds_vertices = runtime_vertices(server, mesh_path, model, params)
         params["global_translation"] = np.asarray(
             (
                 (col - 0.5 * (row_count - 1)) * GRID_SPACING_X,
@@ -269,6 +274,7 @@ def mutable_params(params: dict[str, Any]) -> dict[str, np.ndarray]:
 def runtime_vertices(
     server: viser.ViserServer,
     mesh_path: str,
+    model: SkinnedModel,
     params: dict[str, np.ndarray],
 ) -> np.ndarray:
     message = server.scene._websock_interface._body_models_viser.models[mesh_path]
@@ -459,7 +465,6 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
             with server.gui.add_folder("Head Pose"):
                 handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
         elif name == "GarmentMeasurements":
-            assert isinstance(state.model, GarmentMeasurements)
             with server.gui.add_folder("Shape"):
                 handles += betas(server, state, key="shape", count=state.model.num_shape_components)
             with server.gui.add_folder("Body Pose"):
@@ -479,7 +484,6 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     max_joints=state.params["head_pose"].shape[0],
                 )
         elif name == "SOMA":
-            assert isinstance(state.model, SOMA)
             shape_default = float(state.params["shape"][0])
             with server.gui.add_folder("Identity"):
                 handles += betas(

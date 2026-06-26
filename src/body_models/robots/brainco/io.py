@@ -16,6 +16,7 @@ from jaxtyping import Float, Int
 from body_models import config
 from body_models.cache import get_cache_dir
 from body_models.common.stl import load_stl_mesh as _load_stl_mesh
+from body_models.robots import mjcf
 
 PathLike = Path | str
 Side = Literal["left", "right"]
@@ -136,9 +137,9 @@ def load_model_data(model_path: PathLike | None = None, *, side: Side = "right",
     if side not in VALID_SIDES:
         raise ValueError(f"Invalid BrainCo side: {side}")
     model_dir = get_model_path(model_path)
-    root = ET.parse(model_dir / f"{side}.xml").getroot()
+    root = mjcf.parse_xml(model_dir / f"{side}.xml")
     names = [f"{side}_{suffix}" for suffix in JOINT_SUFFIXES]
-    class_axes, class_limits = _parse_joint_defaults(root)
+    class_axes, class_limits = mjcf.joint_defaults(root)
     local_offsets, rest_local_rotations, mesh_transforms = _parse_rest_and_mesh_transforms(root, side, names)
     joint_indices, joint_axes, joint_limits, joint_names = _parse_active_joints(root, names, class_axes, class_limits)
     coupled_joint_indices, coupled_joint_axes, coupled_driver_indices, coupled_polycoef = _parse_coupled_joints(
@@ -175,22 +176,6 @@ def load_model_data(model_path: PathLike | None = None, *, side: Side = "right",
     )
 
 
-def _parse_joint_defaults(root: ET.Element) -> tuple[dict[str, np.ndarray], dict[str, tuple[float, float]]]:
-    axes = {}
-    limits = {}
-    for xml_class in root.findall(".//default"):
-        class_name = xml_class.get("class")
-        joint = xml_class.find("joint")
-        if not class_name or joint is None:
-            continue
-        if joint.get("axis"):
-            axes[class_name] = _parse_vec(joint.get("axis"), default=np.zeros(3, dtype=np.float32))
-        if joint.get("range"):
-            lo, hi = [float(x) for x in joint.get("range", "").split()]
-            limits[class_name] = (lo, hi)
-    return axes, limits
-
-
 def _parse_rest_and_mesh_transforms(
     root: ET.Element,
     side: str,
@@ -199,13 +184,7 @@ def _parse_rest_and_mesh_transforms(
     offsets = np.zeros((len(names), 3), dtype=np.float32)
     rotations = np.repeat(np.eye(3, dtype=np.float32)[None], len(names), axis=0)
     mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-    mesh_file_by_name: dict[str, str] = {}
-    for mesh in root.findall(".//asset/mesh"):
-        name = mesh.get("name")
-        filename = mesh.get("file")
-        if name is None or filename is None:
-            continue
-        mesh_file_by_name[name] = filename
+    mesh_file_by_name = mjcf.mesh_files_by_name(root)
     worldbody = root.find("worldbody")
     if worldbody is None:
         raise ValueError("BrainCo XML is missing a worldbody")
@@ -214,13 +193,13 @@ def _parse_rest_and_mesh_transforms(
         raise ValueError("BrainCo XML is missing a root hand body")
 
     by_name = {name: i for i, name in enumerate(names)}
-    base_rot = _quat_wxyz_to_matrix(_parse_vec(base.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32)))
+    base_rot = mjcf.parse_orientation(base)
     rotations[0] = MUJOCO_TO_KIMODO @ base_rot @ MUJOCO_TO_KIMODO.T
     _add_mesh_transforms(base, side, mesh_file_by_name, base_rot, mesh_transforms)
 
     def walk(body: ET.Element, parent_pos: np.ndarray, parent_rot: np.ndarray, fold_parent: bool) -> None:
-        body_pos = _parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32))
-        body_rot = _quat_wxyz_to_matrix(_parse_vec(body.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32)))
+        body_pos = mjcf.parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
+        body_rot = mjcf.parse_orientation(body)
         local_pos = parent_pos + parent_rot @ body_pos if fold_parent else body_pos
         local_rot = parent_rot @ body_rot if fold_parent else body_rot
         name = _side_name(side, _body_to_joint_name(body))
@@ -287,7 +266,7 @@ def _parse_coupled_joints(
             continue
         coupled_joint = joint_by_name[joint2]
         axis = MUJOCO_TO_KIMODO @ _joint_axis(coupled_joint, class_axes)
-        polycoef = _parse_vec(equality.get("polycoef"), default=np.array([0, 1, 0, 0], dtype=np.float32))
+        polycoef = mjcf.parse_vec(equality.get("polycoef"), default=np.array([0, 1, 0, 0], dtype=np.float32))
         if polycoef.shape != (4,):
             raise ValueError(f"BrainCo equality joint {joint2} must have four polycoef values")
         indices.append(by_name[coupled_name])
@@ -360,12 +339,12 @@ def _add_mesh_transforms(
             continue
         mesh_file = mesh_file_by_name.get(mesh_name)
         if mesh_file is None:
-            continue
+            raise FileNotFoundError(f"BrainCo XML references missing mesh asset: {mesh_name}")
         name = _mesh_name(side, Path(mesh_file).name)
         if name in out:
             continue
-        pos = _parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32))
-        rot = _quat_wxyz_to_matrix(_parse_vec(geom.get("quat"), default=np.array([1, 0, 0, 0], dtype=np.float32)))
+        pos = mjcf.parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
+        rot = mjcf.parse_orientation(geom)
         out[name] = (MUJOCO_TO_KIMODO @ (base_rot @ pos), MUJOCO_TO_KIMODO @ (base_rot @ rot) @ MUJOCO_TO_KIMODO.T)
 
 
@@ -401,7 +380,7 @@ def _mesh_joint_name(mesh_file: str) -> str:
 
 def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndarray:
     if joint.get("axis"):
-        return _parse_vec(joint.get("axis"), default=np.zeros(3, dtype=np.float32))
+        return mjcf.parse_vec(joint.get("axis"), default=np.zeros(3, dtype=np.float32), size=3)
     class_name = joint.get("class")
     if class_name in class_axes:
         return class_axes[class_name]
@@ -417,26 +396,6 @@ def _joint_limit(joint: ET.Element, class_limits: dict[str, tuple[float, float]]
     if class_name in class_limits:
         return class_limits[class_name]
     raise ValueError(f"Missing limit for BrainCo joint {joint.get('name')}")
-
-
-def _parse_vec(value: str | None, *, default: np.ndarray) -> np.ndarray:
-    if value is None:
-        return default.astype(np.float32, copy=True)
-    return np.asarray([float(x) for x in value.split()], dtype=np.float32)
-
-
-def _quat_wxyz_to_matrix(q: np.ndarray) -> np.ndarray:
-    q = q.astype(np.float32, copy=False)
-    q = q / max(float(np.linalg.norm(q)), 1e-8)
-    w, x, y, z = q
-    return np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ],
-        dtype=np.float32,
-    )
 
 
 def _archive_side(filename: str) -> str | None:

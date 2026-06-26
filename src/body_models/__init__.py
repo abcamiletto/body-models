@@ -19,6 +19,7 @@ _MODEL_MODULES = {
     "skel": "skeletons.skel",
     "brainco": "robots.brainco",
     "g1": "robots.g1",
+    "smpl_humanoid": "robots.smpl_humanoid",
 }
 
 for _name, _target in _MODEL_MODULES.items():
@@ -37,6 +38,7 @@ __all__ = [
     "myofullbody",
     "skel",
     "smpl",
+    "smpl_humanoid",
     "smplh",
     "smplx",
     "soma",
