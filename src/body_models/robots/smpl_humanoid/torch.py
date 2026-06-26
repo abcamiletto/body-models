@@ -26,7 +26,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
 
     def __init__(
         self,
-        model: Path | str = "humenv",
+        source: Path | str = "humenv",
         *,
         vertical_axis: VerticalAxis | None = None,
         rotation_type: core.RotationType = "axis_angle",
@@ -36,7 +36,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
         super().__init__()
         self.rotation_type = rotation_type
         self.global_rotation_type = rotation_type
-        self.weights = common.torchify(load_model_data(model, vertical_axis=vertical_axis))
+        self.weights = common.torchify(load_model_data(source, vertical_axis=vertical_axis))
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:

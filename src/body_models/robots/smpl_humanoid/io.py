@@ -13,7 +13,7 @@ import trimesh.creation
 from trimesh import Trimesh
 
 from body_models.robots import mjcf
-from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS
+from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 
 Array = Any
 PathLike = Path | str
@@ -54,10 +54,10 @@ class SmplHumanoidWeights:
 
 
 def load_model_data(
-    model: PathLike = "humenv", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
+    source: PathLike = "humenv", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
 ) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
-    path, vertical_axis = _model_source(model, vertical_axis)
+    path, vertical_axis = _model_source(source, vertical_axis)
     if not path.is_file():
         raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
 
@@ -124,18 +124,21 @@ def load_model_data(
     )
 
 
-def _model_source(model: PathLike, vertical_axis: VerticalAxis | None) -> tuple[Path, VerticalAxis]:
-    if isinstance(model, str):
-        name = model.strip().lower().replace("-", "_")
+def _model_source(source: PathLike, vertical_axis: VerticalAxis | None) -> tuple[Path, VerticalAxis]:
+    if isinstance(source, str):
+        name = source.strip().lower().replace("-", "_")
         if name in SMPL_HUMANOID_MODEL_TYPES:
             if vertical_axis is not None:
                 raise ValueError("vertical_axis is only supported for custom XML paths.")
             return SMPL_HUMANOID_MODEL_TYPES[name]
+        if not Path(source).parent.parts:
+            variants = ", ".join(SMPL_HUMANOID_VARIANTS)
+            raise ValueError(f"Unknown SMPL humanoid source {source!r}. Available sources: {variants}")
 
     vertical_axis = "y" if vertical_axis is None else vertical_axis
     if vertical_axis not in VERTICAL_AXIS_TO_Y_UP:
         raise ValueError(f"Invalid vertical_axis: {vertical_axis!r}")
-    return Path(model), vertical_axis
+    return Path(source), vertical_axis
 
 
 def _walk_xml_bodies(

@@ -15,7 +15,7 @@ from body_models.brainco.numpy import BrainCoHand
 from body_models.g1.numpy import G1
 from body_models.myofullbody.numpy import MyoFullBody
 from body_models.registry import create_model
-from body_models.robots.smpl_humanoid import SMPL_HUMANOID_MODEL_TYPES
+from body_models.robots.smpl_humanoid import SMPL_HUMANOID_VARIANTS
 from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -26,7 +26,7 @@ def model_label(name: str) -> str:
 
 SMPL_HUMANOID = model_label("humenv")
 SMPL_HUMANOID_FACTORIES = {
-    model_label(name): (lambda model_name=name: create_model(model_name)) for name in SMPL_HUMANOID_MODEL_TYPES
+    model_label(name): (lambda model_name=name: create_model(model_name)) for name in SMPL_HUMANOID_VARIANTS
 }
 MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
     "G1": G1,
@@ -216,11 +216,12 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
                 initial = float(state.params[key][coord_index])
                 lo = min(lo, initial)
                 hi = max(hi, initial)
+                label = pose_slider_label(state.model.actuated_joint_names, coord_index)
                 handles.append(
                     add_slider(
                         server,
                         state,
-                        coord_name,
+                        label,
                         lo=lo,
                         hi=hi,
                         step=0.01,
@@ -231,6 +232,21 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
                 )
         reset_button(server, handles)
     return RobotControls(folder, handles)
+
+
+def pose_slider_label(names: list[str], index: int) -> str:
+    name = names[index]
+    start = index
+    while start > 0 and names[start - 1] == name:
+        start -= 1
+    stop = index + 1
+    while stop < len(names) and names[stop] == name:
+        stop += 1
+    if stop - start == 3:
+        return f"{name}_{'xyz'[index - start]}"
+    if stop - start > 1:
+        return f"{name}_{index - start}"
+    return name
 
 
 def slider_limits(limits: np.ndarray) -> tuple[float, float]:

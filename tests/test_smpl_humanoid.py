@@ -3,11 +3,9 @@ import pytest
 
 from body_models.base import RigidBodyModel
 from body_models.registry import create_model, list_models
-from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS
+from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_MODEL_TYPES
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
-
-SMPL_HUMANOID_VARIANTS = ("humenv", "phc", "smplsim")
 
 
 @pytest.fixture

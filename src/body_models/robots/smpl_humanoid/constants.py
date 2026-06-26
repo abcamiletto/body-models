@@ -1,5 +1,7 @@
 from body_models.constants import Joint
 
+SMPL_HUMANOID_VARIANTS = ("humenv", "phc", "smplsim")
+
 
 SMPL_HUMANOID_JOINTS = {
     Joint.LEFT_HIP: "L_Hip",
