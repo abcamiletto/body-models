@@ -29,13 +29,40 @@ def forward_skeleton_from_local_rotations(
     batch_shape = tuple(body_rotations.shape[:-3])
     dtype = body_rotations.dtype
     num_joints = len(parents)
-    if global_translation is None:
-        global_translation = zeros_as(body_rotations, shape=(*batch_shape, 3), xp=xp)
 
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
     local_rot = eye_as(body_rotations, batch_dims=(*batch_shape, num_joints), xp=xp)
     local_rot = set(local_rot, (..., actuated_joint_indices, slice(None), slice(None)), body_rotations, xp=xp)
     local_rot = xp.broadcast_to(rest_rot, (*batch_shape, num_joints, 3, 3)) @ local_rot
+    return forward_skeleton_from_local_transforms(
+        local_rot,
+        local_offsets=local_offsets,
+        parents=parents,
+        global_translation=global_translation,
+        global_rotation=global_rotation,
+        joint_indices=joint_indices,
+        xp=xp,
+    )
+
+
+def forward_skeleton_from_local_transforms(
+    local_rotations: Float[Array, "... J 3 3"],
+    *,
+    local_offsets: Float[Array, "J 3"],
+    parents: list[int],
+    global_translation: Float[Array, "... 3"] | None = None,
+    global_rotation: Float[Array, "... 3"] | None = None,
+    joint_indices: list[int] | None = None,
+    xp: Any,
+) -> Float[Array, "... J 4 4"]:
+    """Compute rigid hierarchy transforms from local joint transforms."""
+    batch_shape = tuple(local_rotations.shape[:-3])
+    dtype = local_rotations.dtype
+    num_joints = len(parents)
+    if global_translation is None:
+        global_translation = zeros_as(local_rotations, shape=(*batch_shape, 3), xp=xp)
+
+    local_rot = local_rotations
     local_t = xp.asarray(local_offsets, dtype=dtype)
 
     rot_world: list[Array | None] = [None] * num_joints

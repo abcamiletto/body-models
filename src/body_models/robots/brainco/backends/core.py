@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
@@ -42,12 +41,10 @@ def forward_skeleton(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    skeleton_indices: list[int] | None = None,
-    xp: Any = None,
+    joint_indices: list[int] | None = None,
+    xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space BrainCo hand joint transforms."""
-    if xp is None:
-        xp = get_namespace(pose)
     local_joint_rot = _hinge_rotations(pose, actuated_joint_axes, xp=xp)
 
     batch_shape = tuple(local_joint_rot.shape[:-3])
@@ -77,37 +74,15 @@ def forward_skeleton(
         )
         local_rot = common.set(local_rot, (..., coupled_joint_indices, slice(None), slice(None)), coupled_rot, xp=xp)
     local_rot = xp.broadcast_to(rest_rot, (*batch_shape, num_joints, 3, 3)) @ local_rot
-    local_t = xp.asarray(local_offsets, dtype=dtype)
-
-    rot_world: list[Array | None] = [None] * num_joints
-    pos_world: list[Array | None] = [None] * num_joints
-    rot_world[0] = local_rot[..., 0, :, :]
-    pos_world[0] = common.zeros_as(local_rot, shape=(*batch_shape, 3), xp=xp)
-    for joint in range(1, num_joints):
-        parent = parents[joint]
-        parent_rot = rot_world[parent]
-        parent_pos = pos_world[parent]
-        rot_world[joint] = parent_rot @ local_rot[..., joint, :, :]
-        local_pos = xp.squeeze(parent_rot @ local_t[joint][..., None], axis=-1)
-        pos_world[joint] = parent_pos + local_pos
-
-    rot = xp.stack(rot_world, axis=-3)
-    trans = xp.stack(pos_world, axis=-2)
-    if global_rotation is not None:
-        global_rot = SO3.convert(global_rotation, src="axis_angle", dst="rotmat", xp=xp)
-        rot = global_rot[..., None, :, :] @ rot
-        trans = xp.squeeze(global_rot[..., None, :, :] @ trans[..., None], axis=-1)
-    trans = trans + global_translation[..., None, :]
-
-    if skeleton_indices is not None:
-        if any(joint < 0 or joint >= num_joints for joint in skeleton_indices):
-            raise IndexError(f"skeleton_indices must be in [0, {num_joints})")
-        rot = rot[..., skeleton_indices, :, :]
-        trans = trans[..., skeleton_indices, :]
-
-    last_row = common.zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
-    last_row = common.set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
-    return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
+    return rigid.forward_skeleton_from_local_transforms(
+        local_rot,
+        local_offsets=local_offsets,
+        parents=parents,
+        global_translation=global_translation,
+        global_rotation=global_rotation,
+        joint_indices=joint_indices,
+        xp=xp,
+    )
 
 
 def forward_links(
@@ -127,11 +102,9 @@ def forward_links(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "B L 4 4"]:
     """Compute world-space transforms for each BrainCo STL link mesh."""
-    if xp is None:
-        xp = get_namespace(pose)
     skeleton = forward_skeleton(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
@@ -179,11 +152,9 @@ def forward_meshes(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    xp: Any = None,
+    xp: Any,
 ) -> list[Trimesh]:
     """Rigidly transform and concatenate all BrainCo STL link meshes."""
-    if xp is None:
-        xp = get_namespace(pose)
     links = forward_links(
         local_offsets=local_offsets,
         rest_local_rotations=rest_local_rotations,
