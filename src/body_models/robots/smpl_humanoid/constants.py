@@ -1,0 +1,142 @@
+from body_models.constants import Joint
+
+SMPL_HUMANOID_VARIANTS = ("humenv", "phc", "smplsim")
+
+
+SMPL_HUMANOID_JOINTS = {
+    Joint.LEFT_HIP: "L_Hip",
+    Joint.RIGHT_HIP: "R_Hip",
+    Joint.LEFT_KNEE: "L_Knee",
+    Joint.RIGHT_KNEE: "R_Knee",
+    Joint.LEFT_ANKLE: "L_Ankle",
+    Joint.RIGHT_ANKLE: "R_Ankle",
+    Joint.LEFT_FOOT: "L_Toe",
+    Joint.RIGHT_FOOT: "R_Toe",
+    Joint.LEFT_SHOULDER: "L_Shoulder",
+    Joint.RIGHT_SHOULDER: "R_Shoulder",
+    Joint.LEFT_ELBOW: "L_Elbow",
+    Joint.RIGHT_ELBOW: "R_Elbow",
+    Joint.LEFT_WRIST: "L_Wrist",
+    Joint.RIGHT_WRIST: "R_Wrist",
+}
+
+
+JOINT_NAMES = [
+    "Pelvis",
+    "L_Hip",
+    "R_Hip",
+    "Torso",
+    "L_Knee",
+    "R_Knee",
+    "Spine",
+    "L_Ankle",
+    "R_Ankle",
+    "Chest",
+    "L_Toe",
+    "R_Toe",
+    "Neck",
+    "L_Thorax",
+    "R_Thorax",
+    "Head",
+    "L_Shoulder",
+    "R_Shoulder",
+    "L_Elbow",
+    "R_Elbow",
+    "L_Wrist",
+    "R_Wrist",
+    "L_Hand",
+    "R_Hand",
+]
+
+PARENTS = [
+    -1,
+    0,
+    0,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    9,
+    9,
+    12,
+    13,
+    14,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+]
+
+# Each pair is the public body name and its index in the canonical SMPL body_pose array.
+BODY_JOINTS = (
+    ("L_Hip", 0),
+    ("L_Knee", 3),
+    ("L_Ankle", 6),
+    ("L_Toe", 9),
+    ("R_Hip", 1),
+    ("R_Knee", 4),
+    ("R_Ankle", 7),
+    ("R_Toe", 10),
+    ("Torso", 2),
+    ("Spine", 5),
+    ("Chest", 8),
+    ("Neck", 11),
+    ("Head", 14),
+    ("L_Thorax", 12),
+    ("L_Shoulder", 15),
+    ("L_Elbow", 17),
+    ("L_Wrist", 19),
+    ("L_Hand", 21),
+    ("R_Thorax", 13),
+    ("R_Shoulder", 16),
+    ("R_Elbow", 18),
+    ("R_Wrist", 20),
+    ("R_Hand", 22),
+)
+
+
+SMPL_BODY_PRESETS = {
+    "t_pose": [[0.0, 0.0, 0.0] for _ in range(len(BODY_JOINTS))],
+    "a_pose": [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.45],
+        [0.0, 0.0, -0.45],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.35],
+        [0.0, 0.0, -0.35],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+    ],
+}
+
+
+__all__ = [
+    "BODY_JOINTS",
+    "JOINT_NAMES",
+    "PARENTS",
+    "SMPL_BODY_PRESETS",
+    "SMPL_HUMANOID_JOINTS",
+]

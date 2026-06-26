@@ -29,6 +29,9 @@ from body_models.myofullbody import torch as myofullbody_torch
 from body_models.skel import jax as skel_jax
 from body_models.skel import numpy as skel_numpy
 from body_models.skel import torch as skel_torch
+from body_models.smpl_humanoid import jax as smpl_humanoid_jax
+from body_models.smpl_humanoid import numpy as smpl_humanoid_numpy
+from body_models.smpl_humanoid import torch as smpl_humanoid_torch
 from body_models.smpl import jax as smpl_jax
 from body_models.smpl import numpy as smpl_numpy
 from body_models.smpl import torch as smpl_torch
@@ -74,6 +77,13 @@ MODELS = [
     ),
     ("skel", skel_numpy.SKEL, skel_torch.SKEL, skel_jax.SKEL, {"gender": "male"}),
     ("smpl", smpl_numpy.SMPL, smpl_torch.SMPL, smpl_jax.SMPL, {"gender": "neutral"}),
+    (
+        "smpl_humanoid",
+        smpl_humanoid_numpy.SmplHumanoid,
+        smpl_humanoid_torch.SmplHumanoid,
+        smpl_humanoid_jax.SmplHumanoid,
+        {},
+    ),
     ("smplh", smplh_numpy.SMPLH, smplh_torch.SMPLH, smplh_jax.SMPLH, {"gender": "neutral"}),
     ("smplx", smplx_numpy.SMPLX, smplx_torch.SMPLX, smplx_jax.SMPLX, {"gender": "neutral"}),
     ("soma", soma_numpy.SOMA, soma_torch.SOMA, soma_jax.SOMA, {}),

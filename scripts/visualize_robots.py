@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -11,17 +10,26 @@ import numpy as np
 import viser
 
 from body_models.base import RigidBodyModel
-from body_models.brainco.numpy import BrainCoHand
-from body_models.g1.numpy import G1
-from body_models.myofullbody.numpy import MyoFullBody
+from body_models.registry import create_model
+from body_models.robots.smpl_humanoid import SMPL_HUMANOID_VARIANTS
 
 
-MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
-    "G1": G1,
-    "BrainCo Right": lambda: BrainCoHand(side="right"),
-    "BrainCo Left": lambda: BrainCoHand(side="left"),
-    "MyoFullBody": MyoFullBody,
+SMPL_HUMANOID_LABELS = {
+    "humenv": "HumEnv",
+    "phc": "PHC",
+    "smplsim": "SMPLSim",
 }
+
+
+SMPL_HUMANOID = SMPL_HUMANOID_LABELS["humenv"]
+MODEL_SPECS: dict[str, tuple[str, dict[str, Any]]] = {
+    "G1": ("g1", {}),
+    "BrainCo Right": ("brainco", {"side": "right"}),
+    "BrainCo Left": ("brainco", {"side": "left"}),
+    "MyoFullBody": ("myofullbody", {}),
+    **{SMPL_HUMANOID_LABELS[name]: (name, {}) for name in SMPL_HUMANOID_VARIANTS},
+}
+SMPL_HUMANOID_COLOR = (190, 190, 205)
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "G1": (152, 190, 255),
     "BrainCo Right": (238, 180, 120),
@@ -62,15 +70,22 @@ class RobotControls:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize rigid robot models.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("_VISER_PORT_OVERRIDE", "8080")))
-    parser.add_argument("--model", action="append", choices=sorted(MODEL_FACTORIES), help="Robot model to load.")
+    parser.add_argument(
+        "--model",
+        action="append",
+        choices=sorted(MODEL_SPECS),
+        help="Robot model to load.",
+    )
+    parser.add_argument("--smpl-humanoid-model-path", help="MJCF XML path for SmplHumanoid.")
     args = parser.parse_args()
+    model_specs = specs(args.smpl_humanoid_model_path)
 
     server = viser.ViserServer(port=args.port)
     server.scene.set_up_direction("+y")
     server.scene.add_grid("/grid", position=(0.0, 0.0, 0.0), plane="xz")
     server.gui.configure_theme(control_layout="fixed", control_width="large")
 
-    models = load_models(args.model)
+    models = load_models(model_specs, args.model)
     states = init_states(server, models)
     tabs = server.gui.add_tab_group()
     selected_model = next(iter(states))
@@ -109,11 +124,24 @@ def main() -> None:
                 update_robot_mesh(server, state)
 
 
-def load_models(names: list[str] | None) -> dict[str, RigidBodyModel]:
+def specs(smpl_humanoid_model_path: str | None) -> dict[str, tuple[str, dict[str, Any]]]:
+    model_specs = {name: (model_id, dict(kwargs)) for name, (model_id, kwargs) in MODEL_SPECS.items()}
+    if smpl_humanoid_model_path is not None:
+        model_specs[SMPL_HUMANOID] = ("smpl_humanoid", {"source": smpl_humanoid_model_path})
+    return model_specs
+
+
+def load_models(
+    model_specs: dict[str, tuple[str, dict[str, Any]]], names: list[str] | None
+) -> dict[str, RigidBodyModel]:
     models = {}
-    for name in names or list(MODEL_FACTORIES):
+    for name in names or list(model_specs):
         print(f"Loading {name}", flush=True)
-        models[name] = MODEL_FACTORIES[name]()
+        model_id, kwargs = model_specs[name]
+        model = create_model(model_id, backend="numpy", **kwargs)
+        if not isinstance(model, RigidBodyModel):
+            raise TypeError(f"{name} is not a rigid body model")
+        models[name] = model
     return models
 
 
@@ -126,7 +154,9 @@ def init_states(server: viser.ViserServer, models: dict[str, RigidBodyModel]) ->
         row_count = min(GRID_COLS, n - row * GRID_COLS)
         params = mutable_params(model.get_rest_pose())
         mesh_path = f"/robots/{name}"
-        state = RobotState(model=model, params=params, mesh_path=mesh_path, color=MODEL_COLORS[name])
+        state = RobotState(
+            model=model, params=params, mesh_path=mesh_path, color=MODEL_COLORS.get(name, SMPL_HUMANOID_COLOR)
+        )
         update_robot_mesh(server, state)
         assert state.mesh_handle is not None
         bounds = np.asarray(state.mesh_handle.vertices)
@@ -178,23 +208,39 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
     key = pose_key(state.params)
     with server.gui.add_folder(name, expand_by_default=True) as folder:
         with server.gui.add_folder("Pose"):
-            for coord_index, coord_name in enumerate(state.model.actuated_joint_names):
+            for coord_index in range(state.model.num_actuated):
                 lo, hi = slider_limits(state.model.actuated_joint_limits[coord_index])
+                initial = float(state.params[key][coord_index])
+                lo = min(lo, initial)
+                hi = max(hi, initial)
+                label = pose_slider_label(state.model, coord_index)
                 handles.append(
                     add_slider(
                         server,
                         state,
-                        coord_name,
+                        label,
                         lo=lo,
                         hi=hi,
                         step=0.01,
-                        initial=float(state.params[key][coord_index]),
+                        initial=initial,
                         key=key,
                         indices=(coord_index,),
                     )
                 )
         reset_button(server, handles)
     return RobotControls(folder, handles)
+
+
+def pose_slider_label(model: RigidBodyModel, index: int) -> str:
+    for name, joint_slice in model.actuated_joint_slices.items():
+        if joint_slice.start <= index < joint_slice.stop:
+            dof = joint_slice.stop - joint_slice.start
+            if dof == 3:
+                return f"{name}_{'xyz'[index - joint_slice.start]}"
+            if dof > 1:
+                return f"{name}_{index - joint_slice.start}"
+            return name
+    raise IndexError(f"Pose coordinate index out of range: {index}")
 
 
 def slider_limits(limits: np.ndarray) -> tuple[float, float]:
