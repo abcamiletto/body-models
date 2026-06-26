@@ -3,13 +3,14 @@
 # dependencies = [
 #   "bpy>=4.2.0",
 #   "numpy>=1.26,<2",
+#   "typer>=0.9.0",
 # ]
 # ///
 """Generate a GarmentMeasurements runtime asset from upstream data.
 
 Run this as a self-contained PEP 723 script:
 
-    uv run --python 3.11 --no-project src/body_models/garment_measurements/generate_asset.py \
+    uv run --python 3.11 --no-project src/body_models/bodies/garment_measurements/tools/generate_asset.py \
         /path/to/GarmentMeasurements/data /path/to/output/model
 
 The generated ``garment_measurements.npz`` is the only asset loaded by the runtime
@@ -18,20 +19,14 @@ model. The ``bpy`` dependency is isolated to this asset-generation script.
 
 from __future__ import annotations
 
-import argparse
 import importlib
 import struct
-import sys
 from pathlib import Path
+from typing import Annotated
 from typing import TypedDict
 
-# When uv runs this file by path, Python puts this package directory first on
-# sys.path. Remove it so `import numpy` does not resolve to sibling `numpy.py`.
-_SCRIPT_DIR = str(Path(__file__).resolve().parent)
-if sys.path and sys.path[0] == _SCRIPT_DIR:
-    sys.path.pop(0)
-
-import numpy as np  # noqa: E402
+import numpy as np
+import typer
 
 
 class RigData(TypedDict):
@@ -43,13 +38,10 @@ class RigData(TypedDict):
     template_vertices: np.ndarray
 
 
-def main(argv: list[str]) -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("upstream_data", type=Path)
-    parser.add_argument("output_dir", type=Path)
-    args = parser.parse_args(argv)
-
-    upstream_data = args.upstream_data
+def main(
+    upstream_data: Annotated[Path, typer.Argument()],
+    output_dir: Annotated[Path, typer.Argument()],
+) -> None:
     mean_vertices, components, eigenvalues = _load_pca(upstream_data / "pca" / "point.pca")
     _, faces = _load_obj(upstream_data / "pca" / "mean.obj")
     rig = _load_fbx_rig(upstream_data / "template" / "male.fbx", mean_vertices.shape[0])
@@ -58,9 +50,9 @@ def main(argv: list[str]) -> None:
     # produce joint positions that follow the body shape.
     mvc_weights = _compute_mvc_weights(rig["template_vertices"], faces, rig["joint_positions"])
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
-        args.output_dir / "garment_measurements.npz",
+        output_dir / "garment_measurements.npz",
         mean_vertices=mean_vertices.astype(np.float32),
         components=components.astype(np.float32),
         eigenvalues=eigenvalues.astype(np.float32),
@@ -253,4 +245,4 @@ def _safe_unit(value: np.ndarray) -> np.ndarray:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    typer.run(main)
