@@ -17,7 +17,22 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 
 Array = Any
 PathLike = Path | str
-SMPL_HUMANOID_XML = Path(__file__).parent / "assets" / "smpl_humanoid.xml"
+ASSETS_DIR = Path(__file__).parent / "assets"
+SMPL_HUMANOID_XML = ASSETS_DIR / "smpl_humanoid.xml"
+PHC_MJCF_DIR = ASSETS_DIR / "phc" / "phc" / "data" / "assets" / "mjcf"
+SMPLSIM_MJCF_DIR = ASSETS_DIR / "smplsim" / "smpl_sim" / "data" / "assets" / "mjcf"
+SMPL_HUMANOID_XMLS = {
+    "smpl_humanoid": SMPL_HUMANOID_XML,
+    "phc_smpl_humanoid": PHC_MJCF_DIR / "smpl_humanoid.xml",
+    "phc_smpl_0_humanoid": PHC_MJCF_DIR / "smpl_0_humanoid.xml",
+    "phc_smpl_1_humanoid": PHC_MJCF_DIR / "smpl_1_humanoid.xml",
+    "phc_smpl_2_humanoid": PHC_MJCF_DIR / "smpl_2_humanoid.xml",
+    "phc_smpl_humanoid_1": PHC_MJCF_DIR / "smpl_humanoid_1.xml",
+    "phc_smpl_humanoid_test": ASSETS_DIR / "phc" / "root" / "test.xml",
+    "phc_smpl_humanoid_test_good": ASSETS_DIR / "phc" / "root" / "test_good.xml",
+    "smplsim_smpl_humanoid": SMPLSIM_MJCF_DIR / "smpl_humanoid.xml",
+    "smplsim_smpl_humanoid_1": SMPLSIM_MJCF_DIR / "smpl_humanoid_1.xml",
+}
 
 
 @dataclass(frozen=True)
@@ -222,6 +237,7 @@ def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
 
 
 __all__ = [
+    "SMPL_HUMANOID_XMLS",
     "SmplHumanoidWeights",
     "load_model_data",
 ]

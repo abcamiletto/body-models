@@ -2,8 +2,9 @@ import numpy as np
 import pytest
 
 from body_models.base import RigidBodyModel
-from body_models.registry import create_model
+from body_models.registry import create_model, list_models
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS
+from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_XMLS
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -19,6 +20,16 @@ def test_smpl_humanoid_factory_loads() -> None:
 
     assert isinstance(model, SmplHumanoid)
     assert isinstance(model, RigidBodyModel)
+    assert model.num_joints == 24
+    assert len(model.forward_meshes(**model.get_rest_pose())) == 1
+
+
+@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_XMLS.keys() - {"smpl_humanoid"}))
+def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
+    model = create_model(model_name)
+
+    assert model_name in list_models()
+    assert isinstance(model, SmplHumanoid)
     assert model.num_joints == 24
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 

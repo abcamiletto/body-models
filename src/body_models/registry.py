@@ -7,6 +7,7 @@ from importlib import import_module
 from typing import Any, Literal
 
 from body_models.base import RigidBodyModel, SkinnedModel
+from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_XMLS
 
 Backend = Literal["numpy", "torch", "jax"]
 ModelInfo = tuple[str, str, dict[str, Any]]
@@ -27,6 +28,14 @@ _MODELS: dict[str, ModelInfo] = {
     "smplx": ("body_models.bodies.smplx", "SMPLX", {"gender": "neutral"}),
     "soma": ("body_models.bodies.soma", "SOMA", {}),
 }
+
+_MODELS.update(
+    {
+        name: ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model_path": path})
+        for name, path in SMPL_HUMANOID_XMLS.items()
+        if name != "smpl_humanoid"
+    }
+)
 
 
 def create_model(

@@ -14,23 +14,40 @@ from body_models.base import RigidBodyModel
 from body_models.brainco.numpy import BrainCoHand
 from body_models.g1.numpy import G1
 from body_models.myofullbody.numpy import MyoFullBody
+from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_XMLS
 from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
+SMPL_HUMANOID_LABELS = {
+    "smpl_humanoid": "SmplHumanoid",
+    "phc_smpl_humanoid": "PHC SmplHumanoid",
+    "phc_smpl_0_humanoid": "PHC SMPL 0 Humanoid",
+    "phc_smpl_1_humanoid": "PHC SMPL 1 Humanoid",
+    "phc_smpl_2_humanoid": "PHC SMPL 2 Humanoid",
+    "phc_smpl_humanoid_1": "PHC SmplHumanoid 1",
+    "phc_smpl_humanoid_test": "PHC SmplHumanoid Test",
+    "phc_smpl_humanoid_test_good": "PHC SmplHumanoid Test Good",
+    "smplsim_smpl_humanoid": "SMPLSim SmplHumanoid",
+    "smplsim_smpl_humanoid_1": "SMPLSim SmplHumanoid 1",
+}
+SMPL_HUMANOID_FACTORIES = {
+    SMPL_HUMANOID_LABELS[name]: (lambda path=path: SmplHumanoid(path)) for name, path in SMPL_HUMANOID_XMLS.items()
+}
 MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
     "G1": G1,
     "BrainCo Right": lambda: BrainCoHand(side="right"),
     "BrainCo Left": lambda: BrainCoHand(side="left"),
     "MyoFullBody": MyoFullBody,
-    "SmplHumanoid": SmplHumanoid,
+    **SMPL_HUMANOID_FACTORIES,
 }
 SMPL_HUMANOID = "SmplHumanoid"
+SMPL_HUMANOID_COLOR = (190, 190, 205)
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "G1": (152, 190, 255),
     "BrainCo Right": (238, 180, 120),
     "BrainCo Left": (238, 180, 120),
     "MyoFullBody": (175, 210, 165),
-    SMPL_HUMANOID: (190, 190, 205),
+    SMPL_HUMANOID: SMPL_HUMANOID_COLOR,
 }
 GRID_COLS = 2
 GRID_SPACING_X = 1.6
@@ -69,7 +86,7 @@ def main() -> None:
     parser.add_argument(
         "--model",
         action="append",
-        choices=sorted((*MODEL_FACTORIES, SMPL_HUMANOID)),
+        choices=sorted(MODEL_FACTORIES),
         help="Robot model to load.",
     )
     parser.add_argument("--smpl-humanoid-model-path", help="MJCF XML path for SmplHumanoid.")
@@ -146,7 +163,9 @@ def init_states(server: viser.ViserServer, models: dict[str, RigidBodyModel]) ->
         row_count = min(GRID_COLS, n - row * GRID_COLS)
         params = mutable_params(model.get_rest_pose())
         mesh_path = f"/robots/{name}"
-        state = RobotState(model=model, params=params, mesh_path=mesh_path, color=MODEL_COLORS[name])
+        state = RobotState(
+            model=model, params=params, mesh_path=mesh_path, color=MODEL_COLORS.get(name, SMPL_HUMANOID_COLOR)
+        )
         update_robot_mesh(server, state)
         assert state.mesh_handle is not None
         bounds = np.asarray(state.mesh_handle.vertices)
