@@ -4,7 +4,7 @@ import pytest
 from body_models.base import RigidBodyModel
 from body_models.registry import create_model, list_models
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS
-from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_XMLS
+from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_MODEL_TYPES, SMPL_HUMANOID_REGISTRY_MODEL_TYPES
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -24,7 +24,7 @@ def test_smpl_humanoid_factory_loads() -> None:
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
-@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_XMLS.keys() - {"smpl_humanoid"}))
+@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_REGISTRY_MODEL_TYPES))
 def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
     model = create_model(model_name)
 
@@ -34,9 +34,26 @@ def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
-@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_XMLS))
+@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_MODEL_TYPES))
 def test_smpl_humanoid_variants_are_y_up(model_name: str) -> None:
-    model = create_model(model_name)
+    model = SmplHumanoid(model_type=model_name)
+    assert_smpl_humanoid_is_y_up(model)
+
+
+def test_smpl_humanoid_positional_model_type_loads() -> None:
+    model = SmplHumanoid("phc_smpl_0_humanoid")
+
+    assert_smpl_humanoid_is_y_up(model)
+
+
+def test_smpl_humanoid_custom_z_up_xml_loads() -> None:
+    xml_path, _ = SMPL_HUMANOID_MODEL_TYPES["smplsim_smpl_humanoid_1"]
+    model = SmplHumanoid(xml_path, vertical_axis="z")
+
+    assert_smpl_humanoid_is_y_up(model)
+
+
+def assert_smpl_humanoid_is_y_up(model: SmplHumanoid) -> None:
     skeleton = model.forward_skeleton(**model.get_rest_pose())
     joint_positions = skeleton[:, :3, 3]
     by_name = {name: i for i, name in enumerate(model.joint_names)}

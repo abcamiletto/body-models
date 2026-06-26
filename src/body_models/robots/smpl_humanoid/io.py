@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -17,39 +17,31 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 
 Array = Any
 PathLike = Path | str
+VerticalAxis = Literal["x", "y", "z"]
 ASSETS_DIR = Path(__file__).parent / "assets"
-SMPL_HUMANOID_XML = ASSETS_DIR / "smpl_humanoid.xml"
-PHC_MJCF_DIR = ASSETS_DIR / "phc" / "phc" / "data" / "assets" / "mjcf"
-SMPLSIM_MJCF_DIR = ASSETS_DIR / "smplsim" / "smpl_sim" / "data" / "assets" / "mjcf"
-SMPL_HUMANOID_XMLS = {
-    "smpl_humanoid": SMPL_HUMANOID_XML,
-    "phc_smpl_humanoid": PHC_MJCF_DIR / "smpl_humanoid.xml",
-    "phc_smpl_0_humanoid": PHC_MJCF_DIR / "smpl_0_humanoid.xml",
-    "phc_smpl_1_humanoid": PHC_MJCF_DIR / "smpl_1_humanoid.xml",
-    "phc_smpl_2_humanoid": PHC_MJCF_DIR / "smpl_2_humanoid.xml",
-    "phc_smpl_humanoid_1": PHC_MJCF_DIR / "smpl_humanoid_1.xml",
-    "phc_smpl_humanoid_test": ASSETS_DIR / "phc" / "root" / "test.xml",
-    "phc_smpl_humanoid_test_good": ASSETS_DIR / "phc" / "root" / "test_good.xml",
-    "smplsim_smpl_humanoid": SMPLSIM_MJCF_DIR / "smpl_humanoid.xml",
-    "smplsim_smpl_humanoid_1": SMPLSIM_MJCF_DIR / "smpl_humanoid_1.xml",
+XML_DIR = ASSETS_DIR / "xml"
+SMPL_HUMANOID_MODEL_TYPES: dict[str, tuple[Path, VerticalAxis]] = {
+    "smpl_humanoid": (XML_DIR / "body_models_physical.xml", "y"),
+    "body_models_physical": (XML_DIR / "body_models_physical.xml", "y"),
+    "phc_smpl_humanoid": (XML_DIR / "phc_smpl_humanoid.xml", "y"),
+    "phc_smpl_0_humanoid": (XML_DIR / "phc_smpl_0_humanoid.xml", "z"),
+    "phc_smpl_1_humanoid": (XML_DIR / "phc_smpl_1_humanoid.xml", "z"),
+    "phc_smpl_2_humanoid": (XML_DIR / "phc_smpl_2_humanoid.xml", "z"),
+    "phc_smpl_humanoid_1": (XML_DIR / "smpl_humanoid_1.xml", "z"),
+    "phc_smpl_humanoid_test": (XML_DIR / "phc_test.xml", "z"),
+    "phc_smpl_humanoid_test_good": (XML_DIR / "phc_test_good.xml", "z"),
+    "smplsim_smpl_humanoid": (XML_DIR / "smplsim_smpl_humanoid.xml", "y"),
+    "smplsim_smpl_humanoid_1": (XML_DIR / "smpl_humanoid_1.xml", "z"),
 }
-Z_UP_XMLS = {
-    SMPL_HUMANOID_XMLS["phc_smpl_0_humanoid"],
-    SMPL_HUMANOID_XMLS["phc_smpl_1_humanoid"],
-    SMPL_HUMANOID_XMLS["phc_smpl_2_humanoid"],
-    SMPL_HUMANOID_XMLS["phc_smpl_humanoid_1"],
-    SMPL_HUMANOID_XMLS["phc_smpl_humanoid_test"],
-    SMPL_HUMANOID_XMLS["phc_smpl_humanoid_test_good"],
-    SMPL_HUMANOID_XMLS["smplsim_smpl_humanoid_1"],
-}
-Z_UP_XML_PATHS = {path.resolve() for path in Z_UP_XMLS}
-Z_UP_TO_Y_UP = np.array(
-    [
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [1.0, 0.0, 0.0],
-    ]
+SMPL_HUMANOID_XMLS = {name: path for name, (path, _) in SMPL_HUMANOID_MODEL_TYPES.items()}
+SMPL_HUMANOID_REGISTRY_MODEL_TYPES = tuple(
+    name for name in SMPL_HUMANOID_MODEL_TYPES if name not in {"smpl_humanoid", "body_models_physical"}
 )
+VERTICAL_AXIS_TO_Y_UP: dict[VerticalAxis, np.ndarray] = {
+    "x": np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
+    "y": np.eye(3),
+    "z": np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]),
+}
 
 
 @dataclass(frozen=True)
@@ -74,9 +66,15 @@ class SmplHumanoidWeights:
     actuated_joint_types: list[str]
 
 
-def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> SmplHumanoidWeights:
+def load_model_data(
+    model_path: PathLike | None = None,
+    *,
+    model_type: str | None = None,
+    vertical_axis: VerticalAxis = "y",
+    dtype=np.float32,
+) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
-    path = SMPL_HUMANOID_XML if model_path is None else Path(model_path)
+    path, vertical_axis = _resolve_model_source(model_path, model_type=model_type, vertical_axis=vertical_axis)
     if not path.is_file():
         raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
 
@@ -110,8 +108,8 @@ def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> 
         raise ValueError("SMPL humanoid XML body hierarchy does not match the canonical SMPL hierarchy.")
 
     vertices, faces, link_data = _load_xml_geoms(parsed_bodies, dtype=dtype)
-    if path.resolve() in Z_UP_XML_PATHS:
-        frame = Z_UP_TO_Y_UP.astype(dtype)
+    frame = VERTICAL_AXIS_TO_Y_UP[vertical_axis].astype(dtype)
+    if vertical_axis != "y":
         local_offsets = _transform_vectors(local_offsets, frame)
         rest_local_rotations = _transform_rotations(rest_local_rotations, frame)
         vertices = _transform_vectors(vertices, frame)
@@ -141,6 +139,38 @@ def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> 
         actuated_joint_names=actuated_joint_names,
         actuated_joint_types=["axis_angle"] * num_actuated,
     )
+
+
+def _resolve_model_source(
+    model_path: PathLike | None,
+    *,
+    model_type: str | None,
+    vertical_axis: VerticalAxis,
+) -> tuple[Path, VerticalAxis]:
+    if vertical_axis not in VERTICAL_AXIS_TO_Y_UP:
+        raise ValueError(f"Invalid vertical_axis: {vertical_axis!r}")
+    if model_path is not None and model_type is not None:
+        raise ValueError("Pass either model_path or model_type, not both.")
+    if model_type is not None:
+        return _model_type_source(model_type)
+    if model_path is None:
+        return _model_type_source("smpl_humanoid")
+
+    path = Path(model_path)
+    if path.exists() or path.suffix:
+        return path, vertical_axis
+    return _model_type_source(str(model_path))
+
+
+def _model_type_source(model_type: str) -> tuple[Path, VerticalAxis]:
+    name = model_type.strip().lower().replace("-", "_")
+    try:
+        return SMPL_HUMANOID_MODEL_TYPES[name]
+    except KeyError as exc:
+        available = ", ".join(sorted(SMPL_HUMANOID_MODEL_TYPES))
+        raise ValueError(
+            f"Unknown SMPL humanoid model_type {model_type!r}. Available model types: {available}"
+        ) from exc
 
 
 def _walk_xml_bodies(
@@ -269,7 +299,10 @@ def _transform_rotations(rotations: np.ndarray, transform: np.ndarray) -> np.nda
 
 
 __all__ = [
+    "SMPL_HUMANOID_MODEL_TYPES",
+    "SMPL_HUMANOID_REGISTRY_MODEL_TYPES",
     "SMPL_HUMANOID_XMLS",
     "SmplHumanoidWeights",
+    "VerticalAxis",
     "load_model_data",
 ]

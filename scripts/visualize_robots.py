@@ -14,7 +14,7 @@ from body_models.base import RigidBodyModel
 from body_models.brainco.numpy import BrainCoHand
 from body_models.g1.numpy import G1
 from body_models.myofullbody.numpy import MyoFullBody
-from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_XMLS
+from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_REGISTRY_MODEL_TYPES
 from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -31,7 +31,8 @@ SMPL_HUMANOID_LABELS = {
     "smplsim_smpl_humanoid_1": "SMPLSim SmplHumanoid 1",
 }
 SMPL_HUMANOID_FACTORIES = {
-    SMPL_HUMANOID_LABELS[name]: (lambda path=path: SmplHumanoid(path)) for name, path in SMPL_HUMANOID_XMLS.items()
+    SMPL_HUMANOID_LABELS[name]: (lambda model_type=name: SmplHumanoid(model_type=model_type))
+    for name in ("smpl_humanoid", *SMPL_HUMANOID_REGISTRY_MODEL_TYPES)
 }
 MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
     "G1": G1,
