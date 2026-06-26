@@ -1,6 +1,5 @@
 """NumPy backend for SOMA model."""
 
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,11 +11,12 @@ from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
-    compute_sparse_skin_weights,
     get_model_path,
     load_identity_transfer_data,
     load_model_data,
+    public_joint_metadata,
     simplify_mesh,
+    with_active_mesh,
 )
 from body_models.bodies.soma.backends import scipy as scipy_backend
 from body_models.bodies.soma.backends import core
@@ -103,17 +103,13 @@ class SOMA(SkinnedModel):
             skin_weights_active = skin_weights_full
             vertex_map = None
 
-        self.parents = [parent - 1 for parent in data.topology.parents_full[1:]]
-        self._joint_names = data.joint_names_full[1:]
-        skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
-        weights = replace(
+        self.parents, self._joint_names = public_joint_metadata(data)
+        weights = with_active_mesh(
             data,
-            mean_active=np.asarray(mean_active, dtype=np.float32),
-            shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
-            skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
-            skin_joint_indices_active=skin_joint_indices_active,
-            skin_joint_weights_active=skin_joint_weights_active,
-            faces=np.asarray(faces, dtype=np.int64),
+            mean_active=mean_active,
+            shapedirs_active=shapedirs_active,
+            skin_weights_active=skin_weights_active,
+            faces=faces,
             vertex_map=vertex_map,
         )
         self.weights = self._kernel.prepare_data(weights)
@@ -145,6 +141,8 @@ class SOMA(SkinnedModel):
 
     @property
     def skin_weights(self) -> Float[np.ndarray, "V J"]:
+        if self.weights.public is not None:
+            return self.weights.public.skin_weights_active[:, 1:]
         return self.weights.skin_weights_active[:, 1:]
 
     @property

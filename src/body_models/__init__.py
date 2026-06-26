@@ -63,6 +63,7 @@ def main() -> None:
     from .bodies.mhr.io import download_model as download_mhr_model
     from .bodies.smpl.download import download_smpl
     from .bodies.soma.io import download_model as download_soma_model
+    from .bodies.soma.io import preprocess_model as preprocess_soma_model
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
     from .robots.brainco.io import download_model as download_brainco_model
     from .robots.g1.io import download_model as download_g1_model
@@ -247,5 +248,12 @@ def main() -> None:
             path = download_myofullbody_model()
             set_model_path("myofullbody", str(path))
             print(f"Set myofullbody = {path}")
+
+    @app.command("preprocess-soma")
+    def preprocess_soma(upstream_dir: str, output_dir: str):
+        """Generate normalized SOMA assets from upstream SOMA-X 0.2.1 assets."""
+        path = preprocess_soma_model(upstream_dir, output_dir)
+        set_model_path("soma", str(path))
+        print(f"Set soma = {path}")
 
     app()
