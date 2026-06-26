@@ -3,7 +3,6 @@
 from body_models.robots.smpl_humanoid.io import (
     SMPL_HUMANOID_MODEL_TYPES,
     SMPL_HUMANOID_REGISTRY_MODEL_TYPES,
-    SMPL_HUMANOID_XMLS,
     SmplHumanoidWeights,
     load_model_data,
 )
@@ -11,7 +10,6 @@ from body_models.robots.smpl_humanoid.io import (
 __all__ = [
     "SMPL_HUMANOID_MODEL_TYPES",
     "SMPL_HUMANOID_REGISTRY_MODEL_TYPES",
-    "SMPL_HUMANOID_XMLS",
     "SmplHumanoidWeights",
     "load_model_data",
 ]
