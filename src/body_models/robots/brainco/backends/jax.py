@@ -30,7 +30,7 @@ def forward_skeleton(
         pose=pose,
         global_translation=global_translation,
         global_rotation=global_rotation,
-        skeleton_indices=joint_indices,
+        joint_indices=joint_indices,
         xp=jnp,
     )
 
