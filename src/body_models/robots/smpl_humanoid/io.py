@@ -138,6 +138,7 @@ def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray
     for joint_idx, name in enumerate(JOINT_NAMES):
         for geom_idx, geom in enumerate(bodies[name].findall("geom")):
             vertices, faces = _geom_mesh(geom, dtype=dtype)
+            geom_position, geom_rotation = _geom_transform(geom, dtype=dtype)
             vertices_by_link.append(vertices)
             faces_by_link.append(faces + vertex_offset)
             joint_indices.append(joint_idx)
@@ -145,12 +146,8 @@ def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray
             vertex_counts.append(vertices.shape[0])
             face_starts.append(face_offset)
             face_counts.append(faces.shape[0])
-            geom_positions.append(mjcf.parse_vec(geom.get("pos"), size=3, default=np.zeros(3, dtype=dtype)))
-            geom_rotations.append(
-                mjcf.quat_wxyz_to_matrix(
-                    mjcf.parse_vec(geom.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
-                )
-            )
+            geom_positions.append(geom_position)
+            geom_rotations.append(geom_rotation)
             names.append(geom.get("name") or f"{name}_{geom_idx}")
             vertex_offset += vertices.shape[0]
             face_offset += faces.shape[0]
@@ -182,28 +179,32 @@ def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
         fromto = geom.get("fromto")
         if fromto is not None:
             capsule = mjcf.parse_vec(fromto, size=6, default=np.zeros(6, dtype=dtype))
-            return _capsule_between(capsule[:3], capsule[3:], float(size[0]), dtype=dtype)
-        return _capsule_between(
-            np.array([0.0, 0.0, -float(size[1])], dtype=dtype),
-            np.array([0.0, 0.0, float(size[1])], dtype=dtype),
-            float(size[0]),
-            dtype=dtype,
-        )
+            height = float(np.linalg.norm(capsule[3:] - capsule[:3]))
+        else:
+            height = 2.0 * float(size[1])
+        return _mesh_arrays(trimesh.creation.capsule(height=height, radius=float(size[0]), count=(8, 16)), dtype=dtype)
     if geom_type == "cylinder":
         return _mesh_arrays(trimesh.creation.cylinder(radius=float(size[0]), height=2.0 * float(size[1])), dtype=dtype)
     raise ValueError(f"Unsupported SMPL humanoid XML geom type: {geom_type}")
 
 
-def _capsule_between(start: np.ndarray, end: np.ndarray, radius: float, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _geom_transform(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+    fromto = geom.get("fromto")
+    if fromto is None:
+        position = mjcf.parse_vec(geom.get("pos"), size=3, default=np.zeros(3, dtype=dtype))
+        rotation = mjcf.quat_wxyz_to_matrix(
+            mjcf.parse_vec(geom.get("quat"), size=4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=dtype))
+        )
+        return position, rotation
+
+    capsule = mjcf.parse_vec(fromto, size=6, default=np.zeros(6, dtype=dtype))
+    start = capsule[:3]
+    end = capsule[3:]
     axis = end - start
     length = float(np.linalg.norm(axis))
     if length <= 1e-8:
         raise ValueError("Capsule endpoints must be distinct.")
-    transform = np.eye(4, dtype=dtype)
-    transform[:3, :3] = _basis_from_z(axis / length).astype(dtype)
-    transform[:3, 3] = start
-    mesh = trimesh.creation.capsule(height=length, radius=radius, count=(8, 16), transform=transform)
-    return _mesh_arrays(mesh, dtype=dtype)
+    return 0.5 * (start + end), _basis_from_z(axis / length).astype(dtype)
 
 
 def _basis_from_z(direction: np.ndarray) -> np.ndarray:
