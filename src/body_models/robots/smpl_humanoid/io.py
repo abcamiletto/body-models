@@ -33,6 +33,23 @@ SMPL_HUMANOID_XMLS = {
     "smplsim_smpl_humanoid": SMPLSIM_MJCF_DIR / "smpl_humanoid.xml",
     "smplsim_smpl_humanoid_1": SMPLSIM_MJCF_DIR / "smpl_humanoid_1.xml",
 }
+Z_UP_XMLS = {
+    SMPL_HUMANOID_XMLS["phc_smpl_0_humanoid"],
+    SMPL_HUMANOID_XMLS["phc_smpl_1_humanoid"],
+    SMPL_HUMANOID_XMLS["phc_smpl_2_humanoid"],
+    SMPL_HUMANOID_XMLS["phc_smpl_humanoid_1"],
+    SMPL_HUMANOID_XMLS["phc_smpl_humanoid_test"],
+    SMPL_HUMANOID_XMLS["phc_smpl_humanoid_test_good"],
+    SMPL_HUMANOID_XMLS["smplsim_smpl_humanoid_1"],
+}
+Z_UP_XML_PATHS = {path.resolve() for path in Z_UP_XMLS}
+Z_UP_TO_Y_UP = np.array(
+    [
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+    ]
+)
 
 
 @dataclass(frozen=True)
@@ -93,6 +110,13 @@ def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> 
         raise ValueError("SMPL humanoid XML body hierarchy does not match the canonical SMPL hierarchy.")
 
     vertices, faces, link_data = _load_xml_geoms(parsed_bodies, dtype=dtype)
+    if path.resolve() in Z_UP_XML_PATHS:
+        frame = Z_UP_TO_Y_UP.astype(dtype)
+        local_offsets = _transform_vectors(local_offsets, frame)
+        rest_local_rotations = _transform_rotations(rest_local_rotations, frame)
+        vertices = _transform_vectors(vertices, frame)
+        link_data["geom_positions"] = _transform_vectors(link_data["geom_positions"], frame)
+        link_data["geom_rotations"] = _transform_rotations(link_data["geom_rotations"], frame)
     actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
     actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
     num_actuated = 3 * len(BODY_JOINTS)
@@ -234,6 +258,14 @@ def _basis_from_z(direction: np.ndarray) -> np.ndarray:
 
 def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(mesh.vertices, dtype=dtype), np.asarray(mesh.faces, dtype=np.int64)
+
+
+def _transform_vectors(vectors: np.ndarray, transform: np.ndarray) -> np.ndarray:
+    return vectors @ transform.T
+
+
+def _transform_rotations(rotations: np.ndarray, transform: np.ndarray) -> np.ndarray:
+    return transform @ rotations @ transform.T
 
 
 __all__ = [

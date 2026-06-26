@@ -34,6 +34,18 @@ def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
+@pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_XMLS))
+def test_smpl_humanoid_variants_are_y_up(model_name: str) -> None:
+    model = create_model(model_name)
+    skeleton = model.forward_skeleton(**model.get_rest_pose())
+    joint_positions = skeleton[:, :3, 3]
+    by_name = {name: i for i, name in enumerate(model.joint_names)}
+
+    assert joint_positions[by_name["L_Ankle"], 1] < joint_positions[by_name["Pelvis"], 1]
+    assert joint_positions[by_name["R_Ankle"], 1] < joint_positions[by_name["Pelvis"], 1]
+    assert joint_positions[by_name["Head"], 1] > joint_positions[by_name["Pelvis"], 1]
+
+
 def test_smpl_humanoid_pose_uses_reference_joint_order(smpl_humanoid_xml) -> None:
     model = SmplHumanoid(smpl_humanoid_xml)
     body_pose_by_smpl = np.arange(23 * 3, dtype=np.float32).reshape(23, 3)
