@@ -24,7 +24,7 @@ def model_label(name: str) -> str:
     return label.replace("Smplsim", "SMPLSim").replace("Smpl", "SMPL").replace("Phc", "PHC")
 
 
-SMPL_HUMANOID = model_label("meta_motivo")
+SMPL_HUMANOID = model_label("humenv")
 SMPL_HUMANOID_FACTORIES = {
     model_label(name): (lambda model_name=name: create_model(model_name)) for name in SMPL_HUMANOID_MODEL_TYPES
 }

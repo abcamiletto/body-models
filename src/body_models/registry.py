@@ -23,7 +23,7 @@ _MODELS: dict[str, ModelInfo] = {
     "skel": ("body_models.skeletons.skel", "SKEL", {"gender": "male"}),
     "smpl": ("body_models.bodies.smpl", "SMPL", {"gender": "neutral"}),
     "smpl_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {}),
-    "meta_motivo": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "meta_motivo"}),
+    "humenv": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "humenv"}),
     "phc": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "phc"}),
     "smplsim": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"model": "smplsim"}),
     "smplh": ("body_models.bodies.smplh", "SMPLH", {"gender": "neutral"}),

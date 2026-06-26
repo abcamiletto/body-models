@@ -20,7 +20,7 @@ PathLike = Path | str
 VerticalAxis = Literal["x", "y", "z"]
 XML_DIR = Path(__file__).parent / "assets" / "xml"
 SMPL_HUMANOID_MODEL_TYPES: dict[str, tuple[Path, VerticalAxis]] = {
-    "meta_motivo": (XML_DIR / "meta_motivo.xml", "y"),
+    "humenv": (XML_DIR / "humenv.xml", "y"),
     "phc": (XML_DIR / "phc.xml", "y"),
     "smplsim": (XML_DIR / "smplsim.xml", "y"),
 }
@@ -54,7 +54,7 @@ class SmplHumanoidWeights:
 
 
 def load_model_data(
-    model: PathLike = "meta_motivo", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
+    model: PathLike = "humenv", *, vertical_axis: VerticalAxis | None = None, dtype=np.float32
 ) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
     path, vertical_axis = _model_source(model, vertical_axis)

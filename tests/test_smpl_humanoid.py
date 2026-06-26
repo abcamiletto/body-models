@@ -7,7 +7,7 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_MODEL_TYPES
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
 
-SMPL_HUMANOID_VARIANTS = ("meta_motivo", "phc", "smplsim")
+SMPL_HUMANOID_VARIANTS = ("humenv", "phc", "smplsim")
 
 
 @pytest.fixture
