@@ -9,6 +9,8 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 from jaxtyping import Float, Int
+import trimesh.creation
+from trimesh import Trimesh
 
 from body_models.robots import mjcf
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS
@@ -42,46 +44,7 @@ class SmplHumanoidWeights:
 
 def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
-    return _load_xml_model_data(SMPL_HUMANOID_XML if model_path is None else Path(model_path), dtype=dtype)
-
-
-def _weights_from_parts(
-    *,
-    local_offsets: np.ndarray,
-    rest_local_rotations: np.ndarray,
-    vertices: np.ndarray,
-    faces: np.ndarray,
-    link_data: dict[str, Any],
-    dtype,
-) -> SmplHumanoidWeights:
-    by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
-    actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
-    actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
-    num_actuated = 3 * len(BODY_JOINTS)
-    actuated_joint_limits = np.repeat(np.array([[-np.pi, np.pi]], dtype=dtype), num_actuated, axis=0)
-    return SmplHumanoidWeights(
-        joint_names=JOINT_NAMES.copy(),
-        parents=PARENTS.copy(),
-        local_offsets=local_offsets.astype(dtype),
-        rest_local_rotations=rest_local_rotations.astype(dtype),
-        vertices=vertices.astype(dtype),
-        faces=faces.astype(np.int64),
-        link_joint_indices=link_data["joint_indices"],
-        link_vertex_starts=link_data["vertex_starts"],
-        link_vertex_counts=link_data["vertex_counts"],
-        link_face_starts=link_data["face_starts"],
-        link_face_counts=link_data["face_counts"],
-        link_geom_positions=link_data["geom_positions"].astype(dtype),
-        link_geom_rotations=link_data["geom_rotations"].astype(dtype),
-        link_names=link_data["names"],
-        actuated_joint_indices=actuated_joint_indices,
-        actuated_joint_limits=actuated_joint_limits,
-        actuated_joint_names=actuated_joint_names,
-        actuated_joint_types=["axis_angle"] * num_actuated,
-    )
-
-
-def _load_xml_model_data(path: Path, *, dtype) -> SmplHumanoidWeights:
+    path = SMPL_HUMANOID_XML if model_path is None else Path(model_path)
     if not path.is_file():
         raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
 
@@ -115,13 +78,29 @@ def _load_xml_model_data(path: Path, *, dtype) -> SmplHumanoidWeights:
         raise ValueError("SMPL humanoid XML body hierarchy does not match the canonical SMPL hierarchy.")
 
     vertices, faces, link_data = _load_xml_geoms(parsed_bodies, dtype=dtype)
-    return _weights_from_parts(
-        local_offsets=local_offsets,
-        rest_local_rotations=rest_local_rotations,
-        vertices=vertices,
-        faces=faces,
-        link_data=link_data,
-        dtype=dtype,
+    actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
+    actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
+    num_actuated = 3 * len(BODY_JOINTS)
+    actuated_joint_limits = np.repeat(np.array([[-np.pi, np.pi]], dtype=dtype), num_actuated, axis=0)
+    return SmplHumanoidWeights(
+        joint_names=JOINT_NAMES.copy(),
+        parents=PARENTS.copy(),
+        local_offsets=local_offsets.astype(dtype),
+        rest_local_rotations=rest_local_rotations.astype(dtype),
+        vertices=vertices.astype(dtype),
+        faces=faces.astype(np.int64),
+        link_joint_indices=link_data["joint_indices"],
+        link_vertex_starts=link_data["vertex_starts"],
+        link_vertex_counts=link_data["vertex_counts"],
+        link_face_starts=link_data["face_starts"],
+        link_face_counts=link_data["face_counts"],
+        link_geom_positions=link_data["geom_positions"].astype(dtype),
+        link_geom_rotations=link_data["geom_rotations"].astype(dtype),
+        link_names=link_data["names"],
+        actuated_joint_indices=actuated_joint_indices,
+        actuated_joint_limits=actuated_joint_limits,
+        actuated_joint_names=actuated_joint_names,
+        actuated_joint_types=["axis_angle"] * num_actuated,
     )
 
 
@@ -196,9 +175,9 @@ def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     geom_type = geom.get("type", "sphere")
     size = mjcf.parse_vec(geom.get("size"), size=None, default=np.ones(3, dtype=dtype))
     if geom_type == "box":
-        return _box(tuple(size[:3]), dtype=dtype)
+        return _mesh_arrays(trimesh.creation.box(extents=2.0 * size[:3]), dtype=dtype)
     if geom_type == "sphere":
-        return _sphere(float(size[0]), dtype=dtype)
+        return _mesh_arrays(trimesh.creation.uv_sphere(radius=float(size[0]), count=(8, 16)), dtype=dtype)
     if geom_type == "capsule":
         fromto = geom.get("fromto")
         if fromto is not None:
@@ -211,7 +190,7 @@ def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
             dtype=dtype,
         )
     if geom_type == "cylinder":
-        return _cylinder(float(size[0]), float(size[1]), dtype=dtype)
+        return _mesh_arrays(trimesh.creation.cylinder(radius=float(size[0]), height=2.0 * float(size[1])), dtype=dtype)
     raise ValueError(f"Unsupported SMPL humanoid XML geom type: {geom_type}")
 
 
@@ -219,28 +198,12 @@ def _capsule_between(start: np.ndarray, end: np.ndarray, radius: float, *, dtype
     axis = end - start
     length = float(np.linalg.norm(axis))
     if length <= 1e-8:
-        return _box((radius, radius, radius), dtype=dtype)
-    direction = axis / length
-    basis = _basis_from_z(direction)
-    sections = 10
-    rings = [0.0, length]
-    vertices = []
-    for z in rings:
-        for section in range(sections):
-            angle = 2.0 * np.pi * section / sections
-            local = np.array([radius * np.cos(angle), radius * np.sin(angle), z], dtype=dtype)
-            vertices.append(start + basis @ local)
-    vertices.append(start)
-    vertices.append(end)
-
-    faces = []
-    for section in range(sections):
-        nxt = (section + 1) % sections
-        faces.append([section, nxt, sections + nxt])
-        faces.append([section, sections + nxt, sections + section])
-        faces.append([2 * sections, nxt, section])
-        faces.append([sections + section, sections + nxt, 2 * sections + 1])
-    return np.asarray(vertices, dtype=dtype), np.asarray(faces, dtype=np.int64)
+        raise ValueError("Capsule endpoints must be distinct.")
+    transform = np.eye(4, dtype=dtype)
+    transform[:3, :3] = _basis_from_z(axis / length).astype(dtype)
+    transform[:3, 3] = start
+    mesh = trimesh.creation.capsule(height=length, radius=radius, count=(8, 16), transform=transform)
+    return _mesh_arrays(mesh, dtype=dtype)
 
 
 def _basis_from_z(direction: np.ndarray) -> np.ndarray:
@@ -253,86 +216,8 @@ def _basis_from_z(direction: np.ndarray) -> np.ndarray:
     return np.stack([x_axis, y_axis, z_axis], axis=1)
 
 
-def _box(size: tuple[float, float, float], *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    sx, sy, sz = size
-    vertices = np.array(
-        [
-            [-sx, -sy, -sz],
-            [sx, -sy, -sz],
-            [sx, sy, -sz],
-            [-sx, sy, -sz],
-            [-sx, -sy, sz],
-            [sx, -sy, sz],
-            [sx, sy, sz],
-            [-sx, sy, sz],
-        ],
-        dtype=dtype,
-    )
-    faces = np.array(
-        [
-            [0, 1, 2],
-            [0, 2, 3],
-            [4, 6, 5],
-            [4, 7, 6],
-            [0, 4, 5],
-            [0, 5, 1],
-            [1, 5, 6],
-            [1, 6, 2],
-            [2, 6, 7],
-            [2, 7, 3],
-            [3, 7, 4],
-            [3, 4, 0],
-        ],
-        dtype=np.int64,
-    )
-    return vertices, faces
-
-
-def _sphere(radius: float, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    vertices = [np.array([0.0, 0.0, radius], dtype=dtype), np.array([0.0, 0.0, -radius], dtype=dtype)]
-    rings = 4
-    sections = 10
-    for ring in range(1, rings):
-        polar = np.pi * ring / rings
-        z = radius * np.cos(polar)
-        r = radius * np.sin(polar)
-        for section in range(sections):
-            angle = 2.0 * np.pi * section / sections
-            vertices.append(np.array([r * np.cos(angle), r * np.sin(angle), z], dtype=dtype))
-
-    faces = []
-    for section in range(sections):
-        nxt = (section + 1) % sections
-        faces.append([0, 2 + section, 2 + nxt])
-        faces.append([1, 2 + (rings - 2) * sections + nxt, 2 + (rings - 2) * sections + section])
-    for ring in range(rings - 2):
-        start = 2 + ring * sections
-        next_start = start + sections
-        for section in range(sections):
-            nxt = (section + 1) % sections
-            faces.append([start + section, next_start + section, next_start + nxt])
-            faces.append([start + section, next_start + nxt, start + nxt])
-    return np.asarray(vertices, dtype=dtype), np.asarray(faces, dtype=np.int64)
-
-
-def _cylinder(radius: float, half_height: float, *, dtype) -> tuple[np.ndarray, np.ndarray]:
-    sections = 12
-    vertices = []
-    for z in (-half_height, half_height):
-        for section in range(sections):
-            angle = 2.0 * np.pi * section / sections
-            vertices.append(np.array([radius * np.cos(angle), radius * np.sin(angle), z], dtype=dtype))
-    vertices.append(np.array([0.0, 0.0, -half_height], dtype=dtype))
-    vertices.append(np.array([0.0, 0.0, half_height], dtype=dtype))
-
-    faces = []
-    for section in range(sections):
-        nxt = (section + 1) % sections
-        faces.append([section, nxt, sections + nxt])
-        faces.append([section, sections + nxt, sections + section])
-        faces.append([2 * sections, section, nxt])
-        faces.append([2 * sections + 1, sections + nxt, sections + section])
-    return np.asarray(vertices, dtype=dtype), np.asarray(faces, dtype=np.int64)
+def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+    return np.asarray(mesh.vertices, dtype=dtype), np.asarray(mesh.faces, dtype=np.int64)
 
 
 __all__ = [
