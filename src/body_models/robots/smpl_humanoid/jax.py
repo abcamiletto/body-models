@@ -1,4 +1,4 @@
-"""JAX backend for the procedural SMPL humanoid robot."""
+"""JAX backend for the SMPL humanoid robot."""
 
 from pathlib import Path
 
@@ -19,11 +19,13 @@ __all__ = ["SmplHumanoid"]
 
 
 class SmplHumanoid(RigidBodyModel):
-    """Rigid procedural humanoid using the canonical 24-joint SMPL hierarchy."""
+    """Rigid humanoid loaded from MJCF using the canonical 24-joint SMPL hierarchy."""
 
     JOINTS = SMPL_HUMANOID_JOINTS
 
-    def __init__(self, model_path: Path | str, *, rotation_type: core.RotationType = "axis_angle") -> None:
+    def __init__(
+        self, model_path: Path | str | None = None, *, rotation_type: core.RotationType = "axis_angle"
+    ) -> None:
         if rotation_type not in core.VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
         self.rotation_type = rotation_type

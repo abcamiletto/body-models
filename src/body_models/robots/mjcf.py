@@ -40,15 +40,17 @@ def _inline_includes(element: ET.Element, base_dir: Path, visited: set[Path]) ->
 
 def parse_vec(value: str | None, *, default: Float[np.ndarray, "..."], size: int | None = None) -> np.ndarray:
     if value is None:
-        return default.astype(default.dtype, copy=True)
-    parsed = np.asarray([float(x) for x in value.split()], dtype=default.dtype)
+        parsed = default.copy()
+    else:
+        parsed = np.asarray([float(x) for x in value.split()], dtype=default.dtype)
     if size is not None and parsed.shape != (size,):
         raise ValueError(f"Expected vector with {size} values, got {value!r}")
     return parsed
 
 
 def quat_wxyz_to_matrix(q: Float[np.ndarray, "4"]) -> Float[np.ndarray, "3 3"]:
-    q = q.astype(np.float32, copy=False)
+    dtype = q.dtype if np.issubdtype(q.dtype, np.floating) else np.float32
+    q = q.astype(dtype, copy=False)
     q = q / max(float(np.linalg.norm(q)), 1e-8)
     w, x, y, z = q
     return np.array(
@@ -57,11 +59,17 @@ def quat_wxyz_to_matrix(q: Float[np.ndarray, "4"]) -> Float[np.ndarray, "3 3"]:
             [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
             [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
         ],
-        dtype=q.dtype,
+        dtype=dtype,
     )
 
 
 def parse_orientation(element: ET.Element) -> Float[np.ndarray, "3 3"]:
+    """Parse an MJCF orientation as a rotation matrix.
+
+    MuJoCo's default ``eulerseq="xyz"`` is intrinsic XYZ, which nanomanifold
+    represents with uppercase ``"XYZ"`` rather than lowercase extrinsic
+    ``"xyz"``.
+    """
     quat = element.get("quat")
     if quat:
         return quat_wxyz_to_matrix(parse_vec(quat, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)))
@@ -81,11 +89,7 @@ def mesh_base_dir(root: ET.Element, xml_path: Path) -> Path:
 
 
 def mesh_files_by_name(root: ET.Element) -> dict[str, str]:
-    return {
-        mesh.get("name"): mesh.get("file")
-        for mesh in root.findall(".//asset/mesh")
-        if mesh.get("name") and mesh.get("file")
-    }
+    return {name: file for name, (file, _scale) in mesh_assets(root).items()}
 
 
 def mesh_assets(root: ET.Element) -> dict[str, tuple[str, np.ndarray]]:

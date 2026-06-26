@@ -14,8 +14,8 @@ def smpl_humanoid_xml(tmp_path):
     return xml_path
 
 
-def test_smpl_humanoid_factory_loads(smpl_humanoid_xml) -> None:
-    model = create_model("smpl-humanoid", model_path=smpl_humanoid_xml)
+def test_smpl_humanoid_factory_loads() -> None:
+    model = create_model("smpl-humanoid")
 
     assert isinstance(model, SmplHumanoid)
     assert isinstance(model, RigidBodyModel)

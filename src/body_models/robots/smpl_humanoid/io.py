@@ -15,6 +15,7 @@ from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES,
 
 Array = Any
 PathLike = Path | str
+SMPL_HUMANOID_XML = Path(__file__).parent / "assets" / "smpl_humanoid.xml"
 
 
 @dataclass(frozen=True)
@@ -39,9 +40,9 @@ class SmplHumanoidWeights:
     actuated_joint_types: list[str]
 
 
-def load_model_data(model_path: PathLike, *, dtype=np.float32) -> SmplHumanoidWeights:
+def load_model_data(model_path: PathLike | None = None, *, dtype=np.float32) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
-    return _load_xml_model_data(Path(model_path), dtype=dtype)
+    return _load_xml_model_data(SMPL_HUMANOID_XML if model_path is None else Path(model_path), dtype=dtype)
 
 
 def _weights_from_parts(

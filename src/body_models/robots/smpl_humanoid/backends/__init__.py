@@ -1,1 +1,1 @@
-"""Backend kernels for the procedural SMPL humanoid robot."""
+"""Backend kernels for the SMPL humanoid robot."""
