@@ -9,7 +9,6 @@ from trimesh import Trimesh
 from trimesh.util import concatenate
 
 from body_models.common.ops import eye_as, set, zeros_as
-from body_models.rotations import RotationType
 
 Array = Any
 
@@ -22,8 +21,7 @@ def forward_skeleton_from_local_rotations(
     actuated_joint_indices: list[int],
     parents: list[int],
     global_translation: Float[Array, "... 3"] | None = None,
-    global_rotation: Float[Array, "... N"] | Float[Array, "... 3 3"] | None = None,
-    global_rotation_type: RotationType = "axis_angle",
+    global_rotation: Float[Array, "... 3"] | None = None,
     joint_indices: list[int] | None = None,
     xp: Any,
 ) -> Float[Array, "... J 4 4"]:
@@ -55,7 +53,7 @@ def forward_skeleton_from_local_rotations(
     rot = xp.stack(rot_world, axis=-3)
     trans = xp.stack(pos_world, axis=-2)
     if global_rotation is not None:
-        global_rot = SO3.convert(global_rotation, src=global_rotation_type, dst="rotmat", xp=xp)
+        global_rot = SO3.convert(global_rotation, src="axis_angle", dst="rotmat", xp=xp)
         rot = global_rot[..., None, :, :] @ rot
         trans = xp.squeeze(global_rot[..., None, :, :] @ trans[..., None], axis=-1)
     trans = trans + global_translation[..., None, :]

@@ -8,7 +8,6 @@ from nanomanifold import SO3
 from trimesh import Trimesh
 
 from body_models.base import RigidBodyModel
-from body_models.robots.smpl_humanoid.backends import core
 from body_models.robots.smpl_humanoid.backends import numpy as backend
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
 from body_models.robots.smpl_humanoid.io import load_model_data
@@ -24,13 +23,7 @@ class SmplHumanoid(RigidBodyModel):
     def __init__(
         self,
         source: Path | str = "humenv",
-        *,
-        rotation_type: core.RotationType = "axis_angle",
     ) -> None:
-        if rotation_type not in core.VALID_ROTATION_TYPES:
-            raise ValueError(f"Invalid rotation_type for SmplHumanoid: {rotation_type}")
-        self.rotation_type = rotation_type
-        self.global_rotation_type = rotation_type
         self.weights = load_model_data(source)
 
     @property
@@ -102,7 +95,7 @@ class SmplHumanoid(RigidBodyModel):
         body_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
         return backend.forward_skeleton(
@@ -111,7 +104,6 @@ class SmplHumanoid(RigidBodyModel):
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
         )
 
     def forward_meshes(
@@ -119,14 +111,13 @@ class SmplHumanoid(RigidBodyModel):
         body_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
     ) -> list[Trimesh]:
         return backend.forward_meshes(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def forward_links(
@@ -134,27 +125,26 @@ class SmplHumanoid(RigidBodyModel):
         body_pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
     ) -> Float[np.ndarray, "B 24 4 4"]:
         return backend.forward_links(
             self.weights,
             body_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
-    def to_mujoco_qpos(
+    def to_qpos(
         self,
         pose: Float[np.ndarray, "B Q"],
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         *,
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
+        global_rotation: Float[np.ndarray, "B 3"] | None = None,
         clamp_to_limits: bool = False,
     ) -> Float[np.ndarray, "B 76"]:
         axis_angle = pose.reshape(*pose.shape[:-1], len(BODY_JOINTS), 3)
         euler = SO3.conversions.from_axis_angle_to_euler(axis_angle, convention="XYZ", xp=np)
-        return super().to_mujoco_qpos(
+        return super().to_qpos(
             euler.reshape(*pose.shape),
             global_translation,
             global_rotation=global_rotation,
@@ -162,15 +152,9 @@ class SmplHumanoid(RigidBodyModel):
         )
 
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=np.float32) -> dict[str, np.ndarray]:
-        global_ref = np.zeros((*batch_dims, 3), dtype=dtype)
         return {
             "body_pose": np.zeros((*batch_dims, self.num_actuated), dtype=dtype),
-            "global_rotation": SO3.identity_as(
-                global_ref,
-                batch_dims=batch_dims,
-                rotation_type=self.rotation_type,
-                xp=np,
-            ).copy(),
+            "global_rotation": np.zeros((*batch_dims, 3), dtype=dtype),
             "global_translation": np.zeros((*batch_dims, 3), dtype=dtype),
         }
 

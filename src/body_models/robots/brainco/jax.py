@@ -6,7 +6,6 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
 from body_models import common
 from body_models.base import RigidBodyModel
@@ -30,19 +29,13 @@ class BrainCoHand(RigidBodyModel):
         model_path: Path | str | None = None,
         *,
         side: Side = "right",
-        rotation_type: core.RotationType = "rotmat",
     ) -> None:
         """Initialize the BrainCoHand model.
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
             side: Hand side to load.
-            rotation_type: Rotation representation expected by global_rotation.
         """
-        if rotation_type not in core.VALID_ROTATION_TYPES:
-            raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        self.rotation_type = rotation_type
-        self.global_rotation_type = core.GLOBAL_ROTATION_TYPES[rotation_type]
         self.weights = common.jaxify(load_model_data(model_path, side=side))
 
     @property
@@ -114,7 +107,7 @@ class BrainCoHand(RigidBodyModel):
         hand_pose: Float[jax.Array, "B Q"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[jax.Array, "B J 4 4"]:
         """Compute posed joint transforms.
@@ -134,7 +127,6 @@ class BrainCoHand(RigidBodyModel):
             global_translation,
             global_rotation=global_rotation,
             joint_indices=joint_indices,
-            rotation_type=self.rotation_type,
         )
 
     def forward_meshes(
@@ -142,7 +134,7 @@ class BrainCoHand(RigidBodyModel):
         hand_pose: Float[jax.Array, "B Q"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
     ) -> list[Trimesh]:
         """Compute posed model meshes.
 
@@ -159,7 +151,6 @@ class BrainCoHand(RigidBodyModel):
             hand_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def forward_links(
@@ -167,14 +158,13 @@ class BrainCoHand(RigidBodyModel):
         hand_pose: Float[jax.Array, "B Q"],
         global_translation: Float[jax.Array, "B 3"] | None = None,
         *,
-        global_rotation: Float[jax.Array, "B N"] | Float[jax.Array, "B 3 3"] | None = None,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
     ) -> Float[jax.Array, "B L 4 4"]:
         return backend.forward_links(
             self.weights,
             hand_pose,
             global_translation,
             global_rotation=global_rotation,
-            rotation_type=self.rotation_type,
         )
 
     def get_rest_pose(
@@ -186,18 +176,12 @@ class BrainCoHand(RigidBodyModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        global_ref = jnp.zeros((*batch_dims, 3), dtype=dtype)
         hand_pose = jnp.zeros((self.num_actuated,), dtype=dtype)
         if hands != "default":
             hand_pose = jnp.asarray(BRAINCO_HAND_PRESETS[self.side][hands], dtype=dtype)
         hand_pose = jnp.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))
         return {
             "hand_pose": hand_pose,
-            "global_rotation": SO3.identity_as(
-                global_ref,
-                batch_dims=batch_dims,
-                rotation_type=core.GLOBAL_ROTATION_TYPES[self.rotation_type],
-                xp=jnp,
-            ),
+            "global_rotation": jnp.zeros((*batch_dims, 3), dtype=dtype),
             "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
         }
