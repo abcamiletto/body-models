@@ -14,7 +14,8 @@ from body_models.base import RigidBodyModel
 from body_models.brainco.numpy import BrainCoHand
 from body_models.g1.numpy import G1
 from body_models.myofullbody.numpy import MyoFullBody
-from body_models.registry import create_model, list_models
+from body_models.registry import create_model
+from body_models.robots.smpl_humanoid import SMPL_HUMANOID_MODEL_TYPES
 from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -23,9 +24,9 @@ def model_label(name: str) -> str:
     return label.replace("Smplsim", "SMPLSim").replace("Smpl", "SMPL").replace("Phc", "PHC")
 
 
-SMPL_HUMANOID = model_label("smpl_humanoid")
+SMPL_HUMANOID = model_label("meta_motivo")
 SMPL_HUMANOID_FACTORIES = {
-    model_label(name): (lambda model_name=name: create_model(model_name)) for name in list_models("*smpl*humanoid*")
+    model_label(name): (lambda model_name=name: create_model(model_name)) for name in SMPL_HUMANOID_MODEL_TYPES
 }
 MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
     "G1": G1,
