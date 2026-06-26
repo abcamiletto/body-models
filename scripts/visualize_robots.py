@@ -22,6 +22,7 @@ MODEL_FACTORIES: dict[str, Callable[[], RigidBodyModel]] = {
     "BrainCo Right": lambda: BrainCoHand(side="right"),
     "BrainCo Left": lambda: BrainCoHand(side="left"),
     "MyoFullBody": MyoFullBody,
+    "SmplHumanoid": SmplHumanoid,
 }
 SMPL_HUMANOID = "SmplHumanoid"
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
@@ -74,8 +75,6 @@ def main() -> None:
     parser.add_argument("--smpl-humanoid-model-path", help="MJCF XML path for SmplHumanoid.")
     args = parser.parse_args()
     factories = model_factories(args.smpl_humanoid_model_path)
-    if args.model and SMPL_HUMANOID in args.model and args.smpl_humanoid_model_path is None:
-        parser.error("--model SmplHumanoid requires --smpl-humanoid-model-path")
 
     server = viser.ViserServer(port=args.port)
     server.scene.set_up_direction("+y")
