@@ -211,6 +211,8 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
             for coord_index in range(state.model.num_actuated):
                 lo, hi = slider_limits(state.model.actuated_joint_limits[coord_index])
                 initial = float(state.params[key][coord_index])
+                lo = min(lo, initial)
+                hi = max(hi, initial)
                 label = pose_slider_label(state.model, coord_index)
                 handles.append(
                     add_slider(
