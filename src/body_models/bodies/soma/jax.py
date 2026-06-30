@@ -1,5 +1,6 @@
 """JAX backend for SOMA model."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -11,7 +12,7 @@ from nanomanifold import SO3
 
 from body_models import common
 
-from body_models.base import SkinnedModel
+from body_models.base import SkinnedModel, SkinningPayload
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
@@ -136,11 +137,24 @@ class SOMA(SkinnedModel):
     def skin_weights(self) -> Float[jax.Array, "V J"]:
         if self.weights.public is not None:
             return self.weights.public.skin_weights_active[:, 1:]
-        return self.weights.skin_weights_active[:, 1:]
+        return self._skinning_weights
 
     @property
     def rest_vertices(self) -> Float[jax.Array, "V 3"]:
         return self.weights.mean_active * 0.01
+
+    @property
+    def _skinning_weights(self) -> Float[jax.Array, "V J"]:
+        return core.skinning_weights(self.weights)
+
+    def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
+        return {
+            "rest_vertices": identity["rest_vertices"],
+            "skinning_transforms": pose["skinning_transforms"],
+            "pose_offsets": pose["pose_offsets"],
+            "skin_weights": self._skinning_weights,
+            "faces": self.faces,
+        }
 
     def forward_vertices(
         self,
