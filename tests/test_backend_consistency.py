@@ -141,6 +141,53 @@ def test_kernels_match_default(name, numpy_model, torch_model, _jax_model, kwarg
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
+@pytest.mark.parametrize(
+    ("name", "numpy_model", "torch_model", "jax_model", "kwargs"),
+    [case for case in model_cases.SKINNED_MODELS if case[0] == "soma"],
+)
+def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, jax_model, kwargs) -> None:
+    def assert_compatible(model, params, xp, linear_blend_skinning):
+        identity = model.prepare_identity(shape=params["shape"])
+        pose = model.prepare_pose(
+            params["body_pose"],
+            params.get("head_pose"),
+            params.get("hand_pose"),
+            params["global_rotation"],
+            identity=identity,
+        )
+        skinning = model.prepare_skinning(identity=identity, pose=pose)
+        assert model.skin_weights.shape[-1] != skinning["skinning_transforms"].shape[-3]
+        assert not hasattr(skinning["skin_weights"], "toarray")
+        assert skinning["skin_weights"].shape[-1] == skinning["skinning_transforms"].shape[-3]
+        vertices = linear_blend_skinning(
+            xp,
+            skinning["rest_vertices"] + skinning["pose_offsets"],
+            skinning["skin_weights"],
+            skinning["skinning_transforms"],
+        )
+        expected = model.forward_vertices(**params, identity=identity)
+        np.testing.assert_allclose(np.asarray(vertices), np.asarray(expected), rtol=1e-4, atol=1e-4)
+
+    numpy_instance = numpy_model(**kwargs)
+    numpy_params = numpy_instance.get_rest_pose(dtype=np.float32)
+    assert_compatible(numpy_instance, numpy_params, np, numpy_instance._kernel.linear_blend_skinning)
+
+    torch = pytest.importorskip("torch")
+    torch_instance = torch_model(**kwargs)
+    torch_params = torch_instance.get_rest_pose(dtype=torch.float32)
+    with torch.no_grad():
+        assert_compatible(torch_instance, torch_params, torch, torch_instance._kernel.linear_blend_skinning)
+
+    pytest.importorskip("jax")
+    pytest.importorskip("flax")
+    import jax.numpy as jnp
+    from body_models.bodies.soma.backends import jax as soma_jax_backend
+
+    jax_instance = jax_model(**kwargs)
+    jax_params = jax_instance.get_rest_pose(dtype=jnp.float32)
+    assert_compatible(jax_instance, jax_params, jnp, soma_jax_backend.linear_blend_skinning)
+
+
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_forward_accepts_arbitrary_leading_dimensions(
     name,

@@ -34,6 +34,10 @@ def prepare_data(soma_weights: Any) -> Any:
     return soma_weights
 
 
+def skinning_weights(data: Any) -> Any:
+    return data.skin_weights_active[:, 1:]
+
+
 def prepare_identity_from_rest_shape(
     data: Any,
     *,
@@ -186,9 +190,7 @@ def _forward_vertices_with(
     linear_blend_skinning_fn: Any,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
-    verts = linear_blend_skinning_fn(
-        xp, rest_vertices + pose_offsets, data.skin_weights_active[:, 1:], skinning_transforms
-    )
+    verts = linear_blend_skinning_fn(xp, rest_vertices + pose_offsets, skinning_weights(data), skinning_transforms)
     verts = _apply_global_transform_vertices(xp, verts, global_rotation, global_translation, rotation_type)
     if vertex_indices is not None:
         verts = verts[..., xp.asarray(vertex_indices), :]
