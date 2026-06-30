@@ -91,7 +91,7 @@ def test_smpl_humanoid_pose_uses_reference_joint_order(smpl_humanoid_xml) -> Non
     np.testing.assert_array_equal(qpos[:3], np.zeros(3, dtype=np.float32))
     expected = SO3.conversions.from_axis_angle_to_euler(
         body_pose.reshape(len(BODY_JOINTS), 3),
-        convention="XYZ",
+        convention="xyz",
         xp=np,
     ).reshape(-1)
     np.testing.assert_array_equal(qpos[7:], expected)
@@ -104,13 +104,13 @@ def test_smpl_humanoid_mujoco_qpos_converts_axis_angle_to_xml_hinges(smpl_humano
 
     qpos = model.to_qpos(body_pose)
     hinge_angles = qpos[7:10]
-    expected = SO3.conversions.from_axis_angle_to_euler(body_pose[:3], convention="XYZ", xp=np)
+    expected = SO3.conversions.from_axis_angle_to_euler(body_pose[:3], convention="xyz", xp=np)
 
     np.testing.assert_allclose(hinge_angles, expected, rtol=1e-6, atol=1e-6)
     assert not np.allclose(hinge_angles, body_pose[:3])
 
     axis_angle_rot = SO3.conversions.from_axis_angle_to_rotmat(body_pose[:3], xp=np)
-    hinge_rot = SO3.conversions.from_euler_to_rotmat(hinge_angles, convention="XYZ", xp=np)
+    hinge_rot = SO3.conversions.from_euler_to_rotmat(hinge_angles, convention="xyz", xp=np)
     np.testing.assert_allclose(hinge_rot, axis_angle_rot, rtol=1e-6, atol=1e-6)
 
 

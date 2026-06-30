@@ -147,7 +147,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
         clamp_to_limits: bool = False,
     ) -> Float[Tensor, "B 76"]:
         axis_angle = pose.reshape(*pose.shape[:-1], len(BODY_JOINTS), 3)
-        euler = SO3.conversions.from_axis_angle_to_euler(axis_angle, convention="XYZ", xp=torch)
+        euler = SO3.conversions.from_axis_angle_to_euler(axis_angle, convention="xyz", xp=torch)
         return super().to_qpos(
             euler.reshape(*pose.shape),
             global_translation,

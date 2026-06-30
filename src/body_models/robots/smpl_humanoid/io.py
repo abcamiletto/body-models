@@ -79,10 +79,8 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
     vertices, faces, link_data = _load_xml_geoms(parsed_bodies, dtype=dtype)
     actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
     actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
-    num_actuated = 3 * len(BODY_JOINTS)
-    # The XML encodes each ball joint as three hinges, while this API exposes
-    # each SMPL joint as one axis-angle coordinate.
-    actuated_joint_limits = np.repeat(np.array([[-np.pi, np.pi]], dtype=dtype), num_actuated, axis=0)
+    actuated_joint_limits = _actuated_joint_limits(parsed_bodies, root=root, dtype=dtype)
+    num_actuated = len(actuated_joint_names)
     return SmplHumanoidWeights(
         joint_names=JOINT_NAMES.copy(),
         parents=PARENTS.copy(),
@@ -135,6 +133,27 @@ def _walk_xml_bodies(
 
     for child in body.findall("body"):
         _walk_xml_bodies(child, parent_name=parent_name, bodies=bodies, parents=parents)
+
+
+def _actuated_joint_limits(
+    bodies: dict[str, ET.Element],
+    *,
+    root: ET.Element,
+    dtype,
+) -> Float[np.ndarray, "Q 2"]:
+    compiler = root.find("compiler")
+    angle_scale = 1.0 if compiler is not None and compiler.get("angle") == "radian" else np.pi / 180.0
+    limits = []
+    for joint_name, _ in BODY_JOINTS:
+        joints = {joint.get("name"): joint for joint in bodies[joint_name].findall("joint")}
+        for axis in ("x", "y", "z"):
+            joint = joints.get(f"{joint_name}_{axis}")
+            if joint is None:
+                limits.append([-np.pi, np.pi])
+                continue
+            lo, hi = (float(value) for value in joint.attrib["range"].split())
+            limits.append([angle_scale * lo, angle_scale * hi])
+    return np.asarray(limits, dtype=dtype)
 
 
 def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
