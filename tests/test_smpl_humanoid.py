@@ -106,7 +106,7 @@ def test_smpl_humanoid_from_smpl_motion_returns_mujoco_joint_coordinates(smpl_hu
     )
 
     ordered = np.stack([smpl_body_pose[:, smpl_index] for _, smpl_index in BODY_JOINTS], axis=1)
-    expected_body_pose = SO3.conversions.from_axis_angle_to_euler(ordered, convention="xyz", xp=np).reshape(
+    expected_body_pose = SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=np).reshape(
         2, model.num_actuated
     )
     expected_global_rotation = SO3.convert(
@@ -125,6 +125,18 @@ def test_smpl_humanoid_from_smpl_motion_returns_mujoco_joint_coordinates(smpl_hu
     np.testing.assert_allclose(motion["global_rotation"], expected_global_rotation, rtol=1e-6, atol=1e-6)
     qpos = model.to_qpos(**motion)
     np.testing.assert_allclose(qpos[..., 7:], motion["body_pose"])
+
+
+def test_smpl_humanoid_from_smpl_motion_matches_forward_euler_convention(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(smpl_humanoid_xml)
+    smpl_body_pose = np.zeros((1, 23, 3), dtype=np.float32)
+    smpl_body_pose[:, 0] = np.array([0.3, -0.2, 0.4], dtype=np.float32)
+
+    motion = model.from_smpl_motion(smpl_body_pose)
+
+    expected = SO3.conversions.from_axis_angle_to_rotmat(smpl_body_pose[:, 0], xp=np)
+    actual = SO3.conversions.from_euler_to_rotmat(motion["body_pose"][:, :3], convention="XYZ", xp=np)
+    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
 def test_smpl_humanoid_forward_skeleton_matches_mujoco_qpos() -> None:

@@ -157,7 +157,7 @@ class SmplHumanoid(RigidBodyModel):
     ) -> dict[str, np.ndarray]:
         ordered = np.stack([smpl_body_pose[..., smpl_index, :] for _, smpl_index in BODY_JOINTS], axis=-2)
         motion = {
-            "body_pose": SO3.conversions.from_axis_angle_to_euler(ordered, convention="xyz", xp=np).reshape(
+            "body_pose": SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=np).reshape(
                 *smpl_body_pose.shape[:-2], self.num_actuated
             )
         }
@@ -179,6 +179,6 @@ class SmplHumanoid(RigidBodyModel):
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = np.asarray(SMPL_BODY_PRESETS[name], dtype=params["body_pose"].dtype)
         ordered = np.stack([axis_angle[smpl_index] for _, smpl_index in BODY_JOINTS])
-        ordered = SO3.conversions.from_axis_angle_to_euler(ordered, convention="xyz", xp=np).reshape(-1)
+        ordered = SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=np).reshape(-1)
         params["body_pose"] = np.broadcast_to(ordered, (*batch_dims, ordered.shape[0])).copy()
         return params
