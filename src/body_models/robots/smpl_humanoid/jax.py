@@ -136,23 +136,6 @@ class SmplHumanoid(RigidBodyModel):
             global_rotation=global_rotation,
         )
 
-    def to_qpos(
-        self,
-        pose: Float[jax.Array, "B Q"],
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        *,
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
-        clamp_to_limits: bool = False,
-    ) -> Float[jax.Array, "B 76"]:
-        axis_angle = pose.reshape(*pose.shape[:-1], len(BODY_JOINTS), 3)
-        euler = SO3.conversions.from_axis_angle_to_euler(axis_angle, convention="xyz", xp=jnp)
-        return super().to_qpos(
-            euler.reshape(*pose.shape),
-            global_translation,
-            global_rotation=global_rotation,
-            clamp_to_limits=clamp_to_limits,
-        )
-
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
         return {
             "body_pose": jnp.zeros((*batch_dims, self.num_actuated), dtype=dtype),
@@ -166,9 +149,38 @@ class SmplHumanoid(RigidBodyModel):
     def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs) -> dict[str, jax.Array]:
         return self._preset_pose("a_pose", batch_dims=batch_dims, **kwargs)
 
+    def from_smpl_motion(
+        self,
+        smpl_body_pose: Float[jax.Array, "B 23 3"],
+        global_translation: Float[jax.Array, "B 3"] | None = None,
+        *,
+        global_rotation: Float[jax.Array, "B 3"] | None = None,
+        pelvis_rotation: Float[jax.Array, "B 3"] | None = None,
+    ) -> dict[str, jax.Array]:
+        ordered = jnp.stack([smpl_body_pose[..., smpl_index, :] for _, smpl_index in BODY_JOINTS], axis=-2)
+        motion = {
+            "body_pose": SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=jnp).reshape(
+                *smpl_body_pose.shape[:-2], self.num_actuated
+            )
+        }
+        if global_translation is not None:
+            motion["global_translation"] = global_translation
+        if global_rotation is not None:
+            root_rotation = global_rotation
+            if pelvis_rotation is not None:
+                root_rotation = SO3.multiply(
+                    SO3.convert(global_rotation, src="axis_angle", dst="quat", xp=jnp),
+                    SO3.convert(pelvis_rotation, src="axis_angle", dst="quat", xp=jnp),
+                    xp=jnp,
+                )
+                root_rotation = SO3.convert(root_rotation, src="quat", dst="axis_angle", xp=jnp)
+            motion["global_rotation"] = root_rotation
+        return motion
+
     def _preset_pose(self, name: str, batch_dims: tuple[int, ...] = (), **kwargs) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = jnp.asarray(SMPL_BODY_PRESETS[name], dtype=params["body_pose"].dtype)
-        ordered = jnp.concat([axis_angle[smpl_index] for _, smpl_index in BODY_JOINTS])
+        ordered = jnp.stack([axis_angle[smpl_index] for _, smpl_index in BODY_JOINTS])
+        ordered = SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=jnp).reshape(-1)
         params["body_pose"] = jnp.broadcast_to(ordered, (*batch_dims, ordered.shape[0]))
         return params

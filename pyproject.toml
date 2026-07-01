@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.18.1"
+version = "0.18.2"
 description = "Multi-backend parametric body models (SMPL, SMPLH, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements, BrainCo, G1) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
@@ -45,6 +45,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "mujoco>=3.3.7",
     "ruff>=0.9.0",
     "ty>=0.0.1a13",
     # Include optional backends for type checking
