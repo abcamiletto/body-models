@@ -19,8 +19,8 @@ def _body_rotations(
     *,
     xp: Any,
 ) -> Float[Array, "B A 3 3"]:
-    axis_angle = body_pose.reshape(*body_pose.shape[:-1], num_actuated_joints, 3)
-    return SO3.conversions.from_axis_angle_to_rotmat(axis_angle, xp=xp)
+    euler = body_pose.reshape(*body_pose.shape[:-1], num_actuated_joints, 3)
+    return SO3.conversions.from_euler_to_rotmat(euler, convention="XYZ", xp=xp)
 
 
 def forward_skeleton(
