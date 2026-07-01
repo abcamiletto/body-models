@@ -81,47 +81,78 @@ def assert_smpl_humanoid_is_y_up(model: SmplHumanoid) -> None:
     assert joint_positions[by_name["Head"], 1] > joint_positions[by_name["Pelvis"], 1]
 
 
-def test_smpl_humanoid_pose_uses_reference_joint_order(smpl_humanoid_xml) -> None:
+def test_smpl_humanoid_to_qpos_uses_mujoco_joint_coordinates(smpl_humanoid_xml) -> None:
     model = SmplHumanoid(smpl_humanoid_xml)
-    body_pose_by_smpl = np.arange(23 * 3, dtype=np.float32).reshape(23, 3)
-    body_pose = np.concatenate([body_pose_by_smpl[smpl_index] for _, smpl_index in BODY_JOINTS])
+    body_pose = np.arange(model.num_actuated, dtype=np.float32)
 
     qpos = model.to_qpos(body_pose)
 
     np.testing.assert_array_equal(qpos[:3], np.zeros(3, dtype=np.float32))
-    expected = SO3.conversions.from_axis_angle_to_euler(
-        body_pose.reshape(len(BODY_JOINTS), 3),
-        convention="xyz",
-        xp=np,
-    ).reshape(-1)
-    np.testing.assert_array_equal(qpos[7:], expected)
+    np.testing.assert_array_equal(qpos[7:], body_pose)
 
 
-def test_smpl_humanoid_mujoco_qpos_converts_axis_angle_to_xml_hinges(smpl_humanoid_xml) -> None:
+def test_smpl_humanoid_from_smpl_motion_returns_mujoco_joint_coordinates(smpl_humanoid_xml) -> None:
     model = SmplHumanoid(smpl_humanoid_xml)
-    body_pose = np.zeros(model.num_actuated, dtype=np.float32)
-    body_pose[:3] = np.array([0.4, 0.5, -0.2], dtype=np.float32)
+    smpl_body_pose = np.arange(2 * 23 * 3, dtype=np.float32).reshape(2, 23, 3) / 100
+    global_translation = np.arange(6, dtype=np.float32).reshape(2, 3) / 10
+    global_rotation = np.array([[0.1, -0.2, 0.3], [0.2, 0.1, -0.1]], dtype=np.float32)
+    pelvis_rotation = np.array([[0.05, 0.02, -0.03], [-0.04, 0.01, 0.02]], dtype=np.float32)
 
-    qpos = model.to_qpos(body_pose)
-    hinge_angles = qpos[7:10]
-    expected = SO3.conversions.from_axis_angle_to_euler(body_pose[:3], convention="xyz", xp=np)
+    motion = model.from_smpl_motion(
+        smpl_body_pose,
+        global_translation,
+        global_rotation=global_rotation,
+        pelvis_rotation=pelvis_rotation,
+    )
 
-    np.testing.assert_allclose(hinge_angles, expected, rtol=1e-6, atol=1e-6)
-    assert not np.allclose(hinge_angles, body_pose[:3])
+    ordered = np.stack([smpl_body_pose[:, smpl_index] for _, smpl_index in BODY_JOINTS], axis=1)
+    expected_body_pose = SO3.conversions.from_axis_angle_to_euler(ordered, convention="xyz", xp=np).reshape(
+        2, model.num_actuated
+    )
+    expected_global_rotation = SO3.convert(
+        SO3.multiply(
+            SO3.convert(global_rotation, src="axis_angle", dst="quat", xp=np),
+            SO3.convert(pelvis_rotation, src="axis_angle", dst="quat", xp=np),
+            xp=np,
+        ),
+        src="quat",
+        dst="axis_angle",
+        xp=np,
+    )
 
-    axis_angle_rot = SO3.conversions.from_axis_angle_to_rotmat(body_pose[:3], xp=np)
-    hinge_rot = SO3.conversions.from_euler_to_rotmat(hinge_angles, convention="xyz", xp=np)
-    np.testing.assert_allclose(hinge_rot, axis_angle_rot, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(motion["body_pose"], expected_body_pose, rtol=1e-6, atol=1e-6)
+    np.testing.assert_array_equal(motion["global_translation"], global_translation)
+    np.testing.assert_allclose(motion["global_rotation"], expected_global_rotation, rtol=1e-6, atol=1e-6)
+    qpos = model.to_qpos(**motion)
+    np.testing.assert_allclose(qpos[..., 7:], motion["body_pose"])
+
+
+def test_smpl_humanoid_forward_skeleton_matches_mujoco_qpos() -> None:
+    mujoco = pytest.importorskip("mujoco")
+    model = SmplHumanoid("humenv")
+    mj_model = mujoco.MjModel.from_xml_path(str(SMPL_HUMANOID_SOURCES["humenv"]))
+    data = mujoco.MjData(mj_model)
+    body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
+    global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
+    global_rotation = np.array([[0.1, -0.2, 0.05]], dtype=np.float32)
+
+    data.qpos[:] = model.to_qpos(body_pose, global_translation, global_rotation=global_rotation)[0]
+    mujoco.mj_forward(mj_model, data)
+    skeleton = model.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+
+    for joint_index, name in enumerate(model.joint_names):
+        body_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY, name)
+        np.testing.assert_allclose(skeleton[0, joint_index, :3, 3], data.xpos[body_id], rtol=1e-6, atol=1e-6)
 
 
 def test_smpl_humanoid_apose_is_canonical_smpl_order(smpl_humanoid_xml) -> None:
     model = SmplHumanoid(smpl_humanoid_xml)
     body_pose = model.unpack_pose(model.get_apose()["body_pose"])
 
-    np.testing.assert_array_equal(body_pose["L_Thorax"], np.array([0.0, 0.0, 0.45], dtype=np.float32))
-    np.testing.assert_array_equal(body_pose["R_Thorax"], np.array([0.0, 0.0, -0.45], dtype=np.float32))
-    np.testing.assert_array_equal(body_pose["L_Shoulder"], np.array([0.0, 0.0, 0.35], dtype=np.float32))
-    np.testing.assert_array_equal(body_pose["R_Shoulder"], np.array([0.0, 0.0, -0.35], dtype=np.float32))
+    np.testing.assert_allclose(body_pose["L_Thorax"], np.array([0.0, 0.0, 0.45], dtype=np.float32), atol=1e-7)
+    np.testing.assert_allclose(body_pose["R_Thorax"], np.array([0.0, 0.0, -0.45], dtype=np.float32), atol=1e-7)
+    np.testing.assert_allclose(body_pose["L_Shoulder"], np.array([0.0, 0.0, 0.35], dtype=np.float32), atol=1e-7)
+    np.testing.assert_allclose(body_pose["R_Shoulder"], np.array([0.0, 0.0, -0.35], dtype=np.float32), atol=1e-7)
 
 
 def test_smpl_humanoid_loads_mjcf_primitive_xml(smpl_humanoid_xml) -> None:

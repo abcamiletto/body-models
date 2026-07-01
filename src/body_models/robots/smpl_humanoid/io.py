@@ -99,7 +99,7 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
         actuated_joint_indices=actuated_joint_indices,
         actuated_joint_limits=actuated_joint_limits,
         actuated_joint_names=actuated_joint_names,
-        actuated_joint_types=["axis_angle"] * num_actuated,
+        actuated_joint_types=["hinge"] * num_actuated,
     )
 
 

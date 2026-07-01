@@ -115,7 +115,7 @@ G1_MESH_JOINT_MAP = {
     "right_ankle_roll_skel": ["right_ankle_roll_link.STL"],
     "waist_yaw_skel": ["waist_yaw_link.STL"],
     "waist_roll_skel": ["waist_roll_link.STL"],
-    "waist_pitch_skel": ["torso_link.STL", "logo_link.STL", "head_link.STL"],
+    "waist_pitch_skel": ["torso_link.STL", "logo_link.STL", "head_link.STL", "waist_support_link.STL"],
     "left_shoulder_pitch_skel": ["left_shoulder_pitch_link.STL"],
     "left_shoulder_roll_skel": ["left_shoulder_roll_link.STL"],
     "left_shoulder_yaw_skel": ["left_shoulder_yaw_link.STL"],
