@@ -138,23 +138,6 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
             global_rotation=global_rotation,
         )
 
-    def to_qpos(
-        self,
-        pose: Float[Tensor, "B Q"],
-        global_translation: Float[Tensor, "B 3"] | None = None,
-        *,
-        global_rotation: Float[Tensor, "B 3"] | None = None,
-        clamp_to_limits: bool = False,
-    ) -> Float[Tensor, "B 76"]:
-        axis_angle = pose.reshape(*pose.shape[:-1], len(BODY_JOINTS), 3)
-        euler = SO3.conversions.from_axis_angle_to_euler(axis_angle, convention="xyz", xp=torch)
-        return super().to_qpos(
-            euler.reshape(*pose.shape),
-            global_translation,
-            global_rotation=global_rotation,
-            clamp_to_limits=clamp_to_limits,
-        )
-
     def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
         device = self.weights.vertices.device
         return {
@@ -169,6 +152,34 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
     def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs) -> dict[str, Tensor]:
         return self._preset_pose("a_pose", batch_dims=batch_dims, **kwargs)
 
+    def from_smpl_motion(
+        self,
+        smpl_body_pose: Float[Tensor, "B 23 3"],
+        global_translation: Float[Tensor, "B 3"] | None = None,
+        *,
+        global_rotation: Float[Tensor, "B 3"] | None = None,
+        pelvis_rotation: Float[Tensor, "B 3"] | None = None,
+    ) -> dict[str, Tensor]:
+        ordered = torch.stack([smpl_body_pose[..., smpl_index, :] for _, smpl_index in BODY_JOINTS], dim=-2)
+        motion = {
+            "body_pose": SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=torch).reshape(
+                *smpl_body_pose.shape[:-2], self.num_actuated
+            )
+        }
+        if global_translation is not None:
+            motion["global_translation"] = global_translation
+        if global_rotation is not None:
+            root_rotation = global_rotation
+            if pelvis_rotation is not None:
+                root_rotation = SO3.multiply(
+                    SO3.convert(global_rotation, src="axis_angle", dst="quat", xp=torch),
+                    SO3.convert(pelvis_rotation, src="axis_angle", dst="quat", xp=torch),
+                    xp=torch,
+                )
+                root_rotation = SO3.convert(root_rotation, src="quat", dst="axis_angle", xp=torch)
+            motion["global_rotation"] = root_rotation
+        return motion
+
     def _preset_pose(self, name: str, batch_dims: tuple[int, ...] = (), **kwargs) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = torch.as_tensor(
@@ -176,6 +187,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
             device=self.weights.vertices.device,
             dtype=params["body_pose"].dtype,
         )
-        ordered = torch.concat([axis_angle[smpl_index] for _, smpl_index in BODY_JOINTS])
+        ordered = torch.stack([axis_angle[smpl_index] for _, smpl_index in BODY_JOINTS])
+        ordered = SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=torch).reshape(-1)
         params["body_pose"] = torch.broadcast_to(ordered, (*batch_dims, ordered.shape[0]))
         return params
