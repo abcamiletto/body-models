@@ -162,7 +162,7 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
     ) -> dict[str, Tensor]:
         ordered = torch.stack([smpl_body_pose[..., smpl_index, :] for _, smpl_index in BODY_JOINTS], dim=-2)
         motion = {
-            "body_pose": SO3.conversions.from_axis_angle_to_euler(ordered, convention="xyz", xp=torch).reshape(
+            "body_pose": SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=torch).reshape(
                 *smpl_body_pose.shape[:-2], self.num_actuated
             )
         }
@@ -188,6 +188,6 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
             dtype=params["body_pose"].dtype,
         )
         ordered = torch.stack([axis_angle[smpl_index] for _, smpl_index in BODY_JOINTS])
-        ordered = SO3.conversions.from_axis_angle_to_euler(ordered, convention="xyz", xp=torch).reshape(-1)
+        ordered = SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=torch).reshape(-1)
         params["body_pose"] = torch.broadcast_to(ordered, (*batch_dims, ordered.shape[0]))
         return params
