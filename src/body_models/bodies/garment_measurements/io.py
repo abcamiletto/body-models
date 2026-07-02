@@ -10,7 +10,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.cache import HF_DATASET_BASE_URL, download_file, get_cache_dir
+from body_models.cache import download_hf_archive, get_cache_dir
 
 PathLike = Path | str
 Array = Any
@@ -18,7 +18,6 @@ Array = Any
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 PREPROCESSED_FILENAME = "garment_measurements.npz"
-GARMENT_MEASUREMENTS_URL = f"{HF_DATASET_BASE_URL}/garment_measurements/{PREPROCESSED_FILENAME}"
 
 
 @dataclass(frozen=True)
@@ -65,7 +64,7 @@ def download_model() -> Path:
     """Download preprocessed GarmentMeasurements data assets."""
     cache_dir = get_cache_dir() / "garment_measurements"
     print(f"Downloading GarmentMeasurements model to {cache_dir}...")
-    download_file(GARMENT_MEASUREMENTS_URL, cache_dir / PREPROCESSED_FILENAME)
+    download_hf_archive("garment_measurements/assets.zip", cache_dir)
     print("Done")
     return cache_dir
 
@@ -260,7 +259,6 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
 __all__ = [
     "Front",
     "GarmentMeasurementsWeights",
-    "GARMENT_MEASUREMENTS_URL",
     "PREPROCESSED_FILENAME",
     "compute_kinematic_fronts",
     "download_model",

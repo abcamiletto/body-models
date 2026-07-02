@@ -12,13 +12,14 @@ from jaxtyping import Float, Int
 import trimesh.creation
 from trimesh import Trimesh
 
+from body_models import config
+from body_models.cache import download_hf_archive, get_cache_dir
 from body_models.robots import mjcf
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 
 Array = Any
 PathLike = Path | str
-XML_DIR = Path(__file__).parent / "assets" / "xml"
-SMPL_HUMANOID_SOURCES: dict[str, Path] = {name: XML_DIR / f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS}
+SMPL_HUMANOID_SOURCES = {name: f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS}
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class SmplHumanoidWeights:
 
 def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHumanoidWeights:
     """Load a rigid SMPL humanoid from an MJCF XML file."""
-    path = _model_source(source)
+    path = get_model_path(source)
     if not path.is_file():
         raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
 
@@ -103,11 +104,13 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
     )
 
 
-def _model_source(source: PathLike) -> Path:
+def get_model_path(source: PathLike = "humenv") -> Path:
+    """Resolve a SMPL humanoid XML file, downloading named sources when needed."""
     if isinstance(source, str):
         name = source.strip().lower().replace("-", "_")
         if name in SMPL_HUMANOID_SOURCES:
-            return SMPL_HUMANOID_SOURCES[name]
+            model_path = config.get_model_path(f"smpl-humanoid-{name}")
+            return validate_path(model_path) if model_path is not None else download_model(name)
         path = Path(source)
         if path.is_file():
             return path
@@ -116,6 +119,27 @@ def _model_source(source: PathLike) -> Path:
             raise ValueError(f"Unknown SMPL humanoid source {source!r}. Available sources: {variants}")
 
     return Path(source)
+
+
+def download_model(source: str = "humenv") -> Path:
+    name = source.strip().lower().replace("-", "_")
+    if name not in SMPL_HUMANOID_SOURCES:
+        variants = ", ".join(SMPL_HUMANOID_VARIANTS)
+        raise ValueError(f"Unknown SMPL humanoid source {source!r}. Available sources: {variants}")
+    cache_dir = get_cache_dir() / "smpl_humanoid"
+    path = cache_dir / SMPL_HUMANOID_SOURCES[name]
+    if not path.is_file():
+        download_hf_archive("smpl_humanoid/assets.zip", cache_dir)
+    return path
+
+
+def validate_path(path: PathLike) -> Path:
+    path = Path(path)
+    if path.suffix.lower() != ".xml":
+        raise ValueError(f"Expected a SMPL humanoid XML file, got: {path}")
+    if not path.is_file():
+        raise FileNotFoundError(f"SMPL humanoid XML not found: {path}")
+    return path
 
 
 def _walk_xml_bodies(
@@ -257,5 +281,8 @@ def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
 __all__ = [
     "SMPL_HUMANOID_SOURCES",
     "SmplHumanoidWeights",
+    "download_model",
+    "get_model_path",
     "load_model_data",
+    "validate_path",
 ]
