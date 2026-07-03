@@ -177,6 +177,25 @@ class SmplHumanoid(RigidBodyModel):
             motion["global_rotation"] = root_rotation
         return motion
 
+    def to_smpl_motion(self, qpos: Float[jax.Array, "B Q"]) -> dict[str, Float[jax.Array, "..."]]:
+        coord = jnp.asarray(self.mujoco_to_model, dtype=qpos.dtype)
+        model_to_mujoco = coord.T
+        root_rot_mujoco = SO3.conversions.from_quat_to_rotmat(qpos[..., 3:7], convention="wxyz", xp=jnp)
+        root_rot = coord @ root_rot_mujoco @ model_to_mujoco
+        ordered = SO3.conversions.from_euler_to_axis_angle(
+            qpos[..., 7:].reshape(*qpos.shape[:-1], len(BODY_JOINTS), 3),
+            convention="XYZ",
+            xp=jnp,
+        )
+        smpl_body_pose = jnp.zeros((*qpos.shape[:-1], 23, 3), dtype=qpos.dtype)
+        for joint_index, (_, smpl_index) in enumerate(BODY_JOINTS):
+            smpl_body_pose = smpl_body_pose.at[..., smpl_index, :].set(ordered[..., joint_index, :])
+        return {
+            "smpl_body_pose": smpl_body_pose,
+            "global_translation": jnp.squeeze(coord @ qpos[..., :3, None], axis=-1),
+            "global_rotation": SO3.conversions.from_rotmat_to_axis_angle(root_rot, xp=jnp),
+        }
+
     def _preset_pose(self, name: str, batch_dims: tuple[int, ...] = (), **kwargs) -> dict[str, jax.Array]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = jnp.asarray(SMPL_BODY_PRESETS[name], dtype=params["body_pose"].dtype)
