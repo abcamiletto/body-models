@@ -180,6 +180,25 @@ class SmplHumanoid(RigidBodyModel, nn.Module):
             motion["global_rotation"] = root_rotation
         return motion
 
+    def to_smpl_motion(self, qpos: Float[Tensor, "B Q"]) -> dict[str, Float[Tensor, "..."]]:
+        coord = torch.as_tensor(self.mujoco_to_model, device=qpos.device, dtype=qpos.dtype)
+        model_to_mujoco = coord.T
+        root_rot_mujoco = SO3.conversions.from_quat_to_rotmat(qpos[..., 3:7], convention="wxyz", xp=torch)
+        root_rot = coord @ root_rot_mujoco @ model_to_mujoco
+        ordered = SO3.conversions.from_euler_to_axis_angle(
+            qpos[..., 7:].reshape(*qpos.shape[:-1], len(BODY_JOINTS), 3),
+            convention="XYZ",
+            xp=torch,
+        )
+        smpl_body_pose = torch.zeros((*qpos.shape[:-1], 23, 3), device=qpos.device, dtype=qpos.dtype)
+        for joint_index, (_, smpl_index) in enumerate(BODY_JOINTS):
+            smpl_body_pose[..., smpl_index, :] = ordered[..., joint_index, :]
+        return {
+            "smpl_body_pose": smpl_body_pose,
+            "global_translation": torch.squeeze(coord @ qpos[..., :3, None], dim=-1),
+            "global_rotation": SO3.conversions.from_rotmat_to_axis_angle(root_rot, xp=torch),
+        }
+
     def _preset_pose(self, name: str, batch_dims: tuple[int, ...] = (), **kwargs) -> dict[str, Tensor]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = torch.as_tensor(

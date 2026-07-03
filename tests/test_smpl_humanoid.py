@@ -149,6 +149,49 @@ def test_smpl_humanoid_from_smpl_motion_matches_forward_euler_convention(smpl_hu
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
+def test_smpl_humanoid_to_smpl_motion_inverts_qpos(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(smpl_humanoid_xml)
+    smpl_body_pose = np.arange(2 * 23 * 3, dtype=np.float32).reshape(2, 23, 3) / 200
+    global_translation = np.array([[0.1, 0.2, 0.3], [-0.1, 0.4, -0.2]], dtype=np.float32)
+    global_rotation = np.array([[0.1, -0.2, 0.3], [0.2, 0.1, -0.1]], dtype=np.float32)
+    robot_motion = model.from_smpl_motion(
+        smpl_body_pose,
+        global_translation,
+        global_rotation=global_rotation,
+    )
+
+    smpl_motion = model.to_smpl_motion(model.to_qpos(**robot_motion))
+    round_trip_qpos = model.to_qpos(**model.from_smpl_motion(**smpl_motion))
+
+    np.testing.assert_allclose(smpl_motion["smpl_body_pose"], smpl_body_pose, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(smpl_motion["global_translation"], global_translation, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(smpl_motion["global_rotation"], global_rotation, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(round_trip_qpos, model.to_qpos(**robot_motion), rtol=1e-6, atol=1e-6)
+
+
+def test_smpl_humanoid_to_smpl_motion_backends_match_numpy(smpl_humanoid_xml) -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("jax")
+    import jax.numpy as jnp
+
+    from body_models.robots.smpl_humanoid.jax import SmplHumanoid as JaxSmplHumanoid
+    from body_models.robots.smpl_humanoid.torch import SmplHumanoid as TorchSmplHumanoid
+
+    model = SmplHumanoid(smpl_humanoid_xml)
+    body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
+    global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
+    global_rotation = np.array([[0.1, -0.2, 0.05]], dtype=np.float32)
+    qpos = model.to_qpos(body_pose, global_translation, global_rotation=global_rotation)
+    expected = model.to_smpl_motion(qpos)
+
+    torch_motion = TorchSmplHumanoid(smpl_humanoid_xml).to_smpl_motion(torch.as_tensor(qpos))
+    jax_motion = JaxSmplHumanoid(smpl_humanoid_xml).to_smpl_motion(jnp.asarray(qpos))
+
+    for key, value in expected.items():
+        np.testing.assert_allclose(torch_motion[key].detach().numpy(), value, rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(np.asarray(jax_motion[key]), value, rtol=1e-5, atol=1e-5)
+
+
 def test_smpl_humanoid_forward_skeleton_matches_mujoco_qpos() -> None:
     mujoco = pytest.importorskip("mujoco")
     model = SmplHumanoid("humenv")
