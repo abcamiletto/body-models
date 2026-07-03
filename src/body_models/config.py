@@ -17,6 +17,9 @@ MODELS = [
     "smplh-male",
     "smplh-female",
     "smplh-neutral",
+    "smpl-humanoid-humenv",
+    "smpl-humanoid-phc",
+    "smpl-humanoid-smplsim",
     "mano-right",
     "mano-left",
     "skel-male",
@@ -34,6 +37,7 @@ MODELS = [
 SMPL_MODELS = {"smpl-male", "smpl-female", "smpl-neutral"}
 SMPLX_MODELS = {"smplx-male", "smplx-female", "smplx-neutral"}
 SMPLH_MODELS = {"smplh-male", "smplh-female", "smplh-neutral"}
+SMPL_HUMANOID_MODELS = {"smpl-humanoid-humenv", "smpl-humanoid-phc", "smpl-humanoid-smplsim"}
 MANO_MODELS = {"mano-right", "mano-left"}
 SKEL_MODELS = {"skel-male", "skel-female"}
 
@@ -72,6 +76,8 @@ def validate_model_path(model: str, path: str | Path) -> Path:
         from .bodies.smplx.io import validate_path
     elif model in SMPLH_MODELS:
         from .bodies.smplh.io import validate_path
+    elif model in SMPL_HUMANOID_MODELS:
+        from .robots.smpl_humanoid.io import validate_path
     elif model in MANO_MODELS:
         from .parts.mano.io import validate_path
     elif model in SKEL_MODELS:

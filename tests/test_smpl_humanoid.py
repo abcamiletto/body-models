@@ -7,7 +7,7 @@ from nanomanifold import SO3
 from body_models.base import RigidBodyModel
 from body_models.registry import create_model, list_models
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
-from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_SOURCES
+from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_SOURCES, get_model_path
 from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -33,7 +33,7 @@ def test_smpl_humanoid_sources_are_variants() -> None:
 
 @pytest.mark.parametrize("source", sorted(SMPL_HUMANOID_SOURCES))
 def test_smpl_humanoid_xml_uses_xyz_hinge_order(source: str) -> None:
-    root = ET.parse(SMPL_HUMANOID_SOURCES[source]).getroot()
+    root = ET.parse(get_model_path(source)).getroot()
     bodies = {body.get("name"): body for body in root.findall(".//body")}
     for joint_name, _ in BODY_JOINTS:
         joints = [joint.get("name") for joint in bodies[joint_name].findall("joint")]
@@ -57,10 +57,20 @@ def test_smpl_humanoid_variants_are_y_up(model_name: str) -> None:
 
 
 def test_smpl_humanoid_custom_xml_loads() -> None:
-    xml_path = SMPL_HUMANOID_SOURCES["phc"]
+    xml_path = get_model_path("phc")
     model = SmplHumanoid(xml_path)
 
     assert_smpl_humanoid_is_y_up(model)
+
+
+def test_smpl_humanoid_source_uses_config_path(smpl_humanoid_xml, monkeypatch) -> None:
+    from body_models import config
+
+    monkeypatch.setattr(
+        config, "get_model_path", lambda model: smpl_humanoid_xml if model == "smpl-humanoid-phc" else None
+    )
+
+    assert get_model_path("phc") == smpl_humanoid_xml
 
 
 def test_smpl_humanoid_custom_bare_xml_filename_loads(smpl_humanoid_xml, monkeypatch) -> None:
@@ -142,7 +152,7 @@ def test_smpl_humanoid_from_smpl_motion_matches_forward_euler_convention(smpl_hu
 def test_smpl_humanoid_forward_skeleton_matches_mujoco_qpos() -> None:
     mujoco = pytest.importorskip("mujoco")
     model = SmplHumanoid("humenv")
-    mj_model = mujoco.MjModel.from_xml_path(str(SMPL_HUMANOID_SOURCES["humenv"]))
+    mj_model = mujoco.MjModel.from_xml_path(str(get_model_path("humenv")))
     data = mujoco.MjData(mj_model)
     body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)

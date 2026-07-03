@@ -67,6 +67,8 @@ def main() -> None:
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
     from .robots.brainco.io import download_model as download_brainco_model
     from .robots.g1.io import download_model as download_g1_model
+    from .robots.smpl_humanoid.constants import SMPL_HUMANOID_VARIANTS
+    from .robots.smpl_humanoid.io import download_model as download_smpl_humanoid_model
     from .skeletons.myofullbody.io import download_model as download_myofullbody_model
 
     Model = Literal[
@@ -79,6 +81,9 @@ def main() -> None:
         "smplh-male",
         "smplh-female",
         "smplh-neutral",
+        "smpl-humanoid-humenv",
+        "smpl-humanoid-phc",
+        "smpl-humanoid-smplsim",
         "mano-right",
         "mano-left",
         "skel-male",
@@ -124,6 +129,7 @@ def main() -> None:
                 "smplh",
                 "mano",
                 "smplx",
+                "smpl-humanoid",
                 "skel",
                 "flame",
                 "anny",
@@ -213,6 +219,13 @@ def main() -> None:
             for key, model_path in sorted(skel_paths.items()):
                 set_model_path(key, str(model_path))
                 print(f"Set {key} = {model_path}")
+
+        if model in ("smpl-humanoid", "all"):
+            for source in SMPL_HUMANOID_VARIANTS:
+                path = download_smpl_humanoid_model(source)
+                key = f"smpl-humanoid-{source}"
+                set_model_path(key, str(path))
+                print(f"Set {key} = {path}")
 
         if model in ("anny", "all"):
             path = download_anny_model()

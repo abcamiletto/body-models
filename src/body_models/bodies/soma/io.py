@@ -18,7 +18,7 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.common import simplify_mesh
-from body_models.cache import HF_DATASET_BASE_URL, download_file, get_cache_dir
+from body_models.cache import download_hf_archive, get_cache_dir
 
 PathLike = Path | str
 
@@ -30,7 +30,6 @@ SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
 SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_UPSTREAM_02_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
-SOMA_BASE_URL = f"{HF_DATASET_BASE_URL}/soma"
 SOMA_LEGACY_NPZ_FIELDS = (
     "bind_shape",
     "bind_pose_world",
@@ -278,8 +277,7 @@ def download_model(model_dir: PathLike | None = None) -> Path:
     missing = [name for name in SOMA_ASSETS if not (cache_dir / name).exists()]
     if missing:
         print(f"Downloading SOMA model to {cache_dir}...")
-        for name in missing:
-            download_file(f"{SOMA_BASE_URL}/{name}", cache_dir / name)
+        download_hf_archive("soma/assets.zip", cache_dir)
         print("Done")
     return validate_path(cache_dir)
 
@@ -298,11 +296,7 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
     )
     missing = [name for name in asset_names if not (asset_dir / name).exists()]
     if missing:
-        print(f"Downloading SOMA {normalized} assets to {asset_dir}...")
-        for name in missing:
-            path = asset_dir / name
-            download_file(f"{SOMA_BASE_URL}/{name}", path)
-        print("Done")
+        raise FileNotFoundError(f"SOMA {normalized} identity assets are missing from {asset_dir}: {', '.join(missing)}")
 
 
 def preprocess_model(upstream_dir: PathLike, output_dir: PathLike) -> Path:
