@@ -91,10 +91,11 @@ wheels = [
 
 [[package]]
 name = "body-models"
-version = "0.18.2"
+version = "0.18.3"
 source = { editable = "." }
 dependencies = [
     { name = "array-api-compat" },
+    { name = "huggingface-hub" },
     { name = "jaxtyping" },
     { name = "nanomanifold" },
     { name = "numpy" },
@@ -148,6 +149,7 @@ docs = [
 requires-dist = [
     { name = "array-api-compat", specifier = ">=1.14.0" },
     { name = "flax", marker = "extra == 'jax'", specifier = ">=0.10.0" },
+    { name = "huggingface-hub", specifier = ">=1.11.0" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.33" },
     { name = "jaxtyping", specifier = ">=0.2.28" },
     { name = "nanomanifold", specifier = ">=0.8.0" },

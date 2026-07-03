@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.18.2"
+version = "0.18.3"
 description = "Multi-backend parametric body models (SMPL, SMPLH, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements, BrainCo, G1) for NumPy, PyTorch, and JAX"
 readme = "README.md"
 authors = [
@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "array-api-compat>=1.14.0",
+    "huggingface-hub>=1.11.0",
     "jaxtyping>=0.2.28",
     "nanomanifold>=0.8.0",
     "numpy>=2.0.0",

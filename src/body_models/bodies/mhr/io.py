@@ -11,7 +11,7 @@ from nanomanifold import SO3
 
 from body_models import config
 from body_models.common import simplify_mesh
-from body_models.cache import download_and_extract, get_cache_dir
+from body_models.cache import download_hf_archive, get_cache_dir
 
 PathLike = Path | str
 
@@ -27,8 +27,6 @@ __all__ = [
     "load_pose_correctives_weights",
     "load_pose_correctives",
 ]
-
-MHR_URL = "https://github.com/facebookresearch/MHR/releases/download/v1.0.0/assets.zip"
 
 
 @dataclass(frozen=True)
@@ -78,10 +76,10 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 
 
 def download_model() -> Path:
-    """Download MHR model from GitHub releases."""
+    """Download MHR model assets."""
     cache_dir = get_cache_dir() / "mhr"
     print(f"Downloading MHR model to {cache_dir}...")
-    download_and_extract(url=MHR_URL, dest=cache_dir, extract_subdir="assets/")
+    download_hf_archive("mhr/assets.zip", cache_dir)
     print("Done")
     return cache_dir
 
