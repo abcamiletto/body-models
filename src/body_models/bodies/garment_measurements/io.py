@@ -11,11 +11,10 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.cache import download_hf_archive, get_cache_dir
+from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights
 
 PathLike = Path | str
 Array = Any
-
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 PREPROCESSED_FILENAME = "garment_measurements.npz"
 
@@ -144,7 +143,7 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
         "mvc_weights": mvc_weights,
     }
     _validate_preprocessed_model(path, data_dict)
-    skin_joint_indices, skin_joint_weights = _sparse_weight_slots(skin_weights)
+    skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
     return GarmentMeasurementsWeights(
         mean_vertices=mean_vertices,
         components=components,
@@ -159,43 +158,6 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
         skin_joint_weights=skin_joint_weights,
         mvc_weights=mvc_weights,
     )
-
-
-def _sparse_weight_slots(weights: np.ndarray, threshold: float = 1e-8) -> tuple[np.ndarray, np.ndarray]:
-    counts = np.count_nonzero(np.abs(weights) > threshold, axis=1)
-    max_count = int(counts.max(initial=0))
-    indices = np.zeros((weights.shape[0], max_count), dtype=np.int64)
-    values = np.zeros((weights.shape[0], max_count), dtype=weights.dtype)
-    for vertex, count in enumerate(counts):
-        if count == 0:
-            continue
-        joints = np.flatnonzero(np.abs(weights[vertex]) > threshold)
-        indices[vertex, :count] = joints
-        values[vertex, :count] = weights[vertex, joints]
-    return indices, values
-
-
-def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
-    """Compute kinematic fronts for batched FK."""
-    parents_list = parents.tolist() if isinstance(parents, np.ndarray) else list(parents)
-    processed: set[int] = set()
-    fronts: list[Front] = []
-
-    while len(processed) < len(parents_list):
-        joints: list[int] = []
-        joint_parents: list[int] = []
-        for joint_index, parent_index in enumerate(parents_list):
-            if joint_index in processed:
-                continue
-            if parent_index < 0 or parent_index in processed:
-                joints.append(joint_index)
-                joint_parents.append(int(parent_index))
-        if not joints:
-            raise ValueError(f"Invalid GarmentMeasurements parent chain: {parents_list}")
-        fronts.append((joints, joint_parents))
-        processed.update(joints)
-
-    return fronts
 
 
 def _find_upstream_data_dir(model_path: Path) -> Path | None:

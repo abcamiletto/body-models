@@ -7,14 +7,12 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.cache import get_cached_path
-from body_models.common import simplify_mesh
+from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 from body_models.common.chumpy_fix import load_model_dict
 from body_models.bodies.smpl.download import SMPL_FILES
 
 PathLike = Path | str
 Array = Any
-
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 __all__ = ["load_model_data"]
 
@@ -94,7 +92,7 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplWeights:
         shapedirs = shapedirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
-    lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
+    lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
 
     return SmplWeights(
         v_template=v_template,
@@ -109,45 +107,3 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplWeights:
         parents=parent_list,
         kinematic_fronts=compute_kinematic_fronts(parents),
     )
-
-
-def compute_sparse_lbs_weights(
-    lbs_weights: Float[np.ndarray, "V J"],
-) -> tuple[Int[np.ndarray, "V K"], Float[np.ndarray, "V K"]]:
-    counts = (np.abs(lbs_weights) > 1e-8).sum(axis=1)
-    indices = np.full((lbs_weights.shape[0], int(counts.max())), -1, dtype=np.int64)
-    weights = np.zeros(indices.shape, dtype=lbs_weights.dtype)
-
-    for vertex, row in enumerate(lbs_weights):
-        active = np.flatnonzero(np.abs(row) > 1e-8)
-        indices[vertex, : len(active)] = active
-        weights[vertex, : len(active)] = row[active]
-
-    return indices, weights
-
-
-def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
-    """Compute kinematic fronts for batched FK."""
-    n_joints = len(parents)
-    depths = [-1] * n_joints
-    depths[0] = 0
-
-    for i in range(1, n_joints):
-        d = 0
-        j = i
-        while j != 0:
-            j = int(parents[j])
-            d += 1
-        depths[i] = d
-
-    max_depth = max(depths)
-    fronts: list[Front] = []
-    for d in range(0, max_depth + 1):
-        joints = [i for i in range(n_joints) if depths[i] == d]
-        if d == 0:
-            parent_indices = [-1] * len(joints)
-        else:
-            parent_indices = [int(parents[j]) for j in joints]
-        fronts.append((joints, parent_indices))
-
-    return fronts
