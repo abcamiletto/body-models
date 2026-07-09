@@ -32,10 +32,10 @@ SOMA_LODS = ("mid", "low", "xlo")
 SOMA_XLO_FIELDS = (
     "lod_mid_to_xlo",
     "triangles_xlo",
-    "xlo_skinning_weights_data",
-    "xlo_skinning_weights_indices",
-    "xlo_skinning_weights_indptr",
-    "xlo_skinning_weights_shape",
+    "skinning_weights_xlo_data",
+    "skinning_weights_xlo_indices",
+    "skinning_weights_xlo_indptr",
+    "skinning_weights_xlo_shape",
 )
 SOMA_LEGACY_NPZ_FIELDS = (
     "bind_shape",
@@ -1090,10 +1090,10 @@ def _load_lod_meshes(data: Any) -> dict[str, SomaLodMesh] | None:
 
 def _load_xlo_skin_weights(data: Any) -> np.ndarray:
     rig_data = {
-        "skinning_weights_data": data["xlo_skinning_weights_data"],
-        "skinning_weights_indices": data["xlo_skinning_weights_indices"],
-        "skinning_weights_indptr": data["xlo_skinning_weights_indptr"],
-        "skinning_weights_shape": data["xlo_skinning_weights_shape"],
+        "skinning_weights_data": data["skinning_weights_xlo_data"],
+        "skinning_weights_indices": data["skinning_weights_xlo_indices"],
+        "skinning_weights_indptr": data["skinning_weights_xlo_indptr"],
+        "skinning_weights_shape": data["skinning_weights_xlo_shape"],
     }
     return _dense_skin_weights(rig_data)
 
@@ -1104,7 +1104,9 @@ def load_model_data(model_path: Path) -> SomaWeights:
     return _load_model_data_cached(str(model_path))
 
 
-def load_model_data_for_lod(model_path: PathLike | None, lod: str, *, simplify: float = 1.0) -> tuple[Path, SomaWeights]:
+def load_model_data_for_lod(
+    model_path: PathLike | None, lod: str, *, simplify: float = 1.0
+) -> tuple[Path, SomaWeights]:
     """Resolve and load SOMA data for a requested LOD and simplification level."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")

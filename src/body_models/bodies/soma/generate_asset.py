@@ -22,7 +22,6 @@ if sys.path and sys.path[0] == _SCRIPT_DIR:
     sys.path.pop(0)
 
 import numpy as np  # noqa: E402
-from scipy.spatial import cKDTree  # noqa: E402
 from scipy.sparse import csc_matrix  # noqa: E402
 
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
@@ -122,7 +121,9 @@ def _find_soma_skin_mesh(stage: Any, lod: str = "mid") -> Any:
             return prim
     mesh_names = sorted(prim.GetPath().name for prim in stage.Traverse() if prim.IsA(UsdGeom.Mesh))
     names = ", ".join(mesh_names)
-    raise ValueError(f"Could not find SOMA {lod} skin mesh {mesh_name!r} in {SOMA_TEMPLATE_RIG_ASSET}. Available meshes: {names}")
+    raise ValueError(
+        f"Could not find SOMA {lod} skin mesh {mesh_name!r} in {SOMA_TEMPLATE_RIG_ASSET}. Available meshes: {names}"
+    )
 
 
 def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
@@ -264,17 +265,26 @@ def _build_xlo_lod_arrays(
 ) -> dict[str, np.ndarray]:
     xlo = _load_lod_skin_from_usd(upstream_dir, "xlo")
     mid_bind_shape = np.asarray(arrays["bind_shape"], dtype=np.float32)
-    nearest_mid = cKDTree(mid_bind_shape).query(xlo["bind_shape"], k=1)[1].astype(np.int64)
+    nearest_mid = _nearest_vertex_ids(mid_bind_shape, xlo["bind_shape"])
     xlo_skin_weights = csc_matrix(xlo["skin_weights"])
 
     return {
         "lod_mid_to_xlo": nearest_mid,
         "triangles_xlo": xlo["triangles"].astype(np.int64),
-        "xlo_skinning_weights_data": xlo_skin_weights.data.astype(np.float32),
-        "xlo_skinning_weights_indices": xlo_skin_weights.indices.astype(np.int32),
-        "xlo_skinning_weights_indptr": xlo_skin_weights.indptr.astype(np.int32),
-        "xlo_skinning_weights_shape": np.asarray(xlo_skin_weights.shape, dtype=np.int32),
+        "skinning_weights_xlo_data": xlo_skin_weights.data.astype(np.float32),
+        "skinning_weights_xlo_indices": xlo_skin_weights.indices.astype(np.int32),
+        "skinning_weights_xlo_indptr": xlo_skin_weights.indptr.astype(np.int32),
+        "skinning_weights_xlo_shape": np.asarray(xlo_skin_weights.shape, dtype=np.int32),
     }
+
+
+def _nearest_vertex_ids(source: np.ndarray, target: np.ndarray, chunk_size: int = 128) -> np.ndarray:
+    nearest = np.empty((target.shape[0],), dtype=np.int64)
+    for start in range(0, target.shape[0], chunk_size):
+        stop = min(start + chunk_size, target.shape[0])
+        distances = np.sum((target[start:stop, None] - source[None]) ** 2, axis=-1)
+        nearest[start:stop] = np.argmin(distances, axis=1)
+    return nearest
 
 
 def _axis_id(axis: str) -> int:
