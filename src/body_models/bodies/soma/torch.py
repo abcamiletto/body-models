@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
-import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
@@ -17,12 +16,9 @@ from body_models.base import SkinnedModel, SkinningPayload
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from .io import (
     MODEL_TYPE_SPECS,
-    get_model_path,
     load_identity_transfer_data,
-    load_model_data,
+    load_model_data_for_lod,
     public_joint_metadata,
-    simplify_mesh,
-    with_active_mesh,
 )
 from body_models.bodies.soma.backends import torch as torch_backend
 from body_models.bodies.soma.backends import core
@@ -51,6 +47,7 @@ class SOMA(SkinnedModel, nn.Module):
         model_path: PathLike | None = None,
         *,
         model_type: str = "soma",
+        lod: str = "mid",
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
@@ -61,6 +58,7 @@ class SOMA(SkinnedModel, nn.Module):
         Args:
             model_path: Path to model assets, or the default assets when omitted.
             model_type: SOMA identity/model variant to load.
+            lod: Body mesh level of detail: "mid", "low", or "xlo".
             simplify: Mesh simplification factor to apply while loading.
             rotation_type: Rotation representation expected by pose inputs.
             match_warp: Whether to match Warp backend numerical conventions.
@@ -75,45 +73,18 @@ class SOMA(SkinnedModel, nn.Module):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if kernel not in self.kernels:
             raise ValueError(f"Invalid kernel: {kernel}")
-        if simplify < 1.0:
-            raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
         super().__init__()
 
         self.model_type = normalized_model_type
+        self.lod = lod.lower()
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
         self.match_warp = match_warp
         self._kernel = _get_kernel(kernel)
-        resolved_path = get_model_path(model_path)
-        data = load_model_data(resolved_path)
+        resolved_path, weights = load_model_data_for_lod(model_path, self.lod, simplify=simplify)
 
-        mean_full = data.mean_full
-        shapedirs_full = data.shapedirs_full
-        faces = data.faces
-        skin_weights_full = data.skin_weights_full
-
-        if simplify > 1.0:
-            target_faces = int(len(faces) / simplify)
-            mean_active, faces, vertex_map = simplify_mesh(mean_full, faces.astype(int), target_faces)
-            shapedirs_active = shapedirs_full[:, vertex_map]
-            skin_weights_active = skin_weights_full[vertex_map]
-            vertex_map = np.asarray(vertex_map, dtype=np.int64)
-        else:
-            mean_active = mean_full
-            shapedirs_active = shapedirs_full
-            skin_weights_active = skin_weights_full
-            vertex_map = None
-
-        weights = with_active_mesh(
-            data,
-            mean_active=mean_active,
-            shapedirs_active=shapedirs_active,
-            skin_weights_active=skin_weights_active,
-            faces=faces,
-            vertex_map=vertex_map,
-        )
         self.weights = common.torchify(weights)
-        self.parents, self._joint_names = public_joint_metadata(data)
+        self.parents, self._joint_names = public_joint_metadata(weights)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
         self.identity_dim = spec.identity_dim

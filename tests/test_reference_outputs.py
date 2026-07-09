@@ -121,6 +121,22 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
         np.testing.assert_allclose(vertices, expected, rtol=2e-3, atol=2e-3)
 
 
+def test_soma_lod_vertex_counts() -> None:
+    model_path = model_assets.get_model_file("soma")
+    required_assets = [model_path / "SOMA_neutral.npz", model_path / "correctives_model.pt"]
+    if not all(path.exists() for path in required_assets):
+        pytest.skip("SOMA assets are not available")
+
+    expected = {"mid": 18056, "low": 4505}
+    with np.load(model_path / "SOMA_neutral.npz", allow_pickle=False) as data:
+        if "lod_mid_to_xlo" in data:
+            expected["xlo"] = 612
+
+    for lod, num_vertices in expected.items():
+        model = SOMA(model_path=model_path, model_type="soma", rotation_type="axis_angle", lod=lod)
+        assert model.num_vertices == num_vertices
+
+
 def reference_inputs(name: str) -> dict[str, np.ndarray]:
     data = json.loads((model_cases.ASSETS / name / "inputs/0.json").read_text())
     if name == "smpl":
