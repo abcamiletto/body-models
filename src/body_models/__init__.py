@@ -61,7 +61,6 @@ def main() -> None:
     from .bodies.anny.io import download_model as download_anny_model
     from .bodies.garment_measurements.io import download_model as download_garment_measurements_model
     from .bodies.mhr.io import download_model as download_mhr_model
-    from .bodies.smpl.download import download_smpl
     from .bodies.soma.io import download_model as download_soma_model
     from .bodies.soma.io import preprocess_model as preprocess_soma_model
     from .config import CONFIG_FILE, MODELS, get_model_path, set_model_path, unset_model_path
@@ -152,7 +151,7 @@ def main() -> None:
                 typer.echo("SMPL account: https://smpl.is.tue.mpg.de/")
                 username = typer.prompt("Username (SMPL)")
                 password = typer.prompt("Password (SMPL)", hide_input=True)
-            paths = download_smpl(username=username, password=password)
+            paths = official_downloads.download_smpl(username=username, password=password)
             for key, path in sorted(paths.items()):
                 set_model_path(key, str(path))
                 print(f"Set {key} = {path}")

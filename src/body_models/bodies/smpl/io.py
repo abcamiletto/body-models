@@ -9,7 +9,7 @@ from body_models import config
 from body_models.cache import get_cached_path
 from body_models.common import simplify_mesh
 from body_models.common.chumpy_fix import load_model_dict
-from body_models.bodies.smpl.download import SMPL_FILES
+from body_models.download import SMPL_FILES
 
 PathLike = Path | str
 Array = Any
