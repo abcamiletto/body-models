@@ -47,6 +47,7 @@ def prepare_identity_from_rest_shape(
     xp: Any,
     linear_blend_skinning_fn: Any,
     skip_vertices: bool = False,
+    repose: bool = True,
 ) -> SomaIdentity:
     if data.public is not None:
         return _prepare_procedural_identity(
@@ -57,6 +58,7 @@ def prepare_identity_from_rest_shape(
             xp=xp,
             linear_blend_skinning_fn=linear_blend_skinning_fn,
             skip_vertices=skip_vertices,
+            repose=repose,
         )
 
     rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
@@ -72,16 +74,19 @@ def prepare_identity_from_rest_shape(
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
-    bind_shape_active, world_bind_pose = repose_to_bind_pose(
-        xp=xp,
-        rest_shape=rest_shape_active,
-        skin_weights=data.skin_weights_active,
-        world_bind_pose_fit=world_bind_pose_fit,
-        bind_pose_local=data.bind_pose_local,
-        kinematic_fronts=data.topology.kinematic_fronts_full,
-        parents_full=data.topology.parents_full,
-        linear_blend_skinning_fn=linear_blend_skinning_fn,
-    )
+    bind_shape_active = rest_shape_active
+    world_bind_pose = world_bind_pose_fit
+    if repose:
+        bind_shape_active, world_bind_pose = repose_to_bind_pose(
+            xp=xp,
+            rest_shape=rest_shape_active,
+            skin_weights=data.skin_weights_active,
+            world_bind_pose_fit=world_bind_pose_fit,
+            bind_pose_local=data.bind_pose_local,
+            kinematic_fronts=data.topology.kinematic_fronts_full,
+            parents_full=data.topology.parents_full,
+            linear_blend_skinning_fn=linear_blend_skinning_fn,
+        )
     inverse_world_bind_pose = _invert_transforms(xp, world_bind_pose)
     identity: SomaIdentity = {
         "world_bind_pose": world_bind_pose,
@@ -101,6 +106,7 @@ def _prepare_procedural_identity(
     xp: Any,
     linear_blend_skinning_fn: Any,
     skip_vertices: bool,
+    repose: bool,
 ) -> SomaIdentity:
     public = data.public
 
@@ -117,17 +123,20 @@ def _prepare_procedural_identity(
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
-    bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
-        xp=xp,
-        rest_shape=rest_shape_active,
-        skin_weights=public.skin_weights_active,
-        world_bind_pose_fit=public_world_bind_pose_fit,
-        bind_pose_local=public.bind_pose_local,
-        kinematic_fronts=public.topology.kinematic_fronts_full,
-        parents_full=public.topology.parents_full,
-        linear_blend_skinning_fn=linear_blend_skinning_fn,
-    )
-    public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
+    bind_shape_active = rest_shape_active
+    public_world_bind_pose = public_world_bind_pose_fit
+    if repose:
+        bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
+            xp=xp,
+            rest_shape=rest_shape_active,
+            skin_weights=public.skin_weights_active,
+            world_bind_pose_fit=public_world_bind_pose_fit,
+            bind_pose_local=public.bind_pose_local,
+            kinematic_fronts=public.topology.kinematic_fronts_full,
+            parents_full=public.topology.parents_full,
+            linear_blend_skinning_fn=linear_blend_skinning_fn,
+        )
+        public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
     world_bind_pose = _expand_public_bind_pose(xp, data, public_world_bind_pose)
 
     identity: SomaIdentity = {"world_bind_pose": world_bind_pose}
