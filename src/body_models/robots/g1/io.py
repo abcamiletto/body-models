@@ -21,7 +21,6 @@ Array = Any
 
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 VALID_CONVENTIONS = ("soma", "mujoco")
-G1_HF_XML = "g1_29dof_no_hand.xml"
 
 JOINT_NAMES = [
     "pelvis_skel",

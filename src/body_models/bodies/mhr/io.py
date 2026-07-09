@@ -23,7 +23,6 @@ __all__ = [
     "compute_kinematic_fronts",
     "simplify_mesh",
     "load_pose_correctives_weights",
-    "load_pose_correctives",
 ]
 
 
@@ -235,75 +234,3 @@ def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, np.nda
     W2 = corrective_blendshapes.reshape(n_comp, -1).T.astype(np.float32)
 
     return {"W1": W1, "W2": W2}
-
-
-def load_pose_correctives(asset_dir: Path, lod: int) -> Any:
-    """Load neural pose correctives model (PyTorch nn.Module).
-
-    .. deprecated::
-        Use :func:`load_pose_correctives_weights` for backend-agnostic weights.
-    """
-    import torch
-    import torch.nn as nn
-    from nanomanifold import SO3
-    from torch import Tensor
-
-    class _SparseLinear(nn.Module):
-        sparse_weight: Tensor
-        dense_weight: Tensor
-        _sparse_indices: Tensor
-
-        def __init__(self, in_features: int, out_features: int, sparse_mask: np.ndarray) -> None:
-            super().__init__()
-            idx = torch.from_numpy(sparse_mask).nonzero().T
-            self._sparse_indices = nn.Buffer(idx, persistent=False)
-            self.sparse_indices = nn.Parameter(idx, requires_grad=False)
-            self.sparse_weight = nn.Parameter(torch.zeros(idx.shape[1]), requires_grad=False)
-            self.dense_weight = nn.Buffer(torch.zeros(out_features, in_features), persistent=False)
-            self._weight_initialized = False
-
-        def _ensure_dense_weight(self) -> None:
-            if not self._weight_initialized:
-                self.dense_weight[self._sparse_indices[0], self._sparse_indices[1]] = self.sparse_weight
-                self._weight_initialized = True
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            self._ensure_dense_weight()
-            return x @ self.dense_weight.T
-
-    class _PoseCorrectivesModel(nn.Module):
-        def __init__(self, predictor: nn.Sequential) -> None:
-            super().__init__()
-            self.predictor = predictor
-
-        def forward(self, joint_params: torch.Tensor) -> torch.Tensor:
-            euler = joint_params[:, 2:, 3:6]
-            rot = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz", xp=torch)
-            feat = torch.cat([rot[..., 0], rot[..., 1]], dim=-1)
-            feat[:, :, 0] -= 1
-            feat[:, :, 4] -= 1
-            corr = self.predictor(feat.flatten(1, 2))
-            return corr.reshape(joint_params.shape[0], -1, 3)
-
-    blend_data = dict(np.load(asset_dir / f"corrective_blendshapes_lod{lod}.npz"))
-    act_data = dict(np.load(asset_dir / "corrective_activation.npz"))
-
-    n_comp, n_v = blend_data["corrective_blendshapes"].shape[:2]
-    predictor = nn.Sequential(
-        _SparseLinear(125 * 6, 125 * 24, act_data["posedirs_sparse_mask"]),
-        nn.ReLU(),
-        nn.Linear(125 * 24, n_v * 3, bias=False),
-    )
-    predictor.load_state_dict(
-        {
-            "0.sparse_indices": torch.from_numpy(act_data["0.sparse_indices"]),
-            "0.sparse_weight": torch.from_numpy(act_data["0.sparse_weight"]),
-            "2.weight": torch.from_numpy(blend_data["corrective_blendshapes"].reshape(n_comp, -1).T),
-        }
-    )
-    for p in predictor.parameters():
-        p.requires_grad = False
-
-    model = _PoseCorrectivesModel(predictor)
-    model.eval()
-    return model
