@@ -287,7 +287,7 @@ class SOMA(SkinnedModel, nn.Module):
         scale_params: Float[Tensor, "B|1 K"] | None = None,
         skip_vertices: bool = False,
         repose: bool = True,
-        bind_pose_grad: bool = True,
+        bind_pose: core.BindPoseMode = "fit",
     ) -> core.SomaIdentity:
         """Precompute identity-dependent SOMA state for repeated forward passes."""
         if self.num_scale_params is None:
@@ -303,7 +303,7 @@ class SOMA(SkinnedModel, nn.Module):
             scale_params,
             skip_vertices=skip_vertices,
             repose=repose,
-            bind_pose_grad=bind_pose_grad,
+            bind_pose=bind_pose,
         )
 
     def prepare_pose(
@@ -335,7 +335,7 @@ class SOMA(SkinnedModel, nn.Module):
         *,
         skip_vertices: bool = False,
         repose: bool = True,
-        bind_pose_grad: bool = True,
+        bind_pose: core.BindPoseMode = "fit",
     ) -> core.SomaIdentity:
         rest_shape_full, rest_shape_active = identities.rest_shapes(
             data=self.weights,
@@ -352,7 +352,7 @@ class SOMA(SkinnedModel, nn.Module):
             xp=torch,
             skip_vertices=skip_vertices,
             repose=repose,
-            bind_pose_grad=bind_pose_grad,
+            bind_pose=bind_pose,
         )
 
     def get_tpose(
