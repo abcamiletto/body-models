@@ -1,7 +1,8 @@
 """Backend-agnostic SOMA computation."""
 
 from __future__ import annotations
-from typing import Any, NotRequired, TypedDict
+import contextlib
+from typing import Any, Literal, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -12,6 +13,7 @@ from body_models.rotations import RotationType
 
 Array = Any
 Front = tuple[list[int], list[int]]
+BindPoseMode = Literal["fit", "fit_detached", "canonical"]
 
 
 class SomaIdentity(TypedDict):
@@ -48,7 +50,7 @@ def prepare_identity_from_rest_shape(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool = False,
     repose: bool = True,
-    bind_pose_grad: bool = True,
+    bind_pose: BindPoseMode = "fit",
 ) -> SomaIdentity:
     if data.public is not None:
         return _prepare_procedural_identity(
@@ -60,11 +62,12 @@ def prepare_identity_from_rest_shape(
             linear_blend_skinning_fn=linear_blend_skinning_fn,
             skip_vertices=skip_vertices,
             repose=repose,
-            bind_pose_grad=bind_pose_grad,
+            bind_pose=bind_pose,
         )
 
-    rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
+    rest_shape_full, world_bind_pose_fit = _bind_pose_for_rest_shape(
         xp=xp,
+        mode=bind_pose,
         bind_shape=data.bind_shape_full,
         bind_pose_world=data.bind_pose_world,
         joint_regressor=data.joint_regressor,
@@ -76,8 +79,6 @@ def prepare_identity_from_rest_shape(
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
-    if not bind_pose_grad:
-        world_bind_pose_fit = _stop_gradient(xp, world_bind_pose_fit)
     bind_shape_active = rest_shape_active
     world_bind_pose = world_bind_pose_fit
     if repose:
@@ -111,12 +112,13 @@ def _prepare_procedural_identity(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool,
     repose: bool,
-    bind_pose_grad: bool,
+    bind_pose: BindPoseMode,
 ) -> SomaIdentity:
     public = data.public
 
-    rest_shape_full, public_world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
+    rest_shape_full, public_world_bind_pose_fit = _bind_pose_for_rest_shape(
         xp=xp,
+        mode=bind_pose,
         bind_shape=data.bind_shape_full,
         bind_pose_world=public.bind_pose_world,
         joint_regressor=public.joint_regressor,
@@ -128,8 +130,6 @@ def _prepare_procedural_identity(
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
-    if not bind_pose_grad:
-        public_world_bind_pose_fit = _stop_gradient(xp, public_world_bind_pose_fit)
     bind_shape_active = rest_shape_active
     public_world_bind_pose = public_world_bind_pose_fit
     if repose:
@@ -160,15 +160,61 @@ def _pin_root_transform(xp: Any, transforms: Array) -> Array:
 
 def _stop_gradient(xp: Any, x: Array) -> Array:
     name = xp.__name__
-    if name == "torch":
-        return x.detach()
     if name == "jax.numpy":
         import jax
 
         return jax.lax.stop_gradient(x)
     if name == "numpy":
         return x
-    raise NotImplementedError(f"bind_pose_grad=False is not implemented for {name}.")
+    raise NotImplementedError(f'bind_pose="fit_detached" is not implemented for {name}.')
+
+
+def _bind_pose_for_rest_shape(
+    *,
+    xp: Any,
+    mode: BindPoseMode,
+    bind_shape: Float[Array, "V 3"],
+    bind_pose_world: Float[Array, "J 4 4"],
+    joint_regressor: Float[Array, "J V"],
+    joint_children_full: list[list[int]],
+    joint_children_indices_full: Int[Array, "J C"],
+    skinned_vertex_indices_full: list[list[int]],
+    skinned_vertex_indices_full_index: Int[Array, "J K"],
+    parents_full: list[int],
+    rest_shape: Float[Array, "B V 3"],
+    match_warp: bool,
+) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    if mode not in ("fit", "fit_detached", "canonical"):
+        raise ValueError(f"Unknown SOMA bind_pose mode: {mode!r}.")
+
+    if mode == "canonical":
+        batch_shape = rest_shape.shape[:-2]
+        world_bind_pose = xp.broadcast_to(bind_pose_world, (*batch_shape, *bind_pose_world.shape))
+        return rest_shape, world_bind_pose
+
+    fit_context = contextlib.nullcontext()
+    if mode == "fit_detached" and xp.__name__ == "torch":
+        import torch
+
+        fit_context = torch.no_grad()
+
+    with fit_context:
+        rest_shape, world_bind_pose = _fit_rest_shape_to_bind_pose(
+            xp=xp,
+            bind_shape=bind_shape,
+            bind_pose_world=bind_pose_world,
+            joint_regressor=joint_regressor,
+            joint_children_full=joint_children_full,
+            joint_children_indices_full=joint_children_indices_full,
+            skinned_vertex_indices_full=skinned_vertex_indices_full,
+            skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
+            parents_full=parents_full,
+            rest_shape=rest_shape,
+            match_warp=match_warp,
+        )
+    if mode == "fit_detached" and xp.__name__ != "torch":
+        world_bind_pose = _stop_gradient(xp, world_bind_pose)
+    return rest_shape, world_bind_pose
 
 
 def _expand_public_bind_pose(xp: Any, data: Any, public_world_bind_pose: Array) -> Array:
