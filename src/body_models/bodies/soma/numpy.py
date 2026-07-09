@@ -276,13 +276,20 @@ class SOMA(SkinnedModel):
         scale_params: Float[np.ndarray, "B|1 K"] | None = None,
         skip_vertices: bool = False,
         repose: bool = True,
+        bind_pose_grad: bool = True,
     ) -> SomaIdentity:
         """Precompute identity-dependent SOMA state for repeated forward passes."""
         if self.num_scale_params is None:
             scale_params = None
         elif scale_params is None:
             scale_params = np.zeros((*shape.shape[:-1], self.num_scale_params), dtype=shape.dtype)
-        return self._prepare_identity_from_inputs(shape, scale_params, skip_vertices=skip_vertices, repose=repose)
+        return self._prepare_identity_from_inputs(
+            shape,
+            scale_params,
+            skip_vertices=skip_vertices,
+            repose=repose,
+            bind_pose_grad=bind_pose_grad,
+        )
 
     def prepare_pose(
         self,
@@ -313,6 +320,7 @@ class SOMA(SkinnedModel):
         *,
         skip_vertices: bool = False,
         repose: bool = True,
+        bind_pose_grad: bool = True,
     ) -> SomaIdentity:
         rest_shape_full, rest_shape_active = identities.rest_shapes(
             data=self.weights,
@@ -329,6 +337,7 @@ class SOMA(SkinnedModel):
             xp=np,
             skip_vertices=skip_vertices,
             repose=repose,
+            bind_pose_grad=bind_pose_grad,
         )
 
     def get_tpose(
