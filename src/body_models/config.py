@@ -96,6 +96,8 @@ def validate_model_path(model: str, path: str | Path) -> Path:
         from .bodies.soma.io import validate_path
     elif model == "garment-measurements":
         from .bodies.garment_measurements.io import validate_path
+    elif model == "myofullbody":
+        from .skeletons.myofullbody.io import validate_path
     else:
         raise ValueError(f"Unknown model: {model}")
 
