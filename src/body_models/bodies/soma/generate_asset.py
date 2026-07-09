@@ -78,6 +78,7 @@ def generate_asset(upstream_dir: Path, output_dir: Path) -> Path:
     procedural = rig_data["procedural"]
     for name in SOMA_PROCEDURAL_RIG_FIELDS:
         arrays[f"procedural_{name}"] = procedural[name]
+    arrays.update(_build_xlo_lod_arrays(upstream_dir, arrays))
     np.savez(output_npz, **arrays)
 
     correctives = upstream_dir / SOMA_CORRECTIVES_ASSET
@@ -110,14 +111,19 @@ def _nearest_kept_parent(parent_ids: np.ndarray, old_index: int, keep_ids: set[i
     return parent
 
 
-def _find_soma_skin_mesh(stage: Any) -> Any:
+def _find_soma_skin_mesh(stage: Any, lod: str = "mid") -> Any:
     from pxr import UsdGeom as _UsdGeom
 
     UsdGeom = cast(Any, _UsdGeom)
+    mesh_name = {"mid": "c_skin_mid", "xlo": "c_skin_xlo"}[lod]
     for prim in stage.Traverse():
-        if prim.IsA(UsdGeom.Mesh) and prim.GetPath().name == "c_skin_mid":
+        if prim.IsA(UsdGeom.Mesh) and prim.GetPath().name == mesh_name:
             return prim
-    raise ValueError(f"Could not find c_skin_mid in {SOMA_TEMPLATE_RIG_ASSET}")
+    mesh_names = sorted(prim.GetPath().name for prim in stage.Traverse() if prim.IsA(UsdGeom.Mesh))
+    names = ", ".join(mesh_names)
+    raise ValueError(
+        f"Could not find SOMA {lod} skin mesh {mesh_name!r} in {SOMA_TEMPLATE_RIG_ASSET}. Available meshes: {names}"
+    )
 
 
 def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
@@ -193,6 +199,92 @@ def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
         "skinning_weights_indptr": sparse_weights.indptr.astype(np.int32),
         "skinning_weights_shape": np.asarray(sparse_weights.shape, dtype=np.int32),
     }
+
+
+def _load_lod_skin_from_usd(asset_dir: Path, lod: str) -> dict[str, Any]:
+    from pxr import Usd as _Usd
+    from pxr import UsdGeom as _UsdGeom
+    from pxr import UsdSkel as _UsdSkel
+
+    Usd = cast(Any, _Usd)
+    UsdGeom = cast(Any, _UsdGeom)
+    UsdSkel = cast(Any, _UsdSkel)
+
+    usd_path = asset_dir / SOMA_TEMPLATE_RIG_ASSET
+    stage = Usd.Stage.Open(str(usd_path))
+    if not stage:
+        raise RuntimeError(f"Failed to open SOMA template rig: {usd_path}")
+    skel_prim = next((prim for prim in stage.Traverse() if prim.IsA(UsdSkel.Skeleton)), None)
+    if skel_prim is None:
+        raise RuntimeError(f"No UsdSkelSkeleton prim found in SOMA template rig: {usd_path}")
+    joint_paths = list(UsdSkel.Skeleton(skel_prim).GetJointsAttr().Get() or [])
+    skin_prim = _find_soma_skin_mesh(stage, lod)
+    mesh = UsdGeom.Mesh(skin_prim)
+    bind_shape = np.asarray(mesh.GetPointsAttr().Get(), dtype=np.float32)
+    face_counts = np.asarray(mesh.GetFaceVertexCountsAttr().Get(), dtype=np.int64)
+    face_indices = np.asarray(mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.int64)
+    triangles = _fan_triangulate(face_indices, face_counts)
+
+    binding = UsdSkel.BindingAPI(skin_prim)
+    joint_indices = binding.GetJointIndicesPrimvar()
+    joint_weights = binding.GetJointWeightsPrimvar()
+    if not joint_indices or not joint_weights:
+        raise RuntimeError(f"SOMA {lod} skin mesh has no skinning primvars: {skin_prim.GetPath()}")
+
+    num_vertices = bind_shape.shape[0]
+    num_weights = joint_indices.GetElementSize()
+    indices = np.asarray(joint_indices.Get(), dtype=np.int32).reshape(num_vertices, num_weights)
+    weights = np.asarray(joint_weights.Get(), dtype=np.float32).reshape(num_vertices, num_weights)
+    joint_path_to_index = {path: idx for idx, path in enumerate(joint_paths)}
+    binding_to_skeleton = np.asarray(
+        [joint_path_to_index[str(path)] for path in binding.GetJointsAttr().Get()], dtype=np.int32
+    )
+
+    vertex_indices = np.repeat(np.arange(num_vertices, dtype=np.int32), num_weights)
+    skeleton_indices = binding_to_skeleton[indices.ravel()]
+    values = weights.ravel()
+    dense_weights = np.zeros((num_vertices, len(joint_paths)), dtype=np.float32)
+    np.add.at(dense_weights, (vertex_indices[values > 0], skeleton_indices[values > 0]), values[values > 0])
+    return {"bind_shape": bind_shape, "triangles": triangles, "skin_weights": dense_weights}
+
+
+def _fan_triangulate(face_indices: np.ndarray, face_counts: np.ndarray) -> np.ndarray:
+    triangles: list[tuple[int, int, int]] = []
+    offset = 0
+    for count in face_counts.tolist():
+        face = face_indices[offset : offset + count]
+        offset += count
+        for index in range(1, count - 1):
+            triangles.append((int(face[0]), int(face[index]), int(face[index + 1])))
+    return np.asarray(triangles, dtype=np.int64)
+
+
+def _build_xlo_lod_arrays(
+    upstream_dir: Path,
+    arrays: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    xlo = _load_lod_skin_from_usd(upstream_dir, "xlo")
+    mid_bind_shape = np.asarray(arrays["bind_shape"], dtype=np.float32)
+    nearest_mid = _nearest_vertex_ids(mid_bind_shape, xlo["bind_shape"])
+    xlo_skin_weights = csc_matrix(xlo["skin_weights"])
+
+    return {
+        "lod_mid_to_xlo": nearest_mid,
+        "triangles_xlo": xlo["triangles"].astype(np.int64),
+        "skinning_weights_xlo_data": xlo_skin_weights.data.astype(np.float32),
+        "skinning_weights_xlo_indices": xlo_skin_weights.indices.astype(np.int32),
+        "skinning_weights_xlo_indptr": xlo_skin_weights.indptr.astype(np.int32),
+        "skinning_weights_xlo_shape": np.asarray(xlo_skin_weights.shape, dtype=np.int32),
+    }
+
+
+def _nearest_vertex_ids(source: np.ndarray, target: np.ndarray, chunk_size: int = 128) -> np.ndarray:
+    nearest = np.empty((target.shape[0],), dtype=np.int64)
+    for start in range(0, target.shape[0], chunk_size):
+        stop = min(start + chunk_size, target.shape[0])
+        distances = np.sum((target[start:stop, None] - source[None]) ** 2, axis=-1)
+        nearest[start:stop] = np.argmin(distances, axis=1)
+    return nearest
 
 
 def _axis_id(axis: str) -> int:
