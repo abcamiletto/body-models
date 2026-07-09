@@ -48,6 +48,7 @@ def prepare_identity_from_rest_shape(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool = False,
     repose: bool = True,
+    bind_pose_grad: bool = True,
 ) -> SomaIdentity:
     if data.public is not None:
         return _prepare_procedural_identity(
@@ -59,6 +60,7 @@ def prepare_identity_from_rest_shape(
             linear_blend_skinning_fn=linear_blend_skinning_fn,
             skip_vertices=skip_vertices,
             repose=repose,
+            bind_pose_grad=bind_pose_grad,
         )
 
     rest_shape_full, world_bind_pose_fit = _fit_rest_shape_to_bind_pose(
@@ -74,6 +76,8 @@ def prepare_identity_from_rest_shape(
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
+    if not bind_pose_grad:
+        world_bind_pose_fit = _stop_gradient(xp, world_bind_pose_fit)
     bind_shape_active = rest_shape_active
     world_bind_pose = world_bind_pose_fit
     if repose:
@@ -107,6 +111,7 @@ def _prepare_procedural_identity(
     linear_blend_skinning_fn: Any,
     skip_vertices: bool,
     repose: bool,
+    bind_pose_grad: bool,
 ) -> SomaIdentity:
     public = data.public
 
@@ -123,6 +128,8 @@ def _prepare_procedural_identity(
         rest_shape=rest_shape_full,
         match_warp=match_warp,
     )
+    if not bind_pose_grad:
+        public_world_bind_pose_fit = _stop_gradient(xp, public_world_bind_pose_fit)
     bind_shape_active = rest_shape_active
     public_world_bind_pose = public_world_bind_pose_fit
     if repose:
@@ -149,6 +156,19 @@ def _prepare_procedural_identity(
 def _pin_root_transform(xp: Any, transforms: Array) -> Array:
     eye = common.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
     return common.set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
+
+
+def _stop_gradient(xp: Any, x: Array) -> Array:
+    name = xp.__name__
+    if name == "torch":
+        return x.detach()
+    if name == "jax.numpy":
+        import jax
+
+        return jax.lax.stop_gradient(x)
+    if name == "numpy":
+        return x
+    raise NotImplementedError(f"bind_pose_grad=False is not implemented for {name}.")
 
 
 def _expand_public_bind_pose(xp: Any, data: Any, public_world_bind_pose: Array) -> Array:
