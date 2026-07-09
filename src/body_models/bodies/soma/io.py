@@ -28,6 +28,15 @@ SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
 SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_UPSTREAM_02_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
+SOMA_LODS = ("mid", "low", "xlo")
+SOMA_XLO_FIELDS = (
+    "lod_mid_to_xlo",
+    "triangles_xlo",
+    "xlo_skinning_weights_data",
+    "xlo_skinning_weights_indices",
+    "xlo_skinning_weights_indptr",
+    "xlo_skinning_weights_shape",
+)
 SOMA_LEGACY_NPZ_FIELDS = (
     "bind_shape",
     "bind_pose_world",
@@ -61,6 +70,8 @@ __all__ = [
     "get_model_path",
     "download_model",
     "load_model_data",
+    "load_model_data_for_lod",
+    "with_lod_mesh",
     "get_identity_model_path",
     "load_identity_transfer_data",
     "preprocess_model",
@@ -125,6 +136,13 @@ class SomaPublicRig:
 
 
 @dataclass(frozen=True)
+class SomaLodMesh:
+    vertex_map: Int[np.ndarray, "Va"]
+    faces: Int[np.ndarray, "F 3"]
+    skin_weights: Float[np.ndarray, "Va Jf"] | None = None
+
+
+@dataclass(frozen=True)
 class SomaWeights:
     """SOMA weights loaded from normalized assets.
 
@@ -154,6 +172,7 @@ class SomaWeights:
     correctives: SomaCorrectives
     joint_names_full: list[str]
     public: SomaPublicRig | None = None
+    lods: dict[str, SomaLodMesh] | None = None
 
 
 @dataclass(frozen=True)
@@ -406,6 +425,31 @@ def with_active_mesh(
         faces=np.asarray(faces, dtype=np.int64),
         vertex_map=vertex_map,
         public=public,
+    )
+
+
+def with_lod_mesh(data: SomaWeights, lod: str) -> SomaWeights:
+    normalized = lod.lower()
+    if normalized not in SOMA_LODS:
+        raise ValueError(f"SOMA lod must be one of {SOMA_LODS}, got {lod!r}")
+    if normalized == "mid":
+        return data
+    if data.lods is None or normalized not in data.lods:
+        raise ValueError(
+            f"SOMA lod={normalized!r} requires preprocessed LOD arrays in {SOMA_CORE_ASSET}. "
+            "Regenerate the hosted SOMA assets with `body-models preprocess-soma` from SOMA-X v0.2 assets."
+        )
+    lod_mesh = data.lods[normalized]
+    skin_weights = lod_mesh.skin_weights
+    if skin_weights is None:
+        skin_weights = data.skin_weights_full[lod_mesh.vertex_map]
+    return with_active_mesh(
+        data,
+        mean_active=data.mean_full[lod_mesh.vertex_map],
+        shapedirs_active=data.shapedirs_full[:, lod_mesh.vertex_map],
+        skin_weights_active=skin_weights,
+        faces=lod_mesh.faces,
+        vertex_map=lod_mesh.vertex_map,
     )
 
 
@@ -909,6 +953,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         shapedirs = np.asarray(data["shapedirs"], dtype=np.float32).reshape(-1, num_vertices, 3)
         eigenvalues = np.asarray(data["eigenvalues"], dtype=np.float32)
         faces = np.asarray(data["triangles"], dtype=np.int64)
+        lods = _load_lod_meshes(data)
         if missing_soma_fields := [name for name in SOMA_LEGACY_NPZ_FIELDS if name not in data]:
             raise _missing_rig_fields_error(asset_dir, missing_soma_fields)
         rig_data = {name: data[name] for name in SOMA_LEGACY_NPZ_FIELDS}
@@ -1016,6 +1061,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         correctives=correctives,
         joint_names_full=joint_names_full,
         public=public,
+        lods=lods,
     )
 
 
@@ -1026,7 +1072,56 @@ def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
     return out
 
 
+def _load_lod_meshes(data: Any) -> dict[str, SomaLodMesh] | None:
+    lods: dict[str, SomaLodMesh] = {}
+    if "lod_mid_to_low" in data and "triangles_low" in data:
+        lods["low"] = SomaLodMesh(
+            vertex_map=np.asarray(data["lod_mid_to_low"], dtype=np.int64),
+            faces=np.asarray(data["triangles_low"], dtype=np.int64),
+        )
+    if all(name in data for name in SOMA_XLO_FIELDS):
+        lods["xlo"] = SomaLodMesh(
+            vertex_map=np.asarray(data["lod_mid_to_xlo"], dtype=np.int64),
+            faces=np.asarray(data["triangles_xlo"], dtype=np.int64),
+            skin_weights=_load_xlo_skin_weights(data),
+        )
+    return lods or None
+
+
+def _load_xlo_skin_weights(data: Any) -> np.ndarray:
+    rig_data = {
+        "skinning_weights_data": data["xlo_skinning_weights_data"],
+        "skinning_weights_indices": data["xlo_skinning_weights_indices"],
+        "skinning_weights_indptr": data["xlo_skinning_weights_indptr"],
+        "skinning_weights_shape": data["xlo_skinning_weights_shape"],
+    }
+    return _dense_skin_weights(rig_data)
+
+
 def load_model_data(model_path: Path) -> SomaWeights:
     """Load SOMA model data from disk."""
     model_path = Path(model_path).resolve()
     return _load_model_data_cached(str(model_path))
+
+
+def load_model_data_for_lod(model_path: PathLike | None, lod: str, *, simplify: float = 1.0) -> tuple[Path, SomaWeights]:
+    """Resolve and load SOMA data for a requested LOD and simplification level."""
+    if simplify < 1.0:
+        raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
+    resolved_path = get_model_path(model_path)
+    data = with_lod_mesh(load_model_data(resolved_path), lod)
+    if simplify == 1.0:
+        return resolved_path, data
+    target_faces = int(len(data.faces) / simplify)
+    mean_active, faces, simplify_map = simplify_mesh(data.mean_active, data.faces.astype(int), target_faces)
+    simplify_map = np.asarray(simplify_map, dtype=np.int64)
+    vertex_map = simplify_map if data.vertex_map is None else data.vertex_map[simplify_map]
+    weights = with_active_mesh(
+        data,
+        mean_active=mean_active,
+        shapedirs_active=data.shapedirs_active[:, simplify_map],
+        skin_weights_active=data.skin_weights_active[simplify_map],
+        faces=faces,
+        vertex_map=vertex_map,
+    )
+    return resolved_path, weights
