@@ -4,7 +4,8 @@ SOMA provides a native implementation for SOMA-X assets with identity, pose, and
 
 ## Setup
 
-SOMA downloads automatically on first use. To prefetch and save the path:
+SOMA downloads automatically on first use from `https://huggingface.co/abcamiletto/body-models`.
+The Hugging Face repo records the original SOMA-X Apache 2.0 provenance. To prefetch and save the path:
 
 ```bash
 # Download the SOMA-X assets used by the native SOMA implementation.

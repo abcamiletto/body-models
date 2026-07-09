@@ -4,7 +4,8 @@ MyoFullBody is a MuJoCo-derived musculoskeletal full-body model from `amathislab
 
 ## Setup
 
-MyoFullBody downloads automatically on first use. To prefetch and save the path:
+MyoFullBody downloads automatically on first use from `https://huggingface.co/abcamiletto/body-models`.
+The Hugging Face repo records the original MuscleMimic Apache 2.0 provenance. To prefetch and save the path:
 
 ```bash
 # Download the MyoFullBody MJCF and referenced mesh assets.

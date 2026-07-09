@@ -3,6 +3,7 @@ import pytest
 
 import model_cases
 from body_models import config
+from body_models.bodies.mhr import io as mhr_io
 from body_models.bodies.soma.io import validate_path
 import body_models.robots.brainco.io as brainco_io
 
@@ -81,3 +82,15 @@ def test_g1_get_model_path_uses_cache(tmp_path, monkeypatch) -> None:
     cache_xml.touch()
 
     assert g1_io.get_model_path() == cache_xml
+
+
+@pytest.mark.fast
+def test_mhr_has_model_requires_all_hosted_lods(tmp_path) -> None:
+    for name in mhr_io.MHR_ASSETS[:-1]:
+        (tmp_path / name).touch()
+
+    assert not mhr_io._has_model(tmp_path)
+
+    (tmp_path / mhr_io.MHR_ASSETS[-1]).touch()
+
+    assert mhr_io._has_model(tmp_path)

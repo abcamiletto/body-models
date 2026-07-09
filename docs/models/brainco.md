@@ -4,7 +4,7 @@ BrainCo is a rigid articulated model of the BrainCo Revo 2 robotic hand using th
 
 ## Setup
 
-BrainCo downloads automatically on first use. To prefetch and save the path:
+BrainCo downloads from the public [`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models) Hugging Face repository on first use. To prefetch and save the path:
 
 ```bash
 # Download the BrainCo MuJoCo XML and STL assets.
@@ -12,6 +12,8 @@ body-models download brainco
 ```
 
 When passed manually, `model_path` should contain `left.xml`, `right.xml`, and `meshes/{left,right}/*.STL`.
+
+The original BrainCo Revo2 description license is included with the hosted assets.
 
 ## Usage
 
