@@ -12,11 +12,10 @@ from nanomanifold import SO3
 
 from body_models import config
 from body_models.cache import download_hf_archive, get_cache_dir
+from body_models.common import Front, compute_kinematic_fronts
 
 PathLike = Path | str
 Array = Any
-
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 PHENOTYPE_VARIATIONS = {
     "race": ["african", "asian", "caucasian"],
@@ -84,22 +83,6 @@ def download_model() -> Path:
     download_hf_archive("anny/assets.zip", cache_dir)
     print("Done")
     return cache_dir
-
-
-def build_kinematic_fronts(parents: list[int]) -> list[Front]:
-    """Group joints by depth for parallel forward kinematics."""
-    n = len(parents)
-    assigned = [False] * n
-    level = [i for i in range(n) if parents[i] < 0]
-    fronts: list[Front] = []
-
-    while level:
-        fronts.append((level, [parents[i] for i in level]))
-        for j in level:
-            assigned[j] = True
-        level = [i for i in range(n) if not assigned[i] and parents[i] in level]
-
-    return fronts
 
 
 @dataclass(frozen=True)
@@ -195,7 +178,7 @@ def load_model_data_numpy(
     lbs_weights[rows, data["vertex_bone_indices"]] = data["vertex_bone_weights"]
 
     # Build kinematic fronts
-    kinematic_fronts = build_kinematic_fronts(data["parents"])
+    kinematic_fronts = compute_kinematic_fronts(data["parents"])
 
     return AnnyWeights(
         template_vertices=data["template_vertices"].astype(dtype),

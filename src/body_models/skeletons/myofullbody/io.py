@@ -76,7 +76,7 @@ def get_model_path(model_path: Path | str | None = None) -> Path:
 
     if model_path is not None:
         path = Path(model_path)
-        return _validate_model_path(path)
+        return validate_path(path)
 
     cache_path = get_cache_dir() / "myofullbody"
     if (cache_path / MAIN_XML_RELPATH).exists():
@@ -94,7 +94,8 @@ def download_model() -> Path:
     return cache_dir
 
 
-def _validate_model_path(path: Path) -> Path:
+def validate_path(model_path: Path | str) -> Path:
+    path = Path(model_path)
     xml_path = path / MAIN_XML_RELPATH
     if not xml_path.exists():
         raise FileNotFoundError(f"MyoFullBody main XML not found: {xml_path}")

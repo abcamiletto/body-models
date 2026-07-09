@@ -17,12 +17,10 @@ from scipy.sparse import csc_matrix
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 from body_models.cache import download_hf_archive, get_cache_dir
 
 PathLike = Path | str
-
-Front = tuple[list[int], list[int]]
 
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
@@ -339,42 +337,6 @@ def get_identity_model_path(model_type: str) -> Path | None:
     if spec.requires_direct_file and path.suffix not in {".pkl", ".npz"}:
         raise ValueError(f"Expected a SOMA {normalized} identity .pkl or .npz file, got: {path}")
     return path
-
-
-def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
-    """Compute kinematic fronts for batched FK."""
-    parents_list = parents.tolist() if isinstance(parents, np.ndarray) else list(parents)
-
-    n_joints = len(parents_list)
-    processed: set[int] = set()
-    fronts: list[Front] = []
-
-    while len(processed) < n_joints:
-        joints: list[int] = []
-        joint_parents: list[int] = []
-        for j, parent in enumerate(parents_list):
-            if j in processed:
-                continue
-            if parent < 0 or parent == j or parent in processed:
-                joints.append(j)
-                joint_parents.append(-1 if parent == j else int(parent))
-        if not joints:
-            raise ValueError(f"Invalid SOMA parent chain: {parents_list}")
-        fronts.append((joints, joint_parents))
-        processed.update(joints)
-
-    return fronts
-
-
-def compute_sparse_skin_weights(skin_weights: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    counts = (np.abs(skin_weights) > 1e-8).sum(axis=1)
-    indices = np.full((skin_weights.shape[0], int(counts.max())), -1, dtype=np.int64)
-    weights = np.zeros(indices.shape, dtype=skin_weights.dtype)
-    for vertex, row in enumerate(skin_weights):
-        active = np.flatnonzero(np.abs(row) > 1e-8)
-        indices[vertex, : len(active)] = active
-        weights[vertex, : len(active)] = row[active]
-    return indices, weights
 
 
 def _dense_skin_weights(rig_data: dict[str, Any]) -> np.ndarray:

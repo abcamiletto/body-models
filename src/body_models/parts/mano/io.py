@@ -8,14 +8,12 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 from body_models.common.chumpy_fix import load_model_dict
 from body_models.parts.mano.constants import MANO_JOINT_NAMES
-from body_models.bodies.smpl.io import compute_sparse_lbs_weights
 
 PathLike = Path | str
 Array = Any
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 __all__ = ["load_model_data"]
 
@@ -102,7 +100,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
     if flat_hand_mean:
         hand_mean = np.zeros_like(hand_mean)
 
-    lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
+    lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
 
     return ManoWeights(
         v_template=v_template,
@@ -129,38 +127,3 @@ def get_joint_names(model_data: dict) -> list[str]:
     if isinstance(joint2num, np.ndarray):
         joint2num = joint2num.item()
     return [name for name, _ in sorted(joint2num.items(), key=lambda item: int(item[1]))]
-
-
-def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
-    """Compute kinematic fronts for batched FK.
-
-    Returns list of (joint_indices, parent_indices) tuples, one per depth level.
-    Joints at the same depth can be processed in parallel.
-    """
-    n_joints = len(parents)
-    depths = [-1] * n_joints
-    depths[0] = 0  # Root
-
-    # Compute depth of each joint
-    for i in range(1, n_joints):
-        d = 0
-        j = i
-        while j != 0:
-            j = int(parents[j])
-            d += 1
-        depths[i] = d
-
-    # Group joints by depth
-    max_depth = max(depths)
-    fronts: list[Front] = []
-
-    # Add root level
-    root_joints = [i for i in range(n_joints) if depths[i] == 0]
-    fronts.append((root_joints, [-1] * len(root_joints)))
-
-    for d in range(1, max_depth + 1):
-        joints = [i for i in range(n_joints) if depths[i] == d]
-        parent_indices = [int(parents[j]) for j in joints]
-        fronts.append((joints, parent_indices))
-
-    return fronts

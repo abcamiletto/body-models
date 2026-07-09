@@ -160,6 +160,9 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
     if model_path is not None:
         return validate_path(model_path)
 
+    cache_xml = get_cache_dir() / "g1" / "g1.xml"
+    if cache_xml.is_file():
+        return cache_xml
     return download_model()
 
 
