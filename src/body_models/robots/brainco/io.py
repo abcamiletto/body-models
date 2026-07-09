@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import shutil
-import urllib.request
 import xml.etree.ElementTree as ET
-import zipfile
 from pathlib import Path
 from typing import Any, Literal
 
@@ -14,7 +11,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.cache import get_cache_dir
+from body_models.cache import download_hf_archive, get_cache_dir
 from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 from body_models.robots import mjcf
 
@@ -22,9 +19,6 @@ PathLike = Path | str
 Side = Literal["left", "right"]
 Array = Any
 VALID_SIDES = ("left", "right")
-BRAINCO_REVO2_MUJOCO_URL = (
-    "https://brainco-common-public.oss-cn-hangzhou.aliyuncs.com/web-config/docs-sdk/Revo2_xml.zip"
-)
 MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
 JOINT_SUFFIXES = [
     "base_skel",
@@ -91,31 +85,11 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 
 
 def download_model() -> Path:
-    """Download the official BrainCo Revo 2 MuJoCo model package."""
+    """Download the BrainCo Revo 2 model assets."""
     cache_dir = get_cache_dir() / "brainco"
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir)
-    cache_dir.mkdir(parents=True)
-    archive_path = cache_dir / "revo2_mujoco.zip"
-    urllib.request.urlretrieve(BRAINCO_REVO2_MUJOCO_URL, archive_path)
-    with zipfile.ZipFile(archive_path) as zf:
-        for member in zf.infolist():
-            if member.is_dir():
-                continue
-            side = _archive_side(member.filename)
-            if side is None:
-                continue
-            name = Path(member.filename).name
-            if name.endswith(".xml") and name.startswith("brainco-"):
-                target = cache_dir / f"{side}.xml"
-            elif "/meshes/" in member.filename and name.endswith(".STL"):
-                target = cache_dir / "meshes" / side / _mesh_name(side, name)
-            else:
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(member) as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
-    archive_path.unlink(missing_ok=True)
+    print(f"Downloading BrainCo model to {cache_dir}...")
+    download_hf_archive("brainco/assets.zip", cache_dir)
+    print("Done")
     return validate_path(cache_dir)
 
 
@@ -396,14 +370,6 @@ def _joint_limit(joint: ET.Element, class_limits: dict[str, tuple[float, float]]
     if class_name in class_limits:
         return class_limits[class_name]
     raise ValueError(f"Missing limit for BrainCo joint {joint.get('name')}")
-
-
-def _archive_side(filename: str) -> str | None:
-    if "/xml_left/" in filename:
-        return "left"
-    if "/xml_right/" in filename:
-        return "right"
-    return None
 
 
 def _mesh_name(side: str, name: str) -> str:
