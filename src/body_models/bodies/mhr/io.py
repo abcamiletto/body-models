@@ -10,12 +10,10 @@ import numpy as np
 from nanomanifold import SO3
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import Front, compute_kinematic_fronts, simplify_mesh
 from body_models.cache import download_hf_archive, get_cache_dir
 
 PathLike = Path | str
-
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 __all__ = [
     "get_model_path",
@@ -210,30 +208,6 @@ def _build_dense_skinning(
         dense_weights[v, : end - start] = joint_weights[start:end]
 
     return dense_indices, dense_weights
-
-
-def compute_kinematic_fronts(parents: np.ndarray) -> list[Front]:
-    """Compute kinematic fronts for batched FK. Returns [(joint_indices, parent_indices), ...]."""
-    parents_list = parents.tolist()
-
-    n_joints = len(parents_list)
-    processed: set[int] = set()
-    fronts: list[Front] = []
-
-    while len(processed) < n_joints:
-        joints: list[int] = []
-        joint_parents: list[int] = []
-        for j in range(n_joints):
-            if j in processed:
-                continue
-            p = int(parents_list[j])
-            if p < 0 or p in processed:
-                joints.append(j)
-                joint_parents.append(p)
-        fronts.append((joints, joint_parents))
-        processed.update(joints)
-
-    return fronts
 
 
 def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, np.ndarray]:

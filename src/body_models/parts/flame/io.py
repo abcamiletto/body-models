@@ -6,14 +6,11 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 from body_models.common.chumpy_fix import load_model_dict
-from body_models.bodies.smpl.io import compute_sparse_lbs_weights
 
 PathLike = Path | str
 Array = Any
-
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 __all__ = ["load_model_data"]
 
@@ -87,7 +84,7 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
         shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
-    lbs_joint_indices, lbs_joint_weights = compute_sparse_lbs_weights(lbs_weights)
+    lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
 
     return FlameWeights(
         v_template=v_template,
@@ -104,30 +101,3 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
         parents=parents.tolist(),
         kinematic_fronts=compute_kinematic_fronts(parents),
     )
-
-
-def compute_kinematic_fronts(parents: Int[np.ndarray, "J"]) -> list[Front]:
-    """Compute kinematic fronts for batched FK."""
-    n_joints = len(parents)
-    depths = [-1] * n_joints
-    depths[0] = 0
-
-    for i in range(1, n_joints):
-        d = 0
-        j = i
-        while j != 0:
-            j = int(parents[j])
-            d += 1
-        depths[i] = d
-
-    max_depth = max(depths)
-    fronts: list[Front] = []
-    for d in range(0, max_depth + 1):
-        joints = [i for i in range(n_joints) if depths[i] == d]
-        if d == 0:
-            parent_indices = [-1] * len(joints)
-        else:
-            parent_indices = [int(parents[j]) for j in joints]
-        fronts.append((joints, parent_indices))
-
-    return fronts
