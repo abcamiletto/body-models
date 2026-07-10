@@ -16,6 +16,7 @@ _MODELS: dict[str, ModelInfo] = {
     "brainco": ("body_models.robots.brainco", "BrainCoHand", {}),
     "flame": ("body_models.parts.flame", "FLAME", {}),
     "g1": ("body_models.robots.g1", "G1", {}),
+    "garment": ("body_models.bodies.garment_measurements", "GarmentMeasurements", {}),
     "garment_measurements": ("body_models.bodies.garment_measurements", "GarmentMeasurements", {}),
     "mano": ("body_models.parts.mano", "MANO", {"side": "right"}),
     "mhr": ("body_models.bodies.mhr", "MHR", {}),
