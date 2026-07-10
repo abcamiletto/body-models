@@ -119,7 +119,7 @@ class ANNY(SkinnedModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         vertex_indices: Any | None = None,
         *,
@@ -143,15 +143,16 @@ class ANNY(SkinnedModel, nn.Module):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
-            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
+        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
+        skinning_transforms = prepared_pose["skinning_transforms"]
+        skinning_transforms = common.rotate_transforms(skinning_transforms, global_rotation, self.rotation_type, torch)
         return self._kernel.forward_vertices(
             self.weights,
             identity["rest_vertices"],
-            prepared_pose["skinning_transforms"],
+            skinning_transforms,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
         )
@@ -161,7 +162,7 @@ class ANNY(SkinnedModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
         global_translation: Float[Tensor, "B 3"] | None = None,
         joint_indices: Any | None = None,
         *,
@@ -185,21 +186,21 @@ class ANNY(SkinnedModel, nn.Module):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
-            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
         prepared_pose = self.prepare_pose(
             body_pose,
             head_pose,
             hand_pose,
-            global_rotation,
             identity=identity,
             skip_vertices=True,
         )
+        skeleton_transforms = prepared_pose["skeleton_transforms"]
+        skeleton_transforms = common.rotate_transforms(skeleton_transforms, global_rotation, self.rotation_type, torch)
         return self._kernel.forward_skeleton(
             self.weights,
-            prepared_pose["skeleton_transforms"],
+            skeleton_transforms,
             global_translation=global_translation,
             joint_indices=joint_indices,
         )
@@ -234,13 +235,14 @@ class ANNY(SkinnedModel, nn.Module):
         body_pose: Float[Tensor, "B 64 N"] | Float[Tensor, "B 64 3 3"],
         head_pose: Float[Tensor, "B 60 N"] | Float[Tensor, "B 60 3 3"],
         hand_pose: Float[Tensor, "B 38 N"] | Float[Tensor, "B 38 3 3"],
-        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"],
         *,
         identity: AnnyIdentity,
         skip_vertices: bool = False,
     ) -> AnnyPreparedPose:
-        """Precompute pose-dependent state for repeated forward passes."""
-        pose = pose_utils.pack_pose(torch, global_rotation, body_pose, head_pose, hand_pose)
+        """Precompute local pose-dependent state for repeated forward passes."""
+        batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
+        root_rotation = SO3.identity_as(body_pose, batch_dims=batch_shape, rotation_type=self.rotation_type, xp=torch)
+        pose = pose_utils.pack_pose(torch, root_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.prepare_pose(
             self.weights,
             pose,
