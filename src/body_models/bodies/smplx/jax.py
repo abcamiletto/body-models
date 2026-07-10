@@ -23,6 +23,8 @@ __all__ = ["SMPLX"]
 class SMPLX(SkinnedModel):
     """SMPL-X body model with JAX backend."""
 
+    identity_keys = ("shape", "expression")
+    pose_keys = ("body_pose", "hand_pose", "head_pose", "pelvis_rotation")
     has_hands = True
     has_head = True
     NUM_BODY_JOINTS = 21

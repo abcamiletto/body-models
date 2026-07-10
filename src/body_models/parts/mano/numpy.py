@@ -22,6 +22,8 @@ __all__ = ["MANO"]
 class MANO(SkinnedModel):
     """MANO hand model with NumPy backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("hand_pose", "wrist_rotation")
     has_hands = True
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16

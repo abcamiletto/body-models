@@ -24,6 +24,8 @@ __all__ = ["FLAME"]
 class FLAME(SkinnedModel, nn.Module):
     """FLAME head model with PyTorch backend."""
 
+    identity_keys = ("shape", "expression")
+    pose_keys = ("head_pose", "head_rotation")
     has_head = True
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5

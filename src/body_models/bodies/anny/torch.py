@@ -25,6 +25,8 @@ __all__ = ["ANNY"]
 class ANNY(SkinnedModel, nn.Module):
     """ANNY body model with PyTorch backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("body_pose", "head_pose", "hand_pose")
     has_hands = True
     has_head = True
     kernels = ("torch", "warp")
