@@ -23,6 +23,10 @@ class SkinningPayload(TypedDict):
 class SkinnedModel(ABC):
     """Base class for models that expose one skinned mesh."""
 
+    # Public rest-pose keys grouped by their role.
+    identity_keys: ClassVar[tuple[str, ...]]
+    pose_keys: ClassVar[tuple[str, ...]]
+    transform_keys: ClassVar[tuple[str, ...]] = ("global_translation", "global_rotation")
     parents: list[int]
     # True for models that expose a hand_pose parameter.
     has_hands: bool = False
