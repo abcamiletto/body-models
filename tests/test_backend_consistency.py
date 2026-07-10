@@ -152,7 +152,6 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
             params["body_pose"],
             params.get("head_pose"),
             params.get("hand_pose"),
-            params["global_rotation"],
             identity=identity,
         )
         skinning = model.prepare_skinning(identity=identity, pose=pose)

@@ -139,7 +139,7 @@ class SOMA(SkinnedModel):
         body_pose: Float[np.ndarray, "B 23 N"] | Float[np.ndarray, "B 23 3 3"],
         head_pose: Float[np.ndarray, "B 5 N"] | Float[np.ndarray, "B 5 3 3"],
         hand_pose: Float[np.ndarray, "B 48 N"] | Float[np.ndarray, "B 48 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         *,
         shape: Float[np.ndarray, "*batch I"] | None = None,
         scale_params: Float[np.ndarray, "B|1 K"] | None = None,
@@ -165,15 +165,15 @@ class SOMA(SkinnedModel):
         """
         if identity is None:
             assert shape is not None
-            pose = pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
-            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = np.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params)
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         return self._kernel.forward_vertices(
             data=self.weights,
+            global_rotation=global_rotation,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
             rotation_type=self.rotation_type,
@@ -188,7 +188,7 @@ class SOMA(SkinnedModel):
         body_pose: Float[np.ndarray, "B 23 N"] | Float[np.ndarray, "B 23 3 3"],
         head_pose: Float[np.ndarray, "B 5 N"] | Float[np.ndarray, "B 5 3 3"],
         hand_pose: Float[np.ndarray, "B 48 N"] | Float[np.ndarray, "B 48 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         *,
         shape: Float[np.ndarray, "*batch I"] | None = None,
         scale_params: Float[np.ndarray, "B|1 K"] | None = None,
@@ -214,17 +214,15 @@ class SOMA(SkinnedModel):
         """
         if identity is None:
             assert shape is not None
-            pose = pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
-            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = np.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
             identity = self.prepare_identity(shape, scale_params=scale_params, skip_vertices=True)
-        pose = self.prepare_pose(
-            body_pose, head_pose, hand_pose, global_rotation, identity=identity, skip_vertices=True
-        )
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity, skip_vertices=True)
         return self._kernel.forward_skeleton(
             data=self.weights,
+            global_rotation=global_rotation,
             global_translation=global_translation,
             joint_indices=joint_indices,
             rotation_type=self.rotation_type,
@@ -296,13 +294,14 @@ class SOMA(SkinnedModel):
         body_pose: Float[np.ndarray, "B 23 N"] | Float[np.ndarray, "B 23 3 3"],
         head_pose: Float[np.ndarray, "B 5 N"] | Float[np.ndarray, "B 5 3 3"],
         hand_pose: Float[np.ndarray, "B 48 N"] | Float[np.ndarray, "B 48 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
         *,
         identity: SomaIdentity,
         skip_vertices: bool = False,
     ) -> SomaPreparedPose:
-        """Precompute pose-dependent state for repeated forward passes."""
-        pose = pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
+        """Precompute local pose-dependent state for repeated forward passes."""
+        batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
+        root_rotation = SO3.identity_as(body_pose, batch_dims=batch_shape, rotation_type=self.rotation_type, xp=np)
+        pose = pack_pose(np, root_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.prepare_pose(
             self.weights,
             pose,

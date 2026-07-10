@@ -107,13 +107,12 @@ class GarmentMeasurements(SkinnedModel):
         Returns:
             Posed vertex positions.
         """
-        pose = pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
-            batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        pose = self.prepare_pose(pose, identity=identity)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
         return backend.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -152,13 +151,13 @@ class GarmentMeasurements(SkinnedModel):
         Returns:
             Joint transforms in the model hierarchy.
         """
-        pose = pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
         if identity is None:
             assert shape is not None
-            batch_shape = pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = jnp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
-        pose = self.prepare_pose(pose, identity=identity, skip_vertices=True)
+        pose_groups = body_pose, head_pose, hand_pose, pelvis_rotation
+        pose = self.prepare_pose(*pose_groups, identity=identity, skip_vertices=True)
         return backend.forward_skeleton(
             weights=self.weights,
             global_rotation=global_rotation,
@@ -178,12 +177,16 @@ class GarmentMeasurements(SkinnedModel):
 
     def prepare_pose(
         self,
-        pose: Float[jax.Array, "*batch J N"] | Float[jax.Array, "*batch J 3 3"],
+        body_pose: Float[jax.Array, "*batch 25 N"] | Float[jax.Array, "*batch 25 3 3"],
+        head_pose: Float[jax.Array, "*batch 3 N"] | Float[jax.Array, "*batch 3 3 3"],
+        hand_pose: Float[jax.Array, "*batch 30 N"] | Float[jax.Array, "*batch 30 3 3"],
+        pelvis_rotation: Float[jax.Array, "*batch N"] | Float[jax.Array, "*batch 3 3"],
         *,
         identity: GarmentMeasurementsIdentity,
         skip_vertices: bool = False,
     ) -> GarmentMeasurementsPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        pose = pack_pose(jnp, pelvis_rotation, body_pose, head_pose, hand_pose)
         return backend.prepare_pose(
             self.weights,
             pose,

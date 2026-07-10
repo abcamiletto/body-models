@@ -106,9 +106,10 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
 
         global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
         identity = model.prepare_identity(shape)
-        prepared_pose = model.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
+        prepared_pose = model.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = model._kernel.forward_vertices(
             data=model.weights,
+            global_rotation=global_rotation,
             global_translation=None,
             vertex_indices=None,
             rotation_type=model.rotation_type,

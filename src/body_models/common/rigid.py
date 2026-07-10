@@ -9,8 +9,23 @@ from trimesh import Trimesh
 from trimesh.util import concatenate
 
 from body_models.common.ops import eye_as, set, zeros_as
+from body_models.rotations import RotationType
 
 Array = Any
+
+
+def rotate_transforms(
+    transforms: Float[Array, "... J 4 4"],
+    rotation: Float[Array, "... N"] | Float[Array, "... 3 3"] | None,
+    rotation_type: RotationType,
+    xp: Any,
+) -> Float[Array, "... J 4 4"]:
+    """Rotate world-space transforms about the origin."""
+    if rotation is None:
+        return transforms
+    rotation_matrix = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
+    rotated = rotation_matrix[..., None, :, :] @ transforms[..., :3, :]
+    return set(transforms, (..., slice(None, 3), slice(None)), rotated, xp=xp)
 
 
 def forward_skeleton_from_local_rotations(

@@ -13,6 +13,7 @@ from body_models.bodies.anny.backends import numpy as numpy_backend
 from body_models.bodies.anny.backends.core import AnnyIdentity, AnnyPreparedPose
 from body_models.bodies.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.bodies.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
+from body_models import common
 from body_models.base import SkinnedModel, SkinningPayload
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 
@@ -110,7 +111,7 @@ class ANNY(SkinnedModel):
         body_pose: Float[np.ndarray, "B 64 N"] | Float[np.ndarray, "B 64 3 3"],
         head_pose: Float[np.ndarray, "B 60 N"] | Float[np.ndarray, "B 60 3 3"],
         hand_pose: Float[np.ndarray, "B 38 N"] | Float[np.ndarray, "B 38 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         vertex_indices: Any | None = None,
         *,
@@ -134,15 +135,16 @@ class ANNY(SkinnedModel):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
-            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
-        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, global_rotation, identity=identity)
+        prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
+        skinning_transforms = prepared_pose["skinning_transforms"]
+        skinning_transforms = common.rotate_transforms(skinning_transforms, global_rotation, self.rotation_type, np)
         return self._kernel.forward_vertices(
             self.weights,
             identity["rest_vertices"],
-            prepared_pose["skinning_transforms"],
+            skinning_transforms,
             global_translation=global_translation,
             vertex_indices=vertex_indices,
         )
@@ -152,7 +154,7 @@ class ANNY(SkinnedModel):
         body_pose: Float[np.ndarray, "B 64 N"] | Float[np.ndarray, "B 64 3 3"],
         head_pose: Float[np.ndarray, "B 60 N"] | Float[np.ndarray, "B 60 3 3"],
         hand_pose: Float[np.ndarray, "B 38 N"] | Float[np.ndarray, "B 38 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
+        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"] | None = None,
         global_translation: Float[np.ndarray, "B 3"] | None = None,
         joint_indices: Any | None = None,
         *,
@@ -176,21 +178,21 @@ class ANNY(SkinnedModel):
         """
         if identity is None:
             assert shape is not None
-            pose = pose_utils.pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
-            batch_shape = tuple(pose.shape[: -(self.num_rot_dims + 1)])
+            batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
         prepared_pose = self.prepare_pose(
             body_pose,
             head_pose,
             hand_pose,
-            global_rotation,
             identity=identity,
             skip_vertices=True,
         )
+        skeleton_transforms = prepared_pose["skeleton_transforms"]
+        skeleton_transforms = common.rotate_transforms(skeleton_transforms, global_rotation, self.rotation_type, np)
         return self._kernel.forward_skeleton(
             self.weights,
-            prepared_pose["skeleton_transforms"],
+            skeleton_transforms,
             global_translation=global_translation,
             joint_indices=joint_indices,
         )
@@ -225,13 +227,14 @@ class ANNY(SkinnedModel):
         body_pose: Float[np.ndarray, "B 64 N"] | Float[np.ndarray, "B 64 3 3"],
         head_pose: Float[np.ndarray, "B 60 N"] | Float[np.ndarray, "B 60 3 3"],
         hand_pose: Float[np.ndarray, "B 38 N"] | Float[np.ndarray, "B 38 3 3"],
-        global_rotation: Float[np.ndarray, "B N"] | Float[np.ndarray, "B 3 3"],
         *,
         identity: AnnyIdentity,
         skip_vertices: bool = False,
     ) -> AnnyPreparedPose:
-        """Precompute pose-dependent state for repeated forward passes."""
-        pose = pose_utils.pack_pose(np, global_rotation, body_pose, head_pose, hand_pose)
+        """Precompute local pose-dependent state for repeated forward passes."""
+        batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
+        root_rotation = SO3.identity_as(body_pose, batch_dims=batch_shape, rotation_type=self.rotation_type, xp=np)
+        pose = pose_utils.pack_pose(np, root_rotation, body_pose, head_pose, hand_pose)
         return self._kernel.prepare_pose(
             self.weights,
             pose,
