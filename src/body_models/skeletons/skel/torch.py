@@ -28,6 +28,8 @@ __all__ = ["SKEL"]
 class SKEL(SkinnedModel, nn.Module):
     """SKEL body model with PyTorch backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("body_pose", "head_pose")
     NUM_BETAS = 10
     NUM_JOINTS = 24
     JOINTS = SKEL_JOINTS

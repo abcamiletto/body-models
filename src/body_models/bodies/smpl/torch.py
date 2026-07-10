@@ -24,6 +24,8 @@ __all__ = ["SMPL"]
 class SMPL(SkinnedModel, nn.Module):
     """SMPL body model with PyTorch backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("body_pose", "pelvis_rotation")
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
     kernels = ("torch", "warp")

@@ -24,6 +24,8 @@ __all__ = ["MANO"]
 class MANO(SkinnedModel, nn.Module):
     """MANO hand model with PyTorch backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("hand_pose", "wrist_rotation")
     has_hands = True
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16

@@ -34,6 +34,8 @@ __all__ = ["SOMA"]
 class SOMA(SkinnedModel):
     """SOMA body model with JAX backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("body_pose", "head_pose", "hand_pose")
     has_hands = True
     has_head = True
     SHAPE_DIM = 128
