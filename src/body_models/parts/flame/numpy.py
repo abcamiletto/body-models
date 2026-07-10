@@ -21,6 +21,8 @@ __all__ = ["FLAME"]
 class FLAME(SkinnedModel):
     """FLAME head model with NumPy backend."""
 
+    identity_keys = ("shape", "expression")
+    pose_keys = ("head_pose", "head_rotation")
     has_head = True
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5

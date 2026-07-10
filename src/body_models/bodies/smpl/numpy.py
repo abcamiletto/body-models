@@ -22,6 +22,8 @@ __all__ = ["SMPL"]
 class SMPL(SkinnedModel):
     """SMPL body model with NumPy backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("body_pose", "pelvis_rotation")
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
     kernels = ("numpy", "scipy", "numba")

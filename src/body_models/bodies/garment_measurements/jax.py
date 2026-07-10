@@ -24,6 +24,8 @@ __all__ = ["GarmentMeasurements"]
 class GarmentMeasurements(SkinnedModel):
     """GarmentMeasurements PCA body model with FBX-derived skeleton/skinning."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("body_pose", "head_pose", "hand_pose", "pelvis_rotation")
     has_hands = True
     has_head = True
     JOINTS = GARMENT_JOINTS

@@ -25,6 +25,8 @@ __all__ = ["SMPL"]
 class SMPL(SkinnedModel):
     """SMPL body model with JAX backend."""
 
+    identity_keys = ("shape",)
+    pose_keys = ("body_pose", "pelvis_rotation")
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
     JOINTS = SMPL_JOINTS
