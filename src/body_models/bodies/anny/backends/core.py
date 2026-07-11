@@ -336,13 +336,16 @@ def _skeleton_transforms_from_heads_tails(
 ) -> Float[Array, "B J 4 4"]:
     """Compute bone poses from head/tail positions."""
     vec = tails - heads
-    y = vec / xp.linalg.vector_norm(vec, axis=-1, keepdims=True)
+    vec_norm = xp.linalg.vector_norm(vec, axis=-1, keepdims=True)
+    safe_vec_norm = xp.where(vec_norm > 0, vec_norm, xp.ones_like(vec_norm))
+    y = vec / safe_vec_norm
     y_axis_expanded = xp.broadcast_to(y_axis, y.shape)
     cross = xp.linalg.cross(y, y_axis_expanded)
     dot = xp.sum(y * y_axis_expanded, axis=-1)
     cross_norm = xp.linalg.vector_norm(cross, axis=-1)
 
-    axis = cross / cross_norm[..., None]
+    safe_cross_norm = xp.where(cross_norm > 0, cross_norm, xp.ones_like(cross_norm))
+    axis = cross / safe_cross_norm[..., None]
     angle = xp.atan2(cross_norm, dot)
     R = SO3.conversions.from_axis_angle_to_rotmat(-angle[..., None] * axis, xp=xp)
 
