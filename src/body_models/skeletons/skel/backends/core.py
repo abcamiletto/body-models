@@ -362,17 +362,19 @@ def _scapula_offset(
     is_left: bool,
 ) -> Float[Array, "B 3"]:
     """Compute scapula joint offset."""
-    pi = math.pi
+    # Keep scalar arithmetic in the pose dtype for forward-mode autodiff.
+    quarter_pi = xp.asarray(math.pi / 4, dtype=elev.dtype)
 
     def pos(a, e, flip):
         if flip:
             a, e = -a, -e
-        rx = thorax_w / 4 * xp.cos(e - pi / 4)
-        sign = 1.0 if flip else -1.0
+        tilt = e - quarter_pi
+        rx = thorax_w / 4 * xp.cos(tilt)
+        sign = 1 if flip else -1
         return xp.stack(
             [
                 sign * rx * xp.cos(a),
-                -thorax_h / 2 * xp.sin(e - pi / 4),
+                -thorax_h / 2 * xp.sin(tilt),
                 thorax_w / 4 * xp.sin(a),
             ],
             axis=-1,
