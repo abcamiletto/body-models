@@ -61,12 +61,13 @@ def forward_vertices(
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
 ):
-    v_shaped = rest_vertices + pose_offsets
     lbs_weights = weights.lbs_weights
     if vertex_indices is not None:
-        v_shaped = v_shaped[..., vertex_indices, :]
+        rest_vertices = rest_vertices[..., vertex_indices, :]
+        pose_offsets = pose_offsets[..., vertex_indices, :]
         lbs_weights = lbs_weights[vertex_indices]
 
+    v_shaped = rest_vertices + pose_offsets
     v_posed = core.linear_blend_skinning(np, v_shaped, skinning_transforms, lbs_weights)
     return core.apply_global_transform(
         np,

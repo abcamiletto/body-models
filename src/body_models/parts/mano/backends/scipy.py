@@ -23,12 +23,13 @@ def forward_vertices(
     rotation_type: RotationType = "axis_angle",
 ):
     lbs_weights = weights.lbs_weights
-    v_shaped = rest_vertices + pose_offsets
     if vertex_indices is not None:
         selected_vertices = np.asarray(vertex_indices)
-        v_shaped = v_shaped[..., selected_vertices, :]
+        rest_vertices = rest_vertices[..., selected_vertices, :]
+        pose_offsets = pose_offsets[..., selected_vertices, :]
         lbs_weights = lbs_weights[selected_vertices]
 
+    v_shaped = rest_vertices + pose_offsets
     v_posed = smpl_core.linear_blend_skinning(np, v_shaped, skinning_transforms, lbs_weights)
     return smpl_core.apply_global_transform(
         np,
