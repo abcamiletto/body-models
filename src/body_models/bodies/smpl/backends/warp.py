@@ -58,14 +58,15 @@ def forward_vertices(
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
 ):
-    v_shaped = rest_vertices + pose_offsets
     joint_indices = weights.lbs_joint_indices
     joint_weights = weights.lbs_joint_weights
     if vertex_indices is not None:
-        v_shaped = v_shaped[..., vertex_indices, :]
+        rest_vertices = rest_vertices[..., vertex_indices, :]
+        pose_offsets = pose_offsets[..., vertex_indices, :]
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
 
+    v_shaped = rest_vertices + pose_offsets
     v_posed = warp_affine_blend_skinning(v_shaped, skinning_transforms, joint_indices, joint_weights)
     return core.apply_global_transform(torch, v_posed, global_rotation, global_translation, rotation_type)
 
