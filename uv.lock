@@ -91,7 +91,7 @@ wheels = [
 
 [[package]]
 name = "body-models"
-version = "0.18.13"
+version = "0.18.14"
 source = { editable = "." }
 dependencies = [
     { name = "array-api-compat" },

@@ -265,11 +265,16 @@ def _forward_vertices_with(
     linear_blend_skinning_fn: Any,
 ) -> Float[Array, "B V 3"]:
     """Compute mesh vertices [B, V, 3] in meters."""
-    verts = linear_blend_skinning_fn(xp, rest_vertices + pose_offsets, skinning_weights(data), skinning_transforms)
-    verts = _apply_global_transform_vertices(xp, verts, global_rotation, global_translation, rotation_type)
+    skin_weights = skinning_weights(data)
     if vertex_indices is not None:
-        verts = verts[..., xp.asarray(vertex_indices), :]
-    return verts
+        vertex_indices = xp.asarray(vertex_indices)
+        rest_vertices = rest_vertices[..., vertex_indices, :]
+        pose_offsets = pose_offsets[..., vertex_indices, :]
+        skin_weights = skin_weights[vertex_indices]
+
+    bind_shape = rest_vertices + pose_offsets
+    vertices = linear_blend_skinning_fn(xp, bind_shape, skin_weights, skinning_transforms)
+    return _apply_global_transform_vertices(xp, vertices, global_rotation, global_translation, rotation_type)
 
 
 def forward_skeleton(

@@ -22,13 +22,14 @@ def forward_vertices(
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
 ):
-    v_shaped = rest_vertices + pose_offsets
     lbs_weights = weights.lbs_weights
     if vertex_indices is not None:
         vertex_index_array = np.asarray(vertex_indices)
-        v_shaped = v_shaped[..., vertex_index_array, :]
+        rest_vertices = rest_vertices[..., vertex_index_array, :]
+        pose_offsets = pose_offsets[..., vertex_index_array, :]
         lbs_weights = lbs_weights[vertex_index_array]
 
+    v_shaped = rest_vertices + pose_offsets
     v_posed = smpl_core.linear_blend_skinning(np, v_shaped, skinning_transforms, lbs_weights)
     return smpl_core.apply_global_transform(
         np,

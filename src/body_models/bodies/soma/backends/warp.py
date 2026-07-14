@@ -34,22 +34,29 @@ def prepare_identity_from_rest_shape(*args, **kwargs):
 
 def forward_vertices(*args, **kwargs):
     data = kwargs["data"]
+    vertex_indices = kwargs.get("vertex_indices")
     return core._forward_vertices_with(
         *args,
         **kwargs,
-        linear_blend_skinning_fn=_linear_blend_skinning(data),
+        linear_blend_skinning_fn=_linear_blend_skinning(data, vertex_indices),
     )
 
 
-def _linear_blend_skinning(data):
+def _linear_blend_skinning(data, vertex_indices):
+    joint_indices = data.skin_joint_indices_active
+    joint_weights = data.skin_joint_weights_active
+    if vertex_indices is not None:
+        joint_indices = joint_indices[vertex_indices]
+        joint_weights = joint_weights[vertex_indices]
+
     def skin(xp, bind_shape, skin_weights, skinning_transforms):
         return linear_blend_skinning(
             xp,
             bind_shape,
             skin_weights,
             skinning_transforms,
-            joint_indices=data.skin_joint_indices_active,
-            joint_weights=data.skin_joint_weights_active,
+            joint_indices=joint_indices,
+            joint_weights=joint_weights,
         )
 
     return skin
