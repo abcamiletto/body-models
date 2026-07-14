@@ -229,6 +229,47 @@ def test_skinned_forward_accepts_arbitrary_leading_dimensions(
             )
 
 
+@pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
+def test_prepared_identity_broadcasts_across_pose_batch(
+    name,
+    numpy_model,
+    torch_model,
+    jax_model,
+    kwargs,
+) -> None:
+    """A prepared identity with batch size one broadcasts across a larger pose batch."""
+
+    def assert_broadcasts(model, params):
+        identity_params = {key: params[key][:1] for key in model.identity_keys}
+        identity = model.prepare_identity(**identity_params)
+        vertex_indices = list(range(min(8, model.num_vertices)))
+        joint_indices = list(range(min(8, model.num_joints)))
+
+        vertices = model.forward_vertices(**params, identity=identity, vertex_indices=vertex_indices)
+        skeleton = model.forward_skeleton(**params, identity=identity, joint_indices=joint_indices)
+
+        assert vertices.shape == (3, len(vertex_indices), 3)
+        assert skeleton.shape == (3, len(joint_indices), 4, 4)
+
+    numpy_instance = numpy_model(**kwargs)
+    numpy_params = numpy_instance.get_rest_pose(batch_dims=(3,), dtype=np.float32)
+    assert_broadcasts(numpy_instance, numpy_params)
+
+    torch = pytest.importorskip("torch")
+    torch_instance = torch_model(**kwargs)
+    torch_params = torch_instance.get_rest_pose(batch_dims=(3,), dtype=torch.float32)
+    with torch.no_grad():
+        assert_broadcasts(torch_instance, torch_params)
+
+    pytest.importorskip("jax")
+    pytest.importorskip("flax")
+    import jax.numpy as jnp
+
+    jax_instance = jax_model(**kwargs)
+    jax_params = jax_instance.get_rest_pose(batch_dims=(3,), dtype=jnp.float32)
+    assert_broadcasts(jax_instance, jax_params)
+
+
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.RIGID_BODY_MODELS)
 def test_rigid_body_forward_accepts_arbitrary_leading_dimensions(
     name,
