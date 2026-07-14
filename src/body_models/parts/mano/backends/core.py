@@ -81,8 +81,8 @@ def prepare_pose(
     num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
     pose_ndim = num_rot_dims + 1
     batch_shape = tuple(hand_pose.shape[:-pose_ndim])
-    local_joint_offsets = common.broadcast_batch(local_joint_offsets, batch_shape, event_ndim=2, xp=xp)
-    rest_joints = common.broadcast_batch(rest_joints, batch_shape, event_ndim=2, xp=xp)
+    local_joint_offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
+    rest_joints = xp.broadcast_to(rest_joints, (*batch_shape, *rest_joints.shape[-2:]))
     pose_matrices, T_world = _forward_core(
         xp=xp,
         kinematic_fronts=kinematic_fronts,
