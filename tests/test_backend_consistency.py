@@ -187,6 +187,31 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
     assert_compatible(jax_instance, jax_params, jnp, soma_jax_backend.linear_blend_skinning)
 
 
+@pytest.mark.parametrize(
+    ("name", "numpy_model", "torch_model", "jax_model", "kwargs"),
+    [case for case in model_cases.SKINNED_MODELS if case[0] == "soma"],
+)
+def test_soma_vertex_subset_matches_full_output(name, numpy_model, torch_model, jax_model, kwargs) -> None:
+    vertex_indices = [7, 2, 7]
+
+    def assert_matches(model, dtype):
+        params = model.get_rest_pose(batch_dims=(2,), dtype=dtype)
+        full = model.forward_vertices(**params)
+        subset = model.forward_vertices(**params, vertex_indices=vertex_indices)
+        np.testing.assert_allclose(np.asarray(subset), np.asarray(full)[..., vertex_indices, :], rtol=1e-4, atol=1e-4)
+
+    assert_matches(numpy_model(**kwargs), np.float32)
+
+    torch = pytest.importorskip("torch")
+    assert_matches(torch_model(**kwargs), torch.float32)
+
+    pytest.importorskip("jax")
+    pytest.importorskip("flax")
+    import jax.numpy as jnp
+
+    assert_matches(jax_model(**kwargs), jnp.float32)
+
+
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_forward_accepts_arbitrary_leading_dimensions(
     name,
