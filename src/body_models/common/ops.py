@@ -10,7 +10,25 @@ import numpy as np
 Array = Any
 _JAX_DATACLASSES = set()
 
-__all__ = ["Array", "eye_as", "get_namespace", "jaxify", "set", "torchify", "zeros_as"]
+__all__ = [
+    "Array",
+    "broadcast_batch",
+    "eye_as",
+    "get_namespace",
+    "jaxify",
+    "set",
+    "torchify",
+    "zeros_as",
+]
+
+
+def broadcast_batch(array: Array, batch_shape: tuple[int, ...], *, event_ndim: int, xp: Any = None) -> Array:
+    """Broadcast an array to a batch shape while preserving its event dimensions."""
+    if xp is None:
+        xp = get_namespace(array)
+    if event_ndim < 1 or array.ndim < event_ndim:
+        raise ValueError(f"event_ndim must be in [1, {array.ndim}], got {event_ndim}")
+    return xp.broadcast_to(array, (*batch_shape, *array.shape[-event_ndim:]))
 
 
 def torchify(obj: Any) -> Any:
