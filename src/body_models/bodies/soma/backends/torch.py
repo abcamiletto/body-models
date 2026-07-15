@@ -24,6 +24,18 @@ SomaPreparedPose = core.SomaPreparedPose
 
 
 def prepare_data(data):
+    data.topology.register_buffer(
+        "parents_full_index",
+        torch.tensor(data.topology.parents_full),
+        persistent=False,
+    )
+    if data.public is not None:
+        data.public.topology.register_buffer(
+            "parents_full_index",
+            torch.tensor(data.public.topology.parents_full),
+            persistent=False,
+        )
+
     correctives = data.correctives
     output_size = data.mean_full.shape[0] * 3
     hidden_size = correctives.corrective_W1.shape[1]
