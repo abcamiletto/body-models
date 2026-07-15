@@ -13,6 +13,7 @@ from body_models.skel import pose as skel_pose
 from body_models.bodies.soma import pose as soma_pose
 from body_models.bodies.soma.generate_asset import generate_asset as generate_soma_asset
 from body_models.bodies.soma.numpy import SOMA
+from body_models.common import skinning
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
@@ -107,17 +108,13 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
         global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
         identity = model.prepare_identity(shape)
         prepared_pose = model.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
-        vertices = model._kernel.forward_vertices(
-            data=model.weights,
-            global_rotation=global_rotation,
-            global_translation=None,
-            vertex_indices=None,
-            rotation_type=model.rotation_type,
-            rest_vertices=identity["rest_vertices"],
-            skinning_transforms=prepared_pose["skinning_transforms"],
-            pose_offsets=np.zeros_like(prepared_pose["pose_offsets"]),
+        vertices = skinning.linear_blend_skinning(
+            identity["rest_vertices"],
+            prepared_pose["skinning_transforms"],
+            model.prepare_skinning(identity=identity, pose=prepared_pose)["skin_weights"],
             xp=np,
         )
+        vertices = skinning.apply_global_transform(vertices, global_rotation, None, xp=np)
 
         np.testing.assert_allclose(vertices, expected, rtol=2e-3, atol=2e-3)
 

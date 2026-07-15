@@ -8,7 +8,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import config
-from body_models.common import simplify_mesh
+from body_models.common import compute_sparse_skin_weights, simplify_mesh
 
 PathLike = Path | str
 Array = Any
@@ -23,6 +23,8 @@ class SkelWeights:
     shapedirs: Float[Array, "V 3 B"]
     posedirs: Float[Array, "P V*3"]
     skin_weights: Float[Array, "V 24"]
+    skin_joint_indices: Int[Array, "V K"]
+    skin_joint_weights: Float[Array, "V K"]
     j_template: Float[Array, "24 3"]
     j_shapedirs: Float[Array, "24 3 B"]
     skel_v_template: Float[Array, "Vs 3"]
@@ -104,12 +106,15 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
     child = _compute_child(kintree)
     non_leaf = [i for i, child_index in enumerate(child) if child_index != 0]
 
+    skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
     return SkelWeights(
         v_template=v_template,
         faces=faces,
         shapedirs=shapedirs,
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
         skin_weights=skin_weights,
+        skin_joint_indices=skin_joint_indices,
+        skin_joint_weights=skin_joint_weights,
         j_template=j_template,
         j_shapedirs=j_shapedirs,
         skel_v_template=np.asarray(data["skel_template_v"], dtype=np.float32),

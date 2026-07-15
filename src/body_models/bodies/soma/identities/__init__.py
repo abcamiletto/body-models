@@ -8,9 +8,26 @@ from typing import Any
 from jaxtyping import Float, Int
 
 from body_models import common
-from ...anny.backends import core as anny_core
+from ...anny import core as anny_core
 from ...mhr import pose as mhr_pose
-from ..backends import core
+from .. import core
+
+
+def create_identity_source(runtime_name: str, model_type: str, transfer_data: Any) -> Any:
+    """Create a source model with arrays owned by the selected runtime."""
+    if runtime_name == "numpy":
+        from . import numpy
+
+        return numpy.create_identity_source(model_type, transfer_data)
+    if runtime_name == "torch":
+        from . import torch
+
+        return torch.create_identity_source(model_type, transfer_data)
+    if runtime_name == "jax":
+        from . import jax
+
+        return jax.create_identity_source(model_type, transfer_data)
+    raise ValueError(f"SOMA identity transfer does not support runtime {runtime_name!r}")
 
 
 @dataclass(frozen=True)
@@ -99,7 +116,7 @@ def anny_identity_shape(
 ) -> Float[Any, "*batch V 3"]:
     if xp is None:
         xp = common.get_namespace(shape)
-    return anny_core.identity_shape(
+    return anny_core.shape_vertices(
         template_vertices=template_vertices,
         blendshapes=blendshapes,
         phenotype_mask=phenotype_mask,

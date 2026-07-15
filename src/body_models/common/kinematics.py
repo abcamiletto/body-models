@@ -12,6 +12,63 @@ Array = Any
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
+def affine_transforms(
+    linear: Float[Array, "*batch 3 3"],
+    translation: Float[Array, "*batch 3"] | None = None,
+    *,
+    xp: Any = None,
+) -> Float[Array, "*batch 4 4"]:
+    """Assemble homogeneous transforms from linear maps and translations."""
+    if xp is None:
+        xp = ops.get_namespace(linear)
+    if translation is None:
+        translation = ops.zeros_as(linear, shape=(*linear.shape[:-2], 3), xp=xp)
+
+    batch_shape = np.broadcast_shapes(linear.shape[:-2], translation.shape[:-1])
+    linear = xp.broadcast_to(linear, (*batch_shape, 3, 3))
+    translation = xp.broadcast_to(translation, (*batch_shape, 3))
+    upper = xp.concat([linear, translation[..., None]], axis=-1)
+    bottom = ops.zeros_as(upper, shape=(*batch_shape, 1, 4), xp=xp)
+    bottom = ops.set(bottom, (..., 0, 3), 1.0, xp=xp)
+    return xp.concat([upper, bottom], axis=-2)
+
+
+def invert_rigid_transforms(
+    transforms: Float[Array, "*batch 4 4"],
+    *,
+    xp: Any = None,
+) -> Float[Array, "*batch 4 4"]:
+    """Invert homogeneous transforms whose linear part is a rotation."""
+    if xp is None:
+        xp = ops.get_namespace(transforms)
+
+    rotations = transforms[..., :3, :3]
+    translations = transforms[..., :3, 3]
+    inverse_rotations = xp.swapaxes(rotations, -2, -1)
+    inverse_translations = -xp.squeeze(inverse_rotations @ translations[..., None], axis=-1)
+    return affine_transforms(inverse_rotations, inverse_translations, xp=xp)
+
+
+def local_joint_offsets(
+    joints: Float[Array, "*batch J 3"],
+    parents: list[int],
+    *,
+    xp: Any = None,
+) -> Float[Array, "*batch J 3"]:
+    """Convert world-space rest joints to parent-relative translations."""
+    if xp is None:
+        xp = ops.get_namespace(joints)
+    if len(parents) != joints.shape[-2]:
+        raise ValueError("parents must contain one entry per joint")
+
+    roots = [joint for joint, parent in enumerate(parents) if parent < 0 or parent == joint]
+    parent_indices = [joint if joint in roots else int(parent) for joint, parent in enumerate(parents)]
+    offsets = joints - joints[..., parent_indices, :]
+    if roots:
+        offsets = ops.set(offsets, (..., roots, slice(None)), joints[..., roots, :], xp=xp)
+    return offsets
+
+
 def forward_kinematics(
     rotations: Float[Array, "*batch J 3 3"],
     translations: Float[Array, "*batch J 3"],
@@ -25,11 +82,7 @@ def forward_kinematics(
         xp = ops.get_namespace(rotations)
 
     num_joints = rotations.shape[-3]
-    batch_shape = rotations.shape[:-3]
-    upper = xp.concat([rotations, translations[..., None]], axis=-1)
-    bottom = ops.zeros_as(upper, shape=(*batch_shape, num_joints, 1, 4), xp=xp)
-    bottom = ops.set(bottom, (..., 0, 3), 1.0, xp=xp)
-    local_transforms = xp.concat([upper, bottom], axis=-2)
+    local_transforms = affine_transforms(rotations, translations, xp=xp)
 
     world_transforms: list[Float[Array, "*batch 4 4"] | None] = [None] * num_joints
     for joints, parents in fronts:

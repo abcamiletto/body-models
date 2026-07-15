@@ -1,263 +1,34 @@
-"""PyTorch backend for SKEL model."""
+"""Torch SKEL model."""
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
-import torch
 import torch.nn as nn
-from jaxtyping import Float, Int
-from torch import Tensor
 
-from body_models import common
-from body_models.base import SkinnedModel
-from body_models.skeletons.skel.backends import torch as backend
-from body_models.skeletons.skel.backends.core import SkelIdentity, SkelPreparedPose
-from body_models.skeletons.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
-from body_models.skeletons.skel.io import get_model_path, load_model_data
-from body_models.skeletons.skel.pose import (
-    SKEL_BODY_POSE_DIM,
-    SKEL_CANONICAL_POSE_DIM,
-    SKEL_HEAD_POSE_DIM,
-    pack_pose,
-    unpack_pose,
-)
-
-__all__ = ["SKEL"]
+from body_models.runtime import TorchRuntime
+from body_models.skeletons.skel.model import SKELModel
 
 
-class SKEL(SkinnedModel, nn.Module):
-    """SKEL body model with PyTorch backend."""
+class SKEL(SKELModel, nn.Module):
+    """SKEL using Torch tensors and optional Warp kernels."""
 
-    identity_keys = ("shape",)
-    pose_keys = ("body_pose", "head_pose")
-    NUM_BETAS = 10
-    NUM_JOINTS = 24
-    JOINTS = SKEL_JOINTS
-    has_head = True
+    kernels = TorchRuntime.kernels
 
     def __init__(
         self,
         model_path: Path | str | None = None,
         gender: Literal["male", "female"] | None = None,
         simplify: float = 1.0,
-    ):
-        """Initialize the SKEL model.
-
-        Args:
-            model_path: Path to model assets, or the default assets when omitted.
-            gender: Model gender variant to load.
-            simplify: Mesh simplification factor to apply while loading.
-        """
-        if gender not in {"male", "female"}:
-            raise ValueError(f"Invalid gender: {gender}. Must be 'male' or 'female'.")
-        assert simplify >= 1.0
-        super().__init__()
-
-        self.gender = gender
-        data = load_model_data(get_model_path(model_path, gender), simplify=simplify)
-        self.weights = common.torchify(data)
-
-    @property
-    def faces(self) -> Int[Tensor, "F 3"]:
-        return self.weights.faces
-
-    @property
-    def num_joints(self) -> int:
-        return self.NUM_JOINTS
-
-    @property
-    def joint_names(self) -> list[str]:
-        return list(self.weights.joint_names)
-
-    @property
-    def num_vertices(self) -> int:
-        return self.weights.v_template.shape[0]
-
-    @property
-    def skin_weights(self) -> Float[Tensor, "V 24"]:
-        return self.weights.skin_weights
-
-    @property
-    def rest_vertices(self) -> Float[Tensor, "V 3"]:
-        return self.weights.v_template
-
-    @property
-    def shapedirs(self) -> Float[Tensor, "V 3 B"]:
-        return self.weights.shapedirs
-
-    @property
-    def posedirs(self) -> Float[Tensor, "P V*3"]:
-        return self.weights.posedirs
-
-    @property
-    def parents(self) -> list[int]:
-        return self.weights.parents
-
-    @property
-    def skeleton_faces(self) -> Int[Tensor, "Fs 3"]:
-        return self.weights.skel_faces
-
-    @property
-    def pose_dim(self) -> int:
-        return SKEL_CANONICAL_POSE_DIM
-
-    @property
-    def body_pose_dim(self) -> int:
-        return SKEL_BODY_POSE_DIM
-
-    @property
-    def head_pose_dim(self) -> int:
-        return SKEL_HEAD_POSE_DIM
-
-    def forward_vertices(
-        self,
-        body_pose: Float[Tensor, "*batch 43"],
-        head_pose: Float[Tensor, "*batch 3"],
-        global_rotation: Float[Tensor, "*batch 3"] | None = None,
-        global_translation: Float[Tensor, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
-        *,
-        shape: Float[Tensor, "*batch 10"] | None = None,
-        identity: SkelIdentity | None = None,
-    ) -> Float[Tensor, "*batch V 3"]:
-        """Compute posed mesh vertices.
-
-        Args:
-            shape: Shape coefficients.
-            body_pose: Local body joint rotations.
-            head_pose: Local head joint rotation.
-            global_rotation: Global model rotation.
-            global_translation: Global model translation.
-            vertex_indices: Optional subset of vertices to return.
-
-        Returns:
-            Posed vertex positions.
-        """
-        if identity is None:
-            assert shape is not None
-            batch_shape = body_pose.shape[:-1]
-            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
-        pose = self.prepare_pose(body_pose, head_pose, identity=identity)
-        return backend.forward_vertices(
-            self.weights,
-            identity["rest_vertices"],
-            pose["skinning_transforms"],
-            pose["pose_offsets"],
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            vertex_indices=vertex_indices,
+        kernel: Literal["torch", "warp"] = "torch",
+    ) -> None:
+        nn.Module.__init__(self)
+        SKELModel.__init__(
+            self,
+            model_path,
+            gender,
+            simplify,
+            runtime=TorchRuntime(kernel),
         )
 
-    def forward_skeleton(
-        self,
-        body_pose: Float[Tensor, "*batch 43"],
-        head_pose: Float[Tensor, "*batch 3"],
-        global_rotation: Float[Tensor, "*batch 3"] | None = None,
-        global_translation: Float[Tensor, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
-        *,
-        shape: Float[Tensor, "*batch 10"] | None = None,
-        identity: SkelIdentity | None = None,
-    ) -> Float[Tensor, "*batch 24 4 4"]:
-        """Compute posed joint transforms.
 
-        Args:
-            shape: Shape coefficients.
-            body_pose: Local body joint rotations.
-            head_pose: Local head joint rotation.
-            global_rotation: Global model rotation.
-            global_translation: Global model translation.
-            joint_indices: Optional subset of joints to return.
-
-        Returns:
-            Joint transforms in the model hierarchy.
-        """
-        if identity is None:
-            assert shape is not None
-            batch_shape = body_pose.shape[:-1]
-            shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape, skip_vertices=True)
-        pose = self.prepare_pose(body_pose, head_pose, identity=identity, skip_vertices=True)
-        return backend.forward_skeleton(
-            self.weights,
-            pose["skeleton_transforms"],
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            joint_indices=joint_indices,
-        )
-
-    def prepare_identity(
-        self,
-        shape: Float[Tensor, "*batch 10"],
-        skip_vertices: bool = False,
-    ) -> SkelIdentity:
-        """Precompute shape-dependent state for repeated forward passes."""
-        return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
-
-    def prepare_pose(
-        self,
-        body_pose: Float[Tensor, "*batch 43"],
-        head_pose: Float[Tensor, "*batch 3"],
-        *,
-        identity: SkelIdentity,
-        skip_vertices: bool = False,
-    ) -> SkelPreparedPose:
-        """Precompute pose-dependent state for repeated forward passes."""
-        pose = pack_pose(torch, body_pose, head_pose)
-        return backend.prepare_pose(
-            self.weights,
-            pose,
-            local_joint_offsets=identity["local_joint_offsets"],
-            rest_joints=identity["rest_joints"],
-            skip_vertices=skip_vertices,
-        )
-
-    def forward_links(
-        self,
-        body_pose: Float[Tensor, "*batch 43"],
-        head_pose: Float[Tensor, "*batch 3"],
-        global_translation: Float[Tensor, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Tensor, "*batch 3"] | None = None,
-        shape: Float[Tensor, "*batch 10"] | None = None,
-        identity: SkelIdentity | None = None,
-    ) -> Float[Tensor, "*batch 24 4 4"]:
-        return self.forward_skeleton(
-            body_pose,
-            head_pose,
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            shape=shape,
-            identity=identity,
-        )
-
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: torch.dtype = torch.float32) -> dict[str, Tensor]:
-        device = self.weights.v_template.device
-        return {
-            "shape": torch.zeros((*batch_dims, self.NUM_BETAS), device=device, dtype=dtype),
-            "body_pose": torch.zeros((*batch_dims, self.body_pose_dim), device=device, dtype=dtype),
-            "head_pose": torch.zeros((*batch_dims, self.head_pose_dim), device=device, dtype=dtype),
-            "global_rotation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
-            "global_translation": torch.zeros((*batch_dims, 3), device=device, dtype=dtype),
-        }
-
-    def get_tpose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, Tensor]:
-        return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-
-    def get_apose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, Tensor]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        pose = torch.as_tensor(
-            SKEL_BODY_PRESETS["a_pose"], device=params["body_pose"].device, dtype=params["body_pose"].dtype
-        )
-        pose = torch.broadcast_to(pose, (*batch_dims, *pose.shape))
-        params["body_pose"], params["head_pose"] = unpack_pose(torch, pose)
-        return params
+__all__ = ["SKEL"]

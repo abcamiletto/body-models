@@ -8,6 +8,7 @@ import numpy as np
 from trimesh import Trimesh
 from trimesh.util import concatenate
 
+from body_models.common.kinematics import affine_transforms
 from body_models.common.ops import eye_as, set, zeros_as
 from body_models.rotations import RotationType
 
@@ -106,9 +107,7 @@ def forward_skeleton_from_local_transforms(
         rot = rot[..., joint_indices, :, :]
         trans = trans[..., joint_indices, :]
 
-    last_row = zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
-    last_row = set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
-    return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
+    return affine_transforms(rot, trans, xp=xp)
 
 
 def forward_link_transforms(
@@ -135,9 +134,7 @@ def forward_link_transforms(
 
     rot = xp.stack(rotations, axis=-3)
     trans = xp.stack(translations, axis=-2)
-    last_row = zeros_as(rot, shape=(*rot.shape[:-2], 1, 4), xp=xp)
-    last_row = set(last_row, (..., 0, 3), xp.asarray(1.0, dtype=rot.dtype), xp=xp)
-    return xp.concat([xp.concat([rot, trans[..., None]], axis=-1), last_row], axis=-2)
+    return affine_transforms(rot, trans, xp=xp)
 
 
 def forward_meshes_from_links(

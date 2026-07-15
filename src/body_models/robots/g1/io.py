@@ -176,6 +176,8 @@ def download_model() -> Path:
 
 def validate_path(path: PathLike) -> Path:
     path = Path(path)
+    if path.is_dir():
+        path = path / "g1.xml"
     if path.suffix.lower() != ".xml":
         raise ValueError(f"Expected a G1 XML file, got: {path}")
     if not path.is_file():
