@@ -446,10 +446,10 @@ class _CapturedSOMAForward:
         values = (body_pose, head_pose, hand_pose, global_rotation, global_translation)
         with torch.no_grad():
             for target, value in zip(self._inputs, values, strict=True):
-                if target is None or value is None:
-                    if target is not value:
-                        raise ValueError("Captured optional inputs must remain present or absent.")
+                if target is None and value is None:
                     continue
+                if target is None or value is None:
+                    raise ValueError("Captured optional inputs must remain present or absent.")
                 target.copy_(value)
             self._graph.replay()
         return self._output

@@ -348,8 +348,12 @@ def prepare_pose(
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     pose_rot_internal = _expand_public_pose_rotations(xp, data, pose_rot_public)
-    parents = getattr(data.topology, "parents_full_index", data.topology.parents_full)
-    pose_rot_full = _orient_pose_rot_full(xp, pose_rot_internal, data.t_pose_world, parents)
+    pose_rot_full = _orient_pose_rot_full(
+        xp,
+        pose_rot_internal,
+        data.t_pose_world,
+        data.topology.parent_indices_full,
+    )
     skeleton_transforms_full = _pose_skeleton(
         xp,
         local_joint_translations,
@@ -370,7 +374,7 @@ def prepare_pose(
             xp,
             pose_rot_public,
             data.public.t_pose_world,
-            getattr(data.public.topology, "parents_full_index", data.public.topology.parents_full),
+            data.public.topology.parent_indices_full,
         )
     pose_offsets = apply_pose_correctives_fn(data, correctives_pose_rot, xp=xp)
     if data.vertex_map is not None:
@@ -620,13 +624,13 @@ def _orient_pose_rot_full(
     xp,
     pose_rot: Float[Array, "B J 3 3"],
     t_pose_world: Float[Array, "Jf 4 4"],
-    parents_full: list[int],
+    parent_indices_full: Int[Array, "Jf"],
 ) -> Float[Array, "B Jf 3 3"]:
     batch_shape = pose_rot.shape[:-3]
     root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
     pose_rot_full = xp.concat([root_identity, pose_rot], axis=-3)
     orient = t_pose_world[:, :3, :3]
-    orient_parent_T = orient[xp.asarray(parents_full)].swapaxes(-2, -1)
+    orient_parent_T = orient[parent_indices_full].swapaxes(-2, -1)
     return orient_parent_T @ pose_rot_full @ orient
 
 
