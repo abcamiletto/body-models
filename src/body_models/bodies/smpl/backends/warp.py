@@ -60,14 +60,22 @@ def forward_vertices(
 ):
     joint_indices = weights.lbs_joint_indices
     joint_weights = weights.lbs_joint_weights
+    skin_weights = weights.lbs_weights
     if vertex_indices is not None:
         rest_vertices = rest_vertices[..., vertex_indices, :]
         pose_offsets = pose_offsets[..., vertex_indices, :]
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
+        skin_weights = skin_weights[vertex_indices]
 
     v_shaped = rest_vertices + pose_offsets
-    v_posed = warp_affine_blend_skinning(v_shaped, skinning_transforms, joint_indices, joint_weights)
+    v_posed = warp_affine_blend_skinning(
+        v_shaped,
+        skinning_transforms,
+        skin_weights,
+        joint_indices,
+        joint_weights,
+    )
     return core.apply_global_transform(torch, v_posed, global_rotation, global_translation, rotation_type)
 
 
@@ -134,29 +142,87 @@ def warp_forward_kinematics(
 def warp_affine_blend_skinning(
     vertices: Float[Tensor, "*batch V 3"],
     transforms: Float[Tensor, "*batch J 4 4"],
+    skin_weights: Tensor,
     joint_indices: Tensor,
     joint_weights: Tensor,
 ) -> Float[Tensor, "*batch V 3"]:
-    _check_warp_inputs(vertices)
-    if transforms.requires_grad:
-        raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
-    if vertices.ndim > 3:
-        output = torch.empty_like(vertices)
-        for batch_index in itertools.product(*[range(size) for size in vertices.shape[:-2]]):
-            batch_vertices = vertices[batch_index][None]
-            batch_transforms = transforms[batch_index][None]
-            output[batch_index] = warp_affine_blend_skinning(
-                batch_vertices, batch_transforms, joint_indices, joint_weights
-            )[0]
-        return output
-
+    if vertices.dtype != torch.float32:
+        raise TypeError("kernel='warp' supports float32 tensors only.")
     _init_warp()
+    batch_shape = torch.broadcast_shapes(vertices.shape[:-2], transforms.shape[:-3])
+    vertices = vertices.expand(*batch_shape, *vertices.shape[-2:])
+    transforms = transforms.expand(*batch_shape, *transforms.shape[-3:])
     vertices = vertices.contiguous()
     transforms = transforms.contiguous()
     joint_indices = joint_indices.to(device=vertices.device, dtype=torch.int32).contiguous()
     joint_weights = joint_weights.to(device=vertices.device, dtype=vertices.dtype).contiguous()
-    output = torch.empty_like(vertices)
+    num_vertices = vertices.shape[-2]
+    num_joints = transforms.shape[-3]
+    flat_vertices = vertices.reshape(-1, num_vertices, 3)
+    flat_transforms = transforms.reshape(-1, num_joints, 4, 4)
+    output = _WarpAffineBlendSkinning.apply(
+        flat_vertices,
+        flat_transforms,
+        skin_weights,
+        joint_indices,
+        joint_weights,
+    )
+    return output.reshape(*batch_shape, num_vertices, 3)
 
+
+class _WarpAffineBlendSkinning(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, vertices, transforms, skin_weights, joint_indices, joint_weights):
+        output = torch.empty_like(vertices)
+        _launch_affine_blend_skinning(vertices, transforms, joint_indices, joint_weights, output)
+        ctx.save_for_backward(vertices, transforms, skin_weights, joint_indices, joint_weights)
+        return output
+
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        (grad_output,) = grad_outputs
+        vertices, transforms, skin_weights, joint_indices, joint_weights = ctx.saved_tensors
+        grad_output = grad_output.contiguous()
+        grad_vertices = grad_transforms = None
+
+        if ctx.needs_input_grad[0]:
+            grad_vertices = torch.empty_like(vertices)
+            with _torch_stream(vertices):
+                wp.launch(
+                    _skin_affine_vertices_backward_vertices_kernel,
+                    dim=vertices.shape[:2],
+                    inputs=[
+                        _from_torch(grad_output.reshape(-1)),
+                        _from_torch(transforms.reshape(-1)),
+                        _from_torch(joint_indices.reshape(-1)),
+                        _from_torch(joint_weights.reshape(-1)),
+                        vertices.shape[1],
+                        transforms.shape[1],
+                        joint_indices.shape[1],
+                        _from_torch(grad_vertices.reshape(-1)),
+                    ],
+                    device=_from_torch(vertices).device,
+                )
+
+        if ctx.needs_input_grad[1]:
+            grad_transforms = _transform_gradients(vertices, transforms, grad_output, skin_weights)
+
+        return grad_vertices, grad_transforms, None, None, None
+
+
+def _transform_gradients(vertices, transforms, grad_output, skin_weights):
+    weight_transpose = skin_weights.T.contiguous()
+    grad_transforms = torch.zeros_like(transforms)
+    for row in range(3):
+        row_grad = grad_output[..., row]
+        for column in range(3):
+            values = row_grad * vertices[..., column]
+            grad_transforms[:, :, row, column] = torch.mm(weight_transpose, values.T).T
+        grad_transforms[:, :, row, 3] = torch.mm(weight_transpose, row_grad.T).T
+    return grad_transforms
+
+
+def _launch_affine_blend_skinning(vertices, transforms, joint_indices, joint_weights, output):
     flat_vertices = vertices.reshape(-1)
     flat_transforms = transforms.reshape(-1)
     flat_indices = joint_indices.reshape(-1)
@@ -166,30 +232,34 @@ def warp_affine_blend_skinning(
     batch_size, num_vertices = vertices.shape[:2]
     num_joints = transforms.shape[1]
     num_slots = joint_indices.shape[1]
-    device = wp.from_torch(flat_vertices).device
-    wp.launch(
-        _skin_affine_vertices_kernel,
-        dim=(batch_size, num_vertices),
-        inputs=[
-            wp.from_torch(flat_vertices),
-            wp.from_torch(flat_transforms),
-            wp.from_torch(flat_indices),
-            wp.from_torch(flat_weights),
-            num_vertices,
-            num_joints,
-            num_slots,
-            wp.from_torch(flat_output),
-        ],
-        device=device,
-    )
-    return output
+    device = _from_torch(flat_vertices).device
+    with _torch_stream(vertices):
+        wp.launch(
+            _skin_affine_vertices_kernel,
+            dim=(batch_size, num_vertices),
+            inputs=[
+                _from_torch(flat_vertices),
+                _from_torch(flat_transforms),
+                _from_torch(flat_indices),
+                _from_torch(flat_weights),
+                num_vertices,
+                num_joints,
+                num_slots,
+                _from_torch(flat_output),
+            ],
+            device=device,
+        )
 
 
-def _check_warp_inputs(vertices: Tensor) -> None:
-    if vertices.dtype != torch.float32:
-        raise TypeError("kernel='warp' currently supports float32 tensors only.")
-    if vertices.requires_grad:
-        raise ValueError("kernel='warp' is an inference-only forward path; use the default Torch kernel for gradients.")
+def _from_torch(tensor: Tensor):
+    return wp.from_torch(tensor, requires_grad=False)
+
+
+def _torch_stream(tensor: Tensor):
+    if tensor.device.type == "cuda":
+        stream = wp.stream_from_torch(torch.cuda.current_stream(tensor.device))
+        return wp.ScopedStream(stream)
+    return contextlib.nullcontext()
 
 
 def _init_warp() -> None:
@@ -321,3 +391,52 @@ def _skin_affine_vertices_kernel(
     output[vertex_base] = out_x
     output[vertex_base + 1] = out_y
     output[vertex_base + 2] = out_z
+
+
+@wp.kernel
+def _skin_affine_vertices_backward_vertices_kernel(
+    grad_output: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+    transforms: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+    joint_indices: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
+    joint_weights: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+    num_vertices: int,
+    num_joints: int,
+    num_slots: int,
+    grad_vertices: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+):
+    batch, vertex = wp.tid()  # ty: ignore[invalid-assignment, not-iterable]
+    vertex_base = (batch * num_vertices + vertex) * 3
+    gx = grad_output[vertex_base]
+    gy = grad_output[vertex_base + 1]
+    gz = grad_output[vertex_base + 2]
+    grad_x = float(0.0)
+    grad_y = float(0.0)
+    grad_z = float(0.0)
+
+    for slot in range(num_slots):
+        slot_index = vertex * num_slots + slot
+        joint = joint_indices[slot_index]
+        if joint < 0:
+            continue
+
+        weight = joint_weights[slot_index]
+        transform_base = (batch * num_joints + joint) * 16
+        grad_x += weight * (
+            transforms[transform_base] * gx
+            + transforms[transform_base + 4] * gy
+            + transforms[transform_base + 8] * gz
+        )
+        grad_y += weight * (
+            transforms[transform_base + 1] * gx
+            + transforms[transform_base + 5] * gy
+            + transforms[transform_base + 9] * gz
+        )
+        grad_z += weight * (
+            transforms[transform_base + 2] * gx
+            + transforms[transform_base + 6] * gy
+            + transforms[transform_base + 10] * gz
+        )
+
+    grad_vertices[vertex_base] = grad_x
+    grad_vertices[vertex_base + 1] = grad_y
+    grad_vertices[vertex_base + 2] = grad_z

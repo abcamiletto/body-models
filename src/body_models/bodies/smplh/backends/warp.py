@@ -29,12 +29,20 @@ def forward_vertices(
 ):
     joint_indices = weights.lbs_joint_indices
     joint_weights = weights.lbs_joint_weights
+    skin_weights = weights.lbs_weights
     if vertex_indices is not None:
         rest_vertices = rest_vertices[..., vertex_indices, :]
         pose_offsets = pose_offsets[..., vertex_indices, :]
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
+        skin_weights = skin_weights[vertex_indices]
 
     v_shaped = rest_vertices + pose_offsets
-    v_posed = smpl_warp.warp_affine_blend_skinning(v_shaped, skinning_transforms, joint_indices, joint_weights)
+    v_posed = smpl_warp.warp_affine_blend_skinning(
+        v_shaped,
+        skinning_transforms,
+        skin_weights,
+        joint_indices,
+        joint_weights,
+    )
     return smpl_core.apply_global_transform(torch, v_posed, global_rotation, global_translation, rotation_type)

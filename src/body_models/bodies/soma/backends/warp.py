@@ -43,7 +43,9 @@ def forward_vertices(*args, **kwargs):
 
 
 def _linear_blend_skinning(data, vertex_indices):
-    joint_indices = data.skin_joint_indices_active
+    # SOMA's compact weights include the unskinned world root, while prepared
+    # skinning transforms and the dense Torch weights omit it.
+    joint_indices = data.skin_joint_indices_active - 1
     joint_weights = data.skin_joint_weights_active
     if vertex_indices is not None:
         joint_indices = joint_indices[vertex_indices]
@@ -62,7 +64,21 @@ def _linear_blend_skinning(data, vertex_indices):
     return skin
 
 
-def linear_blend_skinning(xp, bind_shape, skin_weights, skinning_transforms, *, joint_indices, joint_weights):
+def linear_blend_skinning(
+    xp,
+    bind_shape,
+    skin_weights,
+    skinning_transforms,
+    *,
+    joint_indices,
+    joint_weights,
+):
     if bind_shape.device.type != "cuda":
         return torch_backend.linear_blend_skinning(xp, bind_shape, skin_weights, skinning_transforms)
-    return smpl_warp.warp_affine_blend_skinning(bind_shape, skinning_transforms, joint_indices, joint_weights)
+    return smpl_warp.warp_affine_blend_skinning(
+        bind_shape,
+        skinning_transforms,
+        skin_weights,
+        joint_indices,
+        joint_weights,
+    )
