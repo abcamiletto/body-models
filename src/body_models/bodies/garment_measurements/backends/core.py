@@ -48,7 +48,7 @@ def forward_vertices(
         weights = weights[vertex_indices]
 
     vertices = linear_blend_skinning(xp, vertices, skinning_transforms, weights)
-    vertices = _apply_global_transform(
+    vertices = apply_global_transform(
         values=vertices,
         global_rotation=global_rotation,
         global_translation=global_translation,
@@ -189,9 +189,8 @@ def prepare_identity(
     bind_quats = xp.broadcast_to(bind_quats, (*rest_vertices.shape[:-2], *bind_quats.shape))
     bind_global_quats = _propagate_quats(bind_quats, kinematic_fronts, xp=xp)
     bind_trans = _local_translations_from_positions(joint_positions, bind_global_quats, kinematic_fronts, xp=xp)
-    bind_local = SE3.from_rt(bind_quats, bind_trans, xp=xp)
     identity: GarmentMeasurementsIdentity = {
-        "bind_skeleton": _propagate_se3(bind_local, kinematic_fronts, xp=xp),
+        "bind_skeleton": SE3.from_rt(bind_global_quats, joint_positions, xp=xp),
         "local_bind_translations": bind_trans,
     }
     if not skip_vertices:
@@ -252,7 +251,7 @@ def _propagate_se3(
     return globals_
 
 
-def _apply_global_transform(
+def apply_global_transform(
     *,
     values: Float[Array, "B N 3"],
     global_rotation: Float[Array, "B N"] | Float[Array, "B 3 3"] | None,

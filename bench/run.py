@@ -186,8 +186,9 @@ MODELS = [
     ModelSpec(
         "GARMENT-MEASUREMENTS",
         lambda kernel: garment_measurements_numpy.GarmentMeasurements(kernel=kernel),
-        lambda _kernel, d: torch_model(garment_measurements_torch.GarmentMeasurements(), d),
+        lambda kernel, d: torch_model(garment_measurements_torch.GarmentMeasurements(kernel=kernel), d),
         numpy_kernels=garment_measurements_numpy.GarmentMeasurements.kernels,
+        torch_kernels=garment_measurements_torch.GarmentMeasurements.kernels,
     ),
     ModelSpec(
         "MYOFULLBODY",

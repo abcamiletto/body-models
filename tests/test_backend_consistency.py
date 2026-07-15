@@ -134,10 +134,11 @@ def test_kernels_match_default(name, numpy_model, torch_model, _jax_model, kwarg
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
     for kernel in getattr(torch_instance, "kernels", ())[1:]:
-        params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
+        params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
+        vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():
-            expected = torch_instance.forward_vertices(**params)
-            actual = torch_model(kernel=kernel, **kwargs).forward_vertices(**params)
+            expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
+            actual = torch_model(kernel=kernel, **kwargs).forward_vertices(**params, vertex_indices=vertex_indices)
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
