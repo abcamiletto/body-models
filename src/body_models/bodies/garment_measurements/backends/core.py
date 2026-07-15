@@ -70,6 +70,13 @@ def prepare_pose(
     xp: Any,
 ) -> GarmentMeasurementsPreparedPose:
     """Precompute pose-dependent GarmentMeasurements state for repeated forward passes."""
+    num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+    batch_shape = tuple(pose.shape[: -(num_rot_dims + 1)])
+    bind_skeleton = xp.broadcast_to(bind_skeleton, (*batch_shape, *bind_skeleton.shape[-2:]))
+    local_bind_translations = xp.broadcast_to(
+        local_bind_translations,
+        (*batch_shape, *local_bind_translations.shape[-2:]),
+    )
     skeleton_se3 = _forward_skeleton_se3(
         bind_quats=bind_quats,
         local_bind_translations=local_bind_translations,
