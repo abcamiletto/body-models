@@ -2,7 +2,6 @@
 
 Usage:
     uv run bench/soma_forward.py
-    uv run bench/soma_forward.py --cuda-graph --mode forward --kernel torch
     uv run bench/soma_forward.py --batch-sizes 128,512,2048,4096,8192
     uv run bench/soma_forward.py --kernel warp --mode backward
 """
@@ -25,35 +24,23 @@ def main() -> None:
     batch_sizes = [int(value) for value in args.batch_sizes.split(",")]
     kernels = args.kernels or ["torch", "warp"]
     modes = args.modes or ["forward", "backward"]
-    print("| Kernel | Mode | Execution | Batch | Median (ms) | Peak allocated (GiB) |")
-    print("|---|---|---|---:|---:|---:|")
+    print("| Kernel | Mode | Batch | Median (ms) | Peak allocated (GiB) |")
+    print("|---|---|---:|---:|---:|")
 
     for kernel in kernels:
         model = soma_torch.SOMA(kernel=kernel).cuda().eval()
         for batch_size in batch_sizes:
             for mode in modes:
-                executions = ["eager"]
-                if args.cuda_graph and kernel == "torch" and mode == "forward":
-                    executions.append("cuda-graph")
-                for execution in executions:
-                    try:
-                        step = make_step(
-                            model,
-                            batch_size,
-                            backward=mode == "backward",
-                            cuda_graph=execution == "cuda-graph",
-                        )
-                        median_ms, peak_gib = benchmark(step, args.runs, args.warmup)
-                        print(
-                            f"| {kernel} | {mode} | {execution} | {batch_size} | {median_ms:.2f} | {peak_gib:.2f} |",
-                            flush=True,
-                        )
-                    except torch.OutOfMemoryError:
-                        torch.cuda.empty_cache()
-                        print(f"| {kernel} | {mode} | {execution} | {batch_size} | OOM | OOM |", flush=True)
+                try:
+                    step = make_step(model, batch_size, backward=mode == "backward")
+                    median_ms, peak_gib = benchmark(step, args.runs, args.warmup)
+                    print(f"| {kernel} | {mode} | {batch_size} | {median_ms:.2f} | {peak_gib:.2f} |", flush=True)
+                except torch.OutOfMemoryError:
+                    torch.cuda.empty_cache()
+                    print(f"| {kernel} | {mode} | {batch_size} | OOM | OOM |", flush=True)
 
 
-def make_step(model: soma_torch.SOMA, batch_size: int, *, backward: bool, cuda_graph: bool = False):
+def make_step(model: soma_torch.SOMA, batch_size: int, *, backward: bool):
     params = model.get_rest_pose(batch_dims=(batch_size,))
     identity = model.prepare_identity(params.pop("shape")[:1])
 
@@ -65,14 +52,6 @@ def make_step(model: soma_torch.SOMA, batch_size: int, *, backward: bool, cuda_g
                 value.grad = None
             vertices = model.forward_vertices(**params, identity=identity)
             vertices.square().mean().backward()
-
-        return step
-
-    if cuda_graph:
-        captured = model.capture_forward_vertices(**params, identity=identity)
-
-        def step():
-            captured(**params)
 
         return step
 
@@ -110,7 +89,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", action="append", choices=("forward", "backward"), dest="modes")
     parser.add_argument("--runs", type=int, default=20)
     parser.add_argument("--warmup", type=int, default=5)
-    parser.add_argument("--cuda-graph", action="store_true")
     return parser.parse_args()
 
 
