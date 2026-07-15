@@ -237,19 +237,21 @@ def test_prepared_identity_broadcasts_across_pose_batch(
     jax_model,
     kwargs,
 ) -> None:
-    """A prepared identity with batch size one broadcasts across a larger pose batch."""
-
     def assert_broadcasts(model, params):
         identity_params = {key: params[key][:1] for key in model.identity_keys}
         identity = model.prepare_identity(**identity_params)
         vertex_indices = list(range(min(8, model.num_vertices)))
         joint_indices = list(range(min(8, model.num_joints)))
 
+        expected_vertices = model.forward_vertices(**params, vertex_indices=vertex_indices)
+        expected_skeleton = model.forward_skeleton(**params, joint_indices=joint_indices)
         vertices = model.forward_vertices(**params, identity=identity, vertex_indices=vertex_indices)
         skeleton = model.forward_skeleton(**params, identity=identity, joint_indices=joint_indices)
 
         assert vertices.shape == (3, len(vertex_indices), 3)
         assert skeleton.shape == (3, len(joint_indices), 4, 4)
+        np.testing.assert_allclose(np.asarray(vertices), np.asarray(expected_vertices), rtol=1e-4, atol=1e-4)
+        np.testing.assert_allclose(np.asarray(skeleton), np.asarray(expected_skeleton), rtol=1e-4, atol=1e-4)
 
     numpy_instance = numpy_model(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(batch_dims=(3,), dtype=np.float32)
