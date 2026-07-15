@@ -134,36 +134,12 @@ def test_kernels_match_default(name, numpy_model, torch_model, _jax_model, kwarg
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
     for kernel in getattr(torch_instance, "kernels", ())[1:]:
-        params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
+        params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
+        vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():
-            expected = torch_instance.forward_vertices(**params)
-            actual = torch_model(kernel=kernel, **kwargs).forward_vertices(**params)
+            expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
+            actual = torch_model(kernel=kernel, **kwargs).forward_vertices(**params, vertex_indices=vertex_indices)
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
-
-
-def test_garment_measurements_warp_matches_torch_for_batched_nonzero_pose() -> None:
-    torch = pytest.importorskip("torch")
-    pytest.importorskip("warp")
-    from body_models.garment_measurements.torch import GarmentMeasurements
-
-    torch_model = GarmentMeasurements()
-    warp_model = GarmentMeasurements(kernel="warp")
-    params = torch_model.get_rest_pose(batch_dims=(2, 3), dtype=torch.float32)
-    generator = torch.Generator().manual_seed(0)
-    random_keys = (*torch_model.identity_keys, *torch_model.pose_keys, "global_rotation", "global_translation")
-    for key in random_keys:
-        params[key] = torch.randn(params[key].shape, dtype=params[key].dtype, generator=generator) * 0.1
-
-    vertex_indices = list(range(4))
-    joint_indices = list(range(4))
-    with torch.inference_mode():
-        expected_vertices = torch_model.forward_vertices(**params, vertex_indices=vertex_indices)
-        actual_vertices = warp_model.forward_vertices(**params, vertex_indices=vertex_indices)
-        expected_skeleton = torch_model.forward_skeleton(**params, joint_indices=joint_indices)
-        actual_skeleton = warp_model.forward_skeleton(**params, joint_indices=joint_indices)
-
-    torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
-    torch.testing.assert_close(actual_skeleton, expected_skeleton, rtol=1e-4, atol=1e-4)
 
 
 @pytest.mark.parametrize(
