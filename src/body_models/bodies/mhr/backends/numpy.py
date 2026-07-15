@@ -60,8 +60,8 @@ def forward_vertices(
     vertex_indices: list[int] | None = None,
 ):
     return _forward_vertices(
-        skin_weights=weights.skin_weights,
-        skin_indices=weights.skin_indices,
+        joint_weights=weights.skin_weights,
+        joint_indices=weights.skin_indices,
         global_rotation=global_rotation,
         global_translation=global_translation,
         vertex_indices=vertex_indices,

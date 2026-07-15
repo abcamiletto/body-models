@@ -5,8 +5,7 @@ from typing import Any, NotRequired, TypedDict
 from jaxtyping import Float
 
 from body_models import common
-from body_models.common import get_namespace
-from body_models.bodies.smpl.backends import core as smpl_core
+from body_models.common import get_namespace, kinematics, skinning
 from nanomanifold import SO3
 
 from body_models.rotations import RotationType
@@ -55,8 +54,14 @@ def forward_vertices(
         lbs_weights = lbs_weights[vertex_indices]
 
     v_shaped = rest_vertices + pose_offsets
-    v_posed = smpl_core.linear_blend_skinning(xp, v_shaped, skinning_transforms, lbs_weights)
-    v_posed = smpl_core.apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
+    v_posed = skinning.linear_blend_skinning(v_shaped, skinning_transforms, lbs_weights, xp=xp)
+    v_posed = skinning.apply_global_transform(
+        v_posed,
+        global_rotation,
+        global_translation,
+        rotation_type,
+        xp=xp,
+    )
 
     return v_posed
 
@@ -95,7 +100,7 @@ def prepare_pose(
 
     prepared_pose: ManoPreparedPose = {
         "skeleton_transforms": T_world,
-        "skinning_transforms": smpl_core.bind_relative_transforms(xp, T_world, rest_joints),
+        "skinning_transforms": skinning.bind_relative_transforms(T_world, rest_joints, xp=xp),
     }
     if skip_vertices:
         return prepared_pose
@@ -188,7 +193,12 @@ def _forward_core(
         )[..., None, :, :]
     pose_matrices = xp.concat([wrist_matrices, hand_pose_matrices], axis=-3)
 
-    T_world = smpl_core.batched_forward_kinematics(xp, pose_matrices, local_joint_offsets, kinematic_fronts)
+    T_world = kinematics.forward_kinematics(
+        pose_matrices,
+        local_joint_offsets,
+        kinematic_fronts,
+        xp=xp,
+    )
 
     return pose_matrices, T_world
 

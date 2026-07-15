@@ -5,7 +5,7 @@ from typing import Any, NotRequired, TypedDict
 from jaxtyping import Float
 
 from body_models import common
-from body_models.common import get_namespace
+from body_models.common import get_namespace, kinematics, skinning
 from nanomanifold import SO3
 
 from body_models.rotations import RotationType
@@ -55,8 +55,14 @@ def forward_vertices(
         pose_offsets = pose_offsets[..., vertex_indices, :]
 
     v_shaped = rest_vertices + pose_offsets
-    v_posed = linear_blend_skinning(xp, v_shaped, skinning_transforms, lbs_weights)
-    v_posed = apply_global_transform(xp, v_posed, global_rotation, global_translation, rotation_type)
+    v_posed = skinning.linear_blend_skinning(v_shaped, skinning_transforms, lbs_weights, xp=xp)
+    v_posed = skinning.apply_global_transform(
+        v_posed,
+        global_rotation,
+        global_translation,
+        rotation_type,
+        xp=xp,
+    )
 
     return v_posed
 
@@ -94,7 +100,7 @@ def prepare_pose(
 
     pose: SmplPreparedPose = {
         "skeleton_transforms": T_world,
-        "skinning_transforms": bind_relative_transforms(xp, T_world, rest_joints),
+        "skinning_transforms": skinning.bind_relative_transforms(T_world, rest_joints, xp=xp),
     }
     if skip_vertices:
         return pose
@@ -184,7 +190,12 @@ def _forward_core(
         )[..., None, :, :]
     pose_matrices = xp.concat([pelvis_matrices, body_pose_matrices], axis=-3)
 
-    T_world = batched_forward_kinematics(xp, pose_matrices, local_joint_offsets, kinematic_fronts)
+    T_world = kinematics.forward_kinematics(
+        pose_matrices,
+        local_joint_offsets,
+        kinematic_fronts,
+        xp=xp,
+    )
 
     return pose_matrices, T_world
 
@@ -213,83 +224,3 @@ def prepare_identity(
         assert v_template is not None and shapedirs is not None
         identity["rest_vertices"] = v_template + xp.einsum("...i,vdi->...vd", shape, shapedirs[:, :, : shape.shape[-1]])
     return identity
-
-
-def batched_forward_kinematics(
-    xp,
-    R: Float[Array, "*batch J 3 3"],
-    t: Float[Array, "*batch J 3"],
-    fronts: list[Front],
-    joint_indices: list[int] | None = None,
-) -> Float[Array, "*batch J 4 4"]:
-    """Batched forward kinematics using precomputed kinematic fronts.
-
-    Uses unified 4x4 homogeneous transforms: one bmm per depth level instead
-    of two (R_parent @ R_local + R_parent @ t_local).
-    """
-    J = R.shape[-3]
-
-    batch_shape = R.shape[:-3]
-    upper = xp.concat([R, t[..., None]], axis=-1)
-    bottom = common.zeros_as(upper, shape=(*batch_shape, J, 1, 4), xp=xp)
-    bottom = common.set(bottom, (..., 0, 3), 1.0, xp=xp)
-    T_local = xp.concat([upper, bottom], axis=-2)
-
-    T_world: list[Float[Array, "*batch 4 4"] | None] = [None] * J
-
-    for joints, parents in fronts:
-        if parents[0] < 0:  # Root joints
-            for joint in joints:
-                T_world[joint] = T_local[..., joint, :, :]
-            continue
-
-        T_parent = xp.stack([T_world[i] for i in parents], axis=-3)
-        T_cur = T_parent @ T_local[..., joints, :, :]
-        for idx, joint in enumerate(joints):
-            T_world[joint] = T_cur[..., idx, :, :]
-
-    if joint_indices is None:
-        return xp.stack(T_world, axis=-3)
-    return xp.stack([T_world[j] for j in joint_indices], axis=-3)
-
-
-def linear_blend_skinning(
-    xp,
-    vertices: Float[Array, "*batch V 3"],
-    transforms: Float[Array, "*batch J 4 4"],
-    lbs_weights: Float[Array, "V J"],
-) -> Float[Array, "*batch V 3"]:
-    """Apply linear blend skinning to posed vertices."""
-    R = transforms[..., :3, :3]
-    t = transforms[..., :3, 3]
-    W_R = xp.einsum("vj,...jkl->...vkl", lbs_weights, R)
-    W_t = xp.einsum("vj,...jk->...vk", lbs_weights, t)
-    rotated = xp.squeeze(W_R @ vertices[..., None], axis=-1)
-    return rotated + W_t
-
-
-def bind_relative_transforms(
-    xp,
-    skeleton_transforms: Float[Array, "*batch J 4 4"],
-    rest_joints: Float[Array, "*batch J 3"],
-) -> Float[Array, "*batch J 4 4"]:
-    R = skeleton_transforms[..., :3, :3]
-    t = skeleton_transforms[..., :3, 3]
-    bind_t = t - xp.squeeze(R @ rest_joints[..., None], axis=-1)
-    return common.set(skeleton_transforms, (..., slice(None, 3), 3), bind_t, xp=xp)
-
-
-def apply_global_transform(
-    xp,
-    points: Float[Array, "*batch N 3"],
-    rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
-    translation: Float[Array, "*batch 3"] | None,
-    rotation_type: RotationType,
-) -> Float[Array, "*batch N 3"]:
-    """Apply global rotation and translation to points."""
-    if rotation is not None:
-        R = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
-        points = (R @ points.mT).mT
-    if translation is not None:
-        points = points + translation[..., None, :]
-    return points
