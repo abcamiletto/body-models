@@ -141,6 +141,31 @@ def test_kernels_match_default(name, numpy_model, torch_model, _jax_model, kwarg
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
+def test_garment_measurements_warp_matches_torch_for_batched_nonzero_pose() -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("warp")
+    from body_models.garment_measurements.torch import GarmentMeasurements
+
+    torch_model = GarmentMeasurements()
+    warp_model = GarmentMeasurements(kernel="warp")
+    params = torch_model.get_rest_pose(batch_dims=(2, 3), dtype=torch.float32)
+    generator = torch.Generator().manual_seed(0)
+    random_keys = (*torch_model.identity_keys, *torch_model.pose_keys, "global_rotation", "global_translation")
+    for key in random_keys:
+        params[key] = torch.randn(params[key].shape, dtype=params[key].dtype, generator=generator) * 0.1
+
+    vertex_indices = list(range(4))
+    joint_indices = list(range(4))
+    with torch.inference_mode():
+        expected_vertices = torch_model.forward_vertices(**params, vertex_indices=vertex_indices)
+        actual_vertices = warp_model.forward_vertices(**params, vertex_indices=vertex_indices)
+        expected_skeleton = torch_model.forward_skeleton(**params, joint_indices=joint_indices)
+        actual_skeleton = warp_model.forward_skeleton(**params, joint_indices=joint_indices)
+
+    torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(actual_skeleton, expected_skeleton, rtol=1e-4, atol=1e-4)
+
+
 @pytest.mark.parametrize(
     ("name", "numpy_model", "torch_model", "jax_model", "kwargs"),
     [case for case in model_cases.SKINNED_MODELS if case[0] == "soma"],
