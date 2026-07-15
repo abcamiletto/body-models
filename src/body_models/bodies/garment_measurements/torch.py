@@ -12,7 +12,7 @@ from torch import Tensor
 from body_models import common
 from body_models.base import SkinnedModel
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
-from .backends import torch as backend
+from .backends import torch as torch_backend
 from .backends.core import GarmentMeasurementsIdentity, GarmentMeasurementsPreparedPose
 from .io import get_model_path, load_model_data
 from .constants import GARMENT_BODY_PRESETS, GARMENT_HAND_PRESETS, GARMENT_JOINTS
@@ -29,6 +29,7 @@ class GarmentMeasurements(SkinnedModel, nn.Module):
     pose_keys = ("body_pose", "head_pose", "hand_pose", "pelvis_rotation")
     has_hands = True
     has_head = True
+    kernels = ("torch", "warp")
     JOINTS = GARMENT_JOINTS
 
     def __init__(
@@ -36,20 +37,25 @@ class GarmentMeasurements(SkinnedModel, nn.Module):
         model_path: Path | str | None = None,
         *,
         rotation_type: RotationType = "axis_angle",
+        kernel: Literal["torch", "warp"] = "torch",
     ) -> None:
         """Initialize the GarmentMeasurements model.
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
             rotation_type: Rotation representation expected by pose inputs.
+            kernel: Backend kernel used for forward evaluation.
         """
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
+        if kernel not in self.kernels:
+            raise ValueError(f"Invalid kernel: {kernel}")
         super().__init__()
 
         self.weights = common.torchify(load_model_data(get_model_path(model_path), dtype="float32"))
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
+        self._kernel = _get_kernel(kernel)
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -117,7 +123,7 @@ class GarmentMeasurements(SkinnedModel, nn.Module):
             shape = torch.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
-        return backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -162,7 +168,7 @@ class GarmentMeasurements(SkinnedModel, nn.Module):
             identity = self.prepare_identity(shape, skip_vertices=True)
         pose_groups = body_pose, head_pose, hand_pose, pelvis_rotation
         pose = self.prepare_pose(*pose_groups, identity=identity, skip_vertices=True)
-        return backend.forward_skeleton(
+        return torch_backend.forward_skeleton(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -177,7 +183,7 @@ class GarmentMeasurements(SkinnedModel, nn.Module):
         skip_vertices: bool = False,
     ) -> GarmentMeasurementsIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
-        return backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+        return torch_backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
 
     def prepare_pose(
         self,
@@ -191,7 +197,7 @@ class GarmentMeasurements(SkinnedModel, nn.Module):
     ) -> GarmentMeasurementsPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         pose = pack_pose(torch, pelvis_rotation, body_pose, head_pose, hand_pose)
-        return backend.prepare_pose(
+        return self._kernel.prepare_pose(
             self.weights,
             pose,
             rotation_type=self.rotation_type,
@@ -261,3 +267,12 @@ class GarmentMeasurements(SkinnedModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+
+
+def _get_kernel(kernel: Literal["torch", "warp"]):
+    if kernel == "torch":
+        return torch_backend
+
+    from .backends import warp as warp_backend
+
+    return warp_backend

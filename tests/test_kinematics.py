@@ -67,9 +67,10 @@ def test_compute_sparse_skin_weights_reconstructs_dense_matrix() -> None:
 
     indices, weights = compute_sparse_skin_weights(dense)
 
+    assert np.all(indices[weights == 0] == -1)
     reconstructed = np.zeros_like(dense)
     for vertex in range(dense.shape[0]):
-        # np.add.at accumulates correctly even with repeated (padding) indices.
-        np.add.at(reconstructed[vertex], indices[vertex], weights[vertex])
+        active = indices[vertex] >= 0
+        np.add.at(reconstructed[vertex], indices[vertex, active], weights[vertex, active])
 
     np.testing.assert_allclose(reconstructed, dense)

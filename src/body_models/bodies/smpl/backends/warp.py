@@ -2,7 +2,6 @@
 
 import contextlib
 import io
-import itertools
 
 import torch
 import warp as wp
@@ -105,37 +104,57 @@ def warp_forward_kinematics(
     parents: Tensor,
 ) -> Float[Tensor, "*batch J 4 4"]:
     _init_warp()
-    if rotations.ndim > 4:
-        output = torch.empty((*rotations.shape[:-2], 4, 4), device=rotations.device, dtype=rotations.dtype)
-        for batch_index in itertools.product(*[range(size) for size in rotations.shape[:-3]]):
-            batch_rotations = rotations[batch_index][None]
-            batch_translations = translations[batch_index][None]
-            output[batch_index] = warp_forward_kinematics(batch_rotations, batch_translations, parents)[0]
+    batch_shape = rotations.shape[:-3]
+    num_joints = rotations.shape[-3]
+    rotations = rotations.reshape(-1, num_joints, 3, 3)
+    translations = translations.reshape(-1, num_joints, 3)
+    parents = parents.to(device=rotations.device, dtype=torch.int32).contiguous()
+    output = _WarpForwardKinematics.apply(rotations, translations, parents)
+    return output.reshape(*batch_shape, num_joints, 4, 4)
+
+
+class _WarpForwardKinematics(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, rotations, translations, parents):
+        rotations = rotations.contiguous()
+        translations = translations.contiguous()
+        output = torch.empty((*rotations.shape[:2], 4, 4), device=rotations.device, dtype=rotations.dtype)
+
+        wp_rotations = wp.from_torch(rotations.reshape(-1), requires_grad=ctx.needs_input_grad[0])
+        wp_translations = wp.from_torch(translations.reshape(-1), requires_grad=ctx.needs_input_grad[1])
+        wp_parents = wp.from_torch(parents)
+        needs_backward = any(ctx.needs_input_grad[:2])
+        wp_output = wp.from_torch(output.reshape(-1), requires_grad=needs_backward)
+
+        batch_size, num_joints = translations.shape[:2]
+        tape = wp.Tape() if needs_backward else None
+        with tape if tape is not None else contextlib.nullcontext():
+            wp.launch(
+                _forward_kinematics_kernel,
+                dim=batch_size,
+                inputs=[wp_rotations, wp_translations, wp_parents, num_joints, wp_output],
+                device=wp_rotations.device,
+            )
+
+        if needs_backward:
+            ctx.tape = tape
+            ctx.wp_inputs = wp_rotations, wp_translations
+            ctx.wp_output = wp_output
+            ctx.input_shapes = rotations.shape, translations.shape
         return output
 
-    rotations = rotations.contiguous()
-    translations = translations.contiguous()
-    parents = parents.to(device=rotations.device, dtype=torch.int32).contiguous()
-    output = torch.empty((*rotations.shape[:2], 4, 4), device=rotations.device, dtype=rotations.dtype)
-    flat_rotations = rotations.reshape(-1)
-    flat_translations = translations.reshape(-1)
-    flat_output = output.reshape(-1)
-
-    batch_size, num_joints = translations.shape[:2]
-    device = wp.from_torch(flat_rotations).device
-    wp.launch(
-        _forward_kinematics_kernel,
-        dim=batch_size,
-        inputs=[
-            wp.from_torch(flat_rotations),
-            wp.from_torch(flat_translations),
-            wp.from_torch(parents),
-            num_joints,
-            wp.from_torch(flat_output),
-        ],
-        device=device,
-    )
-    return output
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        (grad_output,) = grad_outputs
+        wp_grad_output = wp.from_torch(grad_output.contiguous().reshape(-1))
+        ctx.tape.backward(grads={ctx.wp_output: wp_grad_output})
+        wp_rotations, wp_translations = ctx.wp_inputs
+        rotation_shape, translation_shape = ctx.input_shapes
+        grad_rotations = wp.to_torch(wp_rotations.grad).reshape(rotation_shape) if wp_rotations.requires_grad else None
+        grad_translations = (
+            wp.to_torch(wp_translations.grad).reshape(translation_shape) if wp_translations.requires_grad else None
+        )
+        return grad_rotations, grad_translations, None
 
 
 @disable_compile

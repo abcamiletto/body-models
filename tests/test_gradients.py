@@ -139,3 +139,35 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
     torch.testing.assert_close(warp_vertices, torch_vertices, rtol=1e-5, atol=1e-5)
     for key in torch_grads:
         torch.testing.assert_close(warp_grads[key], torch_grads[key], rtol=1e-4, atol=2e-4)
+
+
+@pytest.mark.parametrize(
+    ("name", "_numpy_model", "torch_model", "_jax_model", "kwargs"),
+    [case for case in model_cases.SKINNED_MODELS if case[0] == "garment_measurements"],
+)
+def test_torch_kernel_gradients_match_default(name, _numpy_model, torch_model, _jax_model, kwargs) -> None:
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required")
+
+    default_model = torch_model(**kwargs).cuda()
+    params = default_model.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
+    vertex_indices = list(range(min(8, default_model.num_vertices)))
+    generator = torch.Generator(device="cuda").manual_seed(0)
+    params = {
+        key: value + 0.1 * torch.randn(value.shape, device=value.device, dtype=value.dtype, generator=generator)
+        for key, value in params.items()
+    }
+
+    def forward_and_grad(model):
+        model_params = {key: value.detach().clone().requires_grad_() for key, value in params.items()}
+        vertices = model.forward_vertices(**model_params, vertex_indices=vertex_indices)
+        gradients = torch.autograd.grad(vertices.square().sum(), tuple(model_params.values()))
+        return vertices, gradients
+
+    expected_vertices, expected_gradients = forward_and_grad(default_model)
+    for kernel in default_model.kernels[1:]:
+        actual_vertices, actual_gradients = forward_and_grad(torch_model(kernel=kernel, **kwargs).cuda())
+        torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
+        for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
+            torch.testing.assert_close(actual, expected, rtol=1e-3, atol=1e-3)

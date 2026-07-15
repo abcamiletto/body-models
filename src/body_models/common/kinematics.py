@@ -37,11 +37,11 @@ def compute_sparse_skin_weights(
 ) -> tuple[Int[np.ndarray, "V K"], Float[np.ndarray, "V K"]]:
     """Compact dense per-vertex joint weights into (indices, weights) slots.
 
-    K is the max active joints of any vertex; unused slots have index 0 and
+    K is the max active joints of any vertex; unused slots have index -1 and
     weight 0.
     """
     counts = (np.abs(weights) > threshold).sum(axis=1)
-    indices = np.zeros((weights.shape[0], int(counts.max(initial=0))), dtype=np.int64)
+    indices = np.full((weights.shape[0], int(counts.max(initial=0))), -1, dtype=np.int64)
     values = np.zeros(indices.shape, dtype=weights.dtype)
     for vertex, row in enumerate(weights):
         active = np.flatnonzero(np.abs(row) > threshold)
