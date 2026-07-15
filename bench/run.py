@@ -384,10 +384,10 @@ def benchmark_params(model: Any, batch_size: int, prepare_identity: bool = False
     if not prepare_identity:
         return params
 
-    identity = params.pop("identity", None)
+    identity = params.pop("shape")
     scale_params = params.pop("scale_params", None)
-    prepared_identity = model.prepare_identity(identity=identity, scale_params=scale_params, pose=params["pose"])
-    params["prepared_identity"] = prepared_identity
+    prepared_identity = model.prepare_identity(identity, scale_params=scale_params)
+    params["identity"] = prepared_identity
     return params
 
 

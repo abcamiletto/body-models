@@ -996,7 +996,8 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
             np.where(public_skin_weights[:, joint_index] > 0.01)[0].astype(np.int64).tolist()
             for joint_index in range(public_skin_weights.shape[1])
         ]
-        public_joint_regressor = _build_joint_position_regressor(
+        public_joint_regressor = _load_or_build_joint_position_regressor(
+            asset_dir=asset_dir,
             bind_shape=np.asarray(public_rig_data["bind_shape"], dtype=np.float32),
             bind_world_transforms=np.asarray(public_rig_data["bind_pose_world"], dtype=np.float32),
             skin_weights=public_skin_weights,

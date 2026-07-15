@@ -85,7 +85,7 @@ class SOMA(SkinnedModel, nn.Module):
         self._kernel = _get_kernel(kernel)
         resolved_path, weights = load_model_data_for_lod(model_path, self.lod, simplify=simplify)
 
-        self.weights = common.torchify(weights)
+        self.weights = torch_backend.prepare_data(common.torchify(weights))
         self.parents, self._joint_names = public_joint_metadata(weights)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
