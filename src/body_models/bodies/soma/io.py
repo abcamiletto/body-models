@@ -102,6 +102,7 @@ class SomaCorrectives:
 @dataclass(frozen=True)
 class SomaTopology:
     parents_full: list[int]
+    parent_indices_full: Int[np.ndarray, "Jf"]
     joint_children_full: list[list[int]]
     joint_children_indices_full: Int[np.ndarray, "Jf C"]
     skinned_vertex_indices_full: list[list[int]]
@@ -996,7 +997,8 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
             np.where(public_skin_weights[:, joint_index] > 0.01)[0].astype(np.int64).tolist()
             for joint_index in range(public_skin_weights.shape[1])
         ]
-        public_joint_regressor = _build_joint_position_regressor(
+        public_joint_regressor = _load_or_build_joint_position_regressor(
+            asset_dir=asset_dir,
             bind_shape=np.asarray(public_rig_data["bind_shape"], dtype=np.float32),
             bind_world_transforms=np.asarray(public_rig_data["bind_pose_world"], dtype=np.float32),
             skin_weights=public_skin_weights,
@@ -1014,6 +1016,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
             skin_weights_active=public_skin_weights,
             topology=SomaTopology(
                 parents_full=public_parents_full,
+                parent_indices_full=public_parents,
                 joint_children_full=public_joint_children_full,
                 joint_children_indices_full=_pad_indices(public_joint_children_full),
                 skinned_vertex_indices_full=public_skinned_vertex_indices_full,
@@ -1052,6 +1055,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         facial_inner_vertices=facial_inner,
         topology=SomaTopology(
             parents_full=parents_full,
+            parent_indices_full=joint_parents_full,
             joint_children_full=joint_children_full,
             joint_children_indices_full=_pad_indices(joint_children_full),
             skinned_vertex_indices_full=skinned_vertex_indices_full,

@@ -85,7 +85,7 @@ class SOMA(SkinnedModel, nn.Module):
         self._kernel = _get_kernel(kernel)
         resolved_path, weights = load_model_data_for_lod(model_path, self.lod, simplify=simplify)
 
-        self.weights = common.torchify(weights)
+        self.weights = torch_backend.prepare_data(common.torchify(weights))
         self.parents, self._joint_names = public_joint_metadata(weights)
 
         spec = MODEL_TYPE_SPECS[self.model_type]
@@ -323,8 +323,8 @@ class SOMA(SkinnedModel, nn.Module):
             self.weights,
             pose,
             rotation_type=self.rotation_type,
-            world_bind_pose=identity["world_bind_pose"],
-            inverse_world_bind_pose=None if skip_vertices else identity["inverse_world_bind_pose"],
+            local_joint_translations=identity["local_joint_translations"],
+            inverse_bind_transforms=None if skip_vertices else identity["inverse_bind_transforms"],
             skip_vertices=skip_vertices,
             xp=torch,
         )
