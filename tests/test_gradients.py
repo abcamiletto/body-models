@@ -134,15 +134,12 @@ def test_warp_forward_kinematics_gradients_match_common_on_cpu() -> None:
 
 
 @pytest.mark.fast
-def test_compact_warp_adapters_match_common_skinning() -> None:
-    from types import SimpleNamespace
-
+def test_warp_runtime_matches_common_skinning() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
 
     from body_models.common import skinning
-    from body_models.bodies.mhr.backends import warp as mhr_warp
-    from body_models.parts.mano.backends import warp as mano_warp
+    from body_models.runtime import TorchRuntime
 
     joint_indices = torch.tensor([[0, 1], [1, 2], [0, 2]], dtype=torch.int32)
     joint_weights = torch.tensor([[0.25, 0.75], [0.5, 0.5], [0.8, 0.2]])
@@ -153,19 +150,13 @@ def test_compact_warp_adapters_match_common_skinning() -> None:
     transforms = torch.randn(2, 3, 4, 4)
 
     expected = skinning.linear_blend_skinning(rest_vertices + pose_offsets, transforms, dense_weights, xp=torch)
-    adapters = (
-        (
-            mano_warp.forward_vertices,
-            SimpleNamespace(lbs_joint_indices=joint_indices, lbs_joint_weights=joint_weights),
-        ),
-        (
-            mhr_warp.forward_vertices,
-            SimpleNamespace(skin_indices=joint_indices, skin_weights=joint_weights),
-        ),
+    actual = TorchRuntime("warp").compact_linear_blend_skinning(
+        rest_vertices + pose_offsets,
+        transforms,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
     )
-    for forward_vertices, weights in adapters:
-        actual = forward_vertices(weights, rest_vertices, transforms, pose_offsets)
-        torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.slow

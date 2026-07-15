@@ -14,7 +14,7 @@ from ...anny.jax import ANNY
 from ...mhr.jax import MHR
 from ...smpl.jax import SMPL
 from ...smplx.jax import SMPLX
-from ..backends import core
+from .. import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
 from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape
 

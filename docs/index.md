@@ -1,6 +1,7 @@
 # body-models
 
-`body-models` provides a shared interface for parametric human body, head, hand, and measurement models across PyTorch, NumPy, and JAX.
+`body-models` provides a shared interface for parametric and rigid articulated
+models across PyTorch, NumPy, JAX, and optional Warp skinning kernels.
 
 ## Install
 
@@ -61,6 +62,10 @@ uv add "body-models[jax]"
 ## Common Usage
 
 Each model exposes backend modules under `body_models.<model>.torch`, `body_models.<model>.numpy`, and `body_models.<model>.jax` when that backend is supported. The model pages use the NumPy backend for API generation because it has the same public model interface without optional backend dependencies.
+
+Each framework module is a thin constructor around one model program. See the
+[architecture guide](architecture.md) for the runtime boundary and extension
+rules.
 
 ```python
 from body_models.smpl.torch import SMPL

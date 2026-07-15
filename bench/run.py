@@ -5,7 +5,7 @@ Usage:
     uv run bench/run.py -m SMPLX
     uv run bench/run.py -m SMPLX -m SMPL
     uv run bench/run.py --backend numpy
-    uv run bench/run.py -m SMPL --backend numpy --kernel numba
+    uv run bench/run.py -m SMPL --backend numpy --kernel numpy
     uv run bench/run.py -m SMPL --backend torch --kernel warp -d cuda
     uv run bench/run.py --backend torch -d cuda
     uv run bench/run.py --method skeleton
@@ -29,6 +29,7 @@ import torch
 from body_models.anny import numpy as anny_numpy
 from body_models.anny import torch as anny_torch
 from body_models.brainco import numpy as brainco_numpy
+from body_models.brainco import torch as brainco_torch
 from body_models.flame import numpy as flame_numpy
 from body_models.flame import torch as flame_torch
 from body_models.g1 import numpy as g1_numpy
@@ -85,28 +86,28 @@ def torch_model(model: torch.nn.Module, device: torch.device) -> torch.nn.Module
 MODELS = [
     ModelSpec(
         "SMPL",
-        lambda kernel: smpl_numpy.SMPL(gender="neutral", kernel=kernel),
+        lambda _kernel: smpl_numpy.SMPL(gender="neutral"),
         lambda kernel, d: torch_model(smpl_torch.SMPL(gender="neutral", kernel=kernel), d),
         numpy_kernels=smpl_numpy.SMPL.kernels,
         torch_kernels=smpl_torch.SMPL.kernels,
     ),
     ModelSpec(
         "SMPLH",
-        lambda kernel: smplh_numpy.SMPLH(gender="neutral", kernel=kernel),
+        lambda _kernel: smplh_numpy.SMPLH(gender="neutral"),
         lambda kernel, d: torch_model(smplh_torch.SMPLH(gender="neutral", kernel=kernel), d),
         numpy_kernels=smplh_numpy.SMPLH.kernels,
         torch_kernels=smplh_torch.SMPLH.kernels,
     ),
     ModelSpec(
         "SMPLX",
-        lambda kernel: smplx_numpy.SMPLX(gender="neutral", kernel=kernel),
+        lambda _kernel: smplx_numpy.SMPLX(gender="neutral"),
         lambda kernel, d: torch_model(smplx_torch.SMPLX(gender="neutral", kernel=kernel), d),
         numpy_kernels=smplx_numpy.SMPLX.kernels,
         torch_kernels=smplx_torch.SMPLX.kernels,
     ),
     ModelSpec(
         "MANO",
-        lambda kernel: mano_numpy.MANO(side="left", kernel=kernel),
+        lambda _kernel: mano_numpy.MANO(side="left"),
         lambda kernel, d: torch_model(mano_torch.MANO(side="left", kernel=kernel), d),
         numpy_kernels=mano_numpy.MANO.kernels,
         torch_kernels=mano_torch.MANO.kernels,
@@ -114,27 +115,33 @@ MODELS = [
     ModelSpec(
         "SKEL",
         lambda _kernel: skel_numpy.SKEL(gender="male"),
-        lambda _kernel, d: torch_model(skel_torch.SKEL(gender="male"), d),
+        lambda kernel, d: torch_model(skel_torch.SKEL(gender="male", kernel=kernel), d),
+        torch_kernels=skel_torch.SKEL.kernels,
     ),
     ModelSpec(
         "FLAME",
-        lambda kernel: flame_numpy.FLAME(kernel=kernel),
+        lambda _kernel: flame_numpy.FLAME(),
         lambda kernel, d: torch_model(flame_torch.FLAME(kernel=kernel), d),
         numpy_kernels=flame_numpy.FLAME.kernels,
         torch_kernels=flame_torch.FLAME.kernels,
     ),
     ModelSpec(
         "ANNY",
-        lambda kernel: anny_numpy.ANNY(kernel=kernel),
+        lambda _kernel: anny_numpy.ANNY(),
         lambda kernel, d: torch_model(anny_torch.ANNY(kernel=kernel), d),
         numpy_kernels=anny_numpy.ANNY.kernels,
         torch_kernels=anny_torch.ANNY.kernels,
     ),
-    ModelSpec("MHR", lambda _kernel: mhr_numpy.MHR(), lambda _kernel, d: torch_model(mhr_torch.MHR(), d)),
+    ModelSpec(
+        "MHR",
+        lambda _kernel: mhr_numpy.MHR(),
+        lambda kernel, d: torch_model(mhr_torch.MHR(kernel=kernel), d),
+        torch_kernels=mhr_torch.MHR.kernels,
+    ),
     ModelSpec(
         "BRAINCO",
         lambda _kernel: brainco_numpy.BrainCoHand(side="right"),
-        None,
+        lambda _kernel, d: torch_model(brainco_torch.BrainCoHand(side="right"), d),
         vertices_method="forward_links",
     ),
     ModelSpec(
@@ -185,7 +192,7 @@ MODELS = [
     ),
     ModelSpec(
         "GARMENT-MEASUREMENTS",
-        lambda kernel: garment_measurements_numpy.GarmentMeasurements(kernel=kernel),
+        lambda _kernel: garment_measurements_numpy.GarmentMeasurements(),
         lambda kernel, d: torch_model(garment_measurements_torch.GarmentMeasurements(kernel=kernel), d),
         numpy_kernels=garment_measurements_numpy.GarmentMeasurements.kernels,
         torch_kernels=garment_measurements_torch.GarmentMeasurements.kernels,

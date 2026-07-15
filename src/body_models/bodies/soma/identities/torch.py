@@ -15,7 +15,7 @@ from ...anny.torch import ANNY
 from ...mhr.torch import MHR
 from ...smpl.torch import SMPL
 from ...smplx.torch import SMPLX
-from ..backends import core
+from .. import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
 from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape
 

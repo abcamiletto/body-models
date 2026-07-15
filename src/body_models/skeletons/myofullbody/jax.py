@@ -1,199 +1,21 @@
-"""JAX backend for the MyoFullBody musculoskeletal model."""
+"""JAX MyoFullBody model."""
 
 from pathlib import Path
-from typing import Any
 
 import jax
-import jax.numpy as jnp
-from jaxtyping import Float, Int
 
-from body_models import common
-from body_models.base import RigidBodyModel
-from trimesh import Trimesh
-from body_models.skeletons.myofullbody.backends import core
-from body_models.skeletons.myofullbody.backends import jax as backend
-from body_models.skeletons.myofullbody.io import load_model_data
-from body_models.skeletons.myofullbody.constants import (
-    MYOFULLBODY_BODY_PRESETS,
-    MYOFULLBODY_JOINTS,
-)
-
-__all__ = ["MyoFullBody"]
+from body_models.runtime import JaxModel, JaxRuntime
+from body_models.skeletons.myofullbody.model import MyoFullBodyModel
 
 
-class MyoFullBody(RigidBodyModel):
-    """MyoSuite-derived full-body MJCF model with rigid STL link meshes."""
+@jax.tree_util.register_pytree_node_class
+class MyoFullBody(MyoFullBodyModel, JaxModel):
+    """MyoFullBody using JAX arrays."""
 
-    JOINTS = MYOFULLBODY_JOINTS
-    mujoco_to_model = core.MUJOCO_TO_KIMODO
+    kernels = ("jax",)
 
     def __init__(self, model_path: Path | str | None = None) -> None:
-        """Initialize the MyoFullBody model.
+        MyoFullBodyModel.__init__(self, model_path, runtime=JaxRuntime())
 
-        Args:
-            model_path: Path to model assets, or the default assets when omitted.
-        """
-        self.weights = common.jaxify(load_model_data(model_path))
 
-    @property
-    def faces(self) -> Int[jax.Array, "F 3"]:
-        return self.weights.faces
-
-    @property
-    def num_joints(self) -> int:
-        return len(self.weights.joint_names)
-
-    @property
-    def joint_names(self) -> list[str]:
-        return self.weights.joint_names
-
-    @property
-    def parents(self) -> list[int]:
-        return self.weights.parents
-
-    @property
-    def actuated_joint_names(self) -> list[str]:
-        return self.weights.actuated_joint_names
-
-    @property
-    def actuated_joint_types(self) -> list[str]:
-        return self.weights.actuated_joint_types
-
-    @property
-    def actuated_joint_limits(self) -> Float[jax.Array, "Q 2"]:
-        return self.weights.actuated_joint_limits
-
-    @property
-    def link_names(self) -> list[str]:
-        return self.weights.link_names
-
-    @property
-    def link_joint_indices(self) -> list[int]:
-        return self.weights.link_joint_indices
-
-    @property
-    def link_vertex_starts(self) -> list[int]:
-        return self.weights.link_vertex_starts
-
-    @property
-    def link_geom_positions(self) -> Float[jax.Array, "L 3"]:
-        return self.weights.link_geom_positions
-
-    @property
-    def link_geom_rotations(self) -> Float[jax.Array, "L 3 3"]:
-        return self.weights.link_geom_rotations
-
-    @property
-    def site_names(self) -> list[str]:
-        return self.weights.site_names
-
-    @property
-    def site_positions(self) -> Float[jax.Array, "S 3"]:
-        return self.weights.site_positions
-
-    @property
-    def site_body_indices(self) -> list[int]:
-        return self.weights.site_body_indices
-
-    @property
-    def tendons(self) -> list[dict]:
-        return self.weights.tendons
-
-    @property
-    def num_vertices(self) -> int:
-        return self.weights.vertices.shape[0]
-
-    def forward_skeleton(
-        self,
-        body_pose: Float[jax.Array, "B Q"],
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        *,
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
-        joint_indices: Any | None = None,
-    ) -> Float[jax.Array, "B J 4 4"]:
-        """Compute posed joint transforms.
-
-        Args:
-            body_pose: Local body joint rotations.
-            global_translation: Global model translation.
-            global_rotation: Global model rotation.
-            joint_indices: Optional subset of joints to return.
-
-        Returns:
-            Joint transforms in the model hierarchy.
-        """
-        return backend.forward_skeleton(
-            weights=self.weights,
-            body_pose=body_pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
-            joint_indices=joint_indices,
-        )
-
-    def forward_meshes(
-        self,
-        body_pose: Float[jax.Array, "B Q"],
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        *,
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
-    ) -> list[Trimesh]:
-        """Compute posed model meshes.
-
-        Args:
-            body_pose: Local body joint rotations.
-            global_translation: Global model translation.
-            global_rotation: Global model rotation.
-
-        Returns:
-            One posed model mesh per batch element.
-        """
-        return backend.forward_meshes(
-            weights=self.weights,
-            body_pose=body_pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
-        )
-
-    def forward_links(
-        self,
-        body_pose: Float[jax.Array, "B Q"],
-        global_translation: Float[jax.Array, "B 3"] | None = None,
-        *,
-        global_rotation: Float[jax.Array, "B 3"] | None = None,
-    ) -> Float[jax.Array, "B L 4 4"]:
-        return backend.forward_links(
-            weights=self.weights,
-            body_pose=body_pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
-        )
-
-    def world_sites(self, skeleton: Float[jax.Array, "B J 4 4"]) -> Float[jax.Array, "B S 3"]:
-        return backend.world_sites(self.weights, skeleton)
-
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype=jnp.float32) -> dict[str, jax.Array]:
-        return {
-            "body_pose": jnp.zeros((*batch_dims, self.num_actuated), dtype=dtype),
-            "global_rotation": jnp.zeros((*batch_dims, 3), dtype=dtype),
-            "global_translation": jnp.zeros((*batch_dims, 3), dtype=dtype),
-        }
-
-    def get_tpose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        body_pose = jnp.asarray(MYOFULLBODY_BODY_PRESETS["t_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params
-
-    def get_apose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        **kwargs,
-    ) -> dict[str, jax.Array]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        body_pose = jnp.asarray(MYOFULLBODY_BODY_PRESETS["a_pose"], dtype=params["body_pose"].dtype)
-        params["body_pose"] = jnp.broadcast_to(body_pose, (*batch_dims, *body_pose.shape))
-        return params
+__all__ = ["MyoFullBody"]

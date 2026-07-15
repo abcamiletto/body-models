@@ -10,10 +10,10 @@
 """Generate reference assets from the official smplx package (FLAME model).
 
 Runs the official smplx FLAME implementation to produce vertices and joints, and saves
-inputs/outputs under `tests/assets/references/flame`.
+inputs/outputs under `tests/assets/flame`.
 
 Usage:
-    uv run scripts/generate_flame_reference.py /path/to/flame_model_dir/
+    uv run tests/generate_assets/generate_flame_reference.py /path/to/flame_model_dir/
 
 Note: The model path must point to FLAME_NEUTRAL.pkl (converted to pure numpy format,
 without chumpy dependencies) and dummy embedding files (flame_static_embedding.pkl,
@@ -30,7 +30,7 @@ import torch
 
 torch.manual_seed(42)
 
-TEST_ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets" / "references" / "flame"
+TEST_ASSETS_DIR = Path(__file__).parents[1] / "assets" / "flame"
 NUM_CASES = 5
 
 

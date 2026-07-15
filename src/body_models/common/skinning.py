@@ -6,6 +6,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models.common import ops
+from body_models.common.kinematics import affine_transforms
 from body_models.rotations import RotationType
 
 Array = Any
@@ -42,16 +43,19 @@ def compact_linear_blend_skinning(
     if xp is None:
         xp = ops.get_namespace(vertices)
 
-    num_vertices, num_slots = joint_indices.shape
-    flat_indices = joint_indices.reshape(-1)
-
-    rotations = transforms[..., flat_indices, :3, :3]
-    rotations = rotations.reshape(*transforms.shape[:-3], num_vertices, num_slots, 3, 3)
-    translations = transforms[..., flat_indices, :3, 3]
-    translations = translations.reshape(*transforms.shape[:-3], num_vertices, num_slots, 3)
-
-    transformed = xp.einsum("...vkij,...vj->...vki", rotations, vertices) + translations
-    return xp.sum(transformed * joint_weights[..., None], axis=-2)
+    result = xp.zeros_like(vertices)
+    transforms_by_joint = xp.moveaxis(transforms, -3, 0)
+    for slot in range(joint_indices.shape[1]):
+        indices = joint_indices[:, slot]
+        valid = indices >= 0
+        safe_indices = xp.maximum(indices, xp.zeros_like(indices))
+        vertex_transforms = xp.moveaxis(transforms_by_joint[safe_indices], 0, -3)
+        rotations = vertex_transforms[..., :3, :3]
+        translations = vertex_transforms[..., :3, 3]
+        transformed = xp.einsum("...vij,...vj->...vi", rotations, vertices) + translations
+        weights = joint_weights[:, slot] * valid
+        result = result + transformed * weights[:, None]
+    return result
 
 
 def bind_relative_transforms(
@@ -95,3 +99,43 @@ def apply_global_transform(
     if translation is not None:
         points = points + translation[..., None, :]
     return points
+
+
+def transform_skeleton(
+    transforms: Float[Array, "*batch J 4 4"],
+    rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+    translation: Float[Array, "*batch 3"] | None,
+    rotation_type: RotationType = "axis_angle",
+    joint_indices: list[int] | None = None,
+    *,
+    xp: Any = None,
+) -> Float[Array, "*batch J 4 4"]:
+    """Select joints and apply an optional global transform to a skeleton."""
+    if translation is not None and (translation.ndim < 1 or translation.shape[-1] != 3):
+        raise ValueError("translation must have shape [..., 3]")
+    if xp is None:
+        xp = ops.get_namespace(transforms)
+
+    if joint_indices is not None:
+        joint_indices = [int(joint) for joint in joint_indices]
+        num_joints = transforms.shape[-3]
+        if any(joint < 0 or joint >= num_joints for joint in joint_indices):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+        transforms = transforms[..., joint_indices, :, :]
+
+    if rotation is None and translation is None:
+        return transforms
+    if rotation is None:
+        assert translation is not None
+        positions = transforms[..., :3, 3] + translation[..., None, :]
+        return ops.set(transforms, (..., slice(None, 3), 3), positions, xp=xp)
+
+    rotations = transforms[..., :3, :3]
+    positions = transforms[..., :3, 3]
+    global_rotation = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
+    positions = (global_rotation @ positions.mT).mT
+    rotations = global_rotation[..., None, :, :] @ rotations
+    if translation is not None:
+        positions = positions + translation[..., None, :]
+
+    return affine_transforms(rotations, positions, xp=xp)

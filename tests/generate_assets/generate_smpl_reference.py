@@ -9,10 +9,10 @@
 """Generate reference assets from the official smplx package (SMPL model).
 
 Runs the official smplx implementation to produce vertices and joints, and saves
-inputs/outputs under `tests/assets/references/smpl-neutral`.
+inputs/outputs under `tests/assets/smpl`.
 
 Usage:
-    uv run scripts/generate_smpl_reference.py /path/to/SMPL_NEUTRAL.npz
+    uv run tests/generate_assets/generate_smpl_reference.py /path/to/SMPL_NEUTRAL.npz
 """
 
 import argparse
@@ -25,7 +25,7 @@ import torch
 
 torch.manual_seed(42)
 
-TEST_ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets" / "references" / "smpl-neutral"
+TEST_ASSETS_DIR = Path(__file__).parents[1] / "assets" / "smpl"
 NUM_CASES = 5
 
 
