@@ -15,4 +15,4 @@ body-models download garment-measurements
 
 ## API
 
-::: body_models.bodies.garment_measurements.numpy.GarmentMeasurements
+::: body_models.garment_measurements.numpy.GarmentMeasurements

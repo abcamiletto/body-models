@@ -8,13 +8,13 @@ import torch
 import torch.nn as nn
 
 from body_models.bodies.soma.correctives import hidden_activations
-from body_models.runtime import TorchRuntime
+from body_models.runtime import Runtime
 
 
 class TorchCorrectiveNetwork(nn.Module):
     """SOMA corrective network with sparse and compile-safe output paths."""
 
-    def __init__(self, data: Any) -> None:
+    def __init__(self, runtime: Runtime, data: Any) -> None:
         super().__init__()
         correctives = data.correctives
         indices = torch.stack((correctives.corrective_W2_cols, correctives.corrective_W2_rows))
@@ -26,7 +26,7 @@ class TorchCorrectiveNetwork(nn.Module):
             (output_size, hidden_size),
         ).coalesce()
         self.register_buffer("transpose", transpose, persistent=False)
-        self._runtime = TorchRuntime()
+        self._runtime = runtime
 
     def forward(self, data: Any, pose_rotations: Any) -> Any:
         hidden = hidden_activations(self._runtime, data, pose_rotations)

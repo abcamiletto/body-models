@@ -141,27 +141,25 @@ class MHRModel(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
-        expression: Float[Array, "*batch 72"],
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Any | None = None,
-        *,
-        shape: Float[Array, "*batch 45"] | None = None,
-        identity: core.MhrIdentity | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-            identity = self.prepare_identity(shape, expression, skip_vertices=True)
-
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, skip_vertices=True)
+        pose = pack_pose(xp, body_pose, head_pose, hand_pose)
+        skeleton = core.prepare_skeleton(
+            joint_offsets=self.weights.joint_offsets,
+            joint_pre_rotations=self.weights.joint_pre_rotations,
+            parameter_transform=self.weights.parameter_transform,
+            kinematic_fronts=self.weights.kinematic_fronts,
+            num_joints=self.num_joints,
+            shape_dim=self.SHAPE_DIM,
+            pose=pose,
+            xp=xp,
+        )
         return skinning.transform_skeleton(
-            pose["skeleton_transforms"],
+            skeleton,
             global_rotation,
             global_translation,
             "axis_angle",
@@ -173,16 +171,14 @@ class MHRModel(SkinnedModel):
         self,
         shape: Float[Array, "*batch 45"],
         expression: Float[Array, "*batch 72"],
-        skip_vertices: bool = False,
     ) -> core.MhrIdentity:
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            base_vertices=None if skip_vertices else self.weights.base_vertices,
-            blendshape_dirs=None if skip_vertices else self.weights.blendshape_dirs,
+            base_vertices=self.weights.base_vertices,
+            blendshape_dirs=self.weights.blendshape_dirs,
             shape=shape,
             expression=expression,
-            skip_vertices=skip_vertices,
         )
 
     def prepare_pose(
@@ -190,8 +186,6 @@ class MHRModel(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
-        *,
-        skip_vertices: bool = False,
     ) -> core.MhrPreparedPose:
         """Precompute pose-dependent MHR state."""
         pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
@@ -207,7 +201,6 @@ class MHRModel(SkinnedModel):
             corrective_W1=self.weights.corrective_W1,
             corrective_W2=self.weights.corrective_W2,
             pose=pose,
-            skip_vertices=skip_vertices,
             xp=self._runtime.xp,
         )
 

@@ -125,13 +125,33 @@ def set(array: Array, slices: tuple, values: Array, *, copy: bool = True, xp: An
     return array
 
 
-def zeros_as(ref: Array, *, shape: tuple[int, ...], xp: Any = None) -> Array:
+def zeros_as(
+    ref: Array,
+    *,
+    shape: tuple[int, ...],
+    dtype: Any | None = None,
+    xp: Any = None,
+) -> Array:
     """Create a zero array with ref's backend/device/dtype and a target shape."""
     if xp is None:
         xp = get_namespace(ref)
-    z = xp.zeros_like(ref)
-    base = z if z.ndim == 0 else xp.reshape(z, (-1,))[:1]
-    return xp.broadcast_to(base, shape)
+    if dtype is None:
+        dtype = ref.dtype
+
+    if "torch" in xp.__name__:
+        return xp.zeros(shape, dtype=dtype, device=ref.device)
+
+    zeros = xp.zeros(shape, dtype=dtype)
+    if "jax" not in xp.__name__:
+        return zeros
+
+    device = getattr(ref, "device", None)
+    if device is None:
+        return zeros
+
+    import jax
+
+    return jax.device_put(zeros, device)
 
 
 def eye_as(ref: Array, *, batch_dims: tuple[int, ...], xp: Any = None) -> Array:

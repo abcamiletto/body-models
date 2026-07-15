@@ -1,6 +1,6 @@
 """Backend-independent SMPL-X pose and identity preparation."""
 
-from typing import Any, NotRequired, TypedDict
+from typing import Any, TypedDict
 
 from jaxtyping import Float
 from nanomanifold import SO3
@@ -12,20 +12,25 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 
-class SmplxIdentity(TypedDict):
-    """Shape- and expression-dependent SMPL-X state."""
+class SmplxSkeletonIdentity(TypedDict):
+    """Identity-dependent joint state needed to pose the SMPL-X skeleton."""
 
     rest_joints: Float[Array, "*batch J 3"]
     local_joint_offsets: Float[Array, "*batch J 3"]
-    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+
+
+class SmplxIdentity(SmplxSkeletonIdentity):
+    """Complete shape- and expression-dependent SMPL-X mesh state."""
+
+    rest_vertices: Float[Array, "*batch V 3"]
 
 
 class SmplxPreparedPose(TypedDict):
-    """Pose-dependent SMPL-X state."""
+    """Complete pose-dependent SMPL-X mesh state."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
     skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
+    pose_offsets: Float[Array, "*batch V 3"]
 
 
 def prepare_pose(
@@ -40,7 +45,6 @@ def prepare_pose(
     *,
     local_joint_offsets: Float[Array, "*batch J 3"],
     rest_joints: Float[Array, "*batch J 3"],
-    skip_vertices: bool,
     xp: Any,
 ) -> SmplxPreparedPose:
     """Prepare SMPL-X transforms and pose-dependent vertex offsets."""
@@ -63,15 +67,43 @@ def prepare_pose(
         rotation_type=rotation_type,
         local_joint_offsets=local_joint_offsets,
     )
-    pose: SmplxPreparedPose = {
+    return {
         "skeleton_transforms": world_transforms,
         "skinning_transforms": skinning.bind_relative_transforms(world_transforms, rest_joints, xp=xp),
+        "pose_offsets": deformation.pose_blend_shapes(pose_matrices, posedirs, xp=xp),
     }
-    if skip_vertices:
-        return pose
 
-    pose["pose_offsets"] = deformation.pose_blend_shapes(pose_matrices, posedirs, xp=xp)
-    return pose
+
+def prepare_skeleton(
+    kinematic_fronts: list[Front],
+    hand_mean: Float[Array, "2 45"],
+    body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
+    hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+    head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
+    pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+    rotation_type: RotationType,
+    *,
+    local_joint_offsets: Float[Array, "*batch J 3"],
+    xp: Any,
+) -> Float[Array, "*batch J 4 4"]:
+    """Prepare only posed SMPL-X joint transforms."""
+    pose_ndim = rotation_ndim(rotation_type) + 1
+    batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    if tuple(hand_pose.shape[:-pose_ndim]) != batch_shape or tuple(head_pose.shape[:-pose_ndim]) != batch_shape:
+        raise ValueError("body_pose, hand_pose, and head_pose must have the same batch shape")
+    local_joint_offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
+    _, transforms = _forward_core(
+        xp=xp,
+        kinematic_fronts=kinematic_fronts,
+        hand_mean=hand_mean,
+        body_pose=body_pose,
+        hand_pose=hand_pose,
+        head_pose=head_pose,
+        pelvis_rotation=pelvis_rotation,
+        rotation_type=rotation_type,
+        local_joint_offsets=local_joint_offsets,
+    )
+    return transforms
 
 
 def _forward_core(
@@ -127,18 +159,51 @@ def _forward_core(
 def prepare_identity(
     *,
     xp: Any,
-    v_template: Float[Array, "V 3"] | None,
-    shapedirs: Float[Array, "V 3 S"] | None,
-    exprdirs: Float[Array, "V 3 E"] | None,
+    v_template: Float[Array, "V 3"],
+    shapedirs: Float[Array, "V 3 S"],
+    exprdirs: Float[Array, "V 3 E"],
     j_template: Float[Array, "J 3"],
     j_shapedirs: Float[Array, "J 3 S"],
     j_exprdirs: Float[Array, "J 3 E"],
     parents: list[int],
     shape: Float[Array, "*batch S"],
     expression: Float[Array, "*batch E"],
-    skip_vertices: bool,
 ) -> SmplxIdentity:
     """Prepare shape- and expression-dependent SMPL-X state."""
+    identity = prepare_skeleton_identity(
+        xp=xp,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        j_exprdirs=j_exprdirs,
+        parents=parents,
+        shape=shape,
+        expression=expression,
+    )
+    shape_dim = shape.shape[-1]
+    expression_dim = expression.shape[-1]
+    parameters = xp.concat([shape, expression], axis=-1)
+    directions = xp.concat(
+        [shapedirs[:, :, :shape_dim], exprdirs[:, :, :expression_dim]],
+        axis=-1,
+    )
+    return {
+        "rest_joints": identity["rest_joints"],
+        "local_joint_offsets": identity["local_joint_offsets"],
+        "rest_vertices": deformation.blend_shapes(v_template, directions, parameters, xp=xp),
+    }
+
+
+def prepare_skeleton_identity(
+    *,
+    xp: Any,
+    j_template: Float[Array, "J 3"],
+    j_shapedirs: Float[Array, "J 3 S"],
+    j_exprdirs: Float[Array, "J 3 E"],
+    parents: list[int],
+    shape: Float[Array, "*batch S"],
+    expression: Float[Array, "*batch E"],
+) -> SmplxSkeletonIdentity:
+    """Prepare only identity-dependent SMPL-X joint state."""
     if shape.ndim < 1 or shape.shape[-1] < 1:
         raise ValueError("shape must have shape [..., S] with S >= 1")
     if expression.ndim < 1 or expression.shape[-1] < 1:
@@ -152,18 +217,10 @@ def prepare_identity(
         axis=-1,
     )
     rest_joints = deformation.blend_shapes(j_template, joint_directions, parameters, xp=xp)
-    identity: SmplxIdentity = {
+    return {
         "rest_joints": rest_joints,
         "local_joint_offsets": kinematics.local_joint_offsets(rest_joints, parents, xp=xp),
     }
-    if not skip_vertices:
-        assert v_template is not None and shapedirs is not None and exprdirs is not None
-        directions = xp.concat(
-            [shapedirs[:, :, :shape_dim], exprdirs[:, :, :expression_dim]],
-            axis=-1,
-        )
-        identity["rest_vertices"] = deformation.blend_shapes(v_template, directions, parameters, xp=xp)
-    return identity
 
 
 __all__ = ["SmplxIdentity", "SmplxPreparedPose", "prepare_identity", "prepare_pose"]

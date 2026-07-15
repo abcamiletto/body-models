@@ -202,6 +202,19 @@ def download_skel(
     raise FileNotFoundError(f"Expected SKEL model files were not found in {cache_dir}")
 
 
+def download_skel_assets(
+    cache_dir: Path | None = None,
+    username: str | None = None,
+    password: str | None = None,
+) -> dict[str, Path]:
+    """Download SKEL and return its configured asset paths."""
+    directory = download_skel(cache_dir=cache_dir, username=username, password=password)
+    return {
+        "skel-female": directory / "skel_female.pkl",
+        "skel-male": directory / "skel_male.pkl",
+    }
+
+
 def _find_relative_path(cache_dir: Path, relative_path: str) -> Path | None:
     wanted = Path(relative_path)
     for path in cache_dir.rglob(wanted.name):

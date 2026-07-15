@@ -183,18 +183,23 @@ class SMPLXModel(SkinnedModel):
             batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-            identity = self.prepare_identity(shape, expression, skip_vertices=True)
+            skeleton_identity = self._prepare_skeleton_identity(shape, expression)
+        else:
+            skeleton_identity = identity
 
-        pose = self.prepare_pose(
+        skeleton = core.prepare_skeleton(
+            self.weights.kinematic_fronts,
+            self.weights.hand_mean,
             body_pose,
             hand_pose,
             head_pose,
             pelvis_rotation,
-            identity=identity,
-            skip_vertices=True,
+            self.rotation_type,
+            local_joint_offsets=skeleton_identity["local_joint_offsets"],
+            xp=xp,
         )
         return skinning.transform_skeleton(
-            pose["skeleton_transforms"],
+            skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
@@ -206,21 +211,19 @@ class SMPLXModel(SkinnedModel):
         self,
         shape: Float[Array, "*batch 10"],
         expression: Float[Array, "*batch 10"],
-        skip_vertices: bool = False,
     ) -> core.SmplxIdentity:
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=None if skip_vertices else self.weights.v_template,
-            shapedirs=None if skip_vertices else self.weights.shapedirs,
-            exprdirs=None if skip_vertices else self.weights.exprdirs,
+            v_template=self.weights.v_template,
+            shapedirs=self.weights.shapedirs,
+            exprdirs=self.weights.exprdirs,
             j_template=self.weights.j_template,
             j_shapedirs=self.weights.j_shapedirs,
             j_exprdirs=self.weights.j_exprdirs,
             parents=self.weights.parents,
             shape=shape,
             expression=expression,
-            skip_vertices=skip_vertices,
         )
 
     def prepare_pose(
@@ -231,7 +234,6 @@ class SMPLXModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
         identity: core.SmplxIdentity,
-        skip_vertices: bool = False,
     ) -> core.SmplxPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
@@ -246,7 +248,17 @@ class SMPLXModel(SkinnedModel):
             rotation_type=self.rotation_type,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
-            skip_vertices=skip_vertices,
+        )
+
+    def _prepare_skeleton_identity(self, shape: Array, expression: Array) -> core.SmplxSkeletonIdentity:
+        return core.prepare_skeleton_identity(
+            xp=self._runtime.xp,
+            j_template=self.weights.j_template,
+            j_shapedirs=self.weights.j_shapedirs,
+            j_exprdirs=self.weights.j_exprdirs,
+            parents=self.weights.parents,
+            shape=shape,
+            expression=expression,
         )
 
     def get_rest_pose(

@@ -169,11 +169,30 @@ class SKELModel(SkinnedModel):
                 raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[:-1]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape, skip_vertices=True)
+            skeleton_identity = self._prepare_skeleton_identity(shape)
+        else:
+            skeleton_identity = identity
 
-        pose = self.prepare_pose(body_pose, head_pose, identity=identity, skip_vertices=True)
+        packed_pose = pack_pose(xp, body_pose, head_pose)
+        skeleton = core.prepare_skeleton(
+            all_axes=self.weights.all_axes,
+            rotation_indices=self.weights.rotation_indices,
+            apose_R=self.weights.apose_R,
+            apose_t=self.weights.apose_t,
+            per_joint_rot=self.weights.per_joint_rot,
+            child=self.weights.child,
+            fixed_orientation_joints=self.weights.fixed_orientation_joints,
+            scapula_r_axes=self.weights.scapula_r_axes,
+            scapula_l_axes=self.weights.scapula_l_axes,
+            spine_axes=self.weights.spine_axes,
+            parents=self.weights.parents,
+            pose=packed_pose,
+            local_joint_offsets=skeleton_identity["local_joint_offsets"],
+            rest_joints=skeleton_identity["rest_joints"],
+            xp=xp,
+        )
         return skinning.transform_skeleton(
-            pose["skeleton_transforms"],
+            skeleton,
             global_rotation,
             global_translation,
             joint_indices=joint_indices,
@@ -203,7 +222,6 @@ class SKELModel(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-        skip_vertices: bool = False,
     ) -> core.SkelIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
@@ -213,7 +231,6 @@ class SKELModel(SkinnedModel):
             self.weights.j_shapedirs,
             self.weights.parent,
             shape,
-            skip_vertices=skip_vertices,
             xp=self._runtime.xp,
         )
 
@@ -223,7 +240,6 @@ class SKELModel(SkinnedModel):
         head_pose: Float[Array, "*batch 3"],
         *,
         identity: core.SkelIdentity,
-        skip_vertices: bool = False,
     ) -> core.SkelPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
@@ -244,7 +260,15 @@ class SKELModel(SkinnedModel):
             pose=packed_pose,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
-            skip_vertices=skip_vertices,
+            xp=self._runtime.xp,
+        )
+
+    def _prepare_skeleton_identity(self, shape: Array) -> core.SkelSkeletonIdentity:
+        return core.prepare_skeleton_identity(
+            self.weights.j_template,
+            self.weights.j_shapedirs,
+            self.weights.parent,
+            shape,
             xp=self._runtime.xp,
         )
 

@@ -8,7 +8,7 @@ from body_models.base import RigidBodyModel
 from body_models.registry import create_model, list_models
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_SOURCES, get_model_path
-from body_models.robots.smpl_humanoid.numpy import SmplHumanoid
+from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
 @pytest.fixture
@@ -174,8 +174,8 @@ def test_smpl_humanoid_to_smpl_motion_backends_match_numpy(smpl_humanoid_xml) ->
     pytest.importorskip("jax")
     import jax.numpy as jnp
 
-    from body_models.robots.smpl_humanoid.jax import SmplHumanoid as JaxSmplHumanoid
-    from body_models.robots.smpl_humanoid.torch import SmplHumanoid as TorchSmplHumanoid
+    from body_models.smpl_humanoid.jax import SmplHumanoid as JaxSmplHumanoid
+    from body_models.smpl_humanoid.torch import SmplHumanoid as TorchSmplHumanoid
 
     model = SmplHumanoid(smpl_humanoid_xml)
     body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]

@@ -42,7 +42,7 @@ vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
-Use `kernel="warp"` when constructing a supported Torch model to replace only
+Use `skinning_backend="warp"` when constructing a supported Torch model to replace only
 its compact skinning operation with the differentiable Warp lowering. The model
 API and all model-specific preparation remain unchanged.
 
@@ -62,8 +62,9 @@ skeleton = model.forward_skeleton(**params, identity=identity)
 ```
 
 For models with expression-dependent rest state, such as SMPL-X and FLAME, pass
-both identity controls to `prepare_identity(shape, expression)`. Skeleton-only
-work can use `skip_vertices=True` to avoid preparing rest vertices.
+both identity controls to `prepare_identity(shape, expression)`. Prepared
+identities and poses are always complete mesh-ready values; skeleton forwards
+use separate lightweight internal preparation and never return partial state.
 
 ## Supported Models
 

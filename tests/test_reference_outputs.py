@@ -6,13 +6,13 @@ from nanomanifold import SO3
 
 import model_assets
 import model_cases
-from body_models.anny import pose as anny_pose
+from body_models.bodies.anny import pose as anny_pose
 from body_models.base import RigidBodyModel
-from body_models.mhr import pose as mhr_pose
-from body_models.skel import pose as skel_pose
+from body_models.bodies.mhr import pose as mhr_pose
+from body_models.skeletons.skel import pose as skel_pose
 from body_models.bodies.soma import pose as soma_pose
 from body_models.bodies.soma.generate_asset import generate_asset as generate_soma_asset
-from body_models.bodies.soma.numpy import SOMA
+from body_models.soma.numpy import SOMA
 from body_models.common import skinning
 
 
@@ -35,7 +35,7 @@ def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, k
 def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
     model = numpy_model(**kwargs)
     inputs = reference_inputs(name)
-    skeleton = model.forward_skeleton(**inputs)
+    skeleton = model_cases.forward_skeleton(model, inputs)
     skeleton_outputs = {"anny": "bone_poses.npy", "mhr": "skeleton.npy", "skel": "joints.npy"}
     filename = skeleton_outputs.get(name, "joints.npy")
     expected = np.load(model_cases.ASSETS / name / "outputs/0" / filename)

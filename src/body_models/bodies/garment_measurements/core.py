@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, NotRequired, TypedDict
+from typing import Any, TypedDict
 
 from jaxtyping import Float
 from nanomanifold import SE3, SO3
@@ -17,7 +17,7 @@ Front = tuple[list[int], list[int]]
 class GarmentMeasurementsIdentity(TypedDict):
     """Shape-dependent GarmentMeasurements state."""
 
-    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+    rest_vertices: Float[Array, "*batch V 3"]
     bind_skeleton: Float[Array, "*batch J 7"]
     local_bind_translations: Float[Array, "*batch J 3"]
 
@@ -26,7 +26,7 @@ class GarmentMeasurementsPreparedPose(TypedDict):
     """Pose-dependent GarmentMeasurements state."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
+    skinning_transforms: Float[Array, "*batch J 4 4"]
 
 
 def prepare_pose(
@@ -37,7 +37,6 @@ def prepare_pose(
     *,
     bind_skeleton: Float[Array, "*batch J 7"],
     local_bind_translations: Float[Array, "*batch J 3"],
-    skip_vertices: bool,
     xp: Any,
 ) -> GarmentMeasurementsPreparedPose:
     """Prepare posed skeleton and bind-relative skinning transforms."""
@@ -56,11 +55,37 @@ def prepare_pose(
         rotation_type=rotation_type,
         xp=xp,
     )
-    prepared: GarmentMeasurementsPreparedPose = {"skeleton_transforms": SE3.to_matrix(skeleton, xp=xp)}
-    if not skip_vertices:
-        skinning = SE3.multiply(skeleton, SE3.inverse(bind_skeleton, xp=xp), xp=xp)
-        prepared["skinning_transforms"] = SE3.to_matrix(skinning, xp=xp)
-    return prepared
+    skinning = SE3.multiply(skeleton, SE3.inverse(bind_skeleton, xp=xp), xp=xp)
+    return {
+        "skeleton_transforms": SE3.to_matrix(skeleton, xp=xp),
+        "skinning_transforms": SE3.to_matrix(skinning, xp=xp),
+    }
+
+
+def prepare_skeleton(
+    bind_quats: Float[Array, "J 4"],
+    kinematic_fronts: list[Front],
+    pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
+    rotation_type: RotationType,
+    *,
+    local_bind_translations: Float[Array, "*batch J 3"],
+    xp: Any,
+) -> Float[Array, "*batch J 4 4"]:
+    """Prepare only posed GarmentMeasurements joint transforms."""
+    batch_shape = pose.shape[: -(rotation_ndim(rotation_type) + 1)]
+    local_bind_translations = xp.broadcast_to(
+        local_bind_translations,
+        (*batch_shape, *local_bind_translations.shape[-2:]),
+    )
+    skeleton = _forward_skeleton_se3(
+        bind_quats=bind_quats,
+        local_bind_translations=local_bind_translations,
+        kinematic_fronts=kinematic_fronts,
+        pose=pose,
+        rotation_type=rotation_type,
+        xp=xp,
+    )
+    return SE3.to_matrix(skeleton, xp=xp)
 
 
 def prepare_identity(
@@ -73,7 +98,6 @@ def prepare_identity(
     mvc_weights: Float[Array, "V J"],
     kinematic_fronts: list[Front],
     shape: Float[Array, "*batch C"],
-    skip_vertices: bool,
 ) -> GarmentMeasurementsIdentity:
     """Prepare shape-dependent surface and bind skeleton."""
     if shape.ndim < 1 or shape.shape[-1] != eigenvalues.shape[0]:
@@ -89,13 +113,11 @@ def prepare_identity(
         kinematic_fronts,
         xp=xp,
     )
-    identity: GarmentMeasurementsIdentity = {
+    return {
+        "rest_vertices": rest_vertices,
         "bind_skeleton": SE3.from_rt(bind_global_quats, joint_positions, xp=xp),
         "local_bind_translations": local_translations,
     }
-    if not skip_vertices:
-        identity["rest_vertices"] = rest_vertices
-    return identity
 
 
 def _forward_skeleton_se3(

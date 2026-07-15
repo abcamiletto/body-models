@@ -22,4 +22,4 @@ body-models set smplx-female /path/to/SMPLX_FEMALE.npz
 
 ## API
 
-::: body_models.bodies.smplx.numpy.SMPLX
+::: body_models.smplx.numpy.SMPLX

@@ -13,23 +13,6 @@ class CorrectiveNetwork(Protocol):
     def __call__(self, data: Any, pose_rotations: Any) -> Any: ...
 
 
-def create_corrective_network(runtime: Runtime, data: Any) -> CorrectiveNetwork:
-    """Build the efficient corrective-network lowering for a runtime."""
-    if runtime.name == "numpy":
-        from body_models.bodies.soma.correctives_numpy import NumpyCorrectiveNetwork
-
-        return NumpyCorrectiveNetwork(data)
-    if runtime.name == "torch":
-        from body_models.bodies.soma.correctives_torch import TorchCorrectiveNetwork
-
-        return TorchCorrectiveNetwork(data)
-    if runtime.name == "jax":
-        from body_models.bodies.soma.correctives_jax import JaxCorrectiveNetwork
-
-        return JaxCorrectiveNetwork()
-    raise ValueError(f"SOMA does not support runtime {runtime.name!r}")
-
-
 def hidden_activations(runtime: Runtime, data: Any, pose_rotations: Any) -> Any:
     """Evaluate the dense first layer shared by all sparse output lowerings."""
     correctives = data.correctives
@@ -44,4 +27,4 @@ def hidden_activations(runtime: Runtime, data: Any, pose_rotations: Any) -> Any:
     return runtime.xp.maximum(hidden, runtime.asarray(0.0, like=hidden))
 
 
-__all__ = ["CorrectiveNetwork", "create_corrective_network", "hidden_activations"]
+__all__ = ["CorrectiveNetwork", "hidden_activations"]

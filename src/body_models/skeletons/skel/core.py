@@ -1,7 +1,7 @@
 """Backend-independent SKEL identity and pose preparation."""
 
 import math
-from typing import Any, NotRequired, TypedDict
+from typing import Any, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -20,20 +20,25 @@ NUM_POSE_PARAMS = 46
 NUM_BETAS = 10
 
 
-class SkelIdentity(TypedDict):
-    """Shape-dependent SKEL state returned by ``prepare_identity``."""
+class SkelSkeletonIdentity(TypedDict):
+    """Shape-dependent joint state needed to pose the SKEL skeleton."""
 
     rest_joints: Float[Array, "*batch 24 3"]
     local_joint_offsets: Float[Array, "*batch 24 3"]
-    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+
+
+class SkelIdentity(SkelSkeletonIdentity):
+    """Complete shape-dependent SKEL mesh state."""
+
+    rest_vertices: Float[Array, "*batch V 3"]
 
 
 class SkelPreparedPose(TypedDict):
-    """Pose-dependent SKEL state returned by ``prepare_pose``."""
+    """Complete pose-dependent SKEL mesh state."""
 
     skeleton_transforms: Float[Array, "*batch 24 4 4"]
     skinning_transforms: Float[Array, "*batch 24 4 4"]
-    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
+    pose_offsets: Float[Array, "*batch V 3"]
 
 
 def prepare_pose(
@@ -54,7 +59,6 @@ def prepare_pose(
     *,
     local_joint_offsets: Float[Array, "*batch 24 3"],
     rest_joints: Float[Array, "*batch 24 3"],
-    skip_vertices: bool = False,
     xp: Any,
 ) -> SkelPreparedPose:
     """Precompute pose-dependent SKEL state for repeated forward passes."""
@@ -79,20 +83,57 @@ def prepare_pose(
     )
     G = _propagate_transforms(xp, G_local, parents[1:])
 
-    prepared_pose: SkelPreparedPose = {
-        "skeleton_transforms": G,
-        "skinning_transforms": skinning.bind_relative_transforms(G, rest_joints, xp=xp),
-    }
-    if skip_vertices:
-        return prepared_pose
     eye3 = common.eye_as(G_local[..., :3, :3], batch_dims=(*batch_shape, 1), xp=xp)
     R_smpl = xp.broadcast_to(eye3, (*batch_shape, num_joints_smpl, 3, 3))
     R_smpl = common.set(
         R_smpl, (..., SMPL_JOINT_MAP, slice(None), slice(None)), G_local[..., :, :3, :3], copy=True, xp=xp
     )
     pose_feat = (R_smpl[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
-    prepared_pose["pose_offsets"] = (pose_feat @ posedirs).reshape(*batch_shape, -1, 3)
-    return prepared_pose
+    return {
+        "skeleton_transforms": G,
+        "skinning_transforms": skinning.bind_relative_transforms(G, rest_joints, xp=xp),
+        "pose_offsets": (pose_feat @ posedirs).reshape(*batch_shape, -1, 3),
+    }
+
+
+def prepare_skeleton(
+    all_axes: Float[Array, "47 3"],
+    rotation_indices: Int[Array, "24 3"],
+    apose_R: Float[Array, "24 3 3"],
+    apose_t: Float[Array, "24 3"],
+    per_joint_rot: Float[Array, "24 3 3"],
+    child: Int[Array, "24"],
+    fixed_orientation_joints: Int[Array, "6"],
+    scapula_r_axes: Float[Array, "3 3"],
+    scapula_l_axes: Float[Array, "3 3"],
+    spine_axes: Float[Array, "3 3"],
+    parents: list[int],
+    pose: Float[Array, "*batch 46"],
+    *,
+    local_joint_offsets: Float[Array, "*batch 24 3"],
+    rest_joints: Float[Array, "*batch 24 3"],
+    xp: Any,
+) -> Float[Array, "*batch 24 4 4"]:
+    """Prepare only posed SKEL joint transforms."""
+    if pose.ndim < 1 or pose.shape[-1] != NUM_POSE_PARAMS:
+        raise ValueError(f"pose must have shape [..., {NUM_POSE_PARAMS}]")
+    local = _compute_local_transforms(
+        xp=xp,
+        pose=pose,
+        J=rest_joints,
+        J_rel=local_joint_offsets,
+        all_axes=all_axes,
+        rotation_indices=rotation_indices,
+        apose_R=apose_R,
+        apose_t=apose_t,
+        per_joint_rot=per_joint_rot,
+        child=child,
+        fixed_orientation_joints=fixed_orientation_joints,
+        scapula_r_axes=scapula_r_axes,
+        scapula_l_axes=scapula_l_axes,
+        spine_axes=spine_axes,
+    )
+    return _propagate_transforms(xp, local, parents[1:])
 
 
 def prepare_identity(
@@ -102,21 +143,34 @@ def prepare_identity(
     j_shapedirs: Float[Array, "24 3 B"],
     parent: Int[Array, "23"],
     shape: Float[Array, "*batch 10"],
-    skip_vertices: bool = False,
     *,
     xp: Any,
 ) -> SkelIdentity:
     """Precompute shape-dependent SKEL state for repeated forward passes."""
+    identity = prepare_skeleton_identity(j_template, j_shapedirs, parent, shape, xp=xp)
+    return {
+        "rest_joints": identity["rest_joints"],
+        "local_joint_offsets": identity["local_joint_offsets"],
+        "rest_vertices": v_template + xp.einsum("vdi,...i->...vd", shapedirs, shape),
+    }
+
+
+def prepare_skeleton_identity(
+    j_template: Float[Array, "24 3"],
+    j_shapedirs: Float[Array, "24 3 B"],
+    parent: Int[Array, "23"],
+    shape: Float[Array, "*batch 10"],
+    *,
+    xp: Any,
+) -> SkelSkeletonIdentity:
+    """Prepare only shape-dependent SKEL joint state."""
     if shape.ndim < 1 or shape.shape[-1] != NUM_BETAS:
         raise ValueError(f"shape must have shape [..., {NUM_BETAS}]")
     joints = j_template + xp.einsum("jdi,...i->...jd", j_shapedirs, shape)
-    identity: SkelIdentity = {
+    return {
         "rest_joints": joints,
         "local_joint_offsets": _compute_J_rel(xp, joints, parent),
     }
-    if not skip_vertices:
-        identity["rest_vertices"] = v_template + xp.einsum("vdi,...i->...vd", shapedirs, shape)
-    return identity
 
 
 def _compute_J_rel(

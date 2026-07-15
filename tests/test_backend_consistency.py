@@ -1,3 +1,5 @@
+from inspect import signature
+
 import numpy as np
 import pytest
 from trimesh import Trimesh
@@ -123,22 +125,23 @@ def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_mode
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)
-def test_kernels_match_default(name, numpy_model, torch_model, _jax_model, kwargs) -> None:
+def test_skinning_backends_match_default(name, numpy_model, torch_model, _jax_model, kwargs) -> None:
     numpy_instance = numpy_model(**kwargs)
-    for kernel in getattr(numpy_instance, "kernels", ())[1:]:
+    for skinning_backend in getattr(numpy_instance, "skinning_backends", ())[1:]:
         params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
         expected = numpy_instance.forward_vertices(**params)
-        actual = numpy_model(kernel=kernel, **kwargs).forward_vertices(**params)
+        actual = numpy_model(skinning_backend=skinning_backend, **kwargs).forward_vertices(**params)
         np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
 
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
-    for kernel in getattr(torch_instance, "kernels", ())[1:]:
+    for skinning_backend in getattr(torch_instance, "skinning_backends", ())[1:]:
         params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
         vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():
             expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
-            actual = torch_model(kernel=kernel, **kwargs).forward_vertices(**params, vertex_indices=vertex_indices)
+            model = torch_model(skinning_backend=skinning_backend, **kwargs)
+            actual = model.forward_vertices(**params, vertex_indices=vertex_indices)
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
@@ -189,6 +192,30 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
     assert_compatible(jax_instance, jax_params, jnp)
 
 
+@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)
+def test_prepared_states_are_complete(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
+    model = numpy_model(**kwargs)
+    params = model.get_rest_pose()
+    identity = model.prepare_identity(**{key: params[key] for key in model.identity_keys})
+    pose_params = {key: params[key] for key in model.pose_keys}
+    if "identity" in signature(model.prepare_pose).parameters:
+        pose_params["identity"] = identity
+    pose = model.prepare_pose(**pose_params)
+
+    assert "skip_vertices" not in signature(model.prepare_identity).parameters
+    assert "skip_vertices" not in signature(model.prepare_pose).parameters
+    assert "rest_vertices" in identity
+    assert "skinning_transforms" in pose
+    model.prepare_skinning(identity=identity, pose=pose)
+
+
+def test_mhr_skeleton_is_pose_only() -> None:
+    from body_models.mhr.numpy import MHR
+
+    parameters = signature(MHR().forward_skeleton).parameters
+    assert not {"shape", "expression", "identity"} & parameters.keys()
+
+
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_forward_accepts_arbitrary_leading_dimensions(
     name,
@@ -204,7 +231,7 @@ def test_skinned_forward_accepts_arbitrary_leading_dimensions(
         shaped_params = model.get_rest_pose(batch_dims=batch_shape)
 
         shaped_vertices = model.forward_vertices(**shaped_params, vertex_indices=vertex_indices)
-        shaped_skeleton = model.forward_skeleton(**shaped_params, joint_indices=joint_indices)
+        shaped_skeleton = model_cases.forward_skeleton(model, shaped_params, joint_indices=joint_indices)
 
         assert shaped_vertices.shape == (*batch_shape, len(vertex_indices), 3)
         assert shaped_skeleton.shape == (*batch_shape, len(joint_indices), 4, 4)
@@ -215,7 +242,7 @@ def test_skinned_forward_accepts_arbitrary_leading_dimensions(
                 key: value[entry_index][None] if batch_shape else value[None] for key, value in shaped_params.items()
             }
             entry_vertices = model.forward_vertices(**entry_params, vertex_indices=vertex_indices)[0]
-            entry_skeleton = model.forward_skeleton(**entry_params, joint_indices=joint_indices)[0]
+            entry_skeleton = model_cases.forward_skeleton(model, entry_params, joint_indices=joint_indices)[0]
 
             np.testing.assert_allclose(
                 np.asarray(shaped_vertices[entry_index]),
@@ -246,9 +273,9 @@ def test_prepared_identity_broadcasts_across_pose_batch(
         joint_indices = list(range(min(8, model.num_joints)))
 
         expected_vertices = model.forward_vertices(**params, vertex_indices=vertex_indices)
-        expected_skeleton = model.forward_skeleton(**params, joint_indices=joint_indices)
+        expected_skeleton = model_cases.forward_skeleton(model, params, joint_indices=joint_indices)
         vertices = model.forward_vertices(**params, identity=identity, vertex_indices=vertex_indices)
-        skeleton = model.forward_skeleton(**params, identity=identity, joint_indices=joint_indices)
+        skeleton = model_cases.forward_skeleton(model, params, identity=identity, joint_indices=joint_indices)
 
         assert vertices.shape == (3, len(vertex_indices), 3)
         assert skeleton.shape == (3, len(joint_indices), 4, 4)

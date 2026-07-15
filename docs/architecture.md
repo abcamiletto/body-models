@@ -13,12 +13,17 @@ Each model family follows the same file roles:
 | `io.py` | Resolve assets and load immutable NumPy model data. |
 | `core.py` | Model-specific mathematics with an explicit array namespace. |
 | `model.py` | Public signature, validation, state preparation, and forward orchestration. |
-| `numpy.py` | Construct the model program with `NumpyRuntime`. |
-| `torch.py` | Add `nn.Module` storage and construct `TorchRuntime`. |
-| `jax.py` | Construct `JaxRuntime` and use shared pytree behavior for ordinary model state. |
+| `body_models/<name>/numpy.py` | Construct the model program with `NumpyRuntime`. |
+| `body_models/<name>/torch.py` | Add `nn.Module` storage and construct `TorchRuntime`. |
+| `body_models/<name>/jax.py` | Construct `JaxRuntime` and define JAX pytree behavior. |
 
-The framework files are intentionally thin. A signature or behavior change is
-made once in `model.py`; NumPy, Torch, and JAX cannot silently drift apart.
+The public framework packages are real importable modules, while their model
+programs remain organized by semantic family under `bodies/`, `parts/`,
+`robots/`, and `skeletons/`. The wrappers are intentionally thin: a signature
+or behavior change is made once in `model.py`, so backends cannot drift apart.
+Public identity and pose preparation always returns complete mesh-ready state.
+Skeleton forwards use distinct model-local preparation paths, so an optimization
+cannot create a partial object that later fails in a mesh forward.
 
 ## Runtime boundary
 
@@ -30,7 +35,7 @@ made once in `model.py`; NumPy, Torch, and JAX cannot silently drift apart.
    skinning and dense skin-weight expansion.
 
 Warp is a Torch operation lowering, not a fourth copy of a model. Selecting
-`kernel="warp"` changes compact skinning while identity preparation, pose
+`skinning_backend="warp"` changes compact skinning while identity preparation, pose
 semantics, correctives, and public outputs remain the same model program.
 
 The shared skinning module contains only operations whose signatures are stable

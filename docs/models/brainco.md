@@ -30,4 +30,4 @@ The model exposes the six active Revo 2 joints for each hand: thumb metacarpal, 
 
 ## API
 
-::: body_models.robots.brainco.numpy.BrainCoHand
+::: body_models.brainco.numpy.BrainCoHand

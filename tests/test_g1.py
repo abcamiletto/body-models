@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from body_models.robots.g1.io import get_model_path
-from body_models.robots.g1.numpy import G1
+from body_models.g1.numpy import G1
 
 
 def test_g1_to_qpos_accepts_rest_pose_motion_dict() -> None:

@@ -10,10 +10,10 @@ from jaxtyping import Float
 
 from body_models import common
 
-from ...anny.jax import ANNY
-from ...mhr.jax import MHR
-from ...smpl.jax import SMPL
-from ...smplx.jax import SMPLX
+from body_models.anny.jax import ANNY
+from body_models.mhr.jax import MHR
+from body_models.smpl.jax import SMPL
+from body_models.smplx.jax import SMPLX
 from .. import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
 from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape
@@ -30,7 +30,19 @@ class IdentitySource:
     ) -> Float[jax.Array, "B V 3"]:
         raise NotImplementedError
 
+    def tree_flatten(self):
+        names = tuple(self.__dict__)
+        return tuple(getattr(self, name) for name in names), names
 
+    @classmethod
+    def tree_unflatten(cls, names, children):
+        obj = cls.__new__(cls)
+        for name, value in zip(names, children, strict=True):
+            setattr(obj, name, value)
+        return obj
+
+
+@jax.tree_util.register_pytree_node_class
 class MhrIdentitySource(IdentitySource):
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
         super().__init__(transfer_data)
@@ -44,6 +56,7 @@ class MhrIdentitySource(IdentitySource):
         return mhr_identity_shape(self.model, identity, scale_params, num_scale_params=68, xp=jnp)
 
 
+@jax.tree_util.register_pytree_node_class
 class AnnyIdentitySource(IdentitySource):
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
         super().__init__(transfer_data)
@@ -78,6 +91,7 @@ class AnnyIdentitySource(IdentitySource):
         )
 
 
+@jax.tree_util.register_pytree_node_class
 class LinearIdentitySource(IdentitySource):
     def __init__(self, model_type: str, transfer_data: SomaIdentityTransfer) -> None:
         super().__init__(transfer_data)
