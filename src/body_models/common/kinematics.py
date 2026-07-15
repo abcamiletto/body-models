@@ -1,9 +1,51 @@
-"""Shared skeleton utilities: kinematic fronts and sparse skin weights."""
+"""Shared skeleton utilities."""
+
+from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
 
+from body_models.common import ops
+
+Array = Any
+
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+
+
+def forward_kinematics(
+    rotations: Float[Array, "*batch J 3 3"],
+    translations: Float[Array, "*batch J 3"],
+    fronts: list[Front],
+    joint_indices: list[int] | None = None,
+    *,
+    xp: Any = None,
+) -> Float[Array, "*batch J 4 4"]:
+    """Compose local joint transforms into world-space transforms."""
+    if xp is None:
+        xp = ops.get_namespace(rotations)
+
+    num_joints = rotations.shape[-3]
+    batch_shape = rotations.shape[:-3]
+    upper = xp.concat([rotations, translations[..., None]], axis=-1)
+    bottom = ops.zeros_as(upper, shape=(*batch_shape, num_joints, 1, 4), xp=xp)
+    bottom = ops.set(bottom, (..., 0, 3), 1.0, xp=xp)
+    local_transforms = xp.concat([upper, bottom], axis=-2)
+
+    world_transforms: list[Float[Array, "*batch 4 4"] | None] = [None] * num_joints
+    for joints, parents in fronts:
+        if parents[0] < 0:
+            for joint in joints:
+                world_transforms[joint] = local_transforms[..., joint, :, :]
+            continue
+
+        parent_transforms = xp.stack([world_transforms[parent] for parent in parents], axis=-3)
+        front_transforms = parent_transforms @ local_transforms[..., joints, :, :]
+        for index, joint in enumerate(joints):
+            world_transforms[joint] = front_transforms[..., index, :, :]
+
+    if joint_indices is None:
+        return xp.stack(world_transforms, axis=-3)
+    return xp.stack([world_transforms[joint] for joint in joint_indices], axis=-3)
 
 
 def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:

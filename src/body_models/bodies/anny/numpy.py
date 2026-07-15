@@ -27,7 +27,6 @@ class ANNY(SkinnedModel):
     pose_keys = ("body_pose", "head_pose", "hand_pose")
     has_hands = True
     has_head = True
-    kernels = ("numpy", "numba")
     JOINTS = ANNY_JOINTS
 
     def __init__(
@@ -40,7 +39,6 @@ class ANNY(SkinnedModel):
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Literal["numpy", "numba"] = "numpy",
     ) -> None:
         """Initialize the ANNY model.
 
@@ -52,7 +50,6 @@ class ANNY(SkinnedModel):
             extrapolate_phenotypes: Whether phenotype values may extend beyond the trained range.
             simplify: Mesh simplification factor to apply while loading.
             rotation_type: Rotation representation expected by pose inputs.
-            kernel: Backend kernel used for forward evaluation.
         """
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig}")
@@ -62,15 +59,12 @@ class ANNY(SkinnedModel):
             raise ValueError("simplify must be >= 1.0")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in self.kernels:
-            raise ValueError(f"Invalid kernel: {kernel}")
 
         self.weights = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
         self.extrapolate_phenotypes = extrapolate_phenotypes
         self.all_phenotypes = all_phenotypes
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self._kernel = _get_kernel(kernel)
         self.phenotype_labels = (
             PHENOTYPE_LABELS if all_phenotypes else [x for x in PHENOTYPE_LABELS if x not in EXCLUDED_PHENOTYPES]
         )
@@ -143,7 +137,7 @@ class ANNY(SkinnedModel):
         prepared_pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         skinning_transforms = prepared_pose["skinning_transforms"]
         skinning_transforms = common.rotate_transforms(skinning_transforms, global_rotation, self.rotation_type, np)
-        return self._kernel.forward_vertices(
+        return numpy_backend.forward_vertices(
             self.weights,
             identity["rest_vertices"],
             skinning_transforms,
@@ -192,7 +186,7 @@ class ANNY(SkinnedModel):
         )
         skeleton_transforms = prepared_pose["skeleton_transforms"]
         skeleton_transforms = common.rotate_transforms(skeleton_transforms, global_rotation, self.rotation_type, np)
-        return self._kernel.forward_skeleton(
+        return numpy_backend.forward_skeleton(
             self.weights,
             skeleton_transforms,
             global_translation=global_translation,
@@ -205,7 +199,7 @@ class ANNY(SkinnedModel):
         skip_vertices: bool = False,
     ) -> AnnyIdentity:
         """Precompute phenotype-dependent state for repeated forward passes."""
-        return self._kernel.prepare_identity(
+        return numpy_backend.prepare_identity(
             self.weights,
             shape,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
@@ -237,7 +231,7 @@ class ANNY(SkinnedModel):
         batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
         root_rotation = SO3.identity_as(body_pose, batch_dims=batch_shape, rotation_type=self.rotation_type, xp=np)
         pose = pose_utils.pack_pose(np, root_rotation, body_pose, head_pose, hand_pose)
-        return self._kernel.prepare_pose(
+        return numpy_backend.prepare_pose(
             self.weights,
             pose,
             rotation_type=self.rotation_type,
@@ -294,18 +288,6 @@ class ANNY(SkinnedModel):
         **kwargs,
     ) -> dict[str, np.ndarray]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-
-
-def _get_kernel(kernel: Literal["numpy", "numba"]):
-    if kernel == "numpy":
-        return numpy_backend
-
-    try:
-        from body_models.bodies.anny.backends import numba as numba_backend
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use ANNY kernel='numba'.") from exc
-
-    return numba_backend
 
 
 def _triangulate_faces(faces: Int[np.ndarray, "F _"]) -> Int[np.ndarray, "Ftri 3"]:

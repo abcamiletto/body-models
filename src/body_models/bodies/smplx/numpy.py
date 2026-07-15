@@ -12,7 +12,6 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.bodies.smplx.backends.core import SmplxIdentity, SmplxPreparedPose
 from body_models.bodies.smplx.backends import numpy as numpy_backend
-from body_models.bodies.smplx.backends import scipy as scipy_backend
 from body_models.bodies.smplx.io import get_model_path, load_model_data
 from body_models.bodies.smplx.constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
 
@@ -30,7 +29,6 @@ class SMPLX(SkinnedModel):
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
     NUM_JOINTS = 55
-    kernels = ("numpy", "scipy", "numba")
     JOINTS = SMPLX_JOINTS
 
     def __init__(
@@ -40,7 +38,6 @@ class SMPLX(SkinnedModel):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
         """Initialize the SMPLX model.
 
@@ -50,7 +47,6 @@ class SMPLX(SkinnedModel):
             flat_hand_mean: Whether to use a flat hand as the pose mean.
             simplify: Mesh simplification factor to apply while loading.
             rotation_type: Rotation representation expected by pose inputs.
-            kernel: Backend kernel used for forward evaluation.
         """
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
@@ -58,13 +54,10 @@ class SMPLX(SkinnedModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
-        if kernel not in self.kernels:
-            raise ValueError(f"Invalid kernel: {kernel}")
 
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path, gender)
         self.weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
@@ -151,7 +144,7 @@ class SMPLX(SkinnedModel):
             expression = np.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
         pose = self.prepare_pose(body_pose, hand_pose, head_pose, pelvis_rotation, identity=identity)
-        return self._kernel.forward_vertices(
+        return numpy_backend.forward_vertices(
             self.weights,
             identity["rest_vertices"],
             pose["skinning_transforms"],
@@ -202,7 +195,7 @@ class SMPLX(SkinnedModel):
         pose = self.prepare_pose(
             body_pose, hand_pose, head_pose, pelvis_rotation, identity=identity, skip_vertices=True
         )
-        return self._kernel.forward_skeleton(
+        return numpy_backend.forward_skeleton(
             self.weights,
             pose["skeleton_transforms"],
             global_rotation=global_rotation,
@@ -218,7 +211,7 @@ class SMPLX(SkinnedModel):
         skip_vertices: bool = False,
     ) -> SmplxIdentity:
         """Precompute shape- and expression-dependent state for repeated forward passes."""
-        return self._kernel.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
+        return numpy_backend.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
 
     def prepare_pose(
         self,
@@ -233,7 +226,7 @@ class SMPLX(SkinnedModel):
         skip_vertices: bool = False,
     ) -> SmplxPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        return self._kernel.prepare_pose(
+        return numpy_backend.prepare_pose(
             self.weights,
             body_pose,
             hand_pose,
@@ -322,17 +315,3 @@ class SMPLX(SkinnedModel):
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np).copy()
         return params
-
-
-def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):
-    if kernel == "numpy":
-        return numpy_backend
-    if kernel == "scipy":
-        return scipy_backend
-
-    try:
-        from body_models.bodies.smplx.backends import numba as numba_backend
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use SMPLX kernel='numba'.") from exc
-
-    return numba_backend
