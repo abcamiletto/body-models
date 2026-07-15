@@ -11,8 +11,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.common import get_namespace
-from body_models.bodies.smpl.backends import core as smpl_core
+from body_models.common import get_namespace, skinning
 
 Array = Any  # Generic array type (numpy, torch, jax)
 
@@ -126,7 +125,7 @@ def prepare_pose(
 
     prepared_pose: SkelPreparedPose = {
         "skeleton_transforms": G,
-        "skinning_transforms": smpl_core.bind_relative_transforms(xp, G, rest_joints),
+        "skinning_transforms": skinning.bind_relative_transforms(G, rest_joints, xp=xp),
     }
     if skip_vertices:
         return prepared_pose

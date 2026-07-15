@@ -26,7 +26,6 @@ class GarmentMeasurements(SkinnedModel):
     pose_keys = ("body_pose", "head_pose", "hand_pose", "pelvis_rotation")
     has_hands = True
     has_head = True
-    kernels = ("numpy", "numba")
     JOINTS = GARMENT_JOINTS
 
     def __init__(
@@ -34,24 +33,19 @@ class GarmentMeasurements(SkinnedModel):
         model_path: Path | str | None = None,
         *,
         rotation_type: RotationType = "axis_angle",
-        kernel: Literal["numpy", "numba"] = "numpy",
     ) -> None:
         """Initialize the GarmentMeasurements model.
 
         Args:
             model_path: Path to model assets, or the default assets when omitted.
             rotation_type: Rotation representation expected by pose inputs.
-            kernel: Backend kernel used for forward evaluation.
         """
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
-        if kernel not in self.kernels:
-            raise ValueError(f"Invalid kernel: {kernel}")
 
         self.weights = load_model_data(get_model_path(model_path), dtype=np.float32)
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self._kernel = _get_kernel(kernel)
 
     @property
     def faces(self) -> Int[np.ndarray, "F 3"]:
@@ -119,7 +113,7 @@ class GarmentMeasurements(SkinnedModel):
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
-        return self._kernel.forward_vertices(
+        return numpy_backend.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -164,7 +158,7 @@ class GarmentMeasurements(SkinnedModel):
             identity = self.prepare_identity(shape, skip_vertices=True)
         pose_groups = body_pose, head_pose, hand_pose, pelvis_rotation
         pose = self.prepare_pose(*pose_groups, identity=identity, skip_vertices=True)
-        return self._kernel.forward_skeleton(
+        return numpy_backend.forward_skeleton(
             self.weights,
             pose["skeleton_transforms"],
             global_rotation=global_rotation,
@@ -179,7 +173,7 @@ class GarmentMeasurements(SkinnedModel):
         skip_vertices: bool = False,
     ) -> GarmentMeasurementsIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
-        return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+        return numpy_backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
 
     def prepare_pose(
         self,
@@ -193,7 +187,7 @@ class GarmentMeasurements(SkinnedModel):
     ) -> GarmentMeasurementsPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         pose = pack_pose(np, pelvis_rotation, body_pose, head_pose, hand_pose)
-        return self._kernel.prepare_pose(
+        return numpy_backend.prepare_pose(
             self.weights,
             pose,
             rotation_type=self.rotation_type,
@@ -258,15 +252,3 @@ class GarmentMeasurements(SkinnedModel):
         **kwargs,
     ) -> dict[str, np.ndarray]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-
-
-def _get_kernel(kernel: Literal["numpy", "numba"]):
-    if kernel == "numpy":
-        return numpy_backend
-
-    try:
-        from body_models.bodies.garment_measurements.backends import numba as numba_backend
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use GarmentMeasurements kernel='numba'.") from exc
-
-    return numba_backend

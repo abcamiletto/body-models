@@ -69,14 +69,13 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     np.testing.assert_allclose(jax_auto, jax_numeric, rtol=1e-2, atol=1e-2)
 
 
-def test_warp_affine_skinning_gradients_match_torch() -> None:
+@pytest.mark.fast
+def test_warp_skinning_gradients_match_torch_on_cpu() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
-    if not torch.cuda.is_available():
-        pytest.skip("Warp Torch interop requires CUDA")
 
-    from body_models.bodies.smpl.backends import warp as smpl_warp
-    from body_models.bodies.soma.backends import torch as soma_torch_backend
+    from body_models.common import skinning
+    from body_models.common import warp as warp_backend
 
     torch.manual_seed(42)
     num_batches, num_vertices, num_joints, num_slots = 2, 257, 31, 6
@@ -84,31 +83,89 @@ def test_warp_affine_skinning_gradients_match_torch() -> None:
         num_joints,
         (num_vertices, num_slots),
         dtype=torch.int32,
-        device="cuda",
     )
-    joint_weights = torch.rand(num_vertices, num_slots, device="cuda")
+    joint_weights = torch.rand(num_vertices, num_slots)
     joint_weights /= joint_weights.sum(dim=-1, keepdim=True)
-    dense_weights = torch.zeros(num_vertices, num_joints, device="cuda")
+    dense_weights = torch.zeros(num_vertices, num_joints)
     dense_weights.scatter_add_(1, joint_indices.long(), joint_weights)
 
-    vertices = torch.randn(1, num_vertices, 3, device="cuda", requires_grad=True)
-    transforms = torch.randn(num_batches, num_joints, 4, 4, device="cuda", requires_grad=True)
-    grad_output = torch.randn(num_batches, num_vertices, 3, device="cuda")
+    vertices = torch.randn(1, num_vertices, 3, requires_grad=True)
+    transforms = torch.randn(num_batches, num_joints, 4, 4, requires_grad=True)
+    grad_output = torch.randn(num_batches, num_vertices, 3)
 
-    expected = soma_torch_backend.linear_blend_skinning(torch, vertices, dense_weights, transforms)
+    expected = skinning.linear_blend_skinning(vertices, transforms, dense_weights, xp=torch)
     expected_grads = torch.autograd.grad(expected, (vertices, transforms), grad_output)
-    actual = smpl_warp.warp_affine_blend_skinning(
+    actual = warp_backend.compact_linear_blend_skinning(
         vertices,
         transforms,
-        dense_weights,
-        joint_indices,
-        joint_weights,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
     )
     actual_grads = torch.autograd.grad(actual, (vertices, transforms), grad_output)
 
     torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
     for actual_grad, expected_grad in zip(actual_grads, expected_grads, strict=True):
         torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.fast
+def test_warp_forward_kinematics_gradients_match_common_on_cpu() -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("warp")
+
+    from body_models.common import kinematics
+    from body_models.common import warp as warp_backend
+
+    torch.manual_seed(17)
+    parents = [-1, 0, 1, 1]
+    rotations = torch.randn(2, 4, 3, 3, requires_grad=True)
+    translations = torch.randn(2, 4, 3, requires_grad=True)
+    grad_output = torch.randn(2, 4, 4, 4)
+
+    fronts = kinematics.compute_kinematic_fronts(parents)
+    expected = kinematics.forward_kinematics(rotations, translations, fronts, xp=torch)
+    expected_grads = torch.autograd.grad(expected, (rotations, translations), grad_output)
+    actual = warp_backend.forward_kinematics(rotations, translations, torch.as_tensor(parents))
+    actual_grads = torch.autograd.grad(actual, (rotations, translations), grad_output)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+    for actual_grad, expected_grad in zip(actual_grads, expected_grads, strict=True):
+        torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.fast
+def test_compact_warp_adapters_match_common_skinning() -> None:
+    from types import SimpleNamespace
+
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("warp")
+
+    from body_models.common import skinning
+    from body_models.bodies.mhr.backends import warp as mhr_warp
+    from body_models.parts.mano.backends import warp as mano_warp
+
+    joint_indices = torch.tensor([[0, 1], [1, 2], [0, 2]], dtype=torch.int32)
+    joint_weights = torch.tensor([[0.25, 0.75], [0.5, 0.5], [0.8, 0.2]])
+    dense_weights = torch.zeros(3, 3)
+    dense_weights.scatter_add_(1, joint_indices.long(), joint_weights)
+    rest_vertices = torch.randn(2, 3, 3)
+    pose_offsets = torch.randn(2, 3, 3)
+    transforms = torch.randn(2, 3, 4, 4)
+
+    expected = skinning.linear_blend_skinning(rest_vertices + pose_offsets, transforms, dense_weights, xp=torch)
+    adapters = (
+        (
+            mano_warp.forward_vertices,
+            SimpleNamespace(lbs_joint_indices=joint_indices, lbs_joint_weights=joint_weights),
+        ),
+        (
+            mhr_warp.forward_vertices,
+            SimpleNamespace(skin_indices=joint_indices, skin_weights=joint_weights),
+        ),
+    )
+    for forward_vertices, weights in adapters:
+        actual = forward_vertices(weights, rest_vertices, transforms, pose_offsets)
+        torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.slow
