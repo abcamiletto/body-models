@@ -80,6 +80,8 @@ def prepare_pose(
     num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
     pose_ndim = num_rot_dims + 1
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
+    local_joint_offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
+    rest_joints = xp.broadcast_to(rest_joints, (*batch_shape, *rest_joints.shape[-2:]))
 
     pose_matrices, T_world = _forward_core(
         xp=xp,

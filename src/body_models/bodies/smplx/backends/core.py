@@ -85,6 +85,8 @@ def prepare_pose(
     batch_shape = tuple(body_pose.shape[:-pose_ndim])
     assert tuple(hand_pose.shape[:-pose_ndim]) == batch_shape
     assert tuple(head_pose.shape[:-pose_ndim]) == batch_shape
+    local_joint_offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
+    rest_joints = xp.broadcast_to(rest_joints, (*batch_shape, *rest_joints.shape[-2:]))
     pose_matrices, T_world = _forward_core(
         xp=xp,
         kinematic_fronts=kinematic_fronts,
