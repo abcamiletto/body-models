@@ -54,9 +54,7 @@ def training_step(function: Callable[[], Tensor], inputs: tuple[Tensor, ...]) ->
 
 def trainable(params: dict[str, Tensor], *, include_shape: bool) -> dict[str, Tensor]:
     return {
-        key: value.detach().clone().requires_grad_()
-        for key, value in params.items()
-        if include_shape or key != "shape"
+        key: value.detach().clone().requires_grad_() for key, value in params.items() if include_shape or key != "shape"
     }
 
 
@@ -72,10 +70,7 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device("cuda")
-    models = {
-        kernel: GarmentMeasurements(kernel=kernel).to(device).eval()
-        for kernel in GarmentMeasurements.kernels
-    }
+    models = {kernel: GarmentMeasurements(kernel=kernel).to(device).eval() for kernel in GarmentMeasurements.kernels}
     compiled_skinning = torch.compile(dense_skinning)
 
     print(f"device={torch.cuda.get_device_name(device)} vertices={models['torch'].num_vertices}")
@@ -85,6 +80,7 @@ def main() -> None:
 
         print(f"\nB={batch_size} model forward / forward+backward")
         for kernel, model in models.items():
+
             def full_forward() -> Tensor:
                 return model.forward_vertices(**params)
 
