@@ -1,10 +1,29 @@
-"""Pose packing helpers for ANNY."""
+"""Pose packing and rotation-conversion helpers for ANNY."""
 
+from collections.abc import Mapping
 from typing import Any
 
 from jaxtyping import Float
+from nanomanifold import SO3
+
+from body_models import rotations
 
 Array = Any
+
+
+def convert_pose(
+    parameters: Mapping[str, Any],
+    *,
+    src: rotations.RotationType,
+    dst: rotations.RotationType,
+) -> dict[str, Any]:
+    """Convert the rotations in an ANNY parameter dictionary."""
+    converted = dict(parameters)
+    for key in ("body_pose", "head_pose", "hand_pose", "global_rotation"):
+        value = converted.get(key)
+        if value is not None:
+            converted[key] = SO3.convert(value, src=src, dst=dst)
+    return converted
 
 
 def _joint_axis(pose: Array) -> int:
@@ -65,4 +84,4 @@ def unpack_pose(
     return global_rotation, body_pose, head_pose, hand_pose
 
 
-__all__ = ["pack_pose", "unpack_pose"]
+__all__ = ["convert_pose", "pack_pose", "unpack_pose"]
