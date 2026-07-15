@@ -4,6 +4,35 @@ import pytest
 import model_cases
 
 
+def test_soma_cuda_graph_forward_vertices() -> None:
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA graphs require CUDA")
+
+    from body_models.bodies.soma import torch as soma_torch
+
+    model = soma_torch.SOMA(kernel="torch").cuda().eval()
+    params = model.get_rest_pose(batch_dims=(2,))
+    identity = model.prepare_identity(params.pop("shape")[:1])
+    vertex_indices = [0, 2, 4]
+    captured = model.capture_forward_vertices(
+        **params,
+        identity=identity,
+        vertex_indices=vertex_indices,
+    )
+
+    params["body_pose"] = params["body_pose"] + 0.01
+    with torch.no_grad():
+        expected = model.forward_vertices(
+            **params,
+            identity=identity,
+            vertex_indices=vertex_indices,
+        )
+        actual = captured(**params)
+
+    torch.testing.assert_close(actual, expected)
+
+
 @pytest.mark.parametrize(("name", "_numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_torch_compile_and_jax_jit(name, _numpy_model, torch_model, jax_model, kwargs) -> None:
     torch = pytest.importorskip("torch")

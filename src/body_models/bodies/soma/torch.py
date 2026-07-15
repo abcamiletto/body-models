@@ -1,5 +1,7 @@
 """PyTorch backend for SOMA model."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
@@ -189,6 +191,27 @@ class SOMA(SkinnedModel, nn.Module):
             xp=torch,
         )
 
+    def capture_forward_vertices(
+        self,
+        body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
+        head_pose: Float[Tensor, "B 5 N"] | Float[Tensor, "B 5 3 3"],
+        hand_pose: Float[Tensor, "B 48 N"] | Float[Tensor, "B 48 3 3"],
+        global_rotation: Float[Tensor, "B N"] | Float[Tensor, "B 3 3"] | None = None,
+        *,
+        identity: core.SomaIdentity,
+        global_translation: Float[Tensor, "B 3"] | None = None,
+        vertex_indices: Any | None = None,
+    ) -> _CapturedSOMAForward:
+        """Capture fixed-shape inference for repeated poses of one identity.
+
+        The returned callable reuses its output tensor. Clone the result before the
+        next call if it must be retained.
+        """
+        if self._kernel is not torch_backend:
+            raise ValueError("CUDA graph capture requires kernel='torch'.")
+        inputs = (body_pose, head_pose, hand_pose, global_rotation, global_translation)
+        return _CapturedSOMAForward(self, inputs, identity, vertex_indices)
+
     def forward_skeleton(
         self,
         body_pose: Float[Tensor, "B 23 N"] | Float[Tensor, "B 23 3 3"],
@@ -323,8 +346,8 @@ class SOMA(SkinnedModel, nn.Module):
             self.weights,
             pose,
             rotation_type=self.rotation_type,
-            world_bind_pose=identity["world_bind_pose"],
-            inverse_world_bind_pose=None if skip_vertices else identity["inverse_world_bind_pose"],
+            local_joint_translations=identity["local_joint_translations"],
+            inverse_bind_transforms=None if skip_vertices else identity["inverse_bind_transforms"],
             skip_vertices=skip_vertices,
             xp=torch,
         )
@@ -380,6 +403,69 @@ class SOMA(SkinnedModel, nn.Module):
         axis_angle = torch.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=torch)
         return params
+
+
+class _CapturedSOMAForward:
+    """Fixed-shape CUDA graph for :meth:`SOMA.forward_vertices`."""
+
+    def __init__(
+        self,
+        model: SOMA,
+        inputs: tuple[Tensor, Tensor, Tensor, Tensor | None, Tensor | None],
+        identity: core.SomaIdentity,
+        vertex_indices: Any | None,
+    ) -> None:
+        self._model = model
+        self._identity = identity
+        self._inputs = tuple(None if value is None else value.detach().clone() for value in inputs)
+        self._vertex_indices = (
+            None if vertex_indices is None else torch.as_tensor(vertex_indices, device=inputs[0].device)
+        )
+
+        current_stream = torch.cuda.current_stream()
+        warmup_stream = torch.cuda.Stream()
+        warmup_stream.wait_stream(current_stream)
+        with torch.no_grad(), torch.cuda.stream(warmup_stream):
+            for _ in range(3):
+                self._run()
+        current_stream.wait_stream(warmup_stream)
+
+        self._graph = torch.cuda.CUDAGraph()
+        with torch.no_grad(), torch.cuda.graph(self._graph):
+            self._output = self._run()
+
+    def __call__(
+        self,
+        body_pose: Tensor,
+        head_pose: Tensor,
+        hand_pose: Tensor,
+        global_rotation: Tensor | None = None,
+        *,
+        global_translation: Tensor | None = None,
+    ) -> Tensor:
+        values = (body_pose, head_pose, hand_pose, global_rotation, global_translation)
+        with torch.no_grad():
+            for target, value in zip(self._inputs, values, strict=True):
+                if target is None or value is None:
+                    if target is not value:
+                        raise ValueError("Captured optional inputs must remain present or absent.")
+                    continue
+                target.copy_(value)
+            self._graph.replay()
+        return self._output
+
+    def _run(self) -> Tensor:
+        body_pose, head_pose, hand_pose, global_rotation, global_translation = self._inputs
+        assert body_pose is not None and head_pose is not None and hand_pose is not None
+        return self._model.forward_vertices(
+            body_pose,
+            head_pose,
+            hand_pose,
+            global_rotation,
+            identity=self._identity,
+            global_translation=global_translation,
+            vertex_indices=self._vertex_indices,
+        )
 
 
 def _get_kernel(kernel: Literal["torch", "warp"]):
