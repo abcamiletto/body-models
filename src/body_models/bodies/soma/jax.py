@@ -300,8 +300,8 @@ class SOMA(SkinnedModel):
             self.weights,
             pose,
             rotation_type=self.rotation_type,
-            world_bind_pose=identity["world_bind_pose"],
-            inverse_world_bind_pose=None if skip_vertices else identity["inverse_world_bind_pose"],
+            local_joint_translations=identity["local_joint_translations"],
+            inverse_bind_transforms=None if skip_vertices else identity["inverse_bind_transforms"],
             skip_vertices=skip_vertices,
             xp=jnp,
         )

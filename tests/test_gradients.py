@@ -67,3 +67,75 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     jax_minus.reshape(-1)[0] -= 1e-4
     jax_numeric = (float(jax_loss(jnp.asarray(jax_plus))) - float(jax_loss(jnp.asarray(jax_minus)))) / 2e-4
     np.testing.assert_allclose(jax_auto, jax_numeric, rtol=1e-2, atol=1e-2)
+
+
+def test_warp_affine_skinning_gradients_match_torch() -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("warp")
+    if not torch.cuda.is_available():
+        pytest.skip("Warp Torch interop requires CUDA")
+
+    from body_models.bodies.smpl.backends import warp as smpl_warp
+    from body_models.bodies.soma.backends import torch as soma_torch_backend
+
+    torch.manual_seed(42)
+    num_batches, num_vertices, num_joints, num_slots = 2, 257, 31, 6
+    joint_indices = torch.randint(
+        num_joints,
+        (num_vertices, num_slots),
+        dtype=torch.int32,
+        device="cuda",
+    )
+    joint_weights = torch.rand(num_vertices, num_slots, device="cuda")
+    joint_weights /= joint_weights.sum(dim=-1, keepdim=True)
+    dense_weights = torch.zeros(num_vertices, num_joints, device="cuda")
+    dense_weights.scatter_add_(1, joint_indices.long(), joint_weights)
+
+    vertices = torch.randn(1, num_vertices, 3, device="cuda", requires_grad=True)
+    transforms = torch.randn(num_batches, num_joints, 4, 4, device="cuda", requires_grad=True)
+    grad_output = torch.randn(num_batches, num_vertices, 3, device="cuda")
+
+    expected = soma_torch_backend.linear_blend_skinning(torch, vertices, dense_weights, transforms)
+    expected_grads = torch.autograd.grad(expected, (vertices, transforms), grad_output)
+    actual = smpl_warp.warp_affine_blend_skinning(
+        vertices,
+        transforms,
+        dense_weights,
+        joint_indices,
+        joint_weights,
+    )
+    actual_grads = torch.autograd.grad(actual, (vertices, transforms), grad_output)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+    for actual_grad, expected_grad in zip(actual_grads, expected_grads, strict=True):
+        torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.slow
+def test_soma_warp_forward_and_gradients_match_torch() -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("warp")
+    if not torch.cuda.is_available():
+        pytest.skip("SOMA's Warp kernel requires CUDA")
+
+    from body_models.bodies.soma import torch as soma_torch
+
+    torch.manual_seed(7)
+    models = {kernel: soma_torch.SOMA(kernel=kernel).cuda() for kernel in ("torch", "warp")}
+    params = models["torch"].get_rest_pose(batch_dims=(1,))
+    params = {key: value + 0.01 * torch.randn_like(value) for key, value in params.items()}
+    grad_output = torch.randn(1, models["torch"].num_vertices, 3, device="cuda")
+    param_keys = tuple(params)
+    results = {}
+
+    for kernel, model in models.items():
+        kernel_params = {key: value.detach().requires_grad_(True) for key, value in params.items()}
+        vertices = model.forward_vertices(**kernel_params)
+        grads = torch.autograd.grad(vertices, tuple(kernel_params.values()), grad_output)
+        results[kernel] = vertices, dict(zip(param_keys, grads, strict=True))
+
+    torch_vertices, torch_grads = results["torch"]
+    warp_vertices, warp_grads = results["warp"]
+    torch.testing.assert_close(warp_vertices, torch_vertices, rtol=1e-5, atol=1e-5)
+    for key in torch_grads:
+        torch.testing.assert_close(warp_grads[key], torch_grads[key], rtol=1e-4, atol=2e-4)
