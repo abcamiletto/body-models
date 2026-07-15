@@ -23,8 +23,7 @@ def prepare_pose(
     skip_vertices: bool = False,
 ) -> core.GarmentMeasurementsPreparedPose:
     """Prepare pose transforms with fused Warp forward kinematics."""
-    inputs = pose, bind_skeleton, local_bind_translations
-    if any(value.dtype != torch.float32 for value in inputs):
+    if any(value.dtype != torch.float32 for value in (pose, bind_skeleton, local_bind_translations)):
         raise TypeError("kernel='warp' supports only float32 tensors.")
 
     num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1

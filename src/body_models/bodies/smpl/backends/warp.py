@@ -123,10 +123,10 @@ class _WarpForwardKinematics(torch.autograd.Function):
         wp_rotations = wp.from_torch(rotations.reshape(-1), requires_grad=ctx.needs_input_grad[0])
         wp_translations = wp.from_torch(translations.reshape(-1), requires_grad=ctx.needs_input_grad[1])
         wp_parents = wp.from_torch(parents)
-        wp_output = wp.from_torch(output.reshape(-1), requires_grad=any(ctx.needs_input_grad[:2]))
+        needs_backward = any(ctx.needs_input_grad[:2])
+        wp_output = wp.from_torch(output.reshape(-1), requires_grad=needs_backward)
 
         batch_size, num_joints = translations.shape[:2]
-        needs_backward = any(ctx.needs_input_grad[:2])
         tape = wp.Tape() if needs_backward else None
         with tape if tape is not None else contextlib.nullcontext():
             wp.launch(
@@ -146,8 +146,8 @@ class _WarpForwardKinematics(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grad_outputs):
         (grad_output,) = grad_outputs
-        grad_output = wp.from_torch(grad_output.contiguous().reshape(-1))
-        ctx.tape.backward(grads={ctx.wp_output: grad_output})
+        wp_grad_output = wp.from_torch(grad_output.contiguous().reshape(-1))
+        ctx.tape.backward(grads={ctx.wp_output: wp_grad_output})
         wp_rotations, wp_translations = ctx.wp_inputs
         rotation_shape, translation_shape = ctx.input_shapes
         grad_rotations = wp.to_torch(wp_rotations.grad).reshape(rotation_shape) if wp_rotations.requires_grad else None

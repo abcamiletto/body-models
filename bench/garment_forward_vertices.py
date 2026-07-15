@@ -102,16 +102,16 @@ def main() -> None:
             prepared_inputs = tuple(prepared_params.values())
 
             full_forward_ms = benchmark(inference(full_forward), args.warmup, args.runs)
-            full_backward_ms = benchmark(training_step(full_training, full_inputs), args.warmup, args.runs)
+            full_training_ms = benchmark(training_step(full_training, full_inputs), args.warmup, args.runs)
             prepared_forward_ms = benchmark(inference(prepared_forward), args.warmup, args.runs)
-            prepared_backward_ms = benchmark(
+            prepared_training_ms = benchmark(
                 training_step(prepared_training, prepared_inputs),
                 args.warmup,
                 args.runs,
             )
             print(
-                f"  {kernel:5s} full={full_forward_ms:8.3f}/{full_backward_ms:8.3f} ms"
-                f"  prepared={prepared_forward_ms:8.3f}/{prepared_backward_ms:8.3f} ms"
+                f"  {kernel:5s} full={full_forward_ms:8.3f}/{full_training_ms:8.3f} ms"
+                f"  prepared={prepared_forward_ms:8.3f}/{prepared_training_ms:8.3f} ms"
             )
 
         pose = models["torch"].prepare_pose(
@@ -153,12 +153,12 @@ def main() -> None:
         print("  skinning primitive forward / forward+backward")
         for name in forward_calls:
             forward_ms = benchmark(inference(forward_calls[name]), args.warmup, args.runs)
-            backward_ms = benchmark(
+            training_ms = benchmark(
                 training_step(training_calls[name], (train_vertices, train_transforms)),
                 args.warmup,
                 args.runs,
             )
-            print(f"    {name:8s} {forward_ms:8.3f}/{backward_ms:8.3f} ms")
+            print(f"    {name:8s} {forward_ms:8.3f}/{training_ms:8.3f} ms")
 
 
 if __name__ == "__main__":
