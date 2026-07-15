@@ -180,7 +180,7 @@ class _WarpAffineBlendSkinning(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grad_outputs):
-        (grad_output,) = grad_outputs
+        grad_output = grad_outputs[0]
         vertices, transforms, skin_weights, joint_indices, joint_weights = ctx.saved_tensors
         grad_output = grad_output.contiguous()
         grad_vertices = grad_transforms = None
@@ -211,14 +211,14 @@ class _WarpAffineBlendSkinning(torch.autograd.Function):
 
 
 def _transform_gradients(vertices, transforms, grad_output, skin_weights):
-    weight_transpose = skin_weights.T.contiguous()
+    weight_transpose = skin_weights.mT.contiguous()
     grad_transforms = torch.zeros_like(transforms)
     for row in range(3):
         row_grad = grad_output[..., row]
         for column in range(3):
             values = row_grad * vertices[..., column]
-            grad_transforms[:, :, row, column] = torch.mm(weight_transpose, values.T).T
-        grad_transforms[:, :, row, 3] = torch.mm(weight_transpose, row_grad.T).T
+            grad_transforms[:, :, row, column] = (weight_transpose @ values.mT).mT
+        grad_transforms[:, :, row, 3] = (weight_transpose @ row_grad.mT).mT
     return grad_transforms
 
 
@@ -422,9 +422,7 @@ def _skin_affine_vertices_backward_vertices_kernel(
         weight = joint_weights[slot_index]
         transform_base = (batch * num_joints + joint) * 16
         grad_x += weight * (
-            transforms[transform_base] * gx
-            + transforms[transform_base + 4] * gy
-            + transforms[transform_base + 8] * gz
+            transforms[transform_base] * gx + transforms[transform_base + 4] * gy + transforms[transform_base + 8] * gz
         )
         grad_y += weight * (
             transforms[transform_base + 1] * gx
