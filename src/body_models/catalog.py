@@ -30,33 +30,51 @@ class AssetSpec:
     validation_module: str
 
 
+@dataclass(frozen=True)
+class CredentialSpec:
+    """Account metadata for a licensed model download."""
+
+    account: str
+    url: str
+
+
+@dataclass(frozen=True)
+class DownloadSpec:
+    """Lazy downloader and output contract for one model family."""
+
+    module: str
+    function: str
+    output_key: str | None = None
+    credentials: CredentialSpec | None = None
+
+
 def _model(module: str, class_name: str, kind: ModelKind, **defaults: Any) -> ModelSpec:
     return ModelSpec(module, class_name, kind, MappingProxyType(defaults))
 
 
 MODEL_SPECS: Mapping[str, ModelSpec] = MappingProxyType(
     {
-        "anny": _model("body_models.bodies.anny", "ANNY", "skinned"),
-        "brainco": _model("body_models.robots.brainco", "BrainCoHand", "rigid"),
-        "flame": _model("body_models.parts.flame", "FLAME", "skinned"),
-        "g1": _model("body_models.robots.g1", "G1", "rigid"),
+        "anny": _model("body_models.anny", "ANNY", "skinned"),
+        "brainco": _model("body_models.brainco", "BrainCoHand", "rigid"),
+        "flame": _model("body_models.flame", "FLAME", "skinned"),
+        "g1": _model("body_models.g1", "G1", "rigid"),
         "garment-measurements": _model(
-            "body_models.bodies.garment_measurements",
+            "body_models.garment_measurements",
             "GarmentMeasurements",
             "skinned",
         ),
-        "humenv": _model("body_models.robots.smpl_humanoid", "SmplHumanoid", "rigid", source="humenv"),
-        "mano": _model("body_models.parts.mano", "MANO", "skinned", side="right"),
-        "mhr": _model("body_models.bodies.mhr", "MHR", "skinned"),
-        "myofullbody": _model("body_models.skeletons.myofullbody", "MyoFullBody", "rigid"),
-        "phc": _model("body_models.robots.smpl_humanoid", "SmplHumanoid", "rigid", source="phc"),
-        "skel": _model("body_models.skeletons.skel", "SKEL", "skinned", gender="male"),
-        "smpl": _model("body_models.bodies.smpl", "SMPL", "skinned", gender="neutral"),
-        "smpl-humanoid": _model("body_models.robots.smpl_humanoid", "SmplHumanoid", "rigid"),
-        "smplh": _model("body_models.bodies.smplh", "SMPLH", "skinned", gender="neutral"),
-        "smplsim": _model("body_models.robots.smpl_humanoid", "SmplHumanoid", "rigid", source="smplsim"),
-        "smplx": _model("body_models.bodies.smplx", "SMPLX", "skinned", gender="neutral"),
-        "soma": _model("body_models.bodies.soma", "SOMA", "skinned"),
+        "humenv": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid", source="humenv"),
+        "mano": _model("body_models.mano", "MANO", "skinned", side="right"),
+        "mhr": _model("body_models.mhr", "MHR", "skinned"),
+        "myofullbody": _model("body_models.myofullbody", "MyoFullBody", "rigid"),
+        "phc": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid", source="phc"),
+        "skel": _model("body_models.skel", "SKEL", "skinned", gender="male"),
+        "smpl": _model("body_models.smpl", "SMPL", "skinned", gender="neutral"),
+        "smpl-humanoid": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid"),
+        "smplh": _model("body_models.smplh", "SMPLH", "skinned", gender="neutral"),
+        "smplsim": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid", source="smplsim"),
+        "smplx": _model("body_models.smplx", "SMPLX", "skinned", gender="neutral"),
+        "soma": _model("body_models.soma", "SOMA", "skinned"),
     }
 )
 
@@ -90,9 +108,76 @@ ASSET_SPECS: Mapping[str, AssetSpec] = MappingProxyType(
 )
 
 
+def _credentials(account: str, url: str) -> CredentialSpec:
+    return CredentialSpec(account, url)
+
+
+DOWNLOAD_SPECS: Mapping[str, DownloadSpec] = MappingProxyType(
+    {
+        "smpl": DownloadSpec(
+            "body_models.download",
+            "download_smpl",
+            credentials=_credentials("SMPL", "https://smpl.is.tue.mpg.de/"),
+        ),
+        "smplh": DownloadSpec(
+            "body_models.download",
+            "download_smplh",
+            credentials=_credentials("SMPLH", "https://mano.is.tue.mpg.de/"),
+        ),
+        "mano": DownloadSpec(
+            "body_models.download",
+            "download_mano",
+            credentials=_credentials("MANO", "https://mano.is.tue.mpg.de/"),
+        ),
+        "smplx": DownloadSpec(
+            "body_models.download",
+            "download_smplx",
+            credentials=_credentials("SMPLX", "https://smpl-x.is.tue.mpg.de/"),
+        ),
+        "smpl-humanoid": DownloadSpec("body_models.robots.smpl_humanoid.io", "download_assets"),
+        "skel": DownloadSpec(
+            "body_models.download",
+            "download_skel_assets",
+            credentials=_credentials("SKEL", "https://skel.is.tue.mpg.de/"),
+        ),
+        "flame": DownloadSpec(
+            "body_models.download",
+            "download_flame",
+            output_key="flame",
+            credentials=_credentials("FLAME", "https://flame.is.tue.mpg.de/"),
+        ),
+        "anny": DownloadSpec("body_models.bodies.anny.io", "download_model", output_key="anny"),
+        "brainco": DownloadSpec("body_models.robots.brainco.io", "download_model", output_key="brainco"),
+        "mhr": DownloadSpec("body_models.bodies.mhr.io", "download_model", output_key="mhr"),
+        "g1": DownloadSpec("body_models.robots.g1.io", "download_model", output_key="g1"),
+        "soma": DownloadSpec("body_models.bodies.soma.io", "download_model", output_key="soma"),
+        "garment-measurements": DownloadSpec(
+            "body_models.bodies.garment_measurements.io",
+            "download_model",
+            output_key="garment-measurements",
+        ),
+        "myofullbody": DownloadSpec(
+            "body_models.skeletons.myofullbody.io",
+            "download_model",
+            output_key="myofullbody",
+        ),
+    }
+)
+
+
 PUBLIC_MODULES: Mapping[str, str] = MappingProxyType(
     {spec.public_module.rsplit(".", 1)[-1]: spec.public_module for spec in MODEL_SPECS.values()}
 )
 
 
-__all__ = ["ASSET_SPECS", "MODEL_SPECS", "PUBLIC_MODULES", "AssetSpec", "ModelKind", "ModelSpec"]
+__all__ = [
+    "ASSET_SPECS",
+    "DOWNLOAD_SPECS",
+    "MODEL_SPECS",
+    "PUBLIC_MODULES",
+    "AssetSpec",
+    "CredentialSpec",
+    "DownloadSpec",
+    "ModelKind",
+    "ModelSpec",
+]

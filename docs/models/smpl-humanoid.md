@@ -15,4 +15,4 @@ The hosted folder includes license/provenance notes for the XML variants.
 
 ## API
 
-::: body_models.robots.smpl_humanoid.numpy.SmplHumanoid
+::: body_models.smpl_humanoid.numpy.SmplHumanoid

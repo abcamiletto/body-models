@@ -3,32 +3,19 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
+from importlib import import_module
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
 from body_models import config
+from body_models.catalog import DOWNLOAD_SPECS
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 
-DOWNLOAD_NAMES = (
-    "smpl",
-    "smplh",
-    "mano",
-    "smplx",
-    "smpl-humanoid",
-    "skel",
-    "flame",
-    "anny",
-    "brainco",
-    "mhr",
-    "g1",
-    "soma",
-    "garment-measurements",
-    "myofullbody",
-)
+DOWNLOAD_NAMES = tuple(DOWNLOAD_SPECS)
 
 
 @app.callback(invoke_without_command=True)
@@ -77,34 +64,19 @@ def preprocess_soma(upstream_dir: Path, output_dir: Path) -> None:
 
 
 def _download(name: str) -> None:
-    if name in _REGISTERED_DOWNLOADS:
-        account, url, downloader = _REGISTERED_DOWNLOADS[name]
-        username, password = _credentials(account, url)
-        _save_paths(downloader(username=username, password=password))
-        return
-
-    if name == "skel":
-        from body_models import download as downloads
-
-        username, password = _credentials("SKEL", "https://skel.is.tue.mpg.de/")
-        directory = downloads.download_skel(username=username, password=password)
-        _save_paths(
-            {
-                "skel-female": directory / "skel_female.pkl",
-                "skel-male": directory / "skel_male.pkl",
-            }
-        )
-        return
-
-    if name == "smpl-humanoid":
-        from body_models.robots.smpl_humanoid.constants import SMPL_HUMANOID_VARIANTS
-        from body_models.robots.smpl_humanoid.io import download_model
-
-        _save_paths({f"smpl-humanoid-{source}": download_model(source) for source in SMPL_HUMANOID_VARIANTS})
-        return
-
-    downloader, config_key = _public_download(name)
-    _save_paths({config_key: downloader()})
+    spec = DOWNLOAD_SPECS[name]
+    downloader = getattr(import_module(spec.module), spec.function)
+    kwargs = {}
+    if spec.credentials is not None:
+        username, password = _credentials(spec.credentials.account, spec.credentials.url)
+        kwargs = {"username": username, "password": password}
+    result = downloader(**kwargs)
+    if spec.output_key is not None:
+        _save_paths({spec.output_key: result})
+    elif isinstance(result, Mapping):
+        _save_paths(result)
+    else:
+        raise TypeError(f"{spec.module}.{spec.function} must return a mapping")
 
 
 def _credentials(account: str, url: str) -> tuple[str, str]:
@@ -123,51 +95,10 @@ def _save_paths(paths: Mapping[str, str | Path]) -> None:
         typer.echo(f"Set {key} = {path}")
 
 
-def _public_download(name: str) -> tuple[Callable[[], Path], str]:
-    if name == "anny":
-        from body_models.bodies.anny.io import download_model
-    elif name == "brainco":
-        from body_models.robots.brainco.io import download_model
-    elif name == "mhr":
-        from body_models.bodies.mhr.io import download_model
-    elif name == "g1":
-        from body_models.robots.g1.io import download_model
-    elif name == "soma":
-        from body_models.bodies.soma.io import download_model
-    elif name == "garment-measurements":
-        from body_models.bodies.garment_measurements.io import download_model
-    elif name == "myofullbody":
-        from body_models.skeletons.myofullbody.io import download_model
-    else:
-        raise ValueError(f"No public downloader for {name!r}")
-    return download_model, name
-
-
 def _require_choice(value: str, choices: tuple[str, ...], label: str) -> None:
     if value not in choices:
         expected = ", ".join(choices)
         raise typer.BadParameter(f"Unknown {label} {value!r}. Expected one of: {expected}")
-
-
-def _official_downloads() -> dict[str, tuple[str, str, Callable[..., Mapping[str, Path]]]]:
-    from body_models import download as downloads
-
-    return {
-        "smpl": ("SMPL", "https://smpl.is.tue.mpg.de/", downloads.download_smpl),
-        "smplh": ("SMPLH", "https://mano.is.tue.mpg.de/", downloads.download_smplh),
-        "mano": ("MANO", "https://mano.is.tue.mpg.de/", downloads.download_mano),
-        "smplx": ("SMPLX", "https://smpl-x.is.tue.mpg.de/", downloads.download_smplx),
-        "flame": ("FLAME", "https://flame.is.tue.mpg.de/", _download_flame),
-    }
-
-
-def _download_flame(**credentials: Any) -> Mapping[str, Path]:
-    from body_models import download as downloads
-
-    return {"flame": downloads.download_flame(**credentials)}
-
-
-_REGISTERED_DOWNLOADS = _official_downloads()
 
 
 def main() -> None:

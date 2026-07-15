@@ -29,4 +29,4 @@ parameters = convert_pose(cached_parameters, src=cached_rotation_type, dst=model
 vertices = model.forward_vertices(**parameters)
 ```
 
-::: body_models.bodies.anny.numpy.ANNY
+::: body_models.anny.numpy.ANNY

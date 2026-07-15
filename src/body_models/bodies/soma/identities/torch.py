@@ -11,10 +11,10 @@ from torch import Tensor
 
 from body_models import common
 
-from ...anny.torch import ANNY
-from ...mhr.torch import MHR
-from ...smpl.torch import SMPL
-from ...smplx.torch import SMPLX
+from body_models.anny.torch import ANNY
+from body_models.mhr.torch import MHR
+from body_models.smpl.torch import SMPL
+from body_models.smplx.torch import SMPLX
 from .. import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
 from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape

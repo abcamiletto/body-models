@@ -156,18 +156,25 @@ class GarmentMeasurementsModel(SkinnedModel):
                 raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape, skip_vertices=True)
+            identity = self.prepare_identity(shape)
 
-        pose = self.prepare_pose(
+        packed_pose = pack_pose(
+            xp,
+            pelvis_rotation,
             body_pose,
             head_pose,
             hand_pose,
-            pelvis_rotation,
-            identity=identity,
-            skip_vertices=True,
+        )
+        skeleton = core.prepare_skeleton(
+            self.weights.bind_quats,
+            self.weights.kinematic_fronts,
+            packed_pose,
+            self.rotation_type,
+            local_bind_translations=identity["local_bind_translations"],
+            xp=xp,
         )
         return skinning.transform_skeleton(
-            pose["skeleton_transforms"],
+            skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
@@ -178,7 +185,6 @@ class GarmentMeasurementsModel(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch C"],
-        skip_vertices: bool = False,
     ) -> core.GarmentMeasurementsIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
@@ -190,7 +196,6 @@ class GarmentMeasurementsModel(SkinnedModel):
             mvc_weights=self.weights.mvc_weights,
             kinematic_fronts=self.weights.kinematic_fronts,
             shape=shape,
-            skip_vertices=skip_vertices,
         )
 
     def prepare_pose(
@@ -201,7 +206,6 @@ class GarmentMeasurementsModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
         *,
         identity: core.GarmentMeasurementsIdentity,
-        skip_vertices: bool = False,
     ) -> core.GarmentMeasurementsPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(
@@ -218,7 +222,6 @@ class GarmentMeasurementsModel(SkinnedModel):
             self.rotation_type,
             bind_skeleton=identity["bind_skeleton"],
             local_bind_translations=identity["local_bind_translations"],
-            skip_vertices=skip_vertices,
             xp=self._runtime.xp,
         )
 

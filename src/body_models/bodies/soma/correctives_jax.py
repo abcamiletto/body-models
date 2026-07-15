@@ -5,14 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from body_models.bodies.soma.correctives import hidden_activations
-from body_models.runtime import JaxRuntime
+from body_models.runtime import Runtime
 
 
 class JaxCorrectiveNetwork:
     """SOMA corrective network using a JAX indexed reduction."""
 
-    def __init__(self) -> None:
-        self._runtime = JaxRuntime()
+    def __init__(self, runtime: Runtime, data: Any) -> None:
+        del data
+        self._runtime = runtime
 
     def __call__(self, data: Any, pose_rotations: Any) -> Any:
         hidden = hidden_activations(self._runtime, data, pose_rotations)

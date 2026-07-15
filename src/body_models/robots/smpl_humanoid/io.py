@@ -133,6 +133,11 @@ def download_model(source: str = "humenv") -> Path:
     return path
 
 
+def download_assets() -> dict[str, Path]:
+    """Download every configured SMPL humanoid variant."""
+    return {f"smpl-humanoid-{source}": download_model(source) for source in SMPL_HUMANOID_VARIANTS}
+
+
 def validate_path(path: PathLike) -> Path:
     path = Path(path)
     if path.suffix.lower() != ".xml":

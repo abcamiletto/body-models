@@ -27,4 +27,4 @@ Use `prepare_identity(..., bind_pose="fit")` for the default identity-dependent 
 
 ## API
 
-::: body_models.bodies.soma.numpy.SOMA
+::: body_models.soma.numpy.SOMA

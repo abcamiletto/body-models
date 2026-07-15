@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import contextlib
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -16,20 +16,25 @@ Front = tuple[list[int], list[int]]
 BindPoseMode = Literal["fit", "fit_detached", "canonical"]
 
 
-class SomaIdentity(TypedDict):
-    """Identity-dependent SOMA state returned by ``prepare_identity``."""
+class SomaSkeletonIdentity(TypedDict):
+    """Identity-dependent joint state needed to pose the SOMA skeleton."""
 
-    rest_vertices: NotRequired[Float[Array, "*batch Va 3"]]
     local_joint_translations: Float[Array, "*batch Jf 3"]
-    inverse_bind_transforms: NotRequired[Float[Array, "*batch Jf 4 4"]]
+
+
+class SomaIdentity(SomaSkeletonIdentity):
+    """Complete identity-dependent SOMA mesh state."""
+
+    rest_vertices: Float[Array, "*batch Va 3"]
+    inverse_bind_transforms: Float[Array, "*batch Jf 4 4"]
 
 
 class SomaPreparedPose(TypedDict):
-    """Pose-dependent SOMA state returned by ``prepare_pose``."""
+    """Complete pose-dependent SOMA mesh state."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
-    pose_offsets: NotRequired[Float[Array, "*batch Va 3"]]
+    skinning_transforms: Float[Array, "*batch J 4 4"]
+    pose_offsets: Float[Array, "*batch Va 3"]
 
 
 def skinning_weights(data: Any) -> Any:
@@ -43,18 +48,61 @@ def prepare_identity_from_rest_shape(
     rest_shape_active: Float[Array, "B Va 3"],
     match_warp: bool,
     xp: Any,
-    skip_vertices: bool = False,
     repose: bool = True,
     bind_pose: BindPoseMode = "fit",
 ) -> SomaIdentity:
+    bind_shape, world_bind_pose = _prepare_bind_state(
+        data,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
+        match_warp=match_warp,
+        xp=xp,
+        repose=repose,
+        bind_pose=bind_pose,
+    )
+    return _prepare_identity_state(xp, bind_shape, world_bind_pose, data.topology.parents_full)
+
+
+def prepare_skeleton_identity_from_rest_shape(
+    data: Any,
+    *,
+    rest_shape_full: Float[Array, "B Vf 3"],
+    rest_shape_active: Float[Array, "B Va 3"],
+    match_warp: bool,
+    xp: Any,
+    repose: bool = True,
+    bind_pose: BindPoseMode = "fit",
+) -> SomaSkeletonIdentity:
+    """Prepare only identity-dependent SOMA joint state."""
+    _, world_bind_pose = _prepare_bind_state(
+        data,
+        rest_shape_full=rest_shape_full,
+        rest_shape_active=rest_shape_active,
+        match_warp=match_warp,
+        xp=xp,
+        repose=repose,
+        bind_pose=bind_pose,
+    )
+    return _prepare_skeleton_identity_state(xp, world_bind_pose, data.topology.parents_full)
+
+
+def _prepare_bind_state(
+    data: Any,
+    *,
+    rest_shape_full: Float[Array, "B Vf 3"],
+    rest_shape_active: Float[Array, "B Va 3"],
+    match_warp: bool,
+    xp: Any,
+    repose: bool,
+    bind_pose: BindPoseMode,
+) -> tuple[Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
     if data.public is not None:
-        return _prepare_procedural_identity(
+        return _prepare_procedural_bind_state(
             data,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             match_warp=match_warp,
             xp=xp,
-            skip_vertices=skip_vertices,
             repose=repose,
             bind_pose=bind_pose,
         )
@@ -85,26 +133,19 @@ def prepare_identity_from_rest_shape(
             kinematic_fronts=data.topology.kinematic_fronts_full,
             parents_full=data.topology.parents_full,
         )
-    return _prepare_identity_state(
-        xp,
-        bind_shape_active,
-        world_bind_pose,
-        data.topology.parents_full,
-        skip_vertices,
-    )
+    return bind_shape_active, world_bind_pose
 
 
-def _prepare_procedural_identity(
+def _prepare_procedural_bind_state(
     data: Any,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
     match_warp: bool,
     xp: Any,
-    skip_vertices: bool,
     repose: bool,
     bind_pose: BindPoseMode,
-) -> SomaIdentity:
+) -> tuple[Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
     public = data.public
 
     rest_shape_full, public_world_bind_pose_fit = _bind_pose_for_rest_shape(
@@ -136,13 +177,7 @@ def _prepare_procedural_identity(
         public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
     world_bind_pose = _expand_public_bind_pose(xp, data, public_world_bind_pose)
 
-    return _prepare_identity_state(
-        xp,
-        bind_shape_active,
-        world_bind_pose,
-        data.topology.parents_full,
-        skip_vertices,
-    )
+    return bind_shape_active, world_bind_pose
 
 
 def _prepare_identity_state(
@@ -150,8 +185,27 @@ def _prepare_identity_state(
     bind_shape: Array,
     world_bind_pose: Array,
     parents_full: list[int],
-    skip_vertices: bool,
 ) -> SomaIdentity:
+    identity = _prepare_skeleton_identity_state(xp, world_bind_pose, parents_full)
+    inverse_bind_transforms = common.invert_rigid_transforms(world_bind_pose, xp=xp)
+    inverse_bind_transforms = common.set(
+        inverse_bind_transforms,
+        (..., slice(None, 3), 3),
+        inverse_bind_transforms[..., :3, 3] * 0.01,
+        xp=xp,
+    )
+    return {
+        "local_joint_translations": identity["local_joint_translations"],
+        "rest_vertices": bind_shape * 0.01,
+        "inverse_bind_transforms": inverse_bind_transforms,
+    }
+
+
+def _prepare_skeleton_identity_state(
+    xp: Any,
+    world_bind_pose: Array,
+    parents_full: list[int],
+) -> SomaSkeletonIdentity:
     bind_local = _joint_world_to_local(xp, world_bind_pose, parents_full)
     local_joint_translations = bind_local[..., :3, 3]
     zeros = common.zeros_as(
@@ -167,20 +221,7 @@ def _prepare_identity_state(
         xp=xp,
     )
 
-    identity: SomaIdentity = {"local_joint_translations": local_joint_translations * 0.01}
-    if skip_vertices:
-        return identity
-
-    inverse_bind_transforms = common.invert_rigid_transforms(world_bind_pose, xp=xp)
-    inverse_bind_transforms = common.set(
-        inverse_bind_transforms,
-        (..., slice(None, 3), 3),
-        inverse_bind_transforms[..., :3, 3] * 0.01,
-        xp=xp,
-    )
-    identity["rest_vertices"] = bind_shape * 0.01
-    identity["inverse_bind_transforms"] = inverse_bind_transforms
-    return identity
+    return {"local_joint_translations": local_joint_translations * 0.01}
 
 
 def _pin_root_transform(xp: Any, transforms: Array) -> Array:
@@ -263,34 +304,19 @@ def prepare_pose(
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
-    inverse_bind_transforms: Float[Array, "*batch Jf 4 4"] | None,
-    skip_vertices: bool,
+    inverse_bind_transforms: Float[Array, "*batch Jf 4 4"],
     xp: Any,
     corrective_network: Any,
 ) -> SomaPreparedPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
-    pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    pose_rot_internal = _expand_public_pose_rotations(xp, data, pose_rot_public)
-    pose_rot_full = _orient_pose_rot_full(
-        xp,
-        pose_rot_internal,
-        data.t_pose_world,
-        data.topology.parent_indices_full,
+    pose_rot_public, pose_rot_full, skeleton_transforms_full = _prepare_skeleton_state(
+        data,
+        pose,
+        rotation_type,
+        local_joint_translations=local_joint_translations,
+        xp=xp,
     )
-    skeleton_transforms_full = _pose_skeleton(
-        xp,
-        local_joint_translations,
-        data.topology.kinematic_fronts_full,
-        pose_rot_full,
-    )
-    # Public rigs expose public skeleton joints, while skinning still uses the expanded internal rig.
-    skeleton_public = _public_joint_transforms(xp, data, skeleton_transforms_full)
-    prepared_pose: SomaPreparedPose = {"skeleton_transforms": skeleton_public}
-    if skip_vertices:
-        return prepared_pose
-    assert inverse_bind_transforms is not None
     skinning_transforms = skeleton_transforms_full @ inverse_bind_transforms
-    prepared_pose["skinning_transforms"] = skinning_transforms[..., 1:, :, :]
     correctives_pose_rot = pose_rot_full
     if data.public is not None:
         correctives_pose_rot = _orient_pose_rot_full(
@@ -302,8 +328,55 @@ def prepare_pose(
     pose_offsets = corrective_network(data, correctives_pose_rot)
     if data.vertex_map is not None:
         pose_offsets = pose_offsets[..., data.vertex_map, :]
-    prepared_pose["pose_offsets"] = pose_offsets * 0.01
-    return prepared_pose
+    return {
+        "skeleton_transforms": _public_joint_transforms(xp, data, skeleton_transforms_full),
+        "skinning_transforms": skinning_transforms[..., 1:, :, :],
+        "pose_offsets": pose_offsets * 0.01,
+    }
+
+
+def prepare_skeleton(
+    data: Any,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    rotation_type: RotationType,
+    *,
+    local_joint_translations: Float[Array, "*batch Jf 3"],
+    xp: Any,
+) -> Float[Array, "*batch J 4 4"]:
+    """Prepare only posed SOMA public-joint transforms."""
+    _, _, skeleton = _prepare_skeleton_state(
+        data,
+        pose,
+        rotation_type,
+        local_joint_translations=local_joint_translations,
+        xp=xp,
+    )
+    return _public_joint_transforms(xp, data, skeleton)
+
+
+def _prepare_skeleton_state(
+    data: Any,
+    pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
+    rotation_type: RotationType,
+    *,
+    local_joint_translations: Float[Array, "*batch Jf 3"],
+    xp: Any,
+) -> tuple[Array, Array, Array]:
+    pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+    pose_rot_internal = _expand_public_pose_rotations(xp, data, pose_rot_public)
+    pose_rot_full = _orient_pose_rot_full(
+        xp,
+        pose_rot_internal,
+        data.t_pose_world,
+        data.topology.parent_indices_full,
+    )
+    skeleton = _pose_skeleton(
+        xp,
+        local_joint_translations,
+        data.topology.kinematic_fronts_full,
+        pose_rot_full,
+    )
+    return pose_rot_public, pose_rot_full, skeleton
 
 
 def _public_joint_transforms(

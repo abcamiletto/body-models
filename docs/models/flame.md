@@ -20,4 +20,4 @@ body-models set flame /path/to/FLAME_NEUTRAL.pkl
 
 ## API
 
-::: body_models.parts.flame.numpy.FLAME
+::: body_models.flame.numpy.FLAME

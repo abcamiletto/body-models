@@ -171,17 +171,22 @@ class SMPLHModel(SkinnedModel):
                 raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape, skip_vertices=True)
+            skeleton_identity = self._prepare_skeleton_identity(shape)
+        else:
+            skeleton_identity = identity
 
-        pose = self.prepare_pose(
+        skeleton = core.prepare_skeleton(
+            self.weights.kinematic_fronts,
+            self.weights.hand_mean,
             body_pose,
             hand_pose,
             pelvis_rotation,
-            identity=identity,
-            skip_vertices=True,
+            self.rotation_type,
+            local_joint_offsets=skeleton_identity["local_joint_offsets"],
+            xp=xp,
         )
         return skinning.transform_skeleton(
-            pose["skeleton_transforms"],
+            skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
@@ -192,18 +197,16 @@ class SMPLHModel(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-        skip_vertices: bool = False,
     ) -> core.SmplhIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=None if skip_vertices else self.weights.v_template,
-            shapedirs=None if skip_vertices else self.weights.shapedirs,
+            v_template=self.weights.v_template,
+            shapedirs=self.weights.shapedirs,
             j_template=self.weights.j_template,
             j_shapedirs=self.weights.j_shapedirs,
             parents=self.weights.parents,
             shape=shape,
-            skip_vertices=skip_vertices,
         )
 
     def prepare_pose(
@@ -213,7 +216,6 @@ class SMPLHModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
         identity: core.SmplhIdentity,
-        skip_vertices: bool = False,
     ) -> core.SmplhPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
@@ -227,7 +229,15 @@ class SMPLHModel(SkinnedModel):
             rotation_type=self.rotation_type,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
-            skip_vertices=skip_vertices,
+        )
+
+    def _prepare_skeleton_identity(self, shape: Array) -> core.SmplhSkeletonIdentity:
+        return core.prepare_skeleton_identity(
+            xp=self._runtime.xp,
+            j_template=self.weights.j_template,
+            j_shapedirs=self.weights.j_shapedirs,
+            parents=self.weights.parents,
+            shape=shape,
         )
 
     def get_rest_pose(

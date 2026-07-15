@@ -7,10 +7,10 @@ from dataclasses import replace
 import numpy as np
 from jaxtyping import Float
 
-from ...anny.numpy import ANNY
-from ...mhr.numpy import MHR
-from ...smpl.numpy import SMPL
-from ...smplx.numpy import SMPLX
+from body_models.anny.numpy import ANNY
+from body_models.mhr.numpy import MHR
+from body_models.smpl.numpy import SMPL
+from body_models.smplx.numpy import SMPLX
 from .. import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
 from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape

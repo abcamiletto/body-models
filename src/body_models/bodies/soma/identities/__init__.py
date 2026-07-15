@@ -13,23 +13,6 @@ from ...mhr import pose as mhr_pose
 from .. import core
 
 
-def create_identity_source(runtime_name: str, model_type: str, transfer_data: Any) -> Any:
-    """Create a source model with arrays owned by the selected runtime."""
-    if runtime_name == "numpy":
-        from . import numpy
-
-        return numpy.create_identity_source(model_type, transfer_data)
-    if runtime_name == "torch":
-        from . import torch
-
-        return torch.create_identity_source(model_type, transfer_data)
-    if runtime_name == "jax":
-        from . import jax
-
-        return jax.create_identity_source(model_type, transfer_data)
-    raise ValueError(f"SOMA identity transfer does not support runtime {runtime_name!r}")
-
-
 @dataclass(frozen=True)
 class IdentityTransfer:
     source_tetrahedra: Int[Any, "Fs 4"]

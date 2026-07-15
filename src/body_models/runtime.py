@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import Any, Literal
 
 from body_models import common
 from body_models.common import skinning
 
 
-class Runtime:
+class Runtime(ABC):
     """Array storage and shared operation implementations for one backend."""
 
     name: str
 
     @property
+    @abstractmethod
     def xp(self) -> Any:
         """Array namespace, imported lazily so runtime objects remain serializable."""
-        raise NotImplementedError
 
     def convert_model_data(self, value: Any) -> Any:
         """Convert model data to backend-managed state."""
@@ -30,8 +31,7 @@ class Runtime:
 
     def zeros(self, shape: tuple[int, ...], *, like: Any, dtype: Any | None = None) -> Any:
         """Create zeros with the backend and device of ``like``."""
-        zero = self.asarray(0, like=like, dtype=dtype)
-        return self.xp.broadcast_to(zero, shape)
+        return common.zeros_as(like, shape=shape, dtype=dtype, xp=self.xp)
 
     def compact_linear_blend_skinning(
         self,
@@ -76,9 +76,9 @@ class Runtime:
             xp=self.xp,
         )
 
+    @abstractmethod
     def expand_skinning_weights(self, joint_indices: Any, joint_weights: Any, num_joints: int) -> Any:
         """Expand compact per-vertex influences into a dense weight matrix."""
-        raise NotImplementedError
 
 
 class NumpyRuntime(Runtime):
@@ -106,12 +106,12 @@ class TorchRuntime(Runtime):
     """Torch model runtime with optional Warp operation lowerings."""
 
     name = "torch"
-    kernels = ("torch", "warp")
+    skinning_backends = ("torch", "warp")
 
-    def __init__(self, kernel: Literal["torch", "warp"] = "torch") -> None:
-        if kernel not in self.kernels:
-            raise ValueError(f"Invalid Torch kernel: {kernel!r}")
-        self.kernel = kernel
+    def __init__(self, skinning_backend: Literal["torch", "warp"] = "torch") -> None:
+        if skinning_backend not in self.skinning_backends:
+            raise ValueError(f"Invalid Torch skinning backend: {skinning_backend!r}")
+        self.skinning_backend = skinning_backend
 
     @property
     def xp(self) -> Any:
@@ -135,7 +135,7 @@ class TorchRuntime(Runtime):
         joint_indices: Any,
         joint_weights: Any,
     ) -> Any:
-        if self.kernel == "torch":
+        if self.skinning_backend == "torch":
             return super()._compact_linear_blend_skinning(
                 vertices,
                 transforms,
@@ -146,7 +146,7 @@ class TorchRuntime(Runtime):
         try:
             from body_models.common import warp
         except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError("Install body-models[warp] to use kernel='warp'.") from exc
+            raise ModuleNotFoundError("Install body-models[warp] to use skinning_backend='warp'.") from exc
         return warp.compact_linear_blend_skinning(
             vertices,
             transforms,

@@ -13,13 +13,13 @@ from nanomanifold import SO3
 from body_models.base import SkinnedModel, SkinningPayload
 from body_models.bodies.soma import core, identities
 from body_models.bodies.soma.constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
-from body_models.bodies.soma.correctives import create_corrective_network
 from body_models.bodies.soma.io import (
     MODEL_TYPE_SPECS,
     load_identity_transfer_data,
     load_model_data_for_lod,
     public_joint_metadata,
 )
+from body_models.bodies.soma.lowerings import SomaLowerings
 from body_models.bodies.soma.pose import pack_pose, unpack_pose
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
@@ -64,6 +64,7 @@ class SOMAModel(SkinnedModel):
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
         runtime: Runtime,
+        lowerings: SomaLowerings,
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -87,12 +88,11 @@ class SOMAModel(SkinnedModel):
         )
         self.parents, self._joint_names = public_joint_metadata(weights)
         self.weights = runtime.convert_model_data(weights)
-        self._corrective_network = create_corrective_network(runtime, self.weights)
+        self._corrective_network = lowerings.corrective_network(runtime, self.weights)
         self._identity_source = None
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, normalized_model_type)
-            self._identity_source = identities.create_identity_source(
-                runtime.name,
+            self._identity_source = lowerings.identity_source(
                 normalized_model_type,
                 transfer_data,
             )
@@ -230,11 +230,27 @@ class SOMAModel(SkinnedModel):
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            identity = self.prepare_identity(shape, scale_params=scale_params, skip_vertices=True)
+            skeleton_identity = self._prepare_skeleton_identity(shape, scale_params=scale_params)
+        else:
+            skeleton_identity = identity
 
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity, skip_vertices=True)
+        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+        root_rotation = SO3.identity_as(
+            body_pose,
+            batch_dims=batch_shape,
+            rotation_type=self.rotation_type,
+            xp=xp,
+        )
+        pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
+        skeleton = core.prepare_skeleton(
+            self.weights,
+            pose,
+            self.rotation_type,
+            local_joint_translations=skeleton_identity["local_joint_translations"],
+            xp=xp,
+        )
         return skinning.transform_skeleton(
-            pose["skeleton_transforms"],
+            skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
@@ -247,33 +263,17 @@ class SOMAModel(SkinnedModel):
         shape: Float[Array, "*batch I"],
         *,
         scale_params: Float[Array, "*batch K"] | None = None,
-        skip_vertices: bool = False,
         repose: bool = True,
         bind_pose: core.BindPoseMode = "fit",
     ) -> core.SomaIdentity:
         """Precompute identity-dependent state for repeated forward passes."""
-        if self.num_scale_params is None:
-            scale_params = None
-        elif scale_params is None:
-            scale_params = self._runtime.zeros(
-                (*shape.shape[:-1], self.num_scale_params),
-                like=shape,
-            )
-
-        rest_shape_full, rest_shape_active = identities.rest_shapes(
-            data=self.weights,
-            identity_source=self._identity_source,
-            identity=shape,
-            scale_params=scale_params,
-            xp=self._runtime.xp,
-        )
+        rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_identity_from_rest_shape(
             data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             match_warp=self.match_warp,
             xp=self._runtime.xp,
-            skip_vertices=skip_vertices,
             repose=repose,
             bind_pose=bind_pose,
         )
@@ -285,7 +285,6 @@ class SOMAModel(SkinnedModel):
         hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
         *,
         identity: core.SomaIdentity,
-        skip_vertices: bool = False,
     ) -> core.SomaPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
@@ -302,10 +301,40 @@ class SOMAModel(SkinnedModel):
             pose,
             rotation_type=self.rotation_type,
             local_joint_translations=identity["local_joint_translations"],
-            inverse_bind_transforms=None if skip_vertices else identity["inverse_bind_transforms"],
-            skip_vertices=skip_vertices,
+            inverse_bind_transforms=identity["inverse_bind_transforms"],
             xp=xp,
             corrective_network=self._corrective_network,
+        )
+
+    def _prepare_skeleton_identity(
+        self,
+        shape: Array,
+        *,
+        scale_params: Array | None,
+    ) -> core.SomaSkeletonIdentity:
+        rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
+        return core.prepare_skeleton_identity_from_rest_shape(
+            self.weights,
+            rest_shape_full=rest_shape_full,
+            rest_shape_active=rest_shape_active,
+            match_warp=self.match_warp,
+            xp=self._runtime.xp,
+        )
+
+    def _rest_shapes(self, shape: Array, scale_params: Array | None) -> tuple[Array, Array]:
+        if self.num_scale_params is None:
+            scale_params = None
+        elif scale_params is None:
+            scale_params = self._runtime.zeros(
+                (*shape.shape[:-1], self.num_scale_params),
+                like=shape,
+            )
+        return identities.rest_shapes(
+            data=self.weights,
+            identity_source=self._identity_source,
+            identity=shape,
+            scale_params=scale_params,
+            xp=self._runtime.xp,
         )
 
     def get_rest_pose(

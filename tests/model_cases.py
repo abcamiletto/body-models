@@ -1,5 +1,6 @@
 """Shared model list for cross-model tests."""
 
+from inspect import signature
 from pathlib import Path
 
 from body_models.anny import jax as anny_jax
@@ -94,3 +95,10 @@ RIGID_BODY_MODELS = [model for model in MODELS if issubclass(model[1], RigidBody
 SKINNED_MODELS = [model for model in MODELS if issubclass(model[1], SkinnedModel)]
 
 REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" / "0.json").exists()]
+
+
+def forward_skeleton(model, params, **kwargs):
+    """Call a model-specific skeleton signature with the parameters it accepts."""
+    arguments = dict(params) | kwargs
+    accepted = signature(model.forward_skeleton).parameters
+    return model.forward_skeleton(**{key: value for key, value in arguments.items() if key in accepted})

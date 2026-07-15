@@ -1,7 +1,7 @@
 """MHR deformation computations."""
 
 import math
-from typing import Any, NotRequired, TypedDict
+from typing import Any, TypedDict
 
 from jaxtyping import Float
 from nanomanifold import SO3
@@ -15,17 +15,17 @@ _LN2 = math.log(2)
 
 
 class MhrIdentity(TypedDict):
-    """Shape- and expression-dependent MHR state returned by ``prepare_identity``."""
+    """Complete shape- and expression-dependent MHR mesh state."""
 
-    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+    rest_vertices: Float[Array, "*batch V 3"]
 
 
 class MhrPreparedPose(TypedDict):
-    """Pose-dependent MHR state returned by ``prepare_pose``."""
+    """Complete pose-dependent MHR mesh state."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
-    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
+    skinning_transforms: Float[Array, "*batch J 4 4"]
+    pose_offsets: Float[Array, "*batch V 3"]
 
 
 def _apply_pose_correctives(
@@ -66,7 +66,6 @@ def prepare_pose(
     corrective_W2: Float[Array, "V*3 3000"],
     pose: Float[Array, "B 204"],
     *,
-    skip_vertices: bool = False,
     xp: Any,
 ) -> MhrPreparedPose:
     """Precompute pose-dependent MHR state for repeated forward passes."""
@@ -81,40 +80,59 @@ def prepare_pose(
         num_joints=num_joints,
         shape_dim=shape_dim,
     )
-    prepared_pose: MhrPreparedPose = {
+    return {
         "skeleton_transforms": _trs_to_transforms(xp, t_g * 0.01, r_g, s_g),
+        "skinning_transforms": _skinning_transforms(
+            xp,
+            joint_translations=t_g,
+            joint_rotations=r_g,
+            joint_scales=s_g,
+            bind_inv_linear=bind_inv_linear,
+            bind_inv_translation=bind_inv_translation,
+        ),
+        "pose_offsets": _apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp) * 0.01,
     }
-    if skip_vertices:
-        return prepared_pose
-    prepared_pose["skinning_transforms"] = _skinning_transforms(
-        xp,
-        joint_translations=t_g,
-        joint_rotations=r_g,
-        joint_scales=s_g,
-        bind_inv_linear=bind_inv_linear,
-        bind_inv_translation=bind_inv_translation,
+
+
+def prepare_skeleton(
+    joint_offsets: Float[Array, "J 3"],
+    joint_pre_rotations: Float[Array, "J 4"],
+    parameter_transform: Float[Array, "D N"],
+    kinematic_fronts: list[Front],
+    num_joints: int,
+    shape_dim: int,
+    pose: Float[Array, "B 204"],
+    *,
+    xp: Any,
+) -> Float[Array, "*batch J 4 4"]:
+    """Prepare only posed MHR joint transforms."""
+    translations, rotations, scales, _ = _forward_skeleton_core(
+        xp=xp,
+        pose=pose,
+        joint_offsets=joint_offsets,
+        joint_pre_rotations=joint_pre_rotations,
+        parameter_transform=parameter_transform,
+        kinematic_fronts=kinematic_fronts,
+        num_joints=num_joints,
+        shape_dim=shape_dim,
     )
-    prepared_pose["pose_offsets"] = _apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp) * 0.01
-    return prepared_pose
+    return _trs_to_transforms(xp, translations * 0.01, rotations, scales)
 
 
 def prepare_identity(
     *,
     xp,
-    base_vertices: Float[Array, "V 3"] | None,
-    blendshape_dirs: Float[Array, "117 V 3"] | None,
+    base_vertices: Float[Array, "V 3"],
+    blendshape_dirs: Float[Array, "117 V 3"],
     shape: Float[Array, "*batch 45"],
     expression: Float[Array, "*batch 72"],
-    skip_vertices: bool = False,
 ) -> MhrIdentity:
     """Precompute shape- and expression-dependent MHR state for repeated forward passes."""
     assert shape.ndim >= 1 and shape.shape[-1] >= 1
-    identity: MhrIdentity = {}
-    if not skip_vertices:
-        assert base_vertices is not None and blendshape_dirs is not None
-        coeffs = xp.concat([shape, expression], axis=-1)
-        identity["rest_vertices"] = (base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)) * 0.01
-    return identity
+    coeffs = xp.concat([shape, expression], axis=-1)
+    return {
+        "rest_vertices": (base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)) * 0.01,
+    }
 
 
 def _skinning_transforms(

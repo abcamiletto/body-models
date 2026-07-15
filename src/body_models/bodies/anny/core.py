@@ -1,6 +1,6 @@
 """Backend-independent ANNY pose and identity preparation."""
 
-from typing import Any, NotRequired, TypedDict
+from typing import Any, TypedDict
 
 from jaxtyping import Float
 from nanomanifold import SO3
@@ -13,18 +13,23 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 
-class AnnyIdentity(TypedDict):
-    """Phenotype-dependent ANNY state."""
+class AnnySkeletonIdentity(TypedDict):
+    """Phenotype-dependent joint state needed to pose the ANNY skeleton."""
 
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"]
-    rest_vertices: NotRequired[Float[Array, "*batch V 3"]]
+
+
+class AnnyIdentity(AnnySkeletonIdentity):
+    """Complete phenotype-dependent ANNY mesh state."""
+
+    rest_vertices: Float[Array, "*batch V 3"]
 
 
 class AnnyPreparedPose(TypedDict):
-    """Pose-dependent ANNY state."""
+    """Complete pose-dependent ANNY mesh state."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: NotRequired[Float[Array, "*batch J 4 4"]]
+    skinning_transforms: Float[Array, "*batch J 4 4"]
 
 
 def shape_vertices(
@@ -59,7 +64,6 @@ def prepare_pose(
     rotation_type: RotationType,
     *,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
-    skip_vertices: bool,
     xp: Any,
 ) -> AnnyPreparedPose:
     """Prepare ANNY skeleton and bind-relative skinning transforms."""
@@ -69,13 +73,33 @@ def prepare_pose(
         kinematic_fronts=kinematic_fronts,
         rest_skeleton_transforms=rest_skeleton_transforms,
         pose_transforms=pose_transforms,
-        skip_skinning=skip_vertices,
+        skip_skinning=False,
     )
-    prepared: AnnyPreparedPose = {"skeleton_transforms": skeleton_transforms}
-    if not skip_vertices:
-        assert skinning_transforms is not None
-        prepared["skinning_transforms"] = skinning_transforms
-    return prepared
+    assert skinning_transforms is not None
+    return {
+        "skeleton_transforms": skeleton_transforms,
+        "skinning_transforms": skinning_transforms,
+    }
+
+
+def prepare_skeleton(
+    kinematic_fronts: list[Front],
+    pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
+    rotation_type: RotationType,
+    *,
+    rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
+    xp: Any,
+) -> Float[Array, "*batch J 4 4"]:
+    """Prepare only posed ANNY joint transforms."""
+    pose_transforms = _pose_to_transform(xp, pose, rotation_type)
+    skeleton, _ = _forward_core(
+        xp=xp,
+        kinematic_fronts=kinematic_fronts,
+        rest_skeleton_transforms=rest_skeleton_transforms,
+        pose_transforms=pose_transforms,
+        skip_skinning=True,
+    )
+    return skeleton
 
 
 def _forward_core(
@@ -125,8 +149,8 @@ def _forward_core(
 def prepare_identity(
     *,
     xp: Any,
-    template_vertices: Float[Array, "V 3"] | None,
-    blendshapes: Float[Array, "S V 3"] | None,
+    template_vertices: Float[Array, "V 3"],
+    blendshapes: Float[Array, "S V 3"],
     template_bone_heads: Float[Array, "J 3"],
     template_bone_tails: Float[Array, "J 3"],
     bone_heads_blendshapes: Float[Array, "S J 3"],
@@ -138,9 +162,76 @@ def prepare_identity(
     degenerate_rotation: Float[Array, "3 3"],
     extrapolate_phenotypes: bool,
     shape: Float[Array, "*batch 6"],
-    skip_vertices: bool,
 ) -> AnnyIdentity:
     """Prepare phenotype-dependent ANNY skeleton and vertices."""
+    coefficients, rest_skeleton = _prepare_identity_state(
+        xp=xp,
+        template_bone_heads=template_bone_heads,
+        template_bone_tails=template_bone_tails,
+        bone_heads_blendshapes=bone_heads_blendshapes,
+        bone_tails_blendshapes=bone_tails_blendshapes,
+        bone_rolls_rotmat=bone_rolls_rotmat,
+        phenotype_mask=phenotype_mask,
+        anchors=anchors,
+        y_axis=y_axis,
+        degenerate_rotation=degenerate_rotation,
+        extrapolate_phenotypes=extrapolate_phenotypes,
+        shape=shape,
+    )
+    return {
+        "rest_skeleton_transforms": rest_skeleton,
+        "rest_vertices": template_vertices + xp.einsum("...s,svd->...vd", coefficients, blendshapes),
+    }
+
+
+def prepare_skeleton_identity(
+    *,
+    xp: Any,
+    template_bone_heads: Float[Array, "J 3"],
+    template_bone_tails: Float[Array, "J 3"],
+    bone_heads_blendshapes: Float[Array, "S J 3"],
+    bone_tails_blendshapes: Float[Array, "S J 3"],
+    bone_rolls_rotmat: Float[Array, "J 3 3"],
+    phenotype_mask: Float[Array, "S P"],
+    anchors: Any,
+    y_axis: Float[Array, "3"],
+    degenerate_rotation: Float[Array, "3 3"],
+    extrapolate_phenotypes: bool,
+    shape: Float[Array, "*batch 6"],
+) -> AnnySkeletonIdentity:
+    """Prepare only phenotype-dependent ANNY joint state."""
+    _, rest_skeleton = _prepare_identity_state(
+        xp=xp,
+        template_bone_heads=template_bone_heads,
+        template_bone_tails=template_bone_tails,
+        bone_heads_blendshapes=bone_heads_blendshapes,
+        bone_tails_blendshapes=bone_tails_blendshapes,
+        bone_rolls_rotmat=bone_rolls_rotmat,
+        phenotype_mask=phenotype_mask,
+        anchors=anchors,
+        y_axis=y_axis,
+        degenerate_rotation=degenerate_rotation,
+        extrapolate_phenotypes=extrapolate_phenotypes,
+        shape=shape,
+    )
+    return {"rest_skeleton_transforms": rest_skeleton}
+
+
+def _prepare_identity_state(
+    *,
+    xp: Any,
+    template_bone_heads: Float[Array, "J 3"],
+    template_bone_tails: Float[Array, "J 3"],
+    bone_heads_blendshapes: Float[Array, "S J 3"],
+    bone_tails_blendshapes: Float[Array, "S J 3"],
+    bone_rolls_rotmat: Float[Array, "J 3 3"],
+    phenotype_mask: Float[Array, "S P"],
+    anchors: Any,
+    y_axis: Float[Array, "3"],
+    degenerate_rotation: Float[Array, "3 3"],
+    extrapolate_phenotypes: bool,
+    shape: Float[Array, "*batch 6"],
+) -> tuple[Float[Array, "*batch S"], Float[Array, "*batch J 4 4"]]:
     if shape.shape[-1] != 6:
         raise ValueError(f"shape must have shape [..., 6], got {tuple(shape.shape)}")
     coefficients = _phenotype_to_coeffs(
@@ -157,24 +248,10 @@ def prepare_identity(
     )
     heads = template_bone_heads + xp.einsum("...s,sjd->...jd", coefficients, bone_heads_blendshapes)
     tails = template_bone_tails + xp.einsum("...s,sjd->...jd", coefficients, bone_tails_blendshapes)
-    identity: AnnyIdentity = {
-        "rest_skeleton_transforms": _skeleton_transforms_from_heads_tails(
-            xp,
-            heads,
-            tails,
-            bone_rolls_rotmat,
-            y_axis,
-            degenerate_rotation,
-        )
-    }
-    if not skip_vertices:
-        assert template_vertices is not None and blendshapes is not None
-        identity["rest_vertices"] = template_vertices + xp.einsum(
-            "...s,svd->...vd",
-            coefficients,
-            blendshapes,
-        )
-    return identity
+    rest_skeleton = _skeleton_transforms_from_heads_tails(
+        xp, heads, tails, bone_rolls_rotmat, y_axis, degenerate_rotation
+    )
+    return coefficients, rest_skeleton
 
 
 def _phenotype_to_coeffs(
