@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from body_models.runtime import NumpyRuntime
+from body_models.state import numpy_state
 from body_models.skeletons.skel.model import SKELModel
 
 
@@ -18,7 +19,13 @@ class SKEL(SKELModel):
         gender: Literal["male", "female"] | None = None,
         simplify: float = 1.0,
     ) -> None:
-        super().__init__(model_path, gender, simplify, runtime=NumpyRuntime())
+        super().__init__(
+            model_path,
+            gender,
+            simplify,
+            runtime=NumpyRuntime(),
+            materialize=numpy_state,
+        )
 
 
 __all__ = ["SKEL"]

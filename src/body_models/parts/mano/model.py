@@ -15,7 +15,8 @@ from body_models.parts.mano import core
 from body_models.parts.mano.constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
 from body_models.parts.mano.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -32,8 +33,6 @@ class ManoConfig:
 class MANOModel(SkinnedModel):
     """Backend-independent MANO interface and orchestration."""
 
-    identity_keys = ("shape",)
-    pose_keys = ("hand_pose", "wrist_rotation")
     has_hands = True
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
@@ -46,7 +45,8 @@ class MANOModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         *,
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side!r}")
@@ -59,7 +59,7 @@ class MANOModel(SkinnedModel):
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         self._runtime = runtime
         self._config = ManoConfig(side=side or "right", rotation_type=rotation_type)
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def side(self) -> Literal["right", "left"]:
@@ -123,13 +123,14 @@ class MANOModel(SkinnedModel):
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: core.ManoIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed hand vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -159,13 +160,14 @@ class MANOModel(SkinnedModel):
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: core.ManoIdentity | None = None,
     ) -> Float[Array, "*batch 16 4 4"]:
         """Compute posed hand joint transforms."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -228,7 +230,10 @@ class MANOModel(SkinnedModel):
             rest_joints=identity["rest_joints"],
         )
 
-    def _prepare_skeleton_identity(self, shape: Array) -> core.ManoSkeletonIdentity:
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch S"],
+    ) -> core.ManoSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
             j_template=self.weights.j_template,
@@ -242,7 +247,7 @@ class MANOModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero shape controls and identity rotations."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -280,7 +285,12 @@ class MANOModel(SkinnedModel):
             "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
         }
 
-    def _hand_preset(self, batch_dims: tuple[int, ...], like: Array, hands: HandPreset) -> Array:
+    def _hand_preset(
+        self,
+        batch_dims: tuple[int, ...],
+        like: Float[Array, "..."],
+        hands: HandPreset,
+    ) -> Float[Array, "*batch 15 N"]:
         axis_angle = self._runtime.asarray(MANO_HAND_PRESETS[self.side][hands], like=like).reshape(
             self.NUM_HAND_JOINTS,
             3,

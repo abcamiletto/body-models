@@ -8,6 +8,7 @@ import torch.nn as nn
 from body_models.bodies.smpl.model import SMPLModel
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
+from body_models.state import torch_state
 
 
 class SMPL(SMPLModel, nn.Module):
@@ -31,6 +32,7 @@ class SMPL(SMPLModel, nn.Module):
             simplify,
             rotation_type,
             runtime=TorchRuntime(skinning_backend),
+            materialize=torch_state,
         )
 
 

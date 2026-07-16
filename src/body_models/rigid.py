@@ -9,7 +9,7 @@ from trimesh import Trimesh
 
 from body_models.base import RigidBodyModel
 from body_models.common import rigid
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
 
 Array = Any
 
@@ -18,7 +18,7 @@ class RigidModel(RigidBodyModel):
     """Common rigid-model state, metadata, and mesh projection."""
 
     weights: Any
-    _runtime: Runtime
+    _runtime: ArrayRuntime
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -52,7 +52,10 @@ class RigidModel(RigidBodyModel):
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
 
-    def _link_transforms(self, skeleton: Array) -> Array:
+    def _link_transforms(
+        self,
+        skeleton: Float[Array, "*batch J 4 4"],
+    ) -> Float[Array, "*batch L 4 4"]:
         return rigid.forward_link_transforms(
             skeleton,
             self.weights.link_joint_indices,
@@ -61,7 +64,7 @@ class RigidModel(RigidBodyModel):
             xp=self._runtime.xp,
         )
 
-    def _meshes_from_links(self, links: Array) -> list[Trimesh]:
+    def _meshes_from_links(self, links: Float[Array, "*batch L 4 4"]) -> list[Trimesh]:
         return rigid.forward_meshes_from_links(
             links,
             self.weights.vertices,
@@ -73,7 +76,12 @@ class RigidModel(RigidBodyModel):
             xp=self._runtime.xp,
         )
 
-    def _zero_pose(self, pose_key: str, batch_dims: tuple[int, ...], dtype: Any | None) -> dict[str, Array]:
+    def _zero_pose(
+        self,
+        pose_key: str,
+        batch_dims: tuple[int, ...],
+        dtype: Any | None,
+    ) -> dict[str, Float[Array, "..."]]:
         runtime = self._runtime
         reference = self.weights.vertices
         return {

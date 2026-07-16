@@ -21,7 +21,8 @@ from body_models.bodies.garment_measurements.io import get_model_path, load_mode
 from body_models.bodies.garment_measurements.pose import pack_pose, unpack_pose
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -37,8 +38,6 @@ class GarmentMeasurementsConfig:
 class GarmentMeasurementsModel(SkinnedModel):
     """Backend-independent GarmentMeasurements interface and orchestration."""
 
-    identity_keys = ("shape",)
-    pose_keys = ("body_pose", "head_pose", "hand_pose", "pelvis_rotation")
     has_hands = True
     has_head = True
     JOINTS = GARMENT_JOINTS
@@ -48,7 +47,8 @@ class GarmentMeasurementsModel(SkinnedModel):
         model_path: Path | str | None = None,
         *,
         rotation_type: RotationType = "axis_angle",
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
@@ -56,7 +56,7 @@ class GarmentMeasurementsModel(SkinnedModel):
         weights = load_model_data(get_model_path(model_path), dtype=np.float32)
         self._runtime = runtime
         self._config = GarmentMeasurementsConfig(rotation_type=rotation_type)
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -106,13 +106,14 @@ class GarmentMeasurementsModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch C"] | None = None,
         identity: core.GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed GarmentMeasurements vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -144,13 +145,14 @@ class GarmentMeasurementsModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch C"] | None = None,
         identity: core.GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed GarmentMeasurements joint transforms."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -230,7 +232,7 @@ class GarmentMeasurementsModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero shape controls and identity rotations."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -286,7 +288,7 @@ class GarmentMeasurementsModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the GarmentMeasurements T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = self._runtime.asarray(GARMENT_BODY_PRESETS["t_pose"], like=params["body_pose"])
@@ -304,7 +306,7 @@ class GarmentMeasurementsModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the GarmentMeasurements rest A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 

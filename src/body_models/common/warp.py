@@ -6,14 +6,14 @@ import io
 
 import torch
 import warp as wp
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import Tensor
 from torch.compiler import disable as disable_compile
 
 __all__ = ["compact_linear_blend_skinning", "forward_kinematics"]
 
 
-def _require_float32(**tensors: Tensor) -> None:
+def _require_float32(**tensors: Float[Tensor, "..."]) -> None:
     invalid = [name for name, tensor in tensors.items() if tensor.dtype != torch.float32]
     if invalid:
         names = ", ".join(invalid)
@@ -24,7 +24,7 @@ def _require_float32(**tensors: Tensor) -> None:
 def forward_kinematics(
     rotations: Float[Tensor, "*batch J 3 3"],
     translations: Float[Tensor, "*batch J 3"],
-    parents: Tensor,
+    parents: Int[Tensor, "J"],
 ) -> Float[Tensor, "*batch J 4 4"]:
     """Compose float32 Torch joint transforms with Warp."""
     _require_float32(rotations=rotations, translations=translations)
@@ -87,8 +87,8 @@ def compact_linear_blend_skinning(
     vertices: Float[Tensor, "*batch V 3"],
     transforms: Float[Tensor, "*batch J 4 4"],
     *,
-    joint_indices: Tensor,
-    joint_weights: Tensor,
+    joint_indices: Int[Tensor, "V K"],
+    joint_weights: Float[Tensor, "V K"],
 ) -> Float[Tensor, "*batch V 3"]:
     """Apply sparse float32 linear blend skinning with Warp autograd."""
     _require_float32(vertices=vertices, transforms=transforms)
@@ -159,7 +159,13 @@ class _WarpAffineBlendSkinning(torch.autograd.Function):
         return grad_vertices, grad_transforms, None, None
 
 
-def _transform_gradients(vertices, transforms, grad_output, joint_indices, joint_weights):
+def _transform_gradients(
+    vertices: Float[Tensor, "B V 3"],
+    transforms: Float[Tensor, "B J 4 4"],
+    grad_output: Float[Tensor, "B V 3"],
+    joint_indices: Int[Tensor, "V K"],
+    joint_weights: Float[Tensor, "V K"],
+) -> Float[Tensor, "B J 4 4"]:
     homogeneous_vertices = torch.cat([vertices, torch.ones_like(vertices[..., :1])], dim=-1)
     contributions = grad_output[..., None] * homogeneous_vertices[..., None, :]
     grad_transforms = torch.zeros_like(transforms)
@@ -175,7 +181,13 @@ def _transform_gradients(vertices, transforms, grad_output, joint_indices, joint
     return grad_transforms
 
 
-def _launch_affine_blend_skinning(vertices, transforms, joint_indices, joint_weights, output):
+def _launch_affine_blend_skinning(
+    vertices: Float[Tensor, "B V 3"],
+    transforms: Float[Tensor, "B J 4 4"],
+    joint_indices: Int[Tensor, "V K"],
+    joint_weights: Float[Tensor, "V K"],
+    output: Float[Tensor, "B V 3"],
+) -> None:
     flat_vertices = vertices.reshape(-1)
     flat_transforms = transforms.reshape(-1)
     flat_indices = joint_indices.reshape(-1)
@@ -204,11 +216,11 @@ def _launch_affine_blend_skinning(vertices, transforms, joint_indices, joint_wei
         )
 
 
-def _from_torch(tensor: Tensor):
+def _from_torch(tensor: Float[Tensor, "..."] | Int[Tensor, "..."]):
     return wp.from_torch(tensor, requires_grad=False)
 
 
-def _torch_stream(tensor: Tensor):
+def _torch_stream(tensor: Float[Tensor, "..."]):
     if tensor.device.type == "cuda":
         stream = wp.stream_from_torch(torch.cuda.current_stream(tensor.device))
         return wp.ScopedStream(stream)

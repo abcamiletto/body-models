@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import pytest
 
+import model_cases
 from body_models.runtime import JaxRuntime, NumpyRuntime, TorchRuntime
 
 
@@ -103,3 +104,17 @@ def test_soma_is_a_jax_pytree(model_type) -> None:
     model = SOMA(model_type=model_type)
     assert all(leaf is not model for leaf in jax.tree_util.tree_leaves(model))
     assert jax.jit(lambda value: value.num_vertices)(model) == model.num_vertices
+
+
+@pytest.mark.parametrize(("name", "_numpy", "_torch", "jax_model", "kwargs"), model_cases.MODELS)
+def test_jax_model_pytree_round_trip(name, _numpy, _torch, jax_model, kwargs) -> None:
+    jax = pytest.importorskip("jax")
+    model = jax_model(**kwargs)
+
+    leaves, tree = jax.tree_util.tree_flatten(model)
+    restored = jax.tree_util.tree_unflatten(tree, leaves)
+
+    assert type(restored) is type(model), name
+    assert restored.num_vertices == model.num_vertices
+    assert restored.joint_names == model.joint_names
+    assert restored.get_rest_pose().keys() == model.get_rest_pose().keys()

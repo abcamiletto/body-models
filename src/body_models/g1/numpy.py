@@ -5,6 +5,7 @@ from pathlib import Path
 from body_models.robots.g1 import core
 from body_models.robots.g1.model import G1Model
 from body_models.runtime import NumpyRuntime
+from body_models.state import numpy_state
 
 
 class G1(G1Model):
@@ -18,7 +19,12 @@ class G1(G1Model):
         *,
         convention: core.Convention = "soma",
     ) -> None:
-        super().__init__(model_path, convention=convention, runtime=NumpyRuntime())
+        super().__init__(
+            model_path,
+            convention=convention,
+            runtime=NumpyRuntime(),
+            materialize=numpy_state,
+        )
 
 
 __all__ = ["G1"]

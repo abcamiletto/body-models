@@ -15,7 +15,8 @@ from body_models.parts.flame import core
 from body_models.parts.flame.constants import FLAME_JOINT_NAMES
 from body_models.parts.flame.io import get_model_path, load_model_data
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 
@@ -30,8 +31,6 @@ class FlameConfig:
 class FLAMEModel(SkinnedModel):
     """Backend-independent FLAME interface and orchestration."""
 
-    identity_keys = ("shape", "expression")
-    pose_keys = ("head_pose", "head_rotation")
     has_head = True
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
@@ -42,7 +41,8 @@ class FLAMEModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         *,
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
@@ -53,7 +53,7 @@ class FLAMEModel(SkinnedModel):
         weights = load_model_data(resolved_path, simplify=simplify)
         self._runtime = runtime
         self._config = FlameConfig(rotation_type=rotation_type)
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -113,7 +113,7 @@ class FLAMEModel(SkinnedModel):
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
@@ -121,6 +121,7 @@ class FLAMEModel(SkinnedModel):
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed head vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is None:
             if shape is None or expression is None:
                 raise ValueError("shape and expression are required when identity is not provided")
@@ -151,7 +152,7 @@ class FLAMEModel(SkinnedModel):
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
@@ -159,6 +160,7 @@ class FLAMEModel(SkinnedModel):
     ) -> Float[Array, "*batch 5 4 4"]:
         """Compute posed head joint transforms."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is None:
             if shape is None or expression is None:
                 raise ValueError("shape and expression are required when identity is not provided")
@@ -224,7 +226,11 @@ class FLAMEModel(SkinnedModel):
             rest_joints=identity["rest_joints"],
         )
 
-    def _prepare_skeleton_identity(self, shape: Array, expression: Array) -> core.FlameSkeletonIdentity:
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch S"],
+        expression: Float[Array, "*batch E"],
+    ) -> core.FlameSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
             j_template=self.weights.j_template,
@@ -235,7 +241,11 @@ class FLAMEModel(SkinnedModel):
             expression=expression,
         )
 
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: Any | None = None) -> dict[str, Array]:
+    def get_rest_pose(
+        self,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero identity controls and identity rotations."""
         runtime = self._runtime
         head_ref = runtime.zeros(

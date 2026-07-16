@@ -6,6 +6,7 @@ from typing import Literal
 from body_models.bodies.smpl.model import SMPLModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
+from body_models.state import numpy_state
 
 
 class SMPL(SMPLModel):
@@ -26,6 +27,7 @@ class SMPL(SMPLModel):
             simplify,
             rotation_type,
             runtime=NumpyRuntime(),
+            materialize=numpy_state,
         )
 
 

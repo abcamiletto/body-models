@@ -8,6 +8,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
+from body_models.bodies.soma.correctives import CorrectiveNetwork, hidden_activations
 from body_models.common import get_namespace, skinning
 from body_models.rotations import RotationType
 
@@ -37,7 +38,7 @@ class SomaPreparedPose(TypedDict):
     pose_offsets: Float[Array, "*batch Va 3"]
 
 
-def skinning_weights(data: Any) -> Any:
+def skinning_weights(data: Any) -> Float[Array, "Va Jf"]:
     return data.skin_weights_active[:, 1:]
 
 
@@ -182,8 +183,8 @@ def _prepare_procedural_bind_state(
 
 def _prepare_identity_state(
     xp: Any,
-    bind_shape: Array,
-    world_bind_pose: Array,
+    bind_shape: Float[Array, "*batch Va 3"],
+    world_bind_pose: Float[Array, "*batch Jf 4 4"],
     parents_full: list[int],
 ) -> SomaIdentity:
     identity = _prepare_skeleton_identity_state(xp, world_bind_pose, parents_full)
@@ -203,7 +204,7 @@ def _prepare_identity_state(
 
 def _prepare_skeleton_identity_state(
     xp: Any,
-    world_bind_pose: Array,
+    world_bind_pose: Float[Array, "*batch Jf 4 4"],
     parents_full: list[int],
 ) -> SomaSkeletonIdentity:
     bind_local = _joint_world_to_local(xp, world_bind_pose, parents_full)
@@ -224,12 +225,15 @@ def _prepare_skeleton_identity_state(
     return {"local_joint_translations": local_joint_translations * 0.01}
 
 
-def _pin_root_transform(xp: Any, transforms: Array) -> Array:
+def _pin_root_transform(
+    xp: Any,
+    transforms: Float[Array, "*batch J 4 4"],
+) -> Float[Array, "*batch J 4 4"]:
     eye = common.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
     return common.set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
 
 
-def _stop_gradient(xp: Any, x: Array) -> Array:
+def _stop_gradient(xp: Any, x: Float[Array, "..."]) -> Float[Array, "..."]:
     name = xp.__name__
     if name == "jax.numpy":
         import jax
@@ -288,7 +292,11 @@ def _bind_pose_for_rest_shape(
     return rest_shape, world_bind_pose
 
 
-def _expand_public_bind_pose(xp: Any, data: Any, public_world_bind_pose: Array) -> Array:
+def _expand_public_bind_pose(
+    xp: Any,
+    data: Any,
+    public_world_bind_pose: Float[Array, "*batch Jp 4 4"],
+) -> Float[Array, "*batch Jf 4 4"]:
     public_indices = xp.asarray(data.public.procedural.public_joint_indices_full)
     batch_shape = public_world_bind_pose.shape[:-3]
     internal_bind_pose = xp.asarray(data.bind_pose_world, dtype=public_world_bind_pose.dtype)
@@ -306,7 +314,7 @@ def prepare_pose(
     local_joint_translations: Float[Array, "*batch Jf 3"],
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"],
     xp: Any,
-    corrective_network: Any,
+    corrective_network: CorrectiveNetwork,
 ) -> SomaPreparedPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     pose_rot_public, pose_rot_full, skeleton_transforms_full = _prepare_skeleton_state(
@@ -325,7 +333,13 @@ def prepare_pose(
             data.public.t_pose_world,
             data.public.topology.parent_indices_full,
         )
-    pose_offsets = corrective_network(data, correctives_pose_rot)
+    hidden = hidden_activations(
+        correctives_pose_rot,
+        data.correctives.corrective_bindpose,
+        data.correctives.corrective_W1,
+        xp=xp,
+    )
+    pose_offsets = corrective_network(hidden)
     if data.vertex_map is not None:
         pose_offsets = pose_offsets[..., data.vertex_map, :]
     return {
@@ -361,7 +375,11 @@ def _prepare_skeleton_state(
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
     xp: Any,
-) -> tuple[Array, Array, Array]:
+) -> tuple[
+    Float[Array, "*batch J 3 3"],
+    Float[Array, "*batch Jf 3 3"],
+    Float[Array, "*batch Jf 4 4"],
+]:
     pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     pose_rot_internal = _expand_public_pose_rotations(xp, data, pose_rot_public)
     pose_rot_full = _orient_pose_rot_full(
@@ -483,7 +501,12 @@ def _single_axis_rotation_matrices(
     return _take_along_axis(xp, matrices, gather, axis=-3)[..., 0, :, :]
 
 
-def _take_along_axis(xp, array: Array, indices: Array, axis: int) -> Array:
+def _take_along_axis(
+    xp: Any,
+    array: Float[Array, "..."],
+    indices: Int[Array, "..."],
+    axis: int,
+) -> Float[Array, "..."]:
     if hasattr(xp, "take_along_axis"):
         return xp.take_along_axis(array, indices, axis=axis)
     return xp.gather(array, dim=axis, index=indices)

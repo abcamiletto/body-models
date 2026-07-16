@@ -5,43 +5,53 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 
+from jaxtyping import Float, Int, Num
+
 from body_models import common
 from body_models.common import skinning
 
+Array = Any
 
-class Runtime(ABC):
-    """Array storage and shared operation implementations for one backend."""
 
-    name: str
+class ArrayRuntime(ABC):
+    """Shared numerical operations for one array backend."""
 
     @property
     @abstractmethod
     def xp(self) -> Any:
         """Array namespace, imported lazily so runtime objects remain serializable."""
 
-    def convert_model_data(self, value: Any) -> Any:
-        """Convert model data to backend-managed state."""
-        return value
-
-    def asarray(self, value: Any, *, like: Any, dtype: Any | None = None) -> Any:
+    def asarray(
+        self,
+        value: Any,
+        *,
+        like: Num[Array, "..."],
+        dtype: Any | None = None,
+    ) -> Num[Array, "..."]:
         """Create an array with the backend, device, and default dtype of ``like``."""
         if dtype is None:
             dtype = like.dtype
         return self.xp.asarray(value, dtype=dtype)
 
-    def zeros(self, shape: tuple[int, ...], *, like: Any, dtype: Any | None = None) -> Any:
+    def zeros(
+        self,
+        shape: tuple[int, ...],
+        *,
+        like: Float[Array, "..."],
+        dtype: Any | None = None,
+    ) -> Float[Array, "..."]:
         """Create zeros with the backend and device of ``like``."""
         return common.zeros_as(like, shape=shape, dtype=dtype, xp=self.xp)
 
     def compact_linear_blend_skinning(
         self,
-        vertices: Any,
-        transforms: Any,
+        vertices: Float[Array, "*batch V 3"],
+        transforms: Float[Array, "*batch J 4 4"],
         *,
-        joint_indices: Any,
-        joint_weights: Any,
-        vertex_indices: Any | None = None,
-    ) -> Any:
+        joint_indices: Int[Array, "V K"],
+        joint_weights: Float[Array, "V K"],
+        vertex_indices: Int[Array, "S"] | None = None,
+    ) -> Float[Array, "*batch selected 3"]:
         """Select optional vertices and apply compact linear blend skinning."""
         if vertex_indices is not None:
             indices = self.asarray(
@@ -61,12 +71,12 @@ class Runtime(ABC):
 
     def _compact_linear_blend_skinning(
         self,
-        vertices: Any,
-        transforms: Any,
+        vertices: Float[Array, "*batch V 3"],
+        transforms: Float[Array, "*batch J 4 4"],
         *,
-        joint_indices: Any,
-        joint_weights: Any,
-    ) -> Any:
+        joint_indices: Int[Array, "V K"],
+        joint_weights: Float[Array, "V K"],
+    ) -> Float[Array, "*batch V 3"]:
         """Lower compact linear blend skinning to one backend implementation."""
         return skinning.compact_linear_blend_skinning(
             vertices,
@@ -77,14 +87,17 @@ class Runtime(ABC):
         )
 
     @abstractmethod
-    def expand_skinning_weights(self, joint_indices: Any, joint_weights: Any, num_joints: int) -> Any:
+    def expand_skinning_weights(
+        self,
+        joint_indices: Int[Array, "V K"],
+        joint_weights: Float[Array, "V K"],
+        num_joints: int,
+    ) -> Float[Array, "V J"]:
         """Expand compact per-vertex influences into a dense weight matrix."""
 
 
-class NumpyRuntime(Runtime):
+class NumpyRuntime(ArrayRuntime):
     """NumPy model runtime."""
-
-    name = "numpy"
 
     @property
     def xp(self) -> Any:
@@ -92,7 +105,12 @@ class NumpyRuntime(Runtime):
 
         return np
 
-    def expand_skinning_weights(self, joint_indices: Any, joint_weights: Any, num_joints: int) -> Any:
+    def expand_skinning_weights(
+        self,
+        joint_indices: Int[Array, "V K"],
+        joint_weights: Float[Array, "V K"],
+        num_joints: int,
+    ) -> Float[Array, "V J"]:
         np = self.xp
         num_vertices = joint_indices.shape[0]
         rows = np.broadcast_to(np.arange(num_vertices)[:, None], joint_indices.shape)
@@ -102,10 +120,9 @@ class NumpyRuntime(Runtime):
         return dense
 
 
-class TorchRuntime(Runtime):
+class TorchRuntime(ArrayRuntime):
     """Torch model runtime with optional Warp operation lowerings."""
 
-    name = "torch"
     skinning_backends = ("torch", "warp")
 
     def __init__(self, skinning_backend: Literal["torch", "warp"] = "torch") -> None:
@@ -119,22 +136,25 @@ class TorchRuntime(Runtime):
 
         return torch
 
-    def convert_model_data(self, value: Any) -> Any:
-        return common.torchify(value)
-
-    def asarray(self, value: Any, *, like: Any, dtype: Any | None = None) -> Any:
+    def asarray(
+        self,
+        value: Any,
+        *,
+        like: Num[Array, "..."],
+        dtype: Any | None = None,
+    ) -> Num[Array, "..."]:
         if dtype is None:
             dtype = like.dtype
         return self.xp.as_tensor(value, device=like.device, dtype=dtype)
 
     def _compact_linear_blend_skinning(
         self,
-        vertices: Any,
-        transforms: Any,
+        vertices: Float[Array, "*batch V 3"],
+        transforms: Float[Array, "*batch J 4 4"],
         *,
-        joint_indices: Any,
-        joint_weights: Any,
-    ) -> Any:
+        joint_indices: Int[Array, "V K"],
+        joint_weights: Float[Array, "V K"],
+    ) -> Float[Array, "*batch V 3"]:
         if self.skinning_backend == "torch":
             return super()._compact_linear_blend_skinning(
                 vertices,
@@ -154,7 +174,12 @@ class TorchRuntime(Runtime):
             joint_weights=joint_weights,
         )
 
-    def expand_skinning_weights(self, joint_indices: Any, joint_weights: Any, num_joints: int) -> Any:
+    def expand_skinning_weights(
+        self,
+        joint_indices: Int[Array, "V K"],
+        joint_weights: Float[Array, "V K"],
+        num_joints: int,
+    ) -> Float[Array, "V J"]:
         torch = self.xp
         num_vertices = joint_indices.shape[0]
         dense = torch.zeros(
@@ -168,10 +193,8 @@ class TorchRuntime(Runtime):
         return dense.scatter_add(1, indices, weights)
 
 
-class JaxRuntime(Runtime):
+class JaxRuntime(ArrayRuntime):
     """JAX model runtime."""
-
-    name = "jax"
 
     @property
     def xp(self) -> Any:
@@ -179,10 +202,13 @@ class JaxRuntime(Runtime):
 
         return jnp
 
-    def convert_model_data(self, value: Any) -> Any:
-        return common.jaxify(value)
-
-    def asarray(self, value: Any, *, like: Any, dtype: Any | None = None) -> Any:
+    def asarray(
+        self,
+        value: Any,
+        *,
+        like: Num[Array, "..."],
+        dtype: Any | None = None,
+    ) -> Num[Array, "..."]:
         import jax
 
         if dtype is None:
@@ -191,7 +217,12 @@ class JaxRuntime(Runtime):
         device = getattr(like, "device", None)
         return array if device is None else jax.device_put(array, device)
 
-    def expand_skinning_weights(self, joint_indices: Any, joint_weights: Any, num_joints: int) -> Any:
+    def expand_skinning_weights(
+        self,
+        joint_indices: Int[Array, "V K"],
+        joint_weights: Float[Array, "V K"],
+        num_joints: int,
+    ) -> Float[Array, "V J"]:
         jnp = self.xp
         num_vertices = joint_indices.shape[0]
         rows = jnp.broadcast_to(jnp.arange(num_vertices)[:, None], joint_indices.shape)
@@ -203,7 +234,7 @@ class JaxRuntime(Runtime):
 
 
 class JaxModel:
-    """Generic pytree behavior for models with ``weights`` and static ``_config``."""
+    """Pytree contract for models with array ``weights`` and static ``_config``."""
 
     weights: Any
     _config: Any
@@ -213,12 +244,18 @@ class JaxModel:
         return (self.weights,), self._config
 
     @classmethod
-    def tree_unflatten(cls, config, children):
+    def _from_jax_state(cls, config: Any, weights: Any):
+        """Reconstruct a model from its explicit dynamic and static state."""
         obj = cls.__new__(cls)
         obj._runtime = JaxRuntime()
         obj._config = config
-        (obj.weights,) = children
+        obj.weights = weights
         return obj
 
+    @classmethod
+    def tree_unflatten(cls, config, children):
+        (weights,) = children
+        return cls._from_jax_state(config, weights)
 
-__all__ = ["JaxModel", "JaxRuntime", "NumpyRuntime", "Runtime", "TorchRuntime"]
+
+__all__ = ["ArrayRuntime", "JaxModel", "JaxRuntime", "NumpyRuntime", "TorchRuntime"]

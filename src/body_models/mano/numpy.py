@@ -6,6 +6,7 @@ from typing import Literal
 from body_models.parts.mano.model import MANOModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
+from body_models.state import numpy_state
 
 
 class MANO(MANOModel):
@@ -28,6 +29,7 @@ class MANO(MANOModel):
             simplify,
             rotation_type,
             runtime=NumpyRuntime(),
+            materialize=numpy_state,
         )
 
 

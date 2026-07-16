@@ -81,8 +81,8 @@ def forward_skeleton_from_local_transforms(
     local_rot = local_rotations
     local_t = xp.asarray(local_offsets, dtype=dtype)
 
-    rot_world: list[Array | None] = [None] * num_joints
-    pos_world: list[Array | None] = [None] * num_joints
+    rot_world: list[Float[Array, "*batch 3 3"] | None] = [None] * num_joints
+    pos_world: list[Float[Array, "*batch 3"] | None] = [None] * num_joints
     rot_world[0] = local_rot[..., 0, :, :]
     pos_world[0] = zeros_as(local_rot, shape=(*batch_shape, 3), xp=xp)
     for joint in range(1, num_joints):

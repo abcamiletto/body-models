@@ -198,7 +198,11 @@ def load_model_data(model_path: Path | str | None = None, *, dtype=np.float32) -
     )
 
 
-def _stack_or_empty(records: list[dict], key: str, empty_shape: tuple[int, ...]) -> np.ndarray:
+def _stack_or_empty(
+    records: list[dict[str, Any]],
+    key: str,
+    empty_shape: tuple[int, ...],
+) -> Float[np.ndarray, "..."]:
     if not records:
         return np.zeros(empty_shape, dtype=np.float32)
     return np.stack([r[key] for r in records])
@@ -387,23 +391,23 @@ def _walk_body(
 
 def _build_link_meshes(
     link_records: list[dict],
-    mesh_files: dict[str, tuple[str, np.ndarray]],
+    mesh_files: dict[str, tuple[str, Float[np.ndarray, "3"]]],
     model_dir: Path,
     *,
     dtype,
-) -> tuple[np.ndarray, np.ndarray, dict]:
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"], dict[str, Any]]:
     if not link_records:
         raise FileNotFoundError('No <geom mesh="..."/> entries found in MyoFullBody XML')
 
-    vertices_chunks: list[np.ndarray] = []
-    faces_chunks: list[np.ndarray] = []
+    vertices_chunks: list[Float[np.ndarray, "V 3"]] = []
+    faces_chunks: list[Int[np.ndarray, "F 3"]] = []
     joint_indices: list[int] = []
     vertex_starts: list[int] = []
     vertex_counts: list[int] = []
     face_starts: list[int] = []
     face_counts: list[int] = []
-    geom_positions: list[np.ndarray] = []
-    geom_rotations: list[np.ndarray] = []
+    geom_positions: list[Float[np.ndarray, "3"]] = []
+    geom_rotations: list[Float[np.ndarray, "3 3"]] = []
     names: list[str] = []
     vertex_offset = 0
     face_offset = 0

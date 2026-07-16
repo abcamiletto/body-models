@@ -2,6 +2,7 @@
 # requires-python = ">=3.11,<3.12"
 # dependencies = [
 #   "bpy>=4.2.0",
+#   "jaxtyping>=0.2.28",
 #   "numpy>=1.26,<2",
 #   "typer>=0.9.0",
 # ]
@@ -22,6 +23,7 @@ from typing import Annotated
 
 import numpy as np
 import typer
+from jaxtyping import Float, Int
 
 LODS = tuple(range(7))
 
@@ -69,14 +71,18 @@ def save_lod_asset(fbx_path: Path, output_path: Path) -> None:
     )
 
 
-def _faces(mesh, fbx_path: Path) -> np.ndarray:
+def _faces(mesh, fbx_path: Path) -> Int[np.ndarray, "F 3"]:
     faces = [[vertex for vertex in polygon.vertices] for polygon in mesh.data.polygons]
     if any(len(face) != 3 for face in faces):
         raise ValueError(f"Expected only triangular faces in {fbx_path}")
     return np.asarray(faces, dtype=np.int64)
 
 
-def _blendshape_dirs(mesh, base_vertices: np.ndarray, fbx_path: Path) -> np.ndarray:
+def _blendshape_dirs(
+    mesh,
+    base_vertices: Float[np.ndarray, "V 3"],
+    fbx_path: Path,
+) -> Float[np.ndarray, "117 V 3"]:
     keys = mesh.data.shape_keys.key_blocks if mesh.data.shape_keys else []
     key_names = [key.name for key in keys]
     expected = ["Basis", *(f"shape_{index}" for index in range(117))]
@@ -90,7 +96,9 @@ def _blendshape_dirs(mesh, base_vertices: np.ndarray, fbx_path: Path) -> np.ndar
     return np.asarray(deltas, dtype=np.float32)
 
 
-def _sparse_skinning(mesh) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
+def _sparse_skinning(
+    mesh,
+) -> tuple[Int[np.ndarray, "N"], Int[np.ndarray, "N"], Float[np.ndarray, "N"], list[str]]:
     group_names = [group.name for group in mesh.vertex_groups]
     vertex_indices: list[int] = []
     joint_indices: list[int] = []

@@ -111,8 +111,8 @@ def forward_skeleton(
         xp=xp,
     )
 
-    rot_world: list[Array | None] = [None] * num_joints
-    pos_world: list[Array | None] = [None] * num_joints
+    rot_world: list[Float[Array, "*batch 3 3"] | None] = [None] * num_joints
+    pos_world: list[Float[Array, "*batch 3"] | None] = [None] * num_joints
 
     for j in range(num_joints):
         local_rot = xp.broadcast_to(rest_rot[j], (*batch_shape, 3, 3))
@@ -184,7 +184,7 @@ def from_mujoco_qpos(
     qpos: Float[Array, "B 7+Q"],
     *,
     xp: Any = None,
-) -> dict[str, Array]:
+) -> dict[str, Float[Array, "..."]]:
     """Split a MuJoCo ``qpos`` into ``body_pose`` + global root parameters."""
     if xp is None:
         xp = get_namespace(qpos)

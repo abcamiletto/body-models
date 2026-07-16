@@ -16,7 +16,8 @@ from body_models.bodies.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESE
 from body_models.bodies.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -34,8 +35,6 @@ class AnnyConfig:
 class ANNYModel(SkinnedModel):
     """Backend-independent ANNY interface and orchestration."""
 
-    identity_keys = ("shape",)
-    pose_keys = ("body_pose", "head_pose", "hand_pose")
     has_hands = True
     has_head = True
     JOINTS = ANNY_JOINTS
@@ -50,7 +49,8 @@ class ANNYModel(SkinnedModel):
         extrapolate_phenotypes: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig!r}")
@@ -68,7 +68,7 @@ class ANNYModel(SkinnedModel):
             extrapolate_phenotypes=extrapolate_phenotypes,
             rotation_type=rotation_type,
         )
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def all_phenotypes(self) -> bool:
@@ -132,13 +132,14 @@ class ANNYModel(SkinnedModel):
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 6"] | None = None,
         identity: core.AnnyIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed ANNY vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -169,13 +170,14 @@ class ANNYModel(SkinnedModel):
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 6"] | None = None,
         identity: core.AnnyIdentity | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed ANNY joint transforms."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -269,7 +271,10 @@ class ANNYModel(SkinnedModel):
             xp=xp,
         )
 
-    def _prepare_skeleton_identity(self, shape: Array) -> core.AnnySkeletonIdentity:
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch 6"],
+    ) -> core.AnnySkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
             template_bone_heads=self.weights.template_bone_heads,
@@ -290,7 +295,7 @@ class ANNYModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return centered phenotype controls and identity rotations."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -332,7 +337,7 @@ class ANNYModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the ANNY T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = self._runtime.asarray(ANNY_BODY_PRESETS["t_pose"], like=params["body_pose"])
@@ -350,7 +355,7 @@ class ANNYModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the ANNY rest A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 

@@ -8,6 +8,7 @@ import jax
 from body_models.bodies.smpl.model import SMPLModel
 from body_models.rotations import RotationType
 from body_models.runtime import JaxModel, JaxRuntime
+from body_models.state import jax_state
 
 
 @jax.tree_util.register_pytree_node_class
@@ -30,6 +31,7 @@ class SMPL(SMPLModel, JaxModel):
             simplify,
             rotation_type,
             runtime=JaxRuntime(),
+            materialize=jax_state,
         )
 
 

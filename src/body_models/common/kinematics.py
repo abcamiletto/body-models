@@ -101,7 +101,7 @@ def forward_kinematics(
     return xp.stack([world_transforms[joint] for joint in joint_indices], axis=-3)
 
 
-def compute_kinematic_fronts(parents: np.ndarray | list[int]) -> list[Front]:
+def compute_kinematic_fronts(parents: Int[np.ndarray, "J"] | list[int]) -> list[Front]:
     """Group joints by depth for parallel forward kinematics.
 
     Roots are joints with ``parent < 0`` or ``parent == joint``; they are

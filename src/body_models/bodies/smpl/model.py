@@ -15,7 +15,8 @@ from body_models.bodies.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAME
 from body_models.bodies.smpl.io import get_model_path, load_model_data
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 
@@ -31,8 +32,6 @@ class SmplConfig:
 class SMPLModel(SkinnedModel):
     """Backend-independent SMPL interface and orchestration."""
 
-    identity_keys = ("shape",)
-    pose_keys = ("body_pose", "pelvis_rotation")
     NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
     JOINTS = SMPL_JOINTS
@@ -44,7 +43,8 @@ class SMPLModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         *,
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender!r}")
@@ -60,7 +60,7 @@ class SMPLModel(SkinnedModel):
             gender=gender or "neutral",
             rotation_type=rotation_type,
         )
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def gender(self) -> Literal["neutral", "male", "female"]:
@@ -120,13 +120,14 @@ class SMPLModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: core.SmplIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -156,13 +157,14 @@ class SMPLModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: core.SmplIdentity | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -192,7 +194,7 @@ class SMPLModel(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-        expression: Any | None = None,
+        expression: Float[Array, "*batch E"] | None = None,
     ) -> core.SmplIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         if expression is not None:
@@ -226,7 +228,10 @@ class SMPLModel(SkinnedModel):
             rest_joints=identity["rest_joints"],
         )
 
-    def _prepare_skeleton_identity(self, shape: Array) -> core.SmplSkeletonIdentity:
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch S"],
+    ) -> core.SmplSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
             j_template=self.weights.j_template,
@@ -235,7 +240,11 @@ class SMPLModel(SkinnedModel):
             shape=shape,
         )
 
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: Any | None = None) -> dict[str, Array]:
+    def get_rest_pose(
+        self,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero identity controls and identity rotations."""
         runtime = self._runtime
         body_pose_ref = runtime.zeros(
@@ -267,11 +276,11 @@ class SMPLModel(SkinnedModel):
             "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
         }
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = self._runtime.asarray(

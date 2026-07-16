@@ -4,27 +4,38 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from body_models.runtime import Runtime
+from jaxtyping import Float
+
+from body_models.common import set
+
+Array = Any
 
 
 class CorrectiveNetwork(Protocol):
     """Evaluate SOMA's learned pose-corrective network."""
 
-    def __call__(self, data: Any, pose_rotations: Any) -> Any: ...
+    def __call__(
+        self,
+        hidden: Float[Array, "*batch H"],
+    ) -> Float[Array, "*batch Vf 3"]: ...
 
 
-def hidden_activations(runtime: Runtime, data: Any, pose_rotations: Any) -> Any:
+def hidden_activations(
+    pose_rotations: Float[Array, "*batch J 3 3"],
+    bindpose: Float[Array, "J 3 3"],
+    weights: Float[Array, "J*6 H"],
+    *,
+    xp: Any,
+) -> Float[Array, "*batch H"]:
     """Evaluate the dense first layer shared by all sparse output lowerings."""
-    correctives = data.correctives
     batch_shape = pose_rotations.shape[:-3]
-    relative = correctives.corrective_bindpose.swapaxes(-2, -1) @ pose_rotations
-    identity_columns = runtime.asarray(
-        [[[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]],
-        like=relative,
-    )
-    features = (relative[..., :, :, :2] - identity_columns).reshape(*batch_shape, -1)
-    hidden = features @ correctives.corrective_W1
-    return runtime.xp.maximum(hidden, runtime.asarray(0.0, like=hidden))
+    relative = bindpose.swapaxes(-2, -1) @ pose_rotations
+    features = relative[..., :, :, :2]
+    features = set(features, (..., slice(None), 0, 0), features[..., :, 0, 0] - 1, xp=xp)
+    features = set(features, (..., slice(None), 1, 1), features[..., :, 1, 1] - 1, xp=xp)
+    features = features.reshape(*batch_shape, -1)
+    hidden = features @ weights
+    return xp.maximum(hidden, xp.zeros_like(hidden))
 
 
 __all__ = ["CorrectiveNetwork", "hidden_activations"]

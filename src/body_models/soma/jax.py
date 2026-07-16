@@ -11,6 +11,7 @@ from body_models.bodies.soma.lowerings import SomaLowerings
 from body_models.bodies.soma.model import SOMAModel
 from body_models.rotations import RotationType
 from body_models.runtime import JaxRuntime
+from body_models.state import jax_state
 
 _LOWERINGS = SomaLowerings(correctives_jax.JaxCorrectiveNetwork, identity_lowerings.create_identity_source)
 
@@ -39,6 +40,7 @@ class SOMA(SOMAModel):
             rotation_type=rotation_type,
             match_warp=match_warp,
             runtime=JaxRuntime(),
+            materialize=jax_state,
             lowerings=_LOWERINGS,
         )
 

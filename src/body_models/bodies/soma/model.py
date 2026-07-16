@@ -23,7 +23,8 @@ from body_models.bodies.soma.lowerings import SomaLowerings
 from body_models.bodies.soma.pose import pack_pose, unpack_pose
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 PathLike = Path | str
@@ -45,8 +46,6 @@ class SomaConfig:
 class SOMAModel(SkinnedModel):
     """Backend-independent SOMA interface and orchestration."""
 
-    identity_keys = ("shape",)
-    pose_keys = ("body_pose", "head_pose", "hand_pose")
     has_hands = True
     has_head = True
     SHAPE_DIM = 128
@@ -63,7 +62,8 @@ class SOMAModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
         lowerings: SomaLowerings,
     ) -> None:
         normalized_model_type = model_type.lower()
@@ -87,7 +87,7 @@ class SOMAModel(SkinnedModel):
             default_identity_value=spec.default_identity_value,
         )
         self.parents, self._joint_names = public_joint_metadata(weights)
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
         self._corrective_network = lowerings.corrective_network(runtime, self.weights)
         self._identity_source = None
         if spec.asset_dir is not None:
@@ -179,10 +179,11 @@ class SOMAModel(SkinnedModel):
         scale_params: Float[Array, "*batch K"] | None = None,
         identity: core.SomaIdentity | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices in meters."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -223,6 +224,7 @@ class SOMAModel(SkinnedModel):
     ) -> Float[Array, "*batch 77 4 4"]:
         """Compute posed public-joint transforms in meters."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -308,9 +310,9 @@ class SOMAModel(SkinnedModel):
 
     def _prepare_skeleton_identity(
         self,
-        shape: Array,
+        shape: Float[Array, "*batch I"],
         *,
-        scale_params: Array | None,
+        scale_params: Float[Array, "*batch K"] | None,
     ) -> core.SomaSkeletonIdentity:
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_skeleton_identity_from_rest_shape(
@@ -321,7 +323,11 @@ class SOMAModel(SkinnedModel):
             xp=self._runtime.xp,
         )
 
-    def _rest_shapes(self, shape: Array, scale_params: Array | None) -> tuple[Array, Array]:
+    def _rest_shapes(
+        self,
+        shape: Float[Array, "*batch I"],
+        scale_params: Float[Array, "*batch K"] | None,
+    ) -> tuple[Float[Array, "*batch Vf 3"], Float[Array, "*batch Va 3"]]:
         if self.num_scale_params is None:
             scale_params = None
         elif scale_params is None:
@@ -342,7 +348,7 @@ class SOMAModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero pose controls and the model's default identity."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
@@ -383,7 +389,7 @@ class SOMAModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SOMA T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
@@ -392,7 +398,7 @@ class SOMAModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SOMA A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         xp = self._runtime.xp

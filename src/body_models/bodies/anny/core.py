@@ -75,7 +75,8 @@ def prepare_pose(
         pose_transforms=pose_transforms,
         skip_skinning=False,
     )
-    assert skinning_transforms is not None
+    if skinning_transforms is None:
+        raise RuntimeError("Skinning transforms were not computed.")
     return {
         "skeleton_transforms": skeleton_transforms,
         "skinning_transforms": skinning_transforms,
