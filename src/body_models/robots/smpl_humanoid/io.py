@@ -185,7 +185,11 @@ def _actuated_joint_limits(
     return np.asarray(limits, dtype=dtype)
 
 
-def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+def _load_xml_geoms(
+    bodies: dict[str, ET.Element],
+    *,
+    dtype,
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"], dict[str, Any]]:
     vertices_by_link = []
     faces_by_link = []
     joint_indices = []
@@ -232,7 +236,11 @@ def _load_xml_geoms(bodies: dict[str, ET.Element], *, dtype) -> tuple[np.ndarray
     return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
 
 
-def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _geom_mesh(
+    geom: ET.Element,
+    *,
+    dtype,
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     geom_type = geom.get("type", "sphere")
     size = mjcf.parse_vec(geom.get("size"), size=None, default=np.ones(3, dtype=dtype))
     if geom_type == "box":
@@ -252,7 +260,11 @@ def _geom_mesh(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
     raise ValueError(f"Unsupported SMPL humanoid XML geom type: {geom_type}")
 
 
-def _geom_transform(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _geom_transform(
+    geom: ET.Element,
+    *,
+    dtype,
+) -> tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"]]:
     fromto = geom.get("fromto")
     if fromto is None:
         position = mjcf.parse_vec(geom.get("pos"), size=3, default=np.zeros(3, dtype=dtype))
@@ -269,7 +281,7 @@ def _geom_transform(geom: ET.Element, *, dtype) -> tuple[np.ndarray, np.ndarray]
     return 0.5 * (start + end), _basis_from_z(axis / length).astype(dtype)
 
 
-def _basis_from_z(direction: np.ndarray) -> np.ndarray:
+def _basis_from_z(direction: Float[np.ndarray, "3"]) -> Float[np.ndarray, "3 3"]:
     z_axis = np.asarray(direction, dtype=np.float64)
     z_axis /= max(float(np.linalg.norm(z_axis)), 1e-8)
     helper = np.array([0.0, 0.0, 1.0]) if abs(float(z_axis[2])) < 0.9 else np.array([0.0, 1.0, 0.0])
@@ -279,7 +291,11 @@ def _basis_from_z(direction: np.ndarray) -> np.ndarray:
     return np.stack([x_axis, y_axis, z_axis], axis=1)
 
 
-def _mesh_arrays(mesh: Trimesh, *, dtype) -> tuple[np.ndarray, np.ndarray]:
+def _mesh_arrays(
+    mesh: Trimesh,
+    *,
+    dtype,
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     return np.asarray(mesh.vertices, dtype=dtype), np.asarray(mesh.faces, dtype=np.int64)
 
 

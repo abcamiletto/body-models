@@ -123,10 +123,9 @@ def transform_skeleton(
             raise IndexError(f"joint_indices must be in [0, {num_joints})")
         transforms = transforms[..., joint_indices, :, :]
 
-    if rotation is None and translation is None:
-        return transforms
     if rotation is None:
-        assert translation is not None
+        if translation is None:
+            return transforms
         positions = transforms[..., :3, 3] + translation[..., None, :]
         return ops.set(transforms, (..., slice(None, 3), 3), positions, xp=xp)
 

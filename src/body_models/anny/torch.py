@@ -8,6 +8,7 @@ import torch.nn as nn
 from body_models.bodies.anny.model import ANNYModel
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
+from body_models.state import torch_state
 
 
 class ANNY(ANNYModel, nn.Module):
@@ -38,6 +39,7 @@ class ANNY(ANNYModel, nn.Module):
             simplify=simplify,
             rotation_type=rotation_type,
             runtime=TorchRuntime(skinning_backend),
+            materialize=torch_state,
         )
 
 

@@ -13,7 +13,8 @@ from body_models.rigid import RigidModel
 from body_models.robots.brainco import core
 from body_models.robots.brainco.constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
 from body_models.robots.brainco.io import Side, load_model_data
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 
@@ -34,13 +35,14 @@ class BrainCoHandModel(RigidModel):
         model_path: Path | str | None = None,
         *,
         side: Side = "right",
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if side not in ("left", "right"):
             raise ValueError(f"Invalid side: {side!r}")
         self._runtime = runtime
         self._config = BrainCoConfig(side)
-        self.weights = runtime.convert_model_data(load_model_data(model_path, side=side))
+        self.weights = materialize(load_model_data(model_path, side=side))
 
     @property
     def side(self) -> Side:
@@ -116,7 +118,7 @@ class BrainCoHandModel(RigidModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the configured default or canonical hand pose."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")

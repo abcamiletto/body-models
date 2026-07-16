@@ -9,7 +9,7 @@ import torch.nn as nn
 from jaxtyping import Float
 from torch import Tensor
 
-from body_models import common
+from body_models.state import torch_state
 
 from body_models.anny.torch import ANNY
 from body_models.mhr.torch import MHR
@@ -23,7 +23,7 @@ from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr
 class IdentitySource(nn.Module):
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
         super().__init__()
-        self.transfer = common.torchify(identity_transfer(transfer_data))
+        self.transfer = torch_state(identity_transfer(transfer_data))
 
     def source_shape(
         self,
@@ -65,7 +65,7 @@ class AnnyIdentitySource(IdentitySource):
                 dtype=self.model.weights.template_vertices.dtype,
             ),
         )
-        self.transfer = common.torchify(transfer)
+        self.transfer = torch_state(transfer)
 
     def source_shape(
         self,

@@ -2,6 +2,7 @@
 # requires-python = ">=3.11,<3.12"
 # dependencies = [
 #   "bpy>=4.2.0",
+#   "jaxtyping>=0.2.28",
 #   "numpy>=1.26,<2",
 #   "typer>=0.9.0",
 # ]
@@ -27,15 +28,16 @@ from typing import TypedDict
 
 import numpy as np
 import typer
+from jaxtyping import Bool, Float, Int
 
 
 class RigData(TypedDict):
     joint_names: list[str]
-    parents: np.ndarray
-    bind_quats: np.ndarray
-    joint_positions: np.ndarray
-    skin_weights: np.ndarray
-    template_vertices: np.ndarray
+    parents: Int[np.ndarray, "J"]
+    bind_quats: Float[np.ndarray, "J 4"]
+    joint_positions: Float[np.ndarray, "J 3"]
+    skin_weights: Float[np.ndarray, "V J"]
+    template_vertices: Float[np.ndarray, "V 3"]
 
 
 def main(
@@ -65,7 +67,9 @@ def main(
     )
 
 
-def _load_pca(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _load_pca(
+    path: Path,
+) -> tuple[Float[np.ndarray, "V 3"], Float[np.ndarray, "V 3 C"], Float[np.ndarray, "C"]]:
     data = path.read_bytes()
     dimension, num_components = struct.unpack_from("<II", data, 0)
     offset = 8
@@ -80,7 +84,7 @@ def _load_pca(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return mean.reshape(-1, 3), matrix.reshape(-1, 3, num_components), eigenvalues
 
 
-def _load_obj(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _load_obj(path: Path) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     vertices = []
     faces = []
     for line in path.read_text().splitlines():
@@ -156,7 +160,11 @@ def _load_fbx_rig(path: Path, num_vertices: int) -> RigData:
     }
 
 
-def _compute_mvc_weights(vertices: np.ndarray, faces: np.ndarray, points: np.ndarray) -> np.ndarray:
+def _compute_mvc_weights(
+    vertices: Float[np.ndarray, "V 3"],
+    faces: Int[np.ndarray, "F 3"],
+    points: Float[np.ndarray, "J 3"],
+) -> Float[np.ndarray, "V J"]:
     rings, boundary = _ordered_vertex_rings(faces, len(vertices))
     weights = np.zeros((len(vertices), len(points)), dtype=np.float64)
     eps = np.finfo(np.float64).eps
@@ -196,7 +204,10 @@ def _compute_mvc_weights(vertices: np.ndarray, faces: np.ndarray, points: np.nda
     return weights
 
 
-def _ordered_vertex_rings(faces: np.ndarray, num_vertices: int) -> tuple[list[list[int]], np.ndarray]:
+def _ordered_vertex_rings(
+    faces: Int[np.ndarray, "F 3"],
+    num_vertices: int,
+) -> tuple[list[list[int]], Bool[np.ndarray, "V"]]:
     next_neighbor = [{} for _ in range(num_vertices)]
     boundary_edges: set[tuple[int, int]] = set()
     edge_counts: dict[tuple[int, int], int] = {}
@@ -237,7 +248,7 @@ def _ordered_vertex_rings(faces: np.ndarray, num_vertices: int) -> tuple[list[li
     return rings, boundary
 
 
-def _safe_unit(value: np.ndarray) -> np.ndarray:
+def _safe_unit(value: Float[np.ndarray, "3"]) -> Float[np.ndarray, "3"]:
     norm = np.linalg.norm(value)
     if norm <= np.finfo(np.float64).eps:
         return np.zeros(3, dtype=np.float64)

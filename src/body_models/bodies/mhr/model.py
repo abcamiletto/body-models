@@ -21,7 +21,8 @@ from body_models.bodies.mhr.constants import (
 from body_models.bodies.mhr.io import get_model_path, load_model_data
 from body_models.bodies.mhr.pose import pack_pose, unpack_pose
 from body_models.common import skinning
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 
@@ -29,8 +30,6 @@ Array = Any
 class MHRModel(SkinnedModel):
     """Backend-independent MHR interface and orchestration."""
 
-    identity_keys = ("shape", "expression")
-    pose_keys = ("body_pose", "head_pose", "hand_pose")
     has_hands = True
     has_head = True
     SHAPE_DIM = 45
@@ -43,12 +42,13 @@ class MHRModel(SkinnedModel):
         *,
         lod: int = 1,
         simplify: float = 1.0,
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         weights = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
         self._runtime = runtime
         self._config = None
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -103,19 +103,20 @@ class MHRModel(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
-        expression: Float[Array, "*batch 72"],
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 45"] | None = None,
+        expression: Float[Array, "*batch 72"] | None = None,
         identity: core.MhrIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
+            if shape is None or expression is None:
+                raise ValueError("shape and expression are required when identity is not provided")
             batch_shape = body_pose.shape[:-1]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
@@ -143,7 +144,7 @@ class MHRModel(SkinnedModel):
         hand_pose: Float[Array, "*batch 104"],
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
@@ -209,7 +210,7 @@ class MHRModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero identity and pose controls."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -235,7 +236,7 @@ class MHRModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the MHR T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         pose = self._runtime.zeros(
@@ -257,7 +258,7 @@ class MHRModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the MHR A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 

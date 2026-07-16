@@ -10,7 +10,8 @@ from jaxtyping import Float, Int
 
 from body_models.base import SkinnedModel
 from body_models.common import skinning
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 from body_models.skeletons.skel import core
 from body_models.skeletons.skel.constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 from body_models.skeletons.skel.io import get_model_path, load_model_data
@@ -35,8 +36,6 @@ class SkelConfig:
 class SKELModel(SkinnedModel):
     """Backend-independent SKEL interface and orchestration."""
 
-    identity_keys = ("shape",)
-    pose_keys = ("body_pose", "head_pose")
     NUM_BETAS = 10
     NUM_JOINTS = 24
     JOINTS = SKEL_JOINTS
@@ -48,7 +47,8 @@ class SKELModel(SkinnedModel):
         gender: Literal["male", "female"] | None = None,
         simplify: float = 1.0,
         *,
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if gender not in ("male", "female"):
             raise ValueError(f"Invalid gender: {gender!r}")
@@ -58,7 +58,7 @@ class SKELModel(SkinnedModel):
         weights = load_model_data(get_model_path(model_path, gender), simplify=simplify)
         self._runtime = runtime
         self._config = SkelConfig(gender=gender)
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def gender(self) -> Literal["male", "female"]:
@@ -122,13 +122,14 @@ class SKELModel(SkinnedModel):
         head_pose: Float[Array, "*batch 3"],
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: core.SkelIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed SKEL vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -157,13 +158,14 @@ class SKELModel(SkinnedModel):
         head_pose: Float[Array, "*batch 3"],
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: core.SkelIdentity | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed SKEL joint transforms."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
@@ -263,7 +265,10 @@ class SKELModel(SkinnedModel):
             xp=self._runtime.xp,
         )
 
-    def _prepare_skeleton_identity(self, shape: Array) -> core.SkelSkeletonIdentity:
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch 10"],
+    ) -> core.SkelSkeletonIdentity:
         return core.prepare_skeleton_identity(
             self.weights.j_template,
             self.weights.j_shapedirs,
@@ -272,7 +277,11 @@ class SKELModel(SkinnedModel):
             xp=self._runtime.xp,
         )
 
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = (), dtype: Any | None = None) -> dict[str, Array]:
+    def get_rest_pose(
+        self,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero shape and pose controls."""
         runtime = self._runtime
         return {
@@ -291,11 +300,11 @@ class SKELModel(SkinnedModel):
             "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
         }
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SKEL T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SKEL A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         pose = self._runtime.asarray(SKEL_BODY_PRESETS["a_pose"], like=params["body_pose"])

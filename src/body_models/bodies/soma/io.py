@@ -14,7 +14,7 @@ import numpy as np
 from scipy import linalg as scipy_linalg
 from scipy import sparse as scipy_sparse
 from scipy.sparse import csc_matrix
-from jaxtyping import Float, Int
+from jaxtyping import Float, Int, Shaped
 
 from body_models import config
 from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
@@ -359,7 +359,7 @@ def get_identity_model_path(model_type: str) -> Path | None:
     return path
 
 
-def _dense_skin_weights(rig_data: dict[str, Any]) -> np.ndarray:
+def _dense_skin_weights(rig_data: dict[str, Any]) -> Float[np.ndarray, "V J"]:
     weights = csc_matrix(
         (
             rig_data["skinning_weights_data"],
@@ -407,11 +407,11 @@ def _procedural_rig_data(data: Any) -> SomaProceduralRig | None:
 def with_active_mesh(
     data: SomaWeights,
     *,
-    mean_active: np.ndarray,
-    shapedirs_active: np.ndarray,
-    skin_weights_active: np.ndarray,
-    faces: np.ndarray,
-    vertex_map: np.ndarray | None,
+    mean_active: Float[np.ndarray, "Va 3"],
+    shapedirs_active: Float[np.ndarray, "S Va 3"],
+    skin_weights_active: Float[np.ndarray, "Va Jf"],
+    faces: Int[np.ndarray, "F 3"],
+    vertex_map: Int[np.ndarray, "Va"] | None,
 ) -> SomaWeights:
     skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
     public_skin_weights_active = _active_public_skin_weights(data, vertex_map)
@@ -454,7 +454,10 @@ def with_lod_mesh(data: SomaWeights, lod: str) -> SomaWeights:
     )
 
 
-def _active_public_skin_weights(data: SomaWeights, vertex_map: np.ndarray | None) -> np.ndarray | None:
+def _active_public_skin_weights(
+    data: SomaWeights,
+    vertex_map: Int[np.ndarray, "Va"] | None,
+) -> Float[np.ndarray, "Va Jp"] | None:
     if data.public is None:
         return None
     if vertex_map is None:
@@ -515,7 +518,7 @@ def _identity_transfer_cache_file(asset_dir: Path, model_type: str) -> Path:
     return preprocessed_dir / f"identity_transfer_{key}.npz"
 
 
-def _load_mesh(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _load_mesh(path: Path) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     try:
         import trimesh
     except ImportError as exc:
@@ -525,17 +528,21 @@ def _load_mesh(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(mesh.vertices, dtype=np.float32), np.asarray(mesh.faces, dtype=np.int64)
 
 
-def _fabricate_tet(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> np.ndarray:
+def _fabricate_tet(
+    p0: Float[np.ndarray, "... 3"],
+    p1: Float[np.ndarray, "... 3"],
+    p2: Float[np.ndarray, "... 3"],
+) -> Float[np.ndarray, "... 3"]:
     return p0 + np.cross(p1 - p0, p2 - p0, axis=-1)
 
 
 def _compute_barycentric_coords_3d(
-    p: np.ndarray,
-    v0: np.ndarray,
-    v1: np.ndarray,
-    v2: np.ndarray,
-    v3: np.ndarray,
-) -> np.ndarray:
+    p: Float[np.ndarray, "... 3"],
+    v0: Float[np.ndarray, "... 3"],
+    v1: Float[np.ndarray, "... 3"],
+    v2: Float[np.ndarray, "... 3"],
+    v3: Float[np.ndarray, "... 3"],
+) -> Float[np.ndarray, "... 4"]:
     T = np.stack([v1 - v0, v2 - v0, v3 - v0], axis=-1)
     rhs = p - v0
     b123 = np.linalg.solve(T, rhs[..., None]).squeeze(-1)
@@ -544,10 +551,10 @@ def _compute_barycentric_coords_3d(
 
 
 def _compute_identity_correspondence(
-    source_vertices: np.ndarray,
-    source_faces: np.ndarray,
-    target_vertices: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    source_vertices: Float[np.ndarray, "Vs 3"],
+    source_faces: Int[np.ndarray, "Fs 3"],
+    target_vertices: Float[np.ndarray, "Vt 3"],
+) -> tuple[Int[np.ndarray, "Fs 4"], Int[np.ndarray, "Vt"], Float[np.ndarray, "Vt 4"]]:
     try:
         import trimesh
     except ImportError as exc:
@@ -578,7 +585,10 @@ def _compute_identity_correspondence(
     return source_tetrahedra, face_ids, bary_coords
 
 
-def _build_cotangent_laplacian(vertices: np.ndarray, faces: np.ndarray) -> scipy_sparse.csr_matrix:
+def _build_cotangent_laplacian(
+    vertices: Float[np.ndarray, "V 3"],
+    faces: Int[np.ndarray, "F 3"],
+) -> scipy_sparse.csr_matrix:
     v0 = vertices[faces[:, 0]]
     v1 = vertices[faces[:, 1]]
     v2 = vertices[faces[:, 2]]
@@ -587,7 +597,10 @@ def _build_cotangent_laplacian(vertices: np.ndarray, faces: np.ndarray) -> scipy
     e1 = v0 - v2
     e2 = v1 - v0
 
-    def _cotangent(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    def _cotangent(
+        a: Float[np.ndarray, "F 3"],
+        b: Float[np.ndarray, "F 3"],
+    ) -> Float[np.ndarray, "F"]:
         dot = np.sum(a * b, axis=-1)
         cross = np.cross(a, b, axis=-1)
         return dot / (np.linalg.norm(cross, axis=-1) + 1e-8)
@@ -608,10 +621,16 @@ def _build_cotangent_laplacian(vertices: np.ndarray, faces: np.ndarray) -> scipy
 
 
 def _build_identity_laplacian_data(
-    target_vertices: np.ndarray,
-    target_faces: np.ndarray,
-    unknown_ids: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    target_vertices: Float[np.ndarray, "V 3"],
+    target_faces: Int[np.ndarray, "F 3"],
+    unknown_ids: Int[np.ndarray, "U"],
+) -> tuple[
+    Int[np.ndarray, "U"],
+    Int[np.ndarray, "A"],
+    Float[np.ndarray, "U U"],
+    Float[np.ndarray, "U A"],
+    Float[np.ndarray, "U 3"],
+]:
     laplacian = _build_cotangent_laplacian(target_vertices, target_faces)
     unknown_ids = np.asarray(np.unique(unknown_ids), dtype=np.int64)
     anchor_mask = np.ones(len(target_vertices), dtype=bool)
@@ -759,13 +778,13 @@ def _load_sparse_checkpoint_numpy(checkpoint_path: Path) -> dict[str, Any]:
     )
 
 
-def _as_dense_float32(value: np.ndarray | _SparseCoo) -> np.ndarray:
+def _as_dense_float32(value: Shaped[np.ndarray, "..."] | _SparseCoo) -> Float[np.ndarray, "..."]:
     if isinstance(value, np.ndarray):
         return np.asarray(value, dtype=np.float32)
     return _dense_from_sparse(value)
 
 
-def _dense_from_sparse(sparse: _SparseCoo) -> np.ndarray:
+def _dense_from_sparse(sparse: _SparseCoo) -> Float[np.ndarray, "..."]:
     dense = np.zeros(sparse.size, dtype=np.float32)
     dense[tuple(sparse.indices)] = sparse.values
     return dense
@@ -833,7 +852,7 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     )
 
 
-def _get_joint_children_ids(parents: np.ndarray) -> list[list[int]]:
+def _get_joint_children_ids(parents: Int[np.ndarray, "J"]) -> list[list[int]]:
     parent_ids = parents.tolist()
     children = [[] for _ in range(len(parent_ids))]
     for i in range(1, len(parent_ids)):
@@ -1092,7 +1111,7 @@ def _load_lod_meshes(data: Any) -> dict[str, SomaLodMesh] | None:
     return lods or None
 
 
-def _load_xlo_skin_weights(data: Any) -> np.ndarray:
+def _load_xlo_skin_weights(data: Any) -> Float[np.ndarray, "Va Jf"]:
     rig_data = {
         "skinning_weights_data": data["skinning_weights_xlo_data"],
         "skinning_weights_indices": data["skinning_weights_xlo_indices"],

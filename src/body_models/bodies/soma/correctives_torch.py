@@ -6,15 +6,20 @@ from typing import Any
 
 import torch
 import torch.nn as nn
+from jaxtyping import Float, Int
+from torch import Tensor
 
-from body_models.bodies.soma.correctives import hidden_activations
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
 
 
 class TorchCorrectiveNetwork(nn.Module):
     """SOMA corrective network with sparse and compile-safe output paths."""
 
-    def __init__(self, runtime: Runtime, data: Any) -> None:
+    rows: Int[Tensor, "K"]
+    cols: Int[Tensor, "K"]
+    values: Float[Tensor, "K"]
+
+    def __init__(self, runtime: ArrayRuntime, data: Any) -> None:
         super().__init__()
         correctives = data.correctives
         indices = torch.stack((correctives.corrective_W2_cols, correctives.corrective_W2_rows))
@@ -26,26 +31,30 @@ class TorchCorrectiveNetwork(nn.Module):
             (output_size, hidden_size),
         ).coalesce()
         self.register_buffer("transpose", transpose, persistent=False)
+        self.register_buffer("rows", correctives.corrective_W2_rows, persistent=False)
+        self.register_buffer("cols", correctives.corrective_W2_cols, persistent=False)
+        self.register_buffer("values", correctives.corrective_W2_values, persistent=False)
+        self._num_vertices = data.mean_full.shape[0]
         self._runtime = runtime
 
-    def forward(self, data: Any, pose_rotations: Any) -> Any:
-        hidden = hidden_activations(self._runtime, data, pose_rotations)
+    def forward(
+        self,
+        hidden: Float[Tensor, "*batch H"],
+    ) -> Float[Tensor, "*batch Vf 3"]:
         batch_shape = hidden.shape[:-1]
         if torch.compiler.is_compiling():
-            correctives = data.correctives
-            contributions = hidden[..., correctives.corrective_W2_rows]
-            contributions = contributions * correctives.corrective_W2_values
-            output_size = data.mean_full.shape[0] * 3
+            contributions = hidden[..., self.rows] * self.values
+            output_size = self._num_vertices * 3
             output = torch.zeros(
                 (*batch_shape, output_size),
                 dtype=hidden.dtype,
                 device=hidden.device,
             )
-            indices = torch.broadcast_to(correctives.corrective_W2_cols, contributions.shape)
+            indices = torch.broadcast_to(self.cols, contributions.shape)
             output = output.scatter_add(-1, indices, contributions)
         else:
             output = torch.sparse.mm(self.transpose, hidden.reshape(-1, hidden.shape[-1]).T).T
-        return output.reshape(*batch_shape, data.mean_full.shape[0], 3)
+        return output.reshape(*batch_shape, self._num_vertices, 3)
 
 
 __all__ = ["TorchCorrectiveNetwork"]

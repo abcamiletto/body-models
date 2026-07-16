@@ -69,7 +69,8 @@ def prepare_pose(
     xp: Any,
 ) -> MhrPreparedPose:
     """Precompute pose-dependent MHR state for repeated forward passes."""
-    assert pose.ndim >= 1 and pose.shape[-1] == 204
+    if pose.ndim < 1 or pose.shape[-1] != 204:
+        raise ValueError(f"pose must have shape [..., 204], got {tuple(pose.shape)}")
     t_g, r_g, s_g, j_p = _forward_skeleton_core(
         xp=xp,
         pose=pose,
@@ -128,7 +129,10 @@ def prepare_identity(
     expression: Float[Array, "*batch 72"],
 ) -> MhrIdentity:
     """Precompute shape- and expression-dependent MHR state for repeated forward passes."""
-    assert shape.ndim >= 1 and shape.shape[-1] >= 1
+    if shape.ndim < 1 or shape.shape[-1] != 45:
+        raise ValueError(f"shape must have shape [..., 45], got {tuple(shape.shape)}")
+    if expression.ndim < 1 or expression.shape[-1] != 72:
+        raise ValueError(f"expression must have shape [..., 72], got {tuple(expression.shape)}")
     coeffs = xp.concat([shape, expression], axis=-1)
     return {
         "rest_vertices": (base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)) * 0.01,

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import config
@@ -34,18 +35,18 @@ __all__ = [
 
 @dataclass(frozen=True)
 class MhrWeights:
-    base_vertices: np.ndarray
-    blendshape_dirs: np.ndarray
-    skin_weights: np.ndarray
-    skin_indices: np.ndarray
-    faces: np.ndarray
-    joint_offsets: np.ndarray
-    joint_pre_rotations: np.ndarray
-    parameter_transform: np.ndarray
-    bind_inv_linear: np.ndarray
-    bind_inv_translation: np.ndarray
-    corrective_W1: np.ndarray
-    corrective_W2: np.ndarray
+    base_vertices: Float[np.ndarray, "V 3"]
+    blendshape_dirs: Float[np.ndarray, "117 V 3"]
+    skin_weights: Float[np.ndarray, "V K"]
+    skin_indices: Int[np.ndarray, "V K"]
+    faces: Int[np.ndarray, "F 3"]
+    joint_offsets: Float[np.ndarray, "J 3"]
+    joint_pre_rotations: Float[np.ndarray, "J 4"]
+    parameter_transform: Float[np.ndarray, "D N"]
+    bind_inv_linear: Float[np.ndarray, "J 3 3"]
+    bind_inv_translation: Float[np.ndarray, "J 3"]
+    corrective_W1: Float[np.ndarray, "3000 750"]
+    corrective_W2: Float[np.ndarray, "V*3 3000"]
     parents: list[int]
     kinematic_fronts: list[Front]
     joint_names: list[str]
@@ -222,11 +223,11 @@ def _load_checkpoint_numpy(checkpoint_path: Path) -> Any:
 
 
 def _build_dense_skinning(
-    vert_indices: np.ndarray,
-    joint_indices: np.ndarray,
-    joint_weights: np.ndarray,
+    vert_indices: Int[np.ndarray, "N"],
+    joint_indices: Int[np.ndarray, "N"],
+    joint_weights: Float[np.ndarray, "N"],
     num_vertices: int,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[Int[np.ndarray, "V K"], Float[np.ndarray, "V K"]]:
     """Build dense skinning matrices from sparse representation."""
     vert_indices = vert_indices.astype(np.int64, copy=False)
     joint_indices = joint_indices.astype(np.int64, copy=False)
@@ -247,7 +248,7 @@ def _build_dense_skinning(
     return dense_indices, dense_weights
 
 
-def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, np.ndarray]:
+def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, Float[np.ndarray, "..."]]:
     """Load pose correctives weights as numpy arrays (backend-agnostic).
 
     Args:

@@ -13,6 +13,11 @@ _HAND_POSE_SPLIT = 54
 _CANONICAL_BODY_POSE_DIM = 100
 
 
+def _require_last_dim(name: str, value: Float[Array, "... N"], size: int) -> None:
+    if value.ndim < 1 or value.shape[-1] != size:
+        raise ValueError(f"{name} must have shape [..., {size}], got {tuple(value.shape)}")
+
+
 def pack_pose(
     xp: Any,
     body_pose: Float[Array, "... 94"],
@@ -20,6 +25,9 @@ def pack_pose(
     hand_pose: Float[Array, "... 104"],
 ) -> Float[Array, "... 204"]:
     """Pack separated MHR body/head/hand controls into the canonical 204-vector."""
+    _require_last_dim("body_pose", body_pose, 94)
+    _require_last_dim("head_pose", head_pose, 6)
+    _require_last_dim("hand_pose", hand_pose, 104)
     body_pose = xp.concat(
         [
             body_pose[..., :_BODY_HEAD_SPLIT],
@@ -46,6 +54,7 @@ def unpack_pose(
     pose: Float[Array, "... 204"],
 ) -> tuple[Float[Array, "... 94"], Float[Array, "... 6"], Float[Array, "... 104"]]:
     """Split the canonical MHR 204-vector into body, head, and hand controls."""
+    _require_last_dim("pose", pose, 204)
     body_tail_start = _BODY_POSE_SPLIT + _HAND_POSE_SPLIT
     body_tail_end = body_tail_start + (_CANONICAL_BODY_POSE_DIM - _BODY_POSE_SPLIT)
     old_body_pose = xp.concat(

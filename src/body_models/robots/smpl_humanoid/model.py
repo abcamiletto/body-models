@@ -15,7 +15,8 @@ from body_models.rigid import RigidModel
 from body_models.robots.smpl_humanoid import core
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
 from body_models.robots.smpl_humanoid.io import load_model_data
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 
@@ -30,10 +31,16 @@ class SmplHumanoidModel(RigidModel):
 
     JOINTS = SMPL_HUMANOID_JOINTS
 
-    def __init__(self, source: Path | str = "humenv", *, runtime: Runtime) -> None:
+    def __init__(
+        self,
+        source: Path | str = "humenv",
+        *,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
+    ) -> None:
         self._runtime = runtime
         self._config = SmplHumanoidConfig(source)
-        self.weights = runtime.convert_model_data(load_model_data(source))
+        self.weights = materialize(load_model_data(source))
 
     @property
     def actuated_joint_types(self) -> list[str]:
@@ -87,15 +94,15 @@ class SmplHumanoidModel(RigidModel):
         self,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero humanoid pose controls."""
         return self._zero_pose("body_pose", batch_dims, dtype)
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 
@@ -106,7 +113,7 @@ class SmplHumanoidModel(RigidModel):
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         pelvis_rotation: Float[Array, "*batch 3"] | None = None,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Convert canonical SMPL motion into humanoid controls."""
         xp = self._runtime.xp
         ordered = xp.stack([smpl_body_pose[..., index, :] for _, index in BODY_JOINTS], axis=-2)
@@ -131,7 +138,7 @@ class SmplHumanoidModel(RigidModel):
             motion["global_rotation"] = root_rotation
         return motion
 
-    def to_smpl_motion(self, qpos: Float[Array, "*batch Q"]) -> dict[str, Array]:
+    def to_smpl_motion(self, qpos: Float[Array, "*batch Q"]) -> dict[str, Float[Array, "..."]]:
         """Convert MuJoCo qpos into canonical SMPL motion."""
         runtime = self._runtime
         xp = runtime.xp
@@ -162,7 +169,12 @@ class SmplHumanoidModel(RigidModel):
             "global_rotation": SO3.conversions.from_rotmat_to_axis_angle(root_rotation, xp=xp),
         }
 
-    def _preset_pose(self, name: str, batch_dims: tuple[int, ...], **kwargs: Any) -> dict[str, Array]:
+    def _preset_pose(
+        self,
+        name: str,
+        batch_dims: tuple[int, ...],
+        **kwargs: Any,
+    ) -> dict[str, Float[Array, "..."]]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         runtime = self._runtime
         xp = runtime.xp

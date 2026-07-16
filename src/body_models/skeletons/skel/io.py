@@ -75,7 +75,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["male", "female"
 
 
 def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
-    assert simplify >= 1.0
+    if simplify < 1.0:
+        raise ValueError(f"simplify must be at least 1.0, got {simplify}")
 
     with open(model_path, "rb") as f:
         data = pickle.load(f)
@@ -140,7 +141,7 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
     )
 
 
-def _sparse_to_dense(matrix) -> np.ndarray:
+def _sparse_to_dense(matrix) -> Float[np.ndarray, "..."]:
     return matrix.toarray().astype(np.float32)
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from body_models.bodies.garment_measurements.model import GarmentMeasurementsModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
+from body_models.state import numpy_state
 
 
 class GarmentMeasurements(GarmentMeasurementsModel):
@@ -18,7 +19,12 @@ class GarmentMeasurements(GarmentMeasurementsModel):
         *,
         rotation_type: RotationType = "axis_angle",
     ) -> None:
-        super().__init__(model_path, rotation_type=rotation_type, runtime=NumpyRuntime())
+        super().__init__(
+            model_path,
+            rotation_type=rotation_type,
+            runtime=NumpyRuntime(),
+            materialize=numpy_state,
+        )
 
 
 __all__ = ["GarmentMeasurements"]

@@ -7,6 +7,7 @@ import jax
 from body_models.bodies.garment_measurements.model import GarmentMeasurementsModel
 from body_models.rotations import RotationType
 from body_models.runtime import JaxModel, JaxRuntime
+from body_models.state import jax_state
 
 
 @jax.tree_util.register_pytree_node_class
@@ -26,6 +27,7 @@ class GarmentMeasurements(GarmentMeasurementsModel, JaxModel):
             model_path,
             rotation_type=rotation_type,
             runtime=JaxRuntime(),
+            materialize=jax_state,
         )
 
 

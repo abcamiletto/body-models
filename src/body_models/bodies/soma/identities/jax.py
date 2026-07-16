@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Float
 
-from body_models import common
+from body_models.state import jax_state
 
 from body_models.anny.jax import ANNY
 from body_models.mhr.jax import MHR
@@ -21,7 +21,7 @@ from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr
 
 class IdentitySource:
     def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
-        self.transfer = common.jaxify(identity_transfer(transfer_data))
+        self.transfer = jax_state(identity_transfer(transfer_data))
 
     def source_shape(
         self,

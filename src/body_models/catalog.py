@@ -165,16 +165,10 @@ DOWNLOAD_SPECS: Mapping[str, DownloadSpec] = MappingProxyType(
 )
 
 
-PUBLIC_MODULES: Mapping[str, str] = MappingProxyType(
-    {spec.public_module.rsplit(".", 1)[-1]: spec.public_module for spec in MODEL_SPECS.values()}
-)
-
-
 __all__ = [
     "ASSET_SPECS",
     "DOWNLOAD_SPECS",
     "MODEL_SPECS",
-    "PUBLIC_MODULES",
     "AssetSpec",
     "CredentialSpec",
     "DownloadSpec",

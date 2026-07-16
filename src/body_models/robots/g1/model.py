@@ -14,7 +14,8 @@ from body_models.rigid import RigidModel
 from body_models.robots.g1 import core
 from body_models.robots.g1.constants import G1_BODY_PRESETS, G1_JOINTS
 from body_models.robots.g1.io import load_model_data
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 
@@ -34,13 +35,14 @@ class G1Model(RigidModel):
         model_path: Path | str | None = None,
         *,
         convention: core.Convention = "soma",
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if convention not in ("soma", "mujoco"):
             raise ValueError(f"Invalid G1 convention: {convention!r}")
         self._runtime = runtime
         self._config = G1Config(convention)
-        self.weights = runtime.convert_model_data(load_model_data(model_path, convention=convention))
+        self.weights = materialize(load_model_data(model_path, convention=convention))
 
     @property
     def convention(self) -> core.Convention:
@@ -105,19 +107,24 @@ class G1Model(RigidModel):
         self,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero G1 pose controls."""
         return self._zero_pose("body_pose", batch_dims, dtype)
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the G1 T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Array]:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the G1 A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 
-    def _preset_pose(self, name: str, batch_dims: tuple[int, ...], **kwargs: Any) -> dict[str, Array]:
+    def _preset_pose(
+        self,
+        name: str,
+        batch_dims: tuple[int, ...],
+        **kwargs: Any,
+    ) -> dict[str, Float[Array, "..."]]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         runtime = self._runtime
         axis_angle = runtime.asarray(G1_BODY_PRESETS[name], like=params["body_pose"])

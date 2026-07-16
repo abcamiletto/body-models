@@ -6,6 +6,7 @@ from typing import Literal
 import torch.nn as nn
 
 from body_models.runtime import TorchRuntime
+from body_models.state import torch_state
 from body_models.skeletons.skel.model import SKELModel
 
 
@@ -28,6 +29,7 @@ class SKEL(SKELModel, nn.Module):
             gender,
             simplify,
             runtime=TorchRuntime(skinning_backend),
+            materialize=torch_state,
         )
 
 

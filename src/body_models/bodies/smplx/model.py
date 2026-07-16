@@ -15,7 +15,8 @@ from body_models.bodies.smplx.constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PR
 from body_models.bodies.smplx.io import get_model_path, load_model_data
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import Runtime
+from body_models.runtime import ArrayRuntime
+from body_models.state import StateMaterializer
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -32,8 +33,6 @@ class SmplxConfig:
 class SMPLXModel(SkinnedModel):
     """Backend-independent SMPL-X interface and orchestration."""
 
-    identity_keys = ("shape", "expression")
-    pose_keys = ("body_pose", "hand_pose", "head_pose", "pelvis_rotation")
     has_hands = True
     has_head = True
     NUM_BODY_JOINTS = 21
@@ -50,7 +49,8 @@ class SMPLXModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         *,
-        runtime: Runtime,
+        runtime: ArrayRuntime,
+        materialize: StateMaterializer,
     ) -> None:
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender!r}")
@@ -63,7 +63,7 @@ class SMPLXModel(SkinnedModel):
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         self._runtime = runtime
         self._config = SmplxConfig(gender=gender or "neutral", rotation_type=rotation_type)
-        self.weights = runtime.convert_model_data(weights)
+        self.weights = materialize(weights)
 
     @property
     def gender(self) -> Literal["neutral", "male", "female"]:
@@ -129,7 +129,7 @@ class SMPLXModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Any | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         expression: Float[Array, "*batch 10"] | None = None,
@@ -137,6 +137,7 @@ class SMPLXModel(SkinnedModel):
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is None:
             if shape is None or expression is None:
                 raise ValueError("shape and expression are required when identity is not provided")
@@ -169,7 +170,7 @@ class SMPLXModel(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Any | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         expression: Float[Array, "*batch 10"] | None = None,
@@ -177,6 +178,7 @@ class SMPLXModel(SkinnedModel):
     ) -> Float[Array, "*batch 55 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is None:
             if shape is None or expression is None:
                 raise ValueError("shape and expression are required when identity is not provided")
@@ -250,7 +252,11 @@ class SMPLXModel(SkinnedModel):
             rest_joints=identity["rest_joints"],
         )
 
-    def _prepare_skeleton_identity(self, shape: Array, expression: Array) -> core.SmplxSkeletonIdentity:
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch S"],
+        expression: Float[Array, "*batch E"],
+    ) -> core.SmplxSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
             j_template=self.weights.j_template,
@@ -266,7 +272,7 @@ class SMPLXModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero identity controls and identity rotations."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -327,7 +333,12 @@ class SMPLXModel(SkinnedModel):
             params["hand_pose"] = self._hand_preset(batch_dims, params["hand_pose"], hands)
         return params
 
-    def _hand_preset(self, batch_dims: tuple[int, ...], like: Array, hands: HandPreset) -> Array:
+    def _hand_preset(
+        self,
+        batch_dims: tuple[int, ...],
+        like: Float[Array, "..."],
+        hands: HandPreset,
+    ) -> Float[Array, "*batch 30 N"]:
         axis_angle = self._runtime.asarray(SMPLX_HAND_PRESETS[hands], like=like).reshape(self.NUM_HAND_JOINTS, 3)
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=self._runtime.xp)
@@ -337,7 +348,7 @@ class SMPLXModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL-X T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
@@ -346,7 +357,7 @@ class SMPLXModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Array]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL-X A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         axis_angle = self._runtime.asarray(SMPLX_BODY_PRESETS["a_pose"], like=params["body_pose"])

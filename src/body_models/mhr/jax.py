@@ -6,6 +6,7 @@ import jax
 
 from body_models.bodies.mhr.model import MHRModel
 from body_models.runtime import JaxModel, JaxRuntime
+from body_models.state import jax_state
 
 
 @jax.tree_util.register_pytree_node_class
@@ -27,6 +28,7 @@ class MHR(MHRModel, JaxModel):
             lod=lod,
             simplify=simplify,
             runtime=JaxRuntime(),
+            materialize=jax_state,
         )
 
 

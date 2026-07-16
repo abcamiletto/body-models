@@ -8,6 +8,7 @@ from body_models.bodies.soma.lowerings import SomaLowerings
 from body_models.bodies.soma.model import SOMAModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
+from body_models.state import numpy_state
 
 _LOWERINGS = SomaLowerings(correctives_numpy.NumpyCorrectiveNetwork, identity_lowerings.create_identity_source)
 
@@ -35,6 +36,7 @@ class SOMA(SOMAModel):
             rotation_type=rotation_type,
             match_warp=match_warp,
             runtime=NumpyRuntime(),
+            materialize=numpy_state,
             lowerings=_LOWERINGS,
         )
 
