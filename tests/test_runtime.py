@@ -6,36 +6,7 @@ import numpy as np
 import pytest
 
 import model_cases
-from body_models.runtime import JaxRuntime, NumpyRuntime, TorchRuntime
-
-
-@pytest.mark.fast
-def test_runtimes_expand_compact_skinning_weights() -> None:
-    indices = np.array([[0, 2, -1], [1, 1, 2]], dtype=np.int64)
-    weights = np.array([[0.25, 0.75, 0.0], [0.2, 0.3, 0.5]], dtype=np.float32)
-    expected = np.array([[0.25, 0.0, 0.75], [0.0, 0.5, 0.5]], dtype=np.float32)
-
-    numpy = NumpyRuntime()
-    actual = numpy.expand_skinning_weights(indices, weights, num_joints=3)
-    np.testing.assert_array_equal(actual, expected)
-
-    torch = pytest.importorskip("torch")
-    torch_runtime = TorchRuntime()
-    torch_like = torch.zeros((), dtype=torch.float32)
-    torch_indices = torch_runtime.asarray(indices, like=torch_like, dtype=torch.int64)
-    torch_weights = torch_runtime.asarray(weights, like=torch_like)
-    actual = torch_runtime.expand_skinning_weights(torch_indices, torch_weights, num_joints=3)
-    np.testing.assert_array_equal(actual.numpy(), expected)
-
-    pytest.importorskip("jax")
-    import jax.numpy as jnp
-
-    jax_runtime = JaxRuntime()
-    jax_like = jnp.zeros((), dtype=jnp.float32)
-    jax_indices = jax_runtime.asarray(indices, like=jax_like, dtype=jnp.int32)
-    jax_weights = jax_runtime.asarray(weights, like=jax_like)
-    actual = jax_runtime.expand_skinning_weights(jax_indices, jax_weights, num_joints=3)
-    np.testing.assert_array_equal(np.asarray(actual), expected)
+from body_models.runtime import NumpyRuntime, TorchRuntime
 
 
 @pytest.mark.fast

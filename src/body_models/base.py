@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, NotRequired, TypedDict
 
-from array_api_compat import get_namespace
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
@@ -26,6 +25,7 @@ class SkinningPayload(TypedDict):
 class _ArticulatedModel(ABC):
     """Shared skeleton interface for skinned and rigid articulated models."""
 
+    _runtime: Any
     parents: list[int]
     has_hands: bool = False
     has_head: bool = False
@@ -215,7 +215,7 @@ class RigidBodyModel(_ArticulatedModel):
             if value.shape[-1] != dof:
                 raise ValueError(f"{name!r} must have shape [..., {dof}], got {tuple(value.shape)}")
             pieces.append(value)
-        return get_namespace(*pieces).concat(pieces, axis=-1)
+        return self._runtime.xp.concat(pieces, axis=-1)
 
     def to_qpos(
         self,
@@ -234,7 +234,7 @@ class RigidBodyModel(_ArticulatedModel):
         if body_pose.shape[-1] != self.num_actuated:
             raise ValueError(f"body_pose must have shape [..., {self.num_actuated}], got {tuple(body_pose.shape)}")
 
-        xp = get_namespace(body_pose)
+        xp = self._runtime.xp
         batch_shape = tuple(body_pose.shape[:-1])
         if global_translation is None:
             global_translation = zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)

@@ -53,10 +53,8 @@ def linear_identity_shape(
     shapedirs: Float[Any, "V 3 I"],
     identity: Float[Any, "B I"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Any, "B V 3"]:
-    if xp is None:
-        xp = common.get_namespace(identity)
     identity_dim = identity.shape[-1]
     return mean + xp.einsum("...i,vci->...vc", identity, shapedirs[..., :identity_dim])
 
@@ -67,11 +65,8 @@ def mhr_identity_shape(
     scale_params: Float[Any, "B K"] | None,
     num_scale_params: int,
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Any, "B V 3"]:
-    if xp is None:
-        xp = common.get_namespace(identity)
-
     batch_shape = identity.shape[:-1]
     if scale_params is None:
         scale_params = common.zeros_as(identity, shape=(*batch_shape, num_scale_params), xp=xp)
@@ -95,10 +90,8 @@ def anny_identity_shape(
     anchors: Any,
     shape: Float[Any, "*batch 6"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Any, "*batch V 3"]:
-    if xp is None:
-        xp = common.get_namespace(shape)
     return anny_core.shape_vertices(
         template_vertices=template_vertices,
         blendshapes=blendshapes,
@@ -120,11 +113,8 @@ def transfer_identity_rest_shape(
     anchor_matrix: Float[Any, "U A"],
     rhs_base: Float[Any, "U 3"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Any, "B Vt 3"]:
-    if xp is None:
-        xp = common.get_namespace(source_shape)
-
     tetra_faces = source_tetrahedra[:, :3]
     f0 = source_shape[..., tetra_faces[:, 0], :]
     f1 = source_shape[..., tetra_faces[:, 1], :]

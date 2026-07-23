@@ -86,15 +86,6 @@ class ArrayRuntime(ABC):
             xp=self.xp,
         )
 
-    @abstractmethod
-    def expand_skinning_weights(
-        self,
-        joint_indices: Int[Array, "V K"],
-        joint_weights: Float[Array, "V K"],
-        num_joints: int,
-    ) -> Float[Array, "V J"]:
-        """Expand compact per-vertex influences into a dense weight matrix."""
-
 
 class NumpyRuntime(ArrayRuntime):
     """NumPy model runtime."""
@@ -104,20 +95,6 @@ class NumpyRuntime(ArrayRuntime):
         import numpy as np
 
         return np
-
-    def expand_skinning_weights(
-        self,
-        joint_indices: Int[Array, "V K"],
-        joint_weights: Float[Array, "V K"],
-        num_joints: int,
-    ) -> Float[Array, "V J"]:
-        np = self.xp
-        num_vertices = joint_indices.shape[0]
-        rows = np.broadcast_to(np.arange(num_vertices)[:, None], joint_indices.shape)
-        valid = joint_indices >= 0
-        dense = np.zeros((num_vertices, num_joints), dtype=joint_weights.dtype)
-        np.add.at(dense, (rows[valid], joint_indices[valid]), joint_weights[valid])
-        return dense
 
 
 class TorchRuntime(ArrayRuntime):
@@ -174,24 +151,6 @@ class TorchRuntime(ArrayRuntime):
             joint_weights=joint_weights,
         )
 
-    def expand_skinning_weights(
-        self,
-        joint_indices: Int[Array, "V K"],
-        joint_weights: Float[Array, "V K"],
-        num_joints: int,
-    ) -> Float[Array, "V J"]:
-        torch = self.xp
-        num_vertices = joint_indices.shape[0]
-        dense = torch.zeros(
-            (num_vertices, num_joints),
-            device=joint_weights.device,
-            dtype=joint_weights.dtype,
-        )
-        valid = joint_indices >= 0
-        indices = joint_indices.clamp_min(0).long()
-        weights = joint_weights * valid
-        return dense.scatter_add(1, indices, weights)
-
 
 class JaxRuntime(ArrayRuntime):
     """JAX model runtime."""
@@ -216,21 +175,6 @@ class JaxRuntime(ArrayRuntime):
         array = self.xp.asarray(value, dtype=dtype)
         device = getattr(like, "device", None)
         return array if device is None else jax.device_put(array, device)
-
-    def expand_skinning_weights(
-        self,
-        joint_indices: Int[Array, "V K"],
-        joint_weights: Float[Array, "V K"],
-        num_joints: int,
-    ) -> Float[Array, "V J"]:
-        jnp = self.xp
-        num_vertices = joint_indices.shape[0]
-        rows = jnp.broadcast_to(jnp.arange(num_vertices)[:, None], joint_indices.shape)
-        valid = joint_indices >= 0
-        indices = jnp.maximum(joint_indices, 0)
-        weights = jnp.where(valid, joint_weights, 0)
-        dense = jnp.zeros((num_vertices, num_joints), dtype=joint_weights.dtype)
-        return dense.at[rows, indices].add(weights)
 
 
 class JaxModel:

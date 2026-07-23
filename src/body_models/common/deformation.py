@@ -14,11 +14,9 @@ def blend_shapes(
     directions: Float[Array, "V D C"],
     coefficients: Float[Array, "*batch C"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch V D"]:
     """Apply a linear blend-shape basis stored along its final axis."""
-    if xp is None:
-        xp = ops.get_namespace(coefficients)
     if directions.shape[-1] != coefficients.shape[-1]:
         raise ValueError("directions and coefficients must have the same component count")
     return mean + xp.einsum("...c,vdc->...vd", coefficients, directions)
@@ -28,12 +26,9 @@ def pose_blend_shapes(
     rotations: Float[Array, "*batch J 3 3"],
     directions: Float[Array, "P V*3"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch V 3"]:
     """Blend root-excluded joint rotation deviations into vertex offsets."""
-    if xp is None:
-        xp = ops.get_namespace(rotations)
-
     batch_shape = rotations.shape[:-3]
     identity = ops.eye_as(rotations, batch_dims=(*batch_shape, 1), xp=xp)
     features = (rotations[..., 1:, :, :] - identity).reshape(*batch_shape, -1)
