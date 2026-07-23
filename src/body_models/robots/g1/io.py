@@ -176,6 +176,8 @@ def download_model() -> Path:
 
 def validate_path(path: PathLike) -> Path:
     path = Path(path)
+    if path.is_dir():
+        path = path / "g1.xml"
     if path.suffix.lower() != ".xml":
         raise ValueError(f"Expected a G1 XML file, got: {path}")
     if not path.is_file():
@@ -228,7 +230,10 @@ def load_model_data(
     )
 
 
-def _parse_joint_rest(root: ET.Element, coord: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _parse_joint_rest(
+    root: ET.Element,
+    coord: Float[np.ndarray, "3 3"],
+) -> tuple[Float[np.ndarray, "J 3"], Float[np.ndarray, "J 3 3"]]:
     local_offsets = np.zeros((len(JOINT_NAMES), 3), dtype=np.float32)
     rest_local_rotations = np.repeat(np.eye(3, dtype=np.float32)[None], len(JOINT_NAMES), axis=0)
     worldbody = root.find("worldbody")
@@ -260,10 +265,10 @@ def _parse_joint_rest(root: ET.Element, coord: np.ndarray) -> tuple[np.ndarray, 
 def _parse_mesh_local_transforms(
     root: ET.Element,
     mesh_base: Path,
-    coord: np.ndarray,
-) -> dict[str, tuple[np.ndarray, np.ndarray, Path]]:
+    coord: Float[np.ndarray, "3 3"],
+) -> dict[str, tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"], Path]]:
     mesh_file_by_name = mjcf.mesh_files_by_name(root)
-    out: dict[str, tuple[np.ndarray, np.ndarray, Path]] = {}
+    out: dict[str, tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"], Path]] = {}
     for geom in root.findall(".//geom"):
         mesh_name = geom.get("mesh")
         if mesh_name is None:
@@ -285,12 +290,12 @@ def _parse_mesh_local_transforms(
 
 def _parse_actuated_joints(
     root: ET.Element,
-    class_axes: dict[str, np.ndarray],
+    class_axes: dict[str, Float[np.ndarray, "3"]],
     class_limits: dict[str, tuple[float, float]],
-    coord: np.ndarray,
-) -> tuple[list[int], np.ndarray, np.ndarray, list[str]]:
+    coord: Float[np.ndarray, "3 3"],
+) -> tuple[list[int], Float[np.ndarray, "Q 3"], Float[np.ndarray, "Q 2"], list[str]]:
     indices: list[int] = []
-    axes: list[np.ndarray] = []
+    axes: list[Float[np.ndarray, "3"]] = []
     limits: list[tuple[float, float]] = []
     names: list[str] = []
     by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
@@ -318,20 +323,20 @@ def _parse_actuated_joints(
 
 
 def _load_link_meshes(
-    mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray, Path]],
-    coord: np.ndarray,
+    mesh_transforms: dict[str, tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"], Path]],
+    coord: Float[np.ndarray, "3 3"],
     *,
     dtype,
 ) -> tuple:
-    vertices_by_link: list[np.ndarray] = []
-    faces_by_link: list[np.ndarray] = []
+    vertices_by_link: list[Float[np.ndarray, "V 3"]] = []
+    faces_by_link: list[Int[np.ndarray, "F 3"]] = []
     joint_indices: list[int] = []
     vertex_starts: list[int] = []
     vertex_counts: list[int] = []
     face_starts: list[int] = []
     face_counts: list[int] = []
-    geom_positions: list[np.ndarray] = []
-    geom_rotations: list[np.ndarray] = []
+    geom_positions: list[Float[np.ndarray, "3"]] = []
+    geom_rotations: list[Float[np.ndarray, "3 3"]] = []
     names: list[str] = []
     vertex_offset = 0
     face_offset = 0
@@ -394,7 +399,10 @@ def _body_to_joint_name(body: ET.Element) -> str:
     return name.removesuffix("_link") + "_skel"
 
 
-def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndarray:
+def _joint_axis(
+    joint: ET.Element,
+    class_axes: dict[str, Float[np.ndarray, "3"]],
+) -> Float[np.ndarray, "3"]:
     axis = joint.get("axis")
     if axis:
         return mjcf.parse_vec(axis, default=np.zeros(3, dtype=np.float32), size=3)

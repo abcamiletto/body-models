@@ -1,4 +1,4 @@
-"""Model factory helpers."""
+"""Lazy model construction from the public catalog."""
 
 from __future__ import annotations
 
@@ -7,59 +7,52 @@ from importlib import import_module
 from typing import Any, Literal
 
 from body_models.base import RigidBodyModel, SkinnedModel
+from body_models.catalog import MODEL_SPECS, ModelSpec
 
 Backend = Literal["numpy", "torch", "jax"]
-ModelInfo = tuple[str, str, dict[str, Any]]
-
-_MODELS: dict[str, ModelInfo] = {
-    "anny": ("body_models.bodies.anny", "ANNY", {}),
-    "brainco": ("body_models.robots.brainco", "BrainCoHand", {}),
-    "flame": ("body_models.parts.flame", "FLAME", {}),
-    "g1": ("body_models.robots.g1", "G1", {}),
-    "garment": ("body_models.bodies.garment_measurements", "GarmentMeasurements", {}),
-    "garment_measurements": ("body_models.bodies.garment_measurements", "GarmentMeasurements", {}),
-    "mano": ("body_models.parts.mano", "MANO", {"side": "right"}),
-    "mhr": ("body_models.bodies.mhr", "MHR", {}),
-    "myofullbody": ("body_models.skeletons.myofullbody", "MyoFullBody", {}),
-    "skel": ("body_models.skeletons.skel", "SKEL", {"gender": "male"}),
-    "smpl": ("body_models.bodies.smpl", "SMPL", {"gender": "neutral"}),
-    "smpl_humanoid": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {}),
-    "humenv": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"source": "humenv"}),
-    "phc": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"source": "phc"}),
-    "smplsim": ("body_models.robots.smpl_humanoid", "SmplHumanoid", {"source": "smplsim"}),
-    "smplh": ("body_models.bodies.smplh", "SMPLH", {"gender": "neutral"}),
-    "smplx": ("body_models.bodies.smplx", "SMPLX", {"gender": "neutral"}),
-    "soma": ("body_models.bodies.soma", "SOMA", {}),
-}
+BACKENDS: tuple[Backend, ...] = ("numpy", "torch", "jax")
 
 
 def create_model(
     model_name: str,
     *,
     backend: Backend = "numpy",
-    pretrained: bool = False,
     **kwargs: Any,
 ) -> SkinnedModel | RigidBodyModel:
-    """Create a body model by name."""
-    name = model_name.strip().lower().replace("-", "_")
+    """Create a model by catalog name without importing unrelated backends."""
+    name = _normalize_name(model_name)
     try:
-        module_name, class_name, defaults = _MODELS[name]
+        spec = MODEL_SPECS[name]
     except KeyError as exc:
         available = ", ".join(list_models())
         raise ValueError(f"Unknown model {model_name!r}. Available models: {available}") from exc
+    if backend not in BACKENDS:
+        raise ValueError(f"Unknown backend {backend!r}. Expected one of {BACKENDS}.")
 
-    module = import_module(f"{module_name}.{backend}")
-    model_cls = getattr(module, class_name)
-    model_kwargs = defaults | kwargs
-    return model_cls(**model_kwargs)
+    module = import_module(f"{spec.module}.{backend}")
+    model_class = getattr(module, spec.class_name)
+    return model_class(**(dict(spec.defaults) | kwargs))
+
+
+def get_model_spec(model_name: str) -> ModelSpec:
+    """Return immutable catalog metadata for a model name."""
+    name = _normalize_name(model_name)
+    try:
+        return MODEL_SPECS[name]
+    except KeyError as exc:
+        raise ValueError(f"Unknown model {model_name!r}") from exc
 
 
 def list_models(filter: str = "") -> list[str]:
-    """List registered model names."""
-    names = sorted(_MODELS)
+    """List catalog names, optionally filtered with a shell-style pattern."""
+    names = sorted(MODEL_SPECS)
     if not filter:
         return names
     return [name for name in names if fnmatchcase(name, filter)]
 
 
-__all__ = ["Backend", "create_model", "list_models"]
+def _normalize_name(name: str) -> str:
+    return name.strip().lower().replace("_", "-")
+
+
+__all__ = ["BACKENDS", "Backend", "create_model", "get_model_spec", "list_models"]

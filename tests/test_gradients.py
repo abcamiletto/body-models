@@ -7,8 +7,10 @@ from body_models.base import RigidBodyModel
 
 def surface_loss(model, params):
     if isinstance(model, RigidBodyModel):
-        return model.forward_links(**params)[..., :1, :3, 3].sum()
-    return model.forward_vertices(**params)[..., :8, :].sum()
+        values = model.forward_links(**params)[..., :3, 3]
+    else:
+        values = model.forward_vertices(**params)
+    return (values**2).sum()
 
 
 @pytest.mark.parametrize(("name", "_numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.MODELS)
@@ -16,34 +18,8 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
     torch_instance.double()
-    torch_params = torch_instance.get_rest_pose(batch_dims=(), dtype=torch.float64)
-    torch_keys = [key for key, value in torch_params.items() if np.asarray(value).size]
-    if "global_translation" in torch_keys:
-        torch_keys.remove("global_translation")
-        torch_keys.insert(0, "global_translation")
-    for torch_key in torch_keys:
-        torch_value = torch_params[torch_key].clone().requires_grad_(True)
-        torch_params[torch_key] = torch_value
-        torch_loss_value = surface_loss(torch_instance, torch_params)
-        if torch_loss_value.requires_grad:
-            break
-        torch_params[torch_key] = torch_value.detach()
-    torch_loss_value.backward()
-
-    torch_auto = torch_value.grad.reshape(-1)[0].item()
-    torch_plus = torch_value.detach().numpy().copy()
-    torch_minus = torch_value.detach().numpy().copy()
-    torch_plus.reshape(-1)[0] += 1e-4
-    torch_minus.reshape(-1)[0] -= 1e-4
-    plus_params = torch_params.copy()
-    minus_params = torch_params.copy()
-    plus_params[torch_key] = torch.as_tensor(torch_plus, dtype=torch_value.dtype)
-    minus_params[torch_key] = torch.as_tensor(torch_minus, dtype=torch_value.dtype)
-    with torch.no_grad():
-        torch_plus_loss = surface_loss(torch_instance, plus_params).item()
-        torch_minus_loss = surface_loss(torch_instance, minus_params).item()
-    torch_numeric = (torch_plus_loss - torch_minus_loss) / 2e-4
-    np.testing.assert_allclose(torch_auto, torch_numeric, rtol=1e-2, atol=1e-2)
+    torch_rest = torch_instance.get_rest_pose(batch_dims=(), dtype=torch.float64)
+    torch_rest = {key: value + 0.03 for key, value in torch_rest.items()}
 
     jax = pytest.importorskip("jax")
     pytest.importorskip("flax")
@@ -51,22 +27,58 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     import jax.numpy as jnp
 
     jax_instance = jax_model(**kwargs)
-    jax_params = jax_instance.get_rest_pose(batch_dims=(), dtype=jnp.float64)
-    jax_key = torch_key
-    jax_value = jax_params[jax_key]
+    jax_rest = jax_instance.get_rest_pose(batch_dims=(), dtype=jnp.float64)
+    jax_rest = {key: value + 0.03 for key, value in jax_rest.items()}
 
-    def jax_loss(value):
-        params = jax_params.copy()
-        params[jax_key] = value
-        return surface_loss(jax_instance, params)
+    for key in torch_rest:
+        torch_params = {name: value.detach() for name, value in torch_rest.items()}
+        torch_value = torch_params[key].clone().requires_grad_(True)
+        torch_params[key] = torch_value
+        torch_loss_value = surface_loss(torch_instance, torch_params)
+        assert torch_loss_value.requires_grad, f"{name}.{key} is disconnected from the Torch output"
+        torch_loss_value.backward()
 
-    jax_auto = np.asarray(jax.grad(jax_loss)(jax_value)).reshape(-1)[0]
-    jax_plus = np.asarray(jax_value).copy()
-    jax_minus = np.asarray(jax_value).copy()
-    jax_plus.reshape(-1)[0] += 1e-4
-    jax_minus.reshape(-1)[0] -= 1e-4
-    jax_numeric = (float(jax_loss(jnp.asarray(jax_plus))) - float(jax_loss(jnp.asarray(jax_minus)))) / 2e-4
-    np.testing.assert_allclose(jax_auto, jax_numeric, rtol=1e-2, atol=1e-2)
+        torch_auto = torch_value.grad.reshape(-1)[0].item()
+        torch_plus = torch_value.detach().numpy().copy()
+        torch_minus = torch_value.detach().numpy().copy()
+        torch_plus.reshape(-1)[0] += 1e-4
+        torch_minus.reshape(-1)[0] -= 1e-4
+        plus_params = torch_params.copy()
+        minus_params = torch_params.copy()
+        plus_params[key] = torch.as_tensor(torch_plus, dtype=torch_value.dtype)
+        minus_params[key] = torch.as_tensor(torch_minus, dtype=torch_value.dtype)
+        with torch.no_grad():
+            torch_plus_loss = surface_loss(torch_instance, plus_params).item()
+            torch_minus_loss = surface_loss(torch_instance, minus_params).item()
+        torch_numeric = (torch_plus_loss - torch_minus_loss) / 2e-4
+        np.testing.assert_allclose(
+            torch_auto,
+            torch_numeric,
+            rtol=1e-2,
+            atol=1e-2,
+            err_msg=f"Torch gradient mismatch for {name}.{key}",
+        )
+
+        jax_value = jax_rest[key]
+
+        def jax_loss(value):
+            params = jax_rest.copy()
+            params[key] = value
+            return surface_loss(jax_instance, params)
+
+        jax_auto = np.asarray(jax.grad(jax_loss)(jax_value)).reshape(-1)[0]
+        jax_plus = np.asarray(jax_value).copy()
+        jax_minus = np.asarray(jax_value).copy()
+        jax_plus.reshape(-1)[0] += 1e-4
+        jax_minus.reshape(-1)[0] -= 1e-4
+        jax_numeric = (float(jax_loss(jnp.asarray(jax_plus))) - float(jax_loss(jnp.asarray(jax_minus)))) / 2e-4
+        np.testing.assert_allclose(
+            jax_auto,
+            jax_numeric,
+            rtol=1e-2,
+            atol=1e-2,
+            err_msg=f"JAX gradient mismatch for {name}.{key}",
+        )
 
 
 @pytest.mark.fast
@@ -134,15 +146,12 @@ def test_warp_forward_kinematics_gradients_match_common_on_cpu() -> None:
 
 
 @pytest.mark.fast
-def test_compact_warp_adapters_match_common_skinning() -> None:
-    from types import SimpleNamespace
-
+def test_warp_runtime_matches_common_skinning() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
 
     from body_models.common import skinning
-    from body_models.bodies.mhr.backends import warp as mhr_warp
-    from body_models.parts.mano.backends import warp as mano_warp
+    from body_models.runtime import TorchRuntime
 
     joint_indices = torch.tensor([[0, 1], [1, 2], [0, 2]], dtype=torch.int32)
     joint_weights = torch.tensor([[0.25, 0.75], [0.5, 0.5], [0.8, 0.2]])
@@ -153,19 +162,13 @@ def test_compact_warp_adapters_match_common_skinning() -> None:
     transforms = torch.randn(2, 3, 4, 4)
 
     expected = skinning.linear_blend_skinning(rest_vertices + pose_offsets, transforms, dense_weights, xp=torch)
-    adapters = (
-        (
-            mano_warp.forward_vertices,
-            SimpleNamespace(lbs_joint_indices=joint_indices, lbs_joint_weights=joint_weights),
-        ),
-        (
-            mhr_warp.forward_vertices,
-            SimpleNamespace(skin_indices=joint_indices, skin_weights=joint_weights),
-        ),
+    actual = TorchRuntime("warp").compact_linear_blend_skinning(
+        rest_vertices + pose_offsets,
+        transforms,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
     )
-    for forward_vertices, weights in adapters:
-        actual = forward_vertices(weights, rest_vertices, transforms, pose_offsets)
-        torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.slow
@@ -173,23 +176,26 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
     if not torch.cuda.is_available():
-        pytest.skip("SOMA's Warp kernel requires CUDA")
+        pytest.skip("SOMA's Warp skinning backend requires CUDA")
 
-    from body_models.bodies.soma import torch as soma_torch
+    from body_models.soma import torch as soma_torch
 
     torch.manual_seed(7)
-    models = {kernel: soma_torch.SOMA(kernel=kernel).cuda() for kernel in ("torch", "warp")}
+    models = {
+        skinning_backend: soma_torch.SOMA(skinning_backend=skinning_backend).cuda()
+        for skinning_backend in ("torch", "warp")
+    }
     params = models["torch"].get_rest_pose(batch_dims=(1,))
     params = {key: value + 0.01 * torch.randn_like(value) for key, value in params.items()}
     grad_output = torch.randn(1, models["torch"].num_vertices, 3, device="cuda")
     param_keys = tuple(params)
     results = {}
 
-    for kernel, model in models.items():
-        kernel_params = {key: value.detach().requires_grad_(True) for key, value in params.items()}
-        vertices = model.forward_vertices(**kernel_params)
-        grads = torch.autograd.grad(vertices, tuple(kernel_params.values()), grad_output)
-        results[kernel] = vertices, dict(zip(param_keys, grads, strict=True))
+    for skinning_backend, model in models.items():
+        backend_params = {key: value.detach().requires_grad_(True) for key, value in params.items()}
+        vertices = model.forward_vertices(**backend_params)
+        grads = torch.autograd.grad(vertices, tuple(backend_params.values()), grad_output)
+        results[skinning_backend] = vertices, dict(zip(param_keys, grads, strict=True))
 
     torch_vertices, torch_grads = results["torch"]
     warp_vertices, warp_grads = results["warp"]
@@ -202,7 +208,13 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
     ("name", "_numpy_model", "torch_model", "_jax_model", "kwargs"),
     [case for case in model_cases.SKINNED_MODELS if case[0] == "garment_measurements"],
 )
-def test_torch_kernel_gradients_match_default(name, _numpy_model, torch_model, _jax_model, kwargs) -> None:
+def test_torch_skinning_backend_gradients_match_default(
+    name,
+    _numpy_model,
+    torch_model,
+    _jax_model,
+    kwargs,
+) -> None:
     torch = pytest.importorskip("torch")
     if not torch.cuda.is_available():
         pytest.skip("CUDA is required")
@@ -223,8 +235,9 @@ def test_torch_kernel_gradients_match_default(name, _numpy_model, torch_model, _
         return vertices, gradients
 
     expected_vertices, expected_gradients = forward_and_grad(default_model)
-    for kernel in default_model.kernels[1:]:
-        actual_vertices, actual_gradients = forward_and_grad(torch_model(kernel=kernel, **kwargs).cuda())
+    for skinning_backend in default_model.skinning_backends[1:]:
+        model = torch_model(skinning_backend=skinning_backend, **kwargs).cuda()
+        actual_vertices, actual_gradients = forward_and_grad(model)
         torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
         for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
             torch.testing.assert_close(actual, expected, rtol=1e-3, atol=1e-3)

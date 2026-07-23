@@ -26,7 +26,7 @@ def convert_pose(
     return converted
 
 
-def _joint_axis(pose: Array) -> int:
+def _joint_axis(pose: Float[Array, "..."]) -> int:
     return -3 if pose.shape[-2:] == (3, 3) else -2
 
 

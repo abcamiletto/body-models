@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#   "jaxtyping>=0.2.28",
 #   "numpy>=2.0.0",
 #   "scipy>=1.13.0",
 #   "usd-core>=26.5",
@@ -22,6 +23,7 @@ if sys.path and sys.path[0] == _SCRIPT_DIR:
     sys.path.pop(0)
 
 import numpy as np  # noqa: E402
+from jaxtyping import Float, Int, Shaped  # noqa: E402
 from scipy.sparse import csc_matrix  # noqa: E402
 
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
@@ -90,21 +92,27 @@ def generate_asset(upstream_dir: Path, output_dir: Path) -> Path:
     return output_dir
 
 
-def _joint_world_to_local(world: np.ndarray, parents: np.ndarray) -> np.ndarray:
+def _joint_world_to_local(
+    world: Float[np.ndarray, "J 4 4"],
+    parents: Int[np.ndarray, "J"],
+) -> Float[np.ndarray, "J 4 4"]:
     local = np.empty_like(world)
     for joint, parent in enumerate(parents.tolist()):
         local[joint] = world[joint] if parent == joint else np.linalg.inv(world[parent]) @ world[joint]
     return local
 
 
-def _forward_kinematics(local: np.ndarray, parents: np.ndarray) -> np.ndarray:
+def _forward_kinematics(
+    local: Float[np.ndarray, "J 4 4"],
+    parents: Int[np.ndarray, "J"],
+) -> Float[np.ndarray, "J 4 4"]:
     world = np.empty_like(local)
     for joint, parent in enumerate(parents.tolist()):
         world[joint] = local[joint] if parent == joint else world[parent] @ local[joint]
     return world
 
 
-def _nearest_kept_parent(parent_ids: np.ndarray, old_index: int, keep_ids: set[int]) -> int:
+def _nearest_kept_parent(parent_ids: Int[np.ndarray, "J"], old_index: int, keep_ids: set[int]) -> int:
     parent = int(parent_ids[old_index])
     while parent not in keep_ids and parent != int(parent_ids[parent]):
         parent = int(parent_ids[parent])
@@ -248,7 +256,10 @@ def _load_lod_skin_from_usd(asset_dir: Path, lod: str) -> dict[str, Any]:
     return {"bind_shape": bind_shape, "triangles": triangles, "skin_weights": dense_weights}
 
 
-def _fan_triangulate(face_indices: np.ndarray, face_counts: np.ndarray) -> np.ndarray:
+def _fan_triangulate(
+    face_indices: Int[np.ndarray, "N"],
+    face_counts: Int[np.ndarray, "F"],
+) -> Int[np.ndarray, "T 3"]:
     triangles: list[tuple[int, int, int]] = []
     offset = 0
     for count in face_counts.tolist():
@@ -261,8 +272,8 @@ def _fan_triangulate(face_indices: np.ndarray, face_counts: np.ndarray) -> np.nd
 
 def _build_xlo_lod_arrays(
     upstream_dir: Path,
-    arrays: dict[str, np.ndarray],
-) -> dict[str, np.ndarray]:
+    arrays: dict[str, Shaped[np.ndarray, "..."]],
+) -> dict[str, Shaped[np.ndarray, "..."]]:
     xlo = _load_lod_skin_from_usd(upstream_dir, "xlo")
     mid_bind_shape = np.asarray(arrays["bind_shape"], dtype=np.float32)
     nearest_mid = _nearest_vertex_ids(mid_bind_shape, xlo["bind_shape"])
@@ -278,7 +289,11 @@ def _build_xlo_lod_arrays(
     }
 
 
-def _nearest_vertex_ids(source: np.ndarray, target: np.ndarray, chunk_size: int = 128) -> np.ndarray:
+def _nearest_vertex_ids(
+    source: Float[np.ndarray, "Vs 3"],
+    target: Float[np.ndarray, "Vt 3"],
+    chunk_size: int = 128,
+) -> Int[np.ndarray, "Vt"]:
     nearest = np.empty((target.shape[0],), dtype=np.int64)
     for start in range(0, target.shape[0], chunk_size):
         stop = min(start + chunk_size, target.shape[0])
@@ -291,7 +306,10 @@ def _axis_id(axis: str) -> int:
     return {"x": 0, "y": 1, "z": 2}[axis.lower()]
 
 
-def _load_procedural_data(asset_dir: Path, joint_names: list[str]) -> tuple[list[str], dict[str, np.ndarray]]:
+def _load_procedural_data(
+    asset_dir: Path,
+    joint_names: list[str],
+) -> tuple[list[str], dict[str, Shaped[np.ndarray, "..."]]]:
     with (asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET).open() as file:
         data = json.load(file)
 

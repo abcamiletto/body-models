@@ -312,7 +312,14 @@ def _load_npz_cache(cache_file: Path) -> dict:
     return out
 
 
-def _load_obj(path: Path, dtype: np.dtype) -> tuple[np.ndarray, np.ndarray, dict]:
+def _load_obj(
+    path: Path,
+    dtype: np.dtype,
+) -> tuple[
+    Float[np.ndarray, "V 3"],
+    Float[np.ndarray, "U 2"],
+    dict[str, dict[str, Int[np.ndarray, "..."]]],
+]:
     verts, uvs, groups, cur = [], [], {}, None
 
     for line in path.read_text().splitlines():
@@ -346,14 +353,19 @@ def _load_obj(path: Path, dtype: np.dtype) -> tuple[np.ndarray, np.ndarray, dict
     return np.asarray(verts, dtype=dtype), uv_arr, groups
 
 
-def _load_blendshapes(data_dir: Path, template: np.ndarray, world_T: np.ndarray, dtype: np.dtype) -> dict:
+def _load_blendshapes(
+    data_dir: Path,
+    template: Float[np.ndarray, "V 3"],
+    world_T: Float[np.ndarray, "3 3"],
+    dtype: np.dtype,
+) -> dict[tuple[str, ...], Float[np.ndarray, "V 3"]]:
     n = len(template)
     pv = PHENOTYPE_VARIATIONS
     macro = data_dir / "data" / "mpfb2" / "targets" / "macrodetails"
     breast = data_dir / "data" / "mpfb2" / "targets" / "breast"
     newborn_scale = np.asarray([0.922, 0.922, 0.75], dtype=dtype)
 
-    def load(path: Path, age: str) -> np.ndarray:
+    def load(path: Path, age: str) -> Float[np.ndarray, "V 3"]:
         bs = np.zeros((n, 3), dtype=dtype)
         with gzip.open(path, "rt") as f:
             for line in f:
@@ -385,7 +397,10 @@ def _load_blendshapes(data_dir: Path, template: np.ndarray, world_T: np.ndarray,
     return shapes
 
 
-def _stack_blendshapes(shapes: dict, dtype: np.dtype) -> tuple[np.ndarray, np.ndarray]:
+def _stack_blendshapes(
+    shapes: dict[tuple[str, ...], Float[np.ndarray, "V 3"]],
+    dtype: np.dtype,
+) -> tuple[Float[np.ndarray, "S V 3"], Float[np.ndarray, "S P"]]:
     all_phens = [p for vals in PHENOTYPE_VARIATIONS.values() for p in vals]
     ph2idx = {p: i for i, p in enumerate(all_phens)}
     stacked, masks = [], []
@@ -419,7 +434,7 @@ def _build_skin_weights(
     labels: list[str],
     n_verts: int,
     dtype: np.dtype,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[Int[np.ndarray, "V K"], Float[np.ndarray, "V K"]]:
     indices = [[] for _ in range(n_verts)]
     weights = [[] for _ in range(n_verts)]
 
@@ -441,13 +456,19 @@ def _build_skin_weights(
 
 
 def _compute_bone_data(
-    verts: np.ndarray,
-    shapes: np.ndarray,
+    verts: Float[np.ndarray, "V 3"],
+    shapes: Float[np.ndarray, "S V 3"],
     labels: list[str],
     rig: dict,
     groups: dict,
     dtype: np.dtype,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    Float[np.ndarray, "J 3"],
+    Float[np.ndarray, "J 3"],
+    Float[np.ndarray, "S J 3"],
+    Float[np.ndarray, "S J 3"],
+    Float[np.ndarray, "J 3 3"],
+]:
     def get_verts(data: dict) -> list[int]:
         strategy = data["strategy"]
         if strategy == "VERTEX":
@@ -481,7 +502,10 @@ def _compute_bone_data(
     )
 
 
-def _edit_mesh_faces(faces: np.ndarray, uvs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _edit_mesh_faces(
+    faces: Int[np.ndarray, "F C"],
+    uvs: Int[np.ndarray, "F C"],
+) -> tuple[Int[np.ndarray, "Fnew C"], Int[np.ndarray, "Fnew C"]]:
     discard = np.concatenate([np.arange(1778, 1794), np.arange(8450, 8466)]).astype(faces.dtype)
     keep = ~np.isin(faces, discard).any(axis=1)
 
@@ -515,10 +539,10 @@ def _edit_mesh_faces(faces: np.ndarray, uvs: np.ndarray) -> tuple[np.ndarray, np
 
 
 def _simplify_mesh(
-    vertices: np.ndarray,
-    faces: np.ndarray,
+    vertices: Float[np.ndarray, "V 3"],
+    faces: Int[np.ndarray, "F 3"],
     target_faces: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[Float[np.ndarray, "Vs 3"], Int[np.ndarray, "Fs 3"], Int[np.ndarray, "Vs"]]:
     import pyfqmr
     from scipy.spatial import KDTree
 

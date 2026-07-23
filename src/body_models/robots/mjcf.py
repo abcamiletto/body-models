@@ -38,7 +38,12 @@ def _inline_includes(element: ET.Element, base_dir: Path, visited: set[Path]) ->
     element[:] = new_children
 
 
-def parse_vec(value: str | None, *, default: Float[np.ndarray, "..."], size: int | None = None) -> np.ndarray:
+def parse_vec(
+    value: str | None,
+    *,
+    default: Float[np.ndarray, "N"],
+    size: int | None = None,
+) -> Float[np.ndarray, "N"]:
     if value is None:
         parsed = default.copy()
     else:
@@ -78,8 +83,8 @@ def mesh_files_by_name(root: ET.Element) -> dict[str, str]:
     return {name: file for name, (file, _scale) in mesh_assets(root).items()}
 
 
-def mesh_assets(root: ET.Element) -> dict[str, tuple[str, np.ndarray]]:
-    out: dict[str, tuple[str, np.ndarray]] = {}
+def mesh_assets(root: ET.Element) -> dict[str, tuple[str, Float[np.ndarray, "3"]]]:
+    out: dict[str, tuple[str, Float[np.ndarray, "3"]]] = {}
     for mesh in root.findall(".//asset/mesh"):
         name = mesh.get("name")
         file = mesh.get("file")
@@ -89,8 +94,10 @@ def mesh_assets(root: ET.Element) -> dict[str, tuple[str, np.ndarray]]:
     return out
 
 
-def joint_defaults(root: ET.Element) -> tuple[dict[str, np.ndarray], dict[str, tuple[float, float]]]:
-    axes: dict[str, np.ndarray] = {}
+def joint_defaults(
+    root: ET.Element,
+) -> tuple[dict[str, Float[np.ndarray, "3"]], dict[str, tuple[float, float]]]:
+    axes: dict[str, Float[np.ndarray, "3"]] = {}
     limits: dict[str, tuple[float, float]] = {}
     for default in root.findall(".//default"):
         class_name = default.get("class")

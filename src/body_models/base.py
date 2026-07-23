@@ -2,36 +2,39 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, NotRequired, TypedDict
 
-from array_api_compat import get_namespace
+from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models.common import eye_as, zeros_as
 from body_models.constants import Joint
 from trimesh import Trimesh
 
+Array = Any
+
 
 class SkinningPayload(TypedDict):
     """Renderer-ready linear blend skinning inputs."""
 
-    rest_vertices: Any
-    skinning_transforms: Any
-    pose_offsets: NotRequired[Any]
-    skin_weights: Any
-    faces: Any
+    rest_vertices: Float[Array, "*batch V 3"]
+    skinning_transforms: Float[Array, "*batch J 4 4"]
+    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
+    skin_weights: Float[Array, "V J"]
+    faces: Int[Array, "F C"]
 
 
 class _ArticulatedModel(ABC):
     """Shared skeleton interface for skinned and rigid articulated models."""
 
+    _runtime: Any
     parents: list[int]
     has_hands: bool = False
     has_head: bool = False
-    kernels: ClassVar[tuple[str, ...]] = ("numpy",)
+    skinning_backends: ClassVar[tuple[str, ...]] = ("numpy",)
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
 
     @property
     @abstractmethod
-    def faces(self) -> Any:
+    def faces(self) -> Int[Array, "F C"]:
         """Mesh face indices. Shape [F, 3] for triangles or [F, 4] for quads."""
 
     @property
@@ -65,7 +68,7 @@ class _ArticulatedModel(ABC):
         return self.joint_names.index(native_name)
 
     @abstractmethod
-    def forward_skeleton(self, *args, **kwargs) -> Any:
+    def forward_skeleton(self, *args, **kwargs) -> Float[Array, "*batch J 4 4"]:
         """
         Compute skeleton joint transforms.
 
@@ -77,7 +80,7 @@ class _ArticulatedModel(ABC):
         """
 
     @abstractmethod
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = ()) -> dict[str, Any]:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = ()) -> dict[str, Float[Array, "..."]]:
         """
         Get default rest pose parameters for this model.
 
@@ -93,7 +96,7 @@ class _ArticulatedModel(ABC):
         self,
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Get parameters for the SMPL-style T-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
@@ -101,7 +104,7 @@ class _ArticulatedModel(ABC):
         self,
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Float[Array, "..."]]:
         """Get parameters for the MHR-style A-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
@@ -109,23 +112,18 @@ class _ArticulatedModel(ABC):
 class SkinnedModel(_ArticulatedModel):
     """Base class for models that expose one skinned mesh."""
 
-    # Public rest-pose keys grouped by their role.
-    identity_keys: ClassVar[tuple[str, ...]]
-    pose_keys: ClassVar[tuple[str, ...]]
-    transform_keys: ClassVar[tuple[str, ...]] = ("global_translation", "global_rotation")
-
     @property
     @abstractmethod
-    def skin_weights(self) -> Any:
+    def skin_weights(self) -> Float[Array, "V J"]:
         """Skinning weights mapping vertices to joints. Shape [V, J]."""
 
     @property
     @abstractmethod
-    def rest_vertices(self) -> Any:
+    def rest_vertices(self) -> Float[Array, "V 3"]:
         """Mesh vertices in rest pose. Shape [V, 3]."""
 
     @abstractmethod
-    def forward_vertices(self, *args, **kwargs) -> Any:
+    def forward_vertices(self, *args, **kwargs) -> Float[Array, "*batch V 3"]:
         """
         Compute mesh vertices.
 
@@ -147,6 +145,15 @@ class SkinnedModel(_ArticulatedModel):
         if "pose_offsets" in pose:
             skinning["pose_offsets"] = pose["pose_offsets"]
         return skinning
+
+    @staticmethod
+    def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:
+        if identity is None:
+            return
+        conflicts = [name for name, value in raw_parameters.items() if value is not None]
+        if conflicts:
+            names = ", ".join(conflicts)
+            raise ValueError(f"identity cannot be combined with raw identity parameters: {names}")
 
 
 class RigidBodyModel(_ArticulatedModel):
@@ -187,13 +194,13 @@ class RigidBodyModel(_ArticulatedModel):
             start = stop
         return slices
 
-    def unpack_pose(self, pose: Any) -> dict[str, Any]:
+    def unpack_pose(self, pose: Float[Array, "*batch Q"]) -> dict[str, Float[Array, "*batch dof"]]:
         """Unpack a flattened pose ``[..., Q]`` into ``name -> [..., dof]`` arrays."""
         if pose.shape[-1] != self.num_actuated:
             raise ValueError(f"pose must have shape [..., {self.num_actuated}], got {tuple(pose.shape)}")
         return {name: pose[..., joint_slice] for name, joint_slice in self.actuated_joint_slices.items()}
 
-    def pack_pose(self, pose_by_joint: Mapping[str, Any]) -> Any:
+    def pack_pose(self, pose_by_joint: Mapping[str, Float[Array, "*batch dof"]]) -> Float[Array, "*batch Q"]:
         """Pack ``name -> [..., dof]`` arrays into a flattened pose ``[..., Q]``."""
         pieces = []
         expected_names = set(self.actuated_joint_slices)
@@ -208,16 +215,16 @@ class RigidBodyModel(_ArticulatedModel):
             if value.shape[-1] != dof:
                 raise ValueError(f"{name!r} must have shape [..., {dof}], got {tuple(value.shape)}")
             pieces.append(value)
-        return get_namespace(*pieces).concat(pieces, axis=-1)
+        return self._runtime.xp.concat(pieces, axis=-1)
 
     def to_qpos(
         self,
-        body_pose: Any,
-        global_translation: Any | None = None,
+        body_pose: Float[Array, "*batch Q"],
+        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
-        global_rotation: Any | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         clamp_to_limits: bool = False,
-    ) -> Any:
+    ) -> Float[Array, "*batch qpos"]:
         """Build full MuJoCo ``qpos`` as ``[root_xyz, root_wxyz, body_pose]``.
 
         ``body_pose`` is the model's flattened scalar coordinate vector ``[..., Q]``.
@@ -227,7 +234,7 @@ class RigidBodyModel(_ArticulatedModel):
         if body_pose.shape[-1] != self.num_actuated:
             raise ValueError(f"body_pose must have shape [..., {self.num_actuated}], got {tuple(body_pose.shape)}")
 
-        xp = get_namespace(body_pose)
+        xp = self._runtime.xp
         batch_shape = tuple(body_pose.shape[:-1])
         if global_translation is None:
             global_translation = zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)
@@ -250,7 +257,7 @@ class RigidBodyModel(_ArticulatedModel):
 
     @property
     @abstractmethod
-    def actuated_joint_limits(self) -> Any:
+    def actuated_joint_limits(self) -> Float[Array, "Q 2"]:
         """Limits for each actuated pose coordinate. Shape [Q, 2]."""
 
     @property
@@ -269,7 +276,7 @@ class RigidBodyModel(_ArticulatedModel):
         """Joint index associated with each link mesh."""
 
     @abstractmethod
-    def forward_links(self, *args, **kwargs) -> Any:
+    def forward_links(self, *args, **kwargs) -> Float[Array, "*batch L 4 4"]:
         """Compute world-space 4x4 link transforms as the array/autograd primitive."""
 
     @abstractmethod

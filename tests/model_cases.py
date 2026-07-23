@@ -1,5 +1,6 @@
 """Shared model list for cross-model tests."""
 
+from inspect import signature
 from pathlib import Path
 
 from body_models.anny import jax as anny_jax
@@ -94,3 +95,27 @@ RIGID_BODY_MODELS = [model for model in MODELS if issubclass(model[1], RigidBody
 SKINNED_MODELS = [model for model in MODELS if issubclass(model[1], SkinnedModel)]
 
 REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" / "0.json").exists()]
+
+
+def forward_skeleton(model, params, **kwargs):
+    """Call a model-specific skeleton signature with the parameters it accepts."""
+    arguments = dict(params) | kwargs
+    accepted = signature(model.forward_skeleton).parameters
+    return model.forward_skeleton(**{key: value for key, value in arguments.items() if key in accepted})
+
+
+def prepare_states(model, params):
+    """Prepare model-specific identity and pose state from public parameters."""
+    identity_parameters = signature(model.prepare_identity).parameters
+    identity = model.prepare_identity(**{key: params[key] for key in identity_parameters if key in params})
+    pose_parameters = signature(model.prepare_pose).parameters
+    arguments = dict(params)
+    arguments["identity"] = identity
+    pose = model.prepare_pose(**{key: arguments[key] for key in pose_parameters if key in arguments})
+    return identity, pose
+
+
+def with_prepared_identity(model, params, identity):
+    """Replace raw identity controls with prepared state in forward arguments."""
+    raw_identity = set(signature(model.prepare_identity).parameters)
+    return {key: value for key, value in params.items() if key not in raw_identity} | {"identity": identity}

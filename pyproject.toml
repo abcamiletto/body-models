@@ -1,7 +1,7 @@
 [project]
 name = "body-models"
-version = "0.19.1"
-description = "Multi-backend parametric body models (SMPL, SMPLH, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements, BrainCo, G1) for NumPy, PyTorch, and JAX"
+version = "1.0.0"
+description = "Parametric and articulated body models for NumPy, PyTorch, JAX, and Warp"
 readme = "README.md"
 authors = [
     { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-body-models = "body_models:main"
+body-models = "body_models.cli:main"
 
 [project.optional-dependencies]
 torch = [
@@ -37,7 +37,7 @@ warp = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.26,<0.10.0"]
+requires = ["uv_build>=0.11.11,<0.12.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
@@ -94,4 +94,7 @@ ignore = [
 markers = [
     "fast: tests included in pull request CI",
     "slow: exhaustive or compiler-heavy tests excluded from fast CI",
+]
+filterwarnings = [
+    "error:scatter inputs have incompatible types:FutureWarning",
 ]

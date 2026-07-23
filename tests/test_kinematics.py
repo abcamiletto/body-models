@@ -1,7 +1,13 @@
 import numpy as np
 import pytest
 
-from body_models.common.kinematics import compute_kinematic_fronts, compute_sparse_skin_weights
+from body_models.common.kinematics import (
+    affine_transforms,
+    compute_kinematic_fronts,
+    compute_sparse_skin_weights,
+    invert_rigid_transforms,
+    local_joint_offsets,
+)
 
 pytestmark = pytest.mark.fast
 
@@ -74,3 +80,33 @@ def test_compute_sparse_skin_weights_reconstructs_dense_matrix() -> None:
         np.add.at(reconstructed[vertex], indices[vertex, active], weights[vertex, active])
 
     np.testing.assert_allclose(reconstructed, dense)
+
+
+def test_affine_transforms_broadcasts_linear_and_translation_batches() -> None:
+    linear = np.broadcast_to(np.eye(3), (3, 2, 3, 3))
+    translation = np.arange(6).reshape(1, 2, 3)
+
+    transforms = affine_transforms(linear, translation, xp=np)
+
+    assert transforms.shape == (3, 2, 4, 4)
+    np.testing.assert_array_equal(transforms[..., :3, 3], np.broadcast_to(translation, (3, 2, 3)))
+    expected_bottom = np.broadcast_to(np.array([0.0, 0.0, 0.0, 1.0]), (3, 2, 4))
+    np.testing.assert_array_equal(transforms[..., 3, :], expected_bottom)
+
+
+def test_invert_rigid_transforms() -> None:
+    rotations = np.array([[[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]])
+    transforms = affine_transforms(rotations, np.array([[1.0, 2.0, 3.0]]), xp=np)
+
+    inverse = invert_rigid_transforms(transforms, xp=np)
+
+    np.testing.assert_allclose(transforms @ inverse, np.eye(4)[None])
+
+
+def test_local_joint_offsets_preserves_each_root_position() -> None:
+    joints = np.array([[1.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 4.0, 0.0]])
+
+    offsets = local_joint_offsets(joints, [-1, 0, 2], xp=np)
+
+    expected = np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 4.0, 0.0]])
+    np.testing.assert_array_equal(offsets, expected)

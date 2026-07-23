@@ -1,7 +1,7 @@
 site_name: body-models
 site_url: https://abcamiletto.github.io/body-models/
 site_author: Andrea Boscolo Camiletto
-site_description: Multi-backend parametric body models for NumPy, PyTorch, and JAX
+site_description: Parametric and articulated body models for NumPy, PyTorch, JAX, and Warp
 repo_name: body-models
 repo_url: https://github.com/abcamiletto/body-models
 
@@ -55,6 +55,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Architecture: architecture.md
   - Models:
       - Full Bodies:
           - SMPL: models/smpl.md

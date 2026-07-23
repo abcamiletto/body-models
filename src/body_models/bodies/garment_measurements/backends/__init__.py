@@ -1,1 +1,0 @@
-"""GarmentMeasurements backend kernels."""

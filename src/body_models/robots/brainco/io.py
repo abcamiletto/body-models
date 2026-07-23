@@ -154,10 +154,14 @@ def _parse_rest_and_mesh_transforms(
     root: ET.Element,
     side: str,
     names: list[str],
-) -> tuple[np.ndarray, np.ndarray, dict[str, tuple[np.ndarray, np.ndarray]]]:
+) -> tuple[
+    Float[np.ndarray, "J 3"],
+    Float[np.ndarray, "J 3 3"],
+    dict[str, tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"]]],
+]:
     offsets = np.zeros((len(names), 3), dtype=np.float32)
     rotations = np.repeat(np.eye(3, dtype=np.float32)[None], len(names), axis=0)
-    mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    mesh_transforms: dict[str, tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"]]] = {}
     mesh_file_by_name = mjcf.mesh_files_by_name(root)
     worldbody = root.find("worldbody")
     if worldbody is None:
@@ -171,7 +175,12 @@ def _parse_rest_and_mesh_transforms(
     rotations[0] = MUJOCO_TO_KIMODO @ base_rot @ MUJOCO_TO_KIMODO.T
     _add_mesh_transforms(base, side, mesh_file_by_name, base_rot, mesh_transforms)
 
-    def walk(body: ET.Element, parent_pos: np.ndarray, parent_rot: np.ndarray, fold_parent: bool) -> None:
+    def walk(
+        body: ET.Element,
+        parent_pos: Float[np.ndarray, "3"],
+        parent_rot: Float[np.ndarray, "3 3"],
+        fold_parent: bool,
+    ) -> None:
         body_pos = mjcf.parse_vec(body.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
         body_rot = mjcf.parse_orientation(body)
         local_pos = parent_pos + parent_rot @ body_pos if fold_parent else body_pos
@@ -192,9 +201,9 @@ def _parse_rest_and_mesh_transforms(
 def _parse_active_joints(
     root: ET.Element,
     names: list[str],
-    class_axes: dict[str, np.ndarray],
+    class_axes: dict[str, Float[np.ndarray, "3"]],
     class_limits: dict[str, tuple[float, float]],
-) -> tuple[list[int], np.ndarray, np.ndarray, list[str]]:
+) -> tuple[list[int], Float[np.ndarray, "Q 3"], Float[np.ndarray, "Q 2"], list[str]]:
     by_name = {name: i for i, name in enumerate(names)}
     indices = []
     axes = []
@@ -220,8 +229,8 @@ def _parse_coupled_joints(
     root: ET.Element,
     names: list[str],
     actuated_joint_names: list[str],
-    class_axes: dict[str, np.ndarray],
-) -> tuple[list[int], np.ndarray, list[int], np.ndarray]:
+    class_axes: dict[str, Float[np.ndarray, "3"]],
+) -> tuple[list[int], Float[np.ndarray, "C 3"], list[int], Float[np.ndarray, "C 4"]]:
     by_name = {name: i for i, name in enumerate(names)}
     qpos_by_name = {name: i for i, name in enumerate(actuated_joint_names)}
     joint_by_name = {joint.get("name"): joint for joint in root.findall(".//joint") if joint.get("name")}
@@ -252,11 +261,11 @@ def _parse_coupled_joints(
 
 def _load_link_meshes(
     mesh_dir: Path,
-    mesh_transforms: dict[str, tuple[np.ndarray, np.ndarray]],
+    mesh_transforms: dict[str, tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"]]],
     joint_names: list[str],
     *,
     dtype,
-) -> tuple[np.ndarray, np.ndarray, dict]:
+) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"], dict[str, Any]]:
     vertices_by_link = []
     faces_by_link = []
     link_data = {
@@ -304,8 +313,8 @@ def _add_mesh_transforms(
     body: ET.Element,
     side: str,
     mesh_file_by_name: dict[str, str],
-    base_rot: np.ndarray,
-    out: dict[str, tuple[np.ndarray, np.ndarray]],
+    base_rot: Float[np.ndarray, "3 3"],
+    out: dict[str, tuple[Float[np.ndarray, "3"], Float[np.ndarray, "3 3"]]],
 ) -> None:
     for geom in body.findall("geom"):
         mesh_name = geom.get("mesh")
@@ -352,7 +361,10 @@ def _mesh_joint_name(mesh_file: str) -> str:
     return f"{side}_{suffix.removesuffix('_link')}_skel"
 
 
-def _joint_axis(joint: ET.Element, class_axes: dict[str, np.ndarray]) -> np.ndarray:
+def _joint_axis(
+    joint: ET.Element,
+    class_axes: dict[str, Float[np.ndarray, "3"]],
+) -> Float[np.ndarray, "3"]:
     if joint.get("axis"):
         return mjcf.parse_vec(joint.get("axis"), default=np.zeros(3, dtype=np.float32), size=3)
     class_name = joint.get("class")

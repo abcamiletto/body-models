@@ -11,6 +11,7 @@ Documentation: https://abcamiletto.github.io/body-models/
 
 - Shared API across human, anatomical, hand, head, measurement, and robot models
 - NumPy, PyTorch, and JAX backends
+- Optional Warp skinning kernels for Torch models
 - Separate mesh and skeleton forwards with `forward_vertices()` and `forward_skeleton()`
 - Prepared identities for repeated poses with fixed shape/expression parameters
 - Mesh simplification and vertex-subset forwards for supported mesh models
@@ -41,6 +42,10 @@ vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
+Use `skinning_backend="warp"` when constructing a supported Torch model to replace only
+its compact skinning operation with the differentiable Warp lowering. The model
+API and all model-specific preparation remain unchanged.
+
 Discover available model names with `body_models.list_models()`. Model options
 such as `gender="male"` or `side="left"` are passed as constructor kwargs.
 
@@ -57,8 +62,9 @@ skeleton = model.forward_skeleton(**params, identity=identity)
 ```
 
 For models with expression-dependent rest state, such as SMPL-X and FLAME, pass
-both identity controls to `prepare_identity(shape, expression)`. Skeleton-only
-work can use `skip_vertices=True` to avoid preparing rest vertices.
+both identity controls to `prepare_identity(shape, expression)`. Prepared
+identities and poses are always complete mesh-ready values; skeleton forwards
+use separate lightweight internal preparation and never return partial state.
 
 ## Supported Models
 
@@ -70,6 +76,8 @@ work can use `skip_vertices=True` to avoid preparing rest vertices.
 
 See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)
 for setup, supported backends, inputs, and model-specific behavior.
+The [architecture guide](https://abcamiletto.github.io/body-models/architecture/)
+describes the single-source model programs and the boundary for shared code.
 
 ## Development
 
