@@ -17,12 +17,9 @@ def linear_blend_skinning(
     transforms: Float[Array, "*batch J 4 4"],
     weights: Float[Array, "V J"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch V 3"]:
     """Blend joint transforms and apply them to vertices."""
-    if xp is None:
-        xp = ops.get_namespace(vertices)
-
     rotations = transforms[..., :3, :3]
     translations = transforms[..., :3, 3]
     blended_rotations = xp.einsum("vj,...jkl->...vkl", weights, rotations)
@@ -37,12 +34,9 @@ def compact_linear_blend_skinning(
     *,
     joint_indices: Int[Array, "V K"],
     joint_weights: Float[Array, "V K"],
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch V 3"]:
     """Apply linear blend skinning from compact per-vertex joint weights."""
-    if xp is None:
-        xp = ops.get_namespace(vertices)
-
     result = xp.zeros_like(vertices)
     transforms_by_joint = xp.moveaxis(transforms, -3, 0)
     for slot in range(joint_indices.shape[1]):
@@ -62,12 +56,9 @@ def bind_relative_transforms(
     skeleton_transforms: Float[Array, "*batch J 4 4"],
     rest_joints: Float[Array, "*batch J 3"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Convert world transforms to bind-relative skinning transforms."""
-    if xp is None:
-        xp = ops.get_namespace(skeleton_transforms)
-
     rotations = skeleton_transforms[..., :3, :3]
     translations = skeleton_transforms[..., :3, 3]
     bind_translations = translations - xp.squeeze(rotations @ rest_joints[..., None], axis=-1)
@@ -85,14 +76,11 @@ def apply_global_transform(
     translation: Float[Array, "*batch 3"] | None,
     rotation_type: RotationType = "axis_angle",
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch N 3"]:
     """Apply an optional global rotation and translation to points."""
     if rotation is None and translation is None:
         return points
-    if xp is None:
-        xp = ops.get_namespace(points)
-
     if rotation is not None:
         rotation_matrix = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
         points = (rotation_matrix @ points.mT).mT
@@ -108,14 +96,11 @@ def transform_skeleton(
     rotation_type: RotationType = "axis_angle",
     joint_indices: list[int] | None = None,
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Select joints and apply an optional global transform to a skeleton."""
     if translation is not None and (translation.ndim < 1 or translation.shape[-1] != 3):
         raise ValueError("translation must have shape [..., 3]")
-    if xp is None:
-        xp = ops.get_namespace(transforms)
-
     if joint_indices is not None:
         joint_indices = [int(joint) for joint in joint_indices]
         num_joints = transforms.shape[-3]

@@ -88,11 +88,7 @@ class MHRModel(SkinnedModel):
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        return self._runtime.expand_skinning_weights(
-            self.weights.skin_indices,
-            self.weights.skin_weights,
-            self.num_joints,
-        )
+        return self.weights.dense_skin_weights
 
     @property
     def parents(self) -> list[int]:

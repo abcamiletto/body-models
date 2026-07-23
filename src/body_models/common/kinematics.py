@@ -16,11 +16,9 @@ def affine_transforms(
     linear: Float[Array, "*batch 3 3"],
     translation: Float[Array, "*batch 3"] | None = None,
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch 4 4"]:
     """Assemble homogeneous transforms from linear maps and translations."""
-    if xp is None:
-        xp = ops.get_namespace(linear)
     if translation is None:
         translation = ops.zeros_as(linear, shape=(*linear.shape[:-2], 3), xp=xp)
 
@@ -36,12 +34,9 @@ def affine_transforms(
 def invert_rigid_transforms(
     transforms: Float[Array, "*batch 4 4"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch 4 4"]:
     """Invert homogeneous transforms whose linear part is a rotation."""
-    if xp is None:
-        xp = ops.get_namespace(transforms)
-
     rotations = transforms[..., :3, :3]
     translations = transforms[..., :3, 3]
     inverse_rotations = xp.swapaxes(rotations, -2, -1)
@@ -53,11 +48,9 @@ def local_joint_offsets(
     joints: Float[Array, "*batch J 3"],
     parents: list[int],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch J 3"]:
     """Convert world-space rest joints to parent-relative translations."""
-    if xp is None:
-        xp = ops.get_namespace(joints)
     if len(parents) != joints.shape[-2]:
         raise ValueError("parents must contain one entry per joint")
 
@@ -75,14 +68,22 @@ def forward_kinematics(
     fronts: list[Front],
     joint_indices: list[int] | None = None,
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Compose local joint transforms into world-space transforms."""
-    if xp is None:
-        xp = ops.get_namespace(rotations)
-
-    num_joints = rotations.shape[-3]
     local_transforms = affine_transforms(rotations, translations, xp=xp)
+    return compose_local_transforms(local_transforms, fronts, joint_indices, xp=xp)
+
+
+def compose_local_transforms(
+    local_transforms: Float[Array, "*batch J 4 4"],
+    fronts: list[Front],
+    joint_indices: list[int] | None = None,
+    *,
+    xp: Any,
+) -> Float[Array, "*batch J 4 4"]:
+    """Compose local transforms into world-space transforms."""
+    num_joints = local_transforms.shape[-3]
 
     world_transforms: list[Float[Array, "*batch 4 4"] | None] = [None] * num_joints
     for joints, parents in fronts:

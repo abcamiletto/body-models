@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from array_api_compat import get_namespace
 from jaxtyping import Float
 from nanomanifold import SO3
 
@@ -183,11 +182,9 @@ def world_sites(
 def from_mujoco_qpos(
     qpos: Float[Array, "B 7+Q"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> dict[str, Float[Array, "..."]]:
     """Split a MuJoCo ``qpos`` into ``body_pose`` + global root parameters."""
-    if xp is None:
-        xp = get_namespace(qpos)
     root_t_mj = qpos[..., :3]
     root_q_mj = qpos[..., 3:7]
     body_pose = qpos[..., 7:]

@@ -9,7 +9,7 @@ from nanomanifold import SO3
 
 from body_models import common
 from body_models.bodies.soma.correctives import CorrectiveNetwork, hidden_activations
-from body_models.common import get_namespace, skinning
+from body_models.common import skinning
 from body_models.rotations import RotationType
 
 Array = Any
@@ -516,11 +516,8 @@ def fit_rigid_transform(
     source_points: Float[Array, "V 3"],
     target_points: Float[Array, "V 3"],
     *,
-    xp: Any = None,
+    xp: Any,
 ) -> tuple[Float[Array, "3 3"], Float[Array, "3"]]:
-    if xp is None:
-        xp = get_namespace(source_points)
-
     source_center = xp.mean(source_points, axis=0)
     target_center = xp.mean(target_points, axis=0)
     source_centered = source_points - source_center
@@ -627,7 +624,7 @@ def _repose_skeleton_to_bind_pose(
 
     bind_rot = xp.broadcast_to(bind_pose_local[:, :3, :3], (*batch_shape, bind_pose_local.shape[0], 3, 3))
     T_local = common.affine_transforms(bind_rot, local_t, xp=xp)
-    T_world = _forward_kinematics(xp, T_local, kinematic_fronts)
+    T_world = common.compose_local_transforms(T_local, kinematic_fronts, xp=xp)
 
     y_shift = xp.amin(T_world[..., :, 1, 3], axis=-1)
     return common.set(
@@ -659,7 +656,7 @@ def _pose_skeleton(
     pose_rot_full: Float[Array, "B Jf 3 3"],
 ) -> Float[Array, "B Jf 4 4"]:
     T_local = common.affine_transforms(pose_rot_full, local_joint_translations, xp=xp)
-    return _forward_kinematics(xp, T_local, kinematic_fronts)
+    return common.compose_local_transforms(T_local, kinematic_fronts, xp=xp)
 
 
 def _fit_joint_rotations(
@@ -806,16 +803,3 @@ def _joint_world_to_local(xp, world: Float[Array, "B J 4 4"], parents_full: list
         if joint == parent:
             local = common.set(local, (..., joint, slice(None), slice(None)), world[..., joint, :, :], xp=xp)
     return local
-
-
-def _forward_kinematics(xp, T_local: Float[Array, "B J 4 4"], fronts: list[Front]) -> Float[Array, "B J 4 4"]:
-    J = T_local.shape[-3]
-    world: list[Float[Array, "B 4 4"] | None] = [None] * J
-    for joints, parents in fronts:
-        if parents[0] < 0:
-            for joint in joints:
-                world[joint] = T_local[..., joint, :, :]
-            continue
-        for joint, parent in zip(joints, parents):
-            world[joint] = world[parent] @ T_local[..., joint, :, :]
-    return xp.stack(world, axis=-3)
