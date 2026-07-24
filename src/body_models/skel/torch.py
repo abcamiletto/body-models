@@ -13,8 +13,6 @@ from body_models.skeletons.skel.model import SKELModel
 class SKEL(SKELModel, nn.Module):
     """SKEL using Torch tensors and optional Warp kernels."""
 
-    skinning_backends = TorchRuntime.skinning_backends
-
     def __init__(
         self,
         model_path: Path | str | None = None,

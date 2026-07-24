@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -11,10 +13,6 @@ from torch import Tensor
 
 from body_models.state import torch_state
 
-from body_models.anny.torch import ANNY
-from body_models.mhr.torch import MHR
-from body_models.smpl.torch import SMPL
-from body_models.smplx.torch import SMPLX
 from .. import core
 from ..io import SomaIdentityTransfer, get_identity_model_path
 from . import anny_identity_shape, identity_transfer, linear_identity_shape, mhr_identity_shape
@@ -34,9 +32,9 @@ class IdentitySource(nn.Module):
 
 
 class MhrIdentitySource(IdentitySource):
-    def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
+    def __init__(self, transfer_data: SomaIdentityTransfer, model_factory: Callable[..., Any]) -> None:
         super().__init__(transfer_data)
-        self.model = MHR(model_path=get_identity_model_path("mhr"), simplify=1.0)
+        self.model = model_factory("mhr", model_path=get_identity_model_path("mhr"), simplify=1.0)
 
     def source_shape(
         self,
@@ -47,9 +45,14 @@ class MhrIdentitySource(IdentitySource):
 
 
 class AnnyIdentitySource(IdentitySource):
-    def __init__(self, transfer_data: SomaIdentityTransfer) -> None:
+    def __init__(self, transfer_data: SomaIdentityTransfer, model_factory: Callable[..., Any]) -> None:
         super().__init__(transfer_data)
-        self.model = ANNY(model_path=get_identity_model_path("anny"), all_phenotypes=False, simplify=1.0)
+        self.model = model_factory(
+            "anny",
+            model_path=get_identity_model_path("anny"),
+            all_phenotypes=False,
+            simplify=1.0,
+        )
         source_vertices = torch.as_tensor(
             transfer_data.source_vertices, dtype=self.model.weights.template_vertices.dtype
         )
@@ -84,10 +87,19 @@ class AnnyIdentitySource(IdentitySource):
 
 
 class LinearIdentitySource(IdentitySource):
-    def __init__(self, model_type: str, transfer_data: SomaIdentityTransfer) -> None:
+    def __init__(
+        self,
+        model_type: str,
+        transfer_data: SomaIdentityTransfer,
+        model_factory: Callable[..., Any],
+    ) -> None:
         super().__init__(transfer_data)
-        model_cls = {"smpl": SMPL, "smplx": SMPLX}[model_type]
-        self.model = model_cls(model_path=get_identity_model_path(model_type), simplify=1.0)
+        self.model = model_factory(
+            model_type,
+            model_path=get_identity_model_path(model_type),
+            gender=None,
+            simplify=1.0,
+        )
 
     def source_shape(
         self,
@@ -103,9 +115,14 @@ class LinearIdentitySource(IdentitySource):
         )
 
 
-def create_identity_source(model_type: str, transfer_data: SomaIdentityTransfer) -> IdentitySource:
+def create_identity_source(
+    model_type: str,
+    transfer_data: SomaIdentityTransfer,
+    *,
+    model_factory: Callable[..., Any],
+) -> IdentitySource:
     if model_type == "mhr":
-        return MhrIdentitySource(transfer_data)
+        return MhrIdentitySource(transfer_data, model_factory)
     if model_type == "anny":
-        return AnnyIdentitySource(transfer_data)
-    return LinearIdentitySource(model_type, transfer_data)
+        return AnnyIdentitySource(transfer_data, model_factory)
+    return LinearIdentitySource(model_type, transfer_data, model_factory)

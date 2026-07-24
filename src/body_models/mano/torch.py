@@ -14,8 +14,6 @@ from body_models.state import torch_state
 class MANO(MANOModel, nn.Module):
     """MANO using Torch tensors and optional Warp kernels."""
 
-    skinning_backends = TorchRuntime.skinning_backends
-
     def __init__(
         self,
         model_path: Path | str | None = None,

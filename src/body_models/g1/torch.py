@@ -13,8 +13,6 @@ from body_models.state import torch_state
 class G1(G1Model, nn.Module):
     """Unitree G1 using Torch tensors."""
 
-    skinning_backends = ("torch",)
-
     def __init__(
         self,
         model_path: Path | str | None = None,

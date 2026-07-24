@@ -1,6 +1,6 @@
 """Backend-independent SMPL-X pose and identity preparation."""
 
-from typing import Any, TypedDict
+from typing import Any
 
 from jaxtyping import Float
 from nanomanifold import SO3
@@ -12,25 +12,9 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 
-class SmplxSkeletonIdentity(TypedDict):
-    """Identity-dependent joint state needed to pose the SMPL-X skeleton."""
-
-    rest_joints: Float[Array, "*batch J 3"]
-    local_joint_offsets: Float[Array, "*batch J 3"]
-
-
-class SmplxIdentity(SmplxSkeletonIdentity):
-    """Complete shape- and expression-dependent SMPL-X mesh state."""
-
-    rest_vertices: Float[Array, "*batch V 3"]
-
-
-class SmplxPreparedPose(TypedDict):
-    """Complete pose-dependent SMPL-X mesh state."""
-
-    skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: Float[Array, "*batch V 3"]
+SmplxSkeletonIdentity = deformation.SkeletonIdentity
+SmplxIdentity = deformation.LinearIdentity
+SmplxPreparedPose = deformation.SkinningPose
 
 
 def prepare_pose(
@@ -170,27 +154,27 @@ def prepare_identity(
     expression: Float[Array, "*batch E"],
 ) -> SmplxIdentity:
     """Prepare shape- and expression-dependent SMPL-X state."""
-    identity = prepare_skeleton_identity(
-        xp=xp,
-        j_template=j_template,
-        j_shapedirs=j_shapedirs,
-        j_exprdirs=j_exprdirs,
-        parents=parents,
-        shape=shape,
-        expression=expression,
-    )
+    _validate_identity_parameters(shape, expression)
     shape_dim = shape.shape[-1]
     expression_dim = expression.shape[-1]
     parameters = xp.concat([shape, expression], axis=-1)
-    directions = xp.concat(
+    vertex_directions = xp.concat(
         [shapedirs[:, :, :shape_dim], exprdirs[:, :, :expression_dim]],
         axis=-1,
     )
-    return {
-        "rest_joints": identity["rest_joints"],
-        "local_joint_offsets": identity["local_joint_offsets"],
-        "rest_vertices": deformation.blend_shapes(v_template, directions, parameters, xp=xp),
-    }
+    joint_directions = xp.concat(
+        [j_shapedirs[:, :, :shape_dim], j_exprdirs[:, :, :expression_dim]],
+        axis=-1,
+    )
+    return deformation.prepare_linear_identity(
+        vertex_template=v_template,
+        vertex_directions=vertex_directions,
+        joint_template=j_template,
+        joint_directions=joint_directions,
+        parents=parents,
+        coefficients=parameters,
+        xp=xp,
+    )
 
 
 def prepare_skeleton_identity(
@@ -204,11 +188,7 @@ def prepare_skeleton_identity(
     expression: Float[Array, "*batch E"],
 ) -> SmplxSkeletonIdentity:
     """Prepare only identity-dependent SMPL-X joint state."""
-    if shape.ndim < 1 or shape.shape[-1] < 1:
-        raise ValueError("shape must have shape [..., S] with S >= 1")
-    if expression.ndim < 1 or expression.shape[-1] < 1:
-        raise ValueError("expression must have shape [..., E] with E >= 1")
-
+    _validate_identity_parameters(shape, expression)
     shape_dim = shape.shape[-1]
     expression_dim = expression.shape[-1]
     parameters = xp.concat([shape, expression], axis=-1)
@@ -216,11 +196,23 @@ def prepare_skeleton_identity(
         [j_shapedirs[:, :, :shape_dim], j_exprdirs[:, :, :expression_dim]],
         axis=-1,
     )
-    rest_joints = deformation.blend_shapes(j_template, joint_directions, parameters, xp=xp)
-    return {
-        "rest_joints": rest_joints,
-        "local_joint_offsets": kinematics.local_joint_offsets(rest_joints, parents, xp=xp),
-    }
+    return deformation.prepare_linear_skeleton(
+        joint_template=j_template,
+        joint_directions=joint_directions,
+        parents=parents,
+        coefficients=parameters,
+        xp=xp,
+    )
+
+
+def _validate_identity_parameters(
+    shape: Float[Array, "*batch S"],
+    expression: Float[Array, "*batch E"],
+) -> None:
+    if shape.ndim < 1 or shape.shape[-1] < 1:
+        raise ValueError("shape must have shape [..., S] with S >= 1")
+    if expression.ndim < 1 or expression.shape[-1] < 1:
+        raise ValueError("expression must have shape [..., E] with E >= 1")
 
 
 __all__ = ["SmplxIdentity", "SmplxPreparedPose", "prepare_identity", "prepare_pose"]

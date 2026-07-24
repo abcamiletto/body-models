@@ -5,6 +5,7 @@ import pytest
 from trimesh import Trimesh
 
 import model_cases
+from body_models.runtime import TorchRuntime
 
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
@@ -124,18 +125,11 @@ def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_mode
     assert not hasattr(model, "actuated_joint_axes")
 
 
-@pytest.mark.parametrize(("name", "numpy_model", "torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)
-def test_skinning_backends_match_default(name, numpy_model, torch_model, _jax_model, kwargs) -> None:
-    numpy_instance = numpy_model(**kwargs)
-    for skinning_backend in getattr(numpy_instance, "skinning_backends", ())[1:]:
-        params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
-        expected = numpy_instance.forward_vertices(**params)
-        actual = numpy_model(skinning_backend=skinning_backend, **kwargs).forward_vertices(**params)
-        np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
-
+@pytest.mark.parametrize(("_name", "_numpy_model", "torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)
+def test_skinning_backends_match_default(_name, _numpy_model, torch_model, _jax_model, kwargs) -> None:
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
-    for skinning_backend in getattr(torch_instance, "skinning_backends", ())[1:]:
+    for skinning_backend in TorchRuntime.SKINNING_BACKENDS[1:]:
         params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
         vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():

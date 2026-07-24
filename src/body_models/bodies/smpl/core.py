@@ -1,6 +1,6 @@
 """SMPL deformation computations."""
 
-from typing import Any, TypedDict
+from typing import Any
 
 from jaxtyping import Float
 
@@ -13,25 +13,9 @@ Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 
-class SmplSkeletonIdentity(TypedDict):
-    """Shape-dependent joint state needed to pose the SMPL skeleton."""
-
-    rest_joints: Float[Array, "*batch J 3"]
-    local_joint_offsets: Float[Array, "*batch J 3"]
-
-
-class SmplIdentity(SmplSkeletonIdentity):
-    """Complete shape-dependent SMPL mesh state."""
-
-    rest_vertices: Float[Array, "*batch V 3"]
-
-
-class SmplPreparedPose(TypedDict):
-    """Complete pose-dependent SMPL mesh state."""
-
-    skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: Float[Array, "*batch V 3"]
+SmplSkeletonIdentity = deformation.SkeletonIdentity
+SmplIdentity = deformation.LinearIdentity
+SmplPreparedPose = deformation.SkinningPose
 
 
 def prepare_pose(
@@ -147,19 +131,17 @@ def prepare_identity(
     shape: Float[Array, "*batch S"],
 ) -> SmplIdentity:
     """Precompute shape-dependent SMPL state for repeated forward passes."""
-    identity = prepare_skeleton_identity(
-        xp=xp,
-        j_template=j_template,
-        j_shapedirs=j_shapedirs,
-        parents=parents,
-        shape=shape,
-    )
     shape_directions = shapedirs[:, :, : shape.shape[-1]]
-    return {
-        "rest_joints": identity["rest_joints"],
-        "local_joint_offsets": identity["local_joint_offsets"],
-        "rest_vertices": deformation.blend_shapes(v_template, shape_directions, shape, xp=xp),
-    }
+    joint_directions = j_shapedirs[:, :, : shape.shape[-1]]
+    return deformation.prepare_linear_identity(
+        vertex_template=v_template,
+        vertex_directions=shape_directions,
+        joint_template=j_template,
+        joint_directions=joint_directions,
+        parents=parents,
+        coefficients=shape,
+        xp=xp,
+    )
 
 
 def prepare_skeleton_identity(
@@ -171,14 +153,14 @@ def prepare_skeleton_identity(
     shape: Float[Array, "*batch S"],
 ) -> SmplSkeletonIdentity:
     """Prepare only shape-dependent SMPL joint state."""
-    if shape.ndim < 1 or shape.shape[-1] < 1:
-        raise ValueError("shape must have shape [..., S] with S >= 1")
-    shape_directions = j_shapedirs[:, :, : shape.shape[-1]]
-    rest_joints = deformation.blend_shapes(j_template, shape_directions, shape, xp=xp)
-    return {
-        "rest_joints": rest_joints,
-        "local_joint_offsets": kinematics.local_joint_offsets(rest_joints, parents, xp=xp),
-    }
+    joint_directions = j_shapedirs[:, :, : shape.shape[-1]]
+    return deformation.prepare_linear_skeleton(
+        joint_template=j_template,
+        joint_directions=joint_directions,
+        parents=parents,
+        coefficients=shape,
+        xp=xp,
+    )
 
 
 __all__ = [

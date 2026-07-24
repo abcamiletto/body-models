@@ -3,6 +3,7 @@ import pytest
 
 import model_cases
 from body_models.base import RigidBodyModel
+from body_models.runtime import TorchRuntime
 
 
 def surface_loss(model, params):
@@ -235,7 +236,7 @@ def test_torch_skinning_backend_gradients_match_default(
         return vertices, gradients
 
     expected_vertices, expected_gradients = forward_and_grad(default_model)
-    for skinning_backend in default_model.skinning_backends[1:]:
+    for skinning_backend in TorchRuntime.SKINNING_BACKENDS[1:]:
         model = torch_model(skinning_backend=skinning_backend, **kwargs).cuda()
         actual_vertices, actual_gradients = forward_and_grad(model)
         torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)

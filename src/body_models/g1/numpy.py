@@ -11,8 +11,6 @@ from body_models.state import numpy_state
 class G1(G1Model):
     """Unitree G1 using NumPy arrays."""
 
-    skinning_backends = ("numpy",)
-
     def __init__(
         self,
         model_path: Path | str | None = None,

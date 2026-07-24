@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from jaxtyping import Float, Int, Num
 
@@ -100,10 +100,10 @@ class NumpyRuntime(ArrayRuntime):
 class TorchRuntime(ArrayRuntime):
     """Torch model runtime with optional Warp operation lowerings."""
 
-    skinning_backends = ("torch", "warp")
+    SKINNING_BACKENDS = ("torch", "warp")
 
     def __init__(self, skinning_backend: Literal["torch", "warp"] = "torch") -> None:
-        if skinning_backend not in self.skinning_backends:
+        if skinning_backend not in self.SKINNING_BACKENDS:
             raise ValueError(f"Invalid Torch skinning backend: {skinning_backend!r}")
         self.skinning_backend = skinning_backend
 
@@ -180,26 +180,26 @@ class JaxRuntime(ArrayRuntime):
 class JaxModel:
     """Pytree contract for models with array ``weights`` and static ``_config``."""
 
+    _jax_children: ClassVar[tuple[str, ...]] = ("weights",)
     weights: Any
     _config: Any
     _runtime: JaxRuntime
 
     def tree_flatten(self):
-        return (self.weights,), self._config
+        return tuple(getattr(self, name) for name in self._jax_children), self._config
 
-    @classmethod
-    def _from_jax_state(cls, config: Any, weights: Any):
-        """Reconstruct a model from its explicit dynamic and static state."""
-        obj = cls.__new__(cls)
-        obj._runtime = JaxRuntime()
-        obj._config = config
-        obj.weights = weights
-        return obj
+    def _rebuild_jax_state(self) -> None:
+        """Restore state derived from pytree children after reconstruction."""
 
     @classmethod
     def tree_unflatten(cls, config, children):
-        (weights,) = children
-        return cls._from_jax_state(config, weights)
+        obj = cls.__new__(cls)
+        obj._runtime = JaxRuntime()
+        obj._config = config
+        for name, value in zip(cls._jax_children, children, strict=True):
+            setattr(obj, name, value)
+        obj._rebuild_jax_state()
+        return obj
 
 
 __all__ = ["ArrayRuntime", "JaxModel", "JaxRuntime", "NumpyRuntime", "TorchRuntime"]

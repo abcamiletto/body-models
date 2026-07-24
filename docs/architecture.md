@@ -27,16 +27,23 @@ cannot create a partial object that later fails in a mesh forward.
 
 ## Runtime boundary
 
-`Runtime` owns three things:
+`ArrayRuntime` owns the array namespace, device- and dtype-aware construction,
+and lowerings of stable shared operations such as compact linear blend
+skinning. It does not own model semantics or framework state.
 
-1. conversion of loaded model data into framework-managed arrays;
-2. device- and dtype-aware array creation;
-3. lowerings of stable shared operations, currently compact linear blend
-   skinning and dense skin-weight expansion.
+State materializers form a separate boundary. They adapt immutable loaded data
+to unchanged NumPy state, registered Torch module state, or JAX pytrees. Keeping
+state ownership separate from numerical execution prevents framework lifecycle
+concerns from leaking into shared mathematics.
 
 Warp is a Torch operation lowering, not a fourth copy of a model. Selecting
 `skinning_backend="warp"` changes compact skinning while identity preparation, pose
 semantics, correctives, and public outputs remain the same model program.
+
+Linear identity preparation is shared by the SMPL family, MANO, and FLAME
+because those models apply the same coefficients to vertex and joint bases.
+Each model still assembles its own coefficient vector and bases; model-specific
+pose construction remains local.
 
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative

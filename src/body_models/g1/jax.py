@@ -14,8 +14,6 @@ from body_models.state import jax_state
 class G1(G1Model, JaxModel):
     """Unitree G1 using JAX arrays."""
 
-    skinning_backends = ("jax",)
-
     def __init__(
         self,
         model_path: Path | str | None = None,

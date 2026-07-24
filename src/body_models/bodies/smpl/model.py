@@ -194,11 +194,8 @@ class SMPLModel(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-        expression: Float[Array, "*batch E"] | None = None,
     ) -> core.SmplIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
-        if expression is not None:
-            raise ValueError("SMPL does not support expression parameters")
         return core.prepare_identity(
             xp=self._runtime.xp,
             v_template=self.weights.v_template,

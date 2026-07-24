@@ -1,12 +1,90 @@
 """Backend-agnostic linear deformation primitives."""
 
-from typing import Any
+from typing import Any, TypedDict
 
 from jaxtyping import Float
 
-from body_models.common import ops
+from body_models.common import kinematics, ops
 
 Array = Any
+
+
+class SkeletonIdentity(TypedDict):
+    """Identity-dependent joint state shared by linear body models."""
+
+    rest_joints: Float[Array, "*batch J 3"]
+    local_joint_offsets: Float[Array, "*batch J 3"]
+
+
+class LinearIdentity(SkeletonIdentity):
+    """Identity-dependent joints and vertices from linear bases."""
+
+    rest_vertices: Float[Array, "*batch V 3"]
+
+
+class SkinningPose(TypedDict):
+    """Pose-dependent state shared by linear blend skinning models."""
+
+    skeleton_transforms: Float[Array, "*batch J 4 4"]
+    skinning_transforms: Float[Array, "*batch J 4 4"]
+    pose_offsets: Float[Array, "*batch V 3"]
+
+
+def prepare_linear_identity(
+    *,
+    vertex_template: Float[Array, "V 3"],
+    vertex_directions: Float[Array, "V 3 C"],
+    joint_template: Float[Array, "J 3"],
+    joint_directions: Float[Array, "J 3 C"],
+    parents: list[int],
+    coefficients: Float[Array, "*batch C"],
+    xp: Any,
+) -> LinearIdentity:
+    """Prepare joints and vertices controlled by the same linear coefficients."""
+    skeleton = prepare_linear_skeleton(
+        joint_template=joint_template,
+        joint_directions=joint_directions,
+        parents=parents,
+        coefficients=coefficients,
+        xp=xp,
+    )
+    return {
+        "rest_joints": skeleton["rest_joints"],
+        "local_joint_offsets": skeleton["local_joint_offsets"],
+        "rest_vertices": blend_shapes(
+            vertex_template,
+            vertex_directions,
+            coefficients,
+            xp=xp,
+        ),
+    }
+
+
+def prepare_linear_skeleton(
+    *,
+    joint_template: Float[Array, "J 3"],
+    joint_directions: Float[Array, "J 3 C"],
+    parents: list[int],
+    coefficients: Float[Array, "*batch C"],
+    xp: Any,
+) -> SkeletonIdentity:
+    """Prepare joints controlled by a linear coefficient basis."""
+    if coefficients.ndim < 1 or coefficients.shape[-1] < 1:
+        raise ValueError("coefficients must have shape [..., C] with C >= 1")
+    rest_joints = blend_shapes(
+        joint_template,
+        joint_directions,
+        coefficients,
+        xp=xp,
+    )
+    return {
+        "rest_joints": rest_joints,
+        "local_joint_offsets": kinematics.local_joint_offsets(
+            rest_joints,
+            parents,
+            xp=xp,
+        ),
+    }
 
 
 def blend_shapes(
@@ -37,4 +115,12 @@ def pose_blend_shapes(
     return (features @ directions).reshape(*batch_shape, -1, 3)
 
 
-__all__ = ["blend_shapes", "pose_blend_shapes"]
+__all__ = [
+    "LinearIdentity",
+    "SkeletonIdentity",
+    "SkinningPose",
+    "blend_shapes",
+    "pose_blend_shapes",
+    "prepare_linear_identity",
+    "prepare_linear_skeleton",
+]

@@ -12,8 +12,6 @@ from body_models.state import torch_state
 class SmplHumanoid(SmplHumanoidModel, nn.Module):
     """SMPL humanoid using Torch tensors."""
 
-    skinning_backends = ("torch",)
-
     def __init__(self, source: Path | str = "humenv") -> None:
         nn.Module.__init__(self)
         SmplHumanoidModel.__init__(
