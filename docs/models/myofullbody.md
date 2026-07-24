@@ -23,10 +23,10 @@ from body_models.myofullbody.numpy import MyoFullBody
 model = MyoFullBody()
 params = model.get_apose(batch_dims=(1,))
 
-# Evaluate the concatenated link meshes, body-frame skeleton, and link transforms.
-vertices = model.forward_vertices(**params)
-skeleton = model.forward_skeleton(**params)
-links = model.forward_links(**params)
+# Evaluate the link meshes, body-frame skeleton, and link transforms.
+meshes = model.forward_meshes(params)
+skeleton = model.forward_skeleton(params)
+links = model.forward_links(params)
 
 # Lift MuJoCo site positions from local body frames into world coordinates.
 sites = model.world_sites(skeleton)

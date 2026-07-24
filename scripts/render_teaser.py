@@ -140,14 +140,16 @@ def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
     if isinstance(model, RigidBodyModel):
         params = model.get_tpose() if family in TPOSE_FAMILIES else model.get_rest_pose()
-        mesh = model.forward_meshes(**params)[0]
+        mesh = model.forward_meshes(params)[0]
         verts = np.asarray(mesh.vertices, dtype=np.float32)
         face_array = np.asarray(mesh.faces, dtype=np.int32)
     elif family in TPOSE_FAMILIES:
         params = model.get_tpose()
         if family == "anny":
-            params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
-        verts = np.asarray(model.forward_vertices(**params), dtype=np.float32)
+            global_rotation = params.global_rotation.copy()
+            global_rotation[0] = ANNY_DISPLAY_ROTATION_X
+            params = params._replace(global_rotation=global_rotation)
+        verts = np.asarray(model.forward_vertices(params), dtype=np.float32)
         face_array = np.asarray(model.faces, dtype=np.int32)
     else:
         verts = np.asarray(model.rest_vertices, dtype=np.float32)

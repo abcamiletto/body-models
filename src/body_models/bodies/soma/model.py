@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -41,6 +41,20 @@ class SomaConfig:
     identity_dim: int
     num_scale_params: int | None
     default_identity_value: float
+
+
+class SomaIdentityParameters(NamedTuple):
+    shape: Float[Array, "*batch I"]
+    scale: Float[Array, "*batch K"] | None
+
+
+class SomaParameters(NamedTuple):
+    identity: SomaIdentityParameters | core.SomaIdentity
+    body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"]
+    head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"]
+    hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"]
+    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
+    global_translation: Float[Array, "*batch 3"]
 
 
 class SOMAModel(SkinnedModel):
@@ -170,30 +184,14 @@ class SOMAModel(SkinnedModel):
 
     def forward_vertices(
         self,
-        body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
-        head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"],
-        hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        parameters: SomaParameters,
         *,
-        shape: Float[Array, "*batch I"] | None = None,
-        scale_params: Float[Array, "*batch K"] | None = None,
-        identity: core.SomaIdentity | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices in meters."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            if scale_params is not None:
-                scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            identity = self.prepare_identity(shape, scale_params=scale_params)
-
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
+        identity = self._identity(parameters)
+        pose = self.prepare_pose(parameters._replace(identity=identity))
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
@@ -203,58 +201,46 @@ class SOMAModel(SkinnedModel):
         )
         return skinning.apply_global_transform(
             vertices,
-            global_rotation,
-            global_translation,
+            parameters.global_rotation,
+            parameters.global_translation,
             self.rotation_type,
             xp=xp,
         )
 
     def forward_skeleton(
         self,
-        body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
-        head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"],
-        hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        parameters: SomaParameters,
         *,
-        shape: Float[Array, "*batch I"] | None = None,
-        scale_params: Float[Array, "*batch K"] | None = None,
-        identity: core.SomaIdentity | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch 77 4 4"]:
         """Compute posed public-joint transforms in meters."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            if scale_params is not None:
-                scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape, scale_params=scale_params)
-        else:
-            skeleton_identity = identity
-
-        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+        identity = self._identity(parameters)
+        batch_shape = parameters.body_pose.shape[: -(self.num_rot_dims + 1)]
         root_rotation = SO3.identity_as(
-            body_pose,
+            parameters.body_pose,
             batch_dims=batch_shape,
             rotation_type=self.rotation_type,
             xp=xp,
         )
-        pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
+        pose = pack_pose(
+            xp,
+            root_rotation,
+            parameters.body_pose,
+            parameters.head_pose,
+            parameters.hand_pose,
+        )
         skeleton = core.prepare_skeleton(
             self.weights,
             pose,
             self.rotation_type,
-            local_joint_translations=skeleton_identity["local_joint_translations"],
+            local_joint_translations=identity["local_joint_translations"],
             xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
-            global_rotation,
-            global_translation,
+            parameters.global_rotation,
+            parameters.global_translation,
             self.rotation_type,
             joint_indices,
             xp=xp,
@@ -262,14 +248,13 @@ class SOMAModel(SkinnedModel):
 
     def prepare_identity(
         self,
-        shape: Float[Array, "*batch I"],
+        parameters: SomaIdentityParameters,
         *,
-        scale_params: Float[Array, "*batch K"] | None = None,
         repose: bool = True,
         bind_pose: core.BindPoseMode = "fit",
     ) -> core.SomaIdentity:
         """Precompute identity-dependent state for repeated forward passes."""
-        rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
+        rest_shape_full, rest_shape_active = self._rest_shapes(parameters.shape, parameters.scale)
         return core.prepare_identity_from_rest_shape(
             data=self.weights,
             rest_shape_full=rest_shape_full,
@@ -282,22 +267,25 @@ class SOMAModel(SkinnedModel):
 
     def prepare_pose(
         self,
-        body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
-        head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"],
-        hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
-        *,
-        identity: core.SomaIdentity,
+        parameters: SomaParameters,
     ) -> core.SomaPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        identity = self._identity(parameters)
         xp = self._runtime.xp
-        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+        batch_shape = parameters.body_pose.shape[: -(self.num_rot_dims + 1)]
         root_rotation = SO3.identity_as(
-            body_pose,
+            parameters.body_pose,
             batch_dims=batch_shape,
             rotation_type=self.rotation_type,
             xp=xp,
         )
-        pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
+        pose = pack_pose(
+            xp,
+            root_rotation,
+            parameters.body_pose,
+            parameters.head_pose,
+            parameters.hand_pose,
+        )
         return core.prepare_pose(
             self.weights,
             pose,
@@ -306,21 +294,6 @@ class SOMAModel(SkinnedModel):
             inverse_bind_transforms=identity["inverse_bind_transforms"],
             xp=xp,
             corrective_network=self._corrective_network,
-        )
-
-    def _prepare_skeleton_identity(
-        self,
-        shape: Float[Array, "*batch I"],
-        *,
-        scale_params: Float[Array, "*batch K"] | None,
-    ) -> core.SomaSkeletonIdentity:
-        rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
-        return core.prepare_skeleton_identity_from_rest_shape(
-            self.weights,
-            rest_shape_full=rest_shape_full,
-            rest_shape_active=rest_shape_active,
-            match_warp=self.match_warp,
-            xp=self._runtime.xp,
         )
 
     def _rest_shapes(
@@ -348,7 +321,7 @@ class SOMAModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> SomaParameters:
         """Return zero pose controls and the model's default identity."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
@@ -368,28 +341,31 @@ class SOMAModel(SkinnedModel):
             axis_angle = xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
             hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=xp)
 
-        params = {
-            "body_pose": body_pose,
-            "head_pose": head_pose,
-            "hand_pose": hand_pose,
-            "global_rotation": global_rotation,
-            "global_translation": runtime.zeros((*batch_dims, 3), like=pose_reference),
-            "shape": runtime.zeros((*batch_dims, self.identity_dim), like=pose_reference)
-            + self._config.default_identity_value,
-        }
+        scale = None
         if self.num_scale_params is not None:
-            params["scale_params"] = runtime.zeros(
+            scale = runtime.zeros(
                 (*batch_dims, self.num_scale_params),
                 like=pose_reference,
             )
-        return params
+        return SomaParameters(
+            identity=SomaIdentityParameters(
+                shape=runtime.zeros((*batch_dims, self.identity_dim), like=pose_reference)
+                + self._config.default_identity_value,
+                scale=scale,
+            ),
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+            global_rotation=global_rotation,
+            global_translation=runtime.zeros((*batch_dims, 3), like=pose_reference),
+        )
 
     def get_tpose(
         self,
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> SomaParameters:
         """Return the SOMA T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
@@ -398,14 +374,29 @@ class SOMAModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> SomaParameters:
         """Return the SOMA A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
         xp = self._runtime.xp
-        axis_angle = self._runtime.asarray(SOMA_BODY_PRESETS["a_pose"], like=params["body_pose"])
+        axis_angle = self._runtime.asarray(SOMA_BODY_PRESETS["a_pose"], like=params.body_pose)
         axis_angle = xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=xp)
-        return params
+        body_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=xp)
+        return params._replace(body_pose=body_pose)
+
+    def prepare(self, parameters: SomaParameters) -> SomaParameters:
+        return parameters._replace(identity=self._identity(parameters))
+
+    def _identity(self, parameters: SomaParameters) -> core.SomaIdentity:
+        identity = parameters.identity
+        if not isinstance(identity, SomaIdentityParameters):
+            return identity
+        batch_shape = parameters.body_pose.shape[: -(self.num_rot_dims + 1)]
+        shape = identity.shape
+        scale = identity.scale
+        shape = self._runtime.xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        if scale is not None:
+            scale = self._runtime.xp.broadcast_to(scale, (*batch_shape, scale.shape[-1]))
+        return self.prepare_identity(SomaIdentityParameters(shape, scale))
 
 
-__all__ = ["SOMAModel", "SomaConfig"]
+__all__ = ["SOMAModel", "SomaConfig", "SomaIdentityParameters", "SomaParameters"]

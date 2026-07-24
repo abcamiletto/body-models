@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from jaxtyping import Float, Int
 from trimesh import Trimesh
@@ -12,6 +12,18 @@ from body_models.common import rigid
 from body_models.runtime import ArrayRuntime
 
 Array = Any
+
+
+class RigidBodyParameters(NamedTuple):
+    body_pose: Float[Array, "*batch Q"]
+    global_rotation: Float[Array, "*batch 3"]
+    global_translation: Float[Array, "*batch 3"]
+
+
+class RigidHandParameters(NamedTuple):
+    hand_pose: Float[Array, "*batch Q"]
+    global_rotation: Float[Array, "*batch 3"]
+    global_translation: Float[Array, "*batch 3"]
 
 
 class RigidModel(RigidBodyModel):
@@ -76,19 +88,30 @@ class RigidModel(RigidBodyModel):
             xp=self._runtime.xp,
         )
 
-    def _zero_pose(
+    def _zero_body_parameters(
         self,
-        pose_key: str,
         batch_dims: tuple[int, ...],
         dtype: Any | None,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> RigidBodyParameters:
         runtime = self._runtime
         reference = self.weights.vertices
-        return {
-            pose_key: runtime.zeros((*batch_dims, self.num_actuated), like=reference, dtype=dtype),
-            "global_rotation": runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
-            "global_translation": runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
-        }
+        return RigidBodyParameters(
+            body_pose=runtime.zeros((*batch_dims, self.num_actuated), like=reference, dtype=dtype),
+            global_rotation=runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
+            global_translation=runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
+        )
+
+    def _zero_hand_parameters(
+        self,
+        batch_dims: tuple[int, ...],
+        dtype: Any | None,
+    ) -> RigidHandParameters:
+        parameters = self._zero_body_parameters(batch_dims, dtype)
+        return RigidHandParameters(
+            hand_pose=parameters.body_pose,
+            global_rotation=parameters.global_rotation,
+            global_translation=parameters.global_translation,
+        )
 
 
-__all__ = ["RigidModel"]
+__all__ = ["RigidBodyParameters", "RigidHandParameters", "RigidModel"]

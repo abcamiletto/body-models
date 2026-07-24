@@ -245,20 +245,14 @@ def benchmark_model(
     return BenchmarkResult(result_label, results)
 
 
-def benchmark_params(model: Any, batch_size: int, prepare_identity: bool) -> dict[str, Any]:
+def benchmark_params(model: Any, batch_size: int, prepare_identity: bool) -> Any:
     params = model.get_rest_pose(batch_dims=(batch_size,))
-    if not prepare_identity:
-        return params
-
-    shape = params.pop("shape")
-    scale_params = params.pop("scale_params", None)
-    params["identity"] = model.prepare_identity(shape, scale_params=scale_params)
-    return params
+    return model.prepare(params) if prepare_identity else params
 
 
 def benchmark_method(
     method: Any,
-    params: dict[str, Any],
+    params: Any,
     backend: str,
     device: torch.device | None,
     runs: int,
@@ -266,12 +260,12 @@ def benchmark_method(
 ) -> float:
     context = torch.inference_mode if backend == "torch" else nullcontext
     with context():
-        method(**params)
+        method(params)
     synchronize(device)
 
     for _ in range(warmup):
         with context():
-            method(**params)
+            method(params)
         synchronize(device)
 
     times = []
@@ -279,7 +273,7 @@ def benchmark_method(
         synchronize(device)
         start = time.perf_counter()
         with context():
-            method(**params)
+            method(params)
         synchronize(device)
         times.append((time.perf_counter() - start) * 1000)
     return mean_without_outliers(times)
@@ -358,10 +352,17 @@ def mean_without_outliers(values: list[float]) -> float:
     return statistics.mean(filtered or values)
 
 
-def move_tensors(params: dict[str, Any], device: torch.device | None) -> dict[str, Any]:
+def move_tensors(params: Any, device: torch.device | None) -> Any:
     if device is None:
         return params
-    return {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in params.items()}
+    if isinstance(params, torch.Tensor):
+        return params.to(device)
+    if hasattr(params, "_fields"):
+        values = {name: move_tensors(getattr(params, name), device) for name in params._fields}
+        return params._replace(**values)
+    if isinstance(params, dict):
+        return {key: move_tensors(value, device) for key, value in params.items()}
+    return params
 
 
 def synchronize(device: torch.device | None) -> None:

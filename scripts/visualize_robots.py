@@ -174,12 +174,16 @@ def init_states(server: viser.ViserServer, models: dict[str, RigidBodyModel]) ->
     return states
 
 
-def mutable_params(params: dict[str, Any]) -> dict[str, np.ndarray]:
-    return {key: np.asarray(value).copy() for key, value in params.items()}
+def mutable_params(params: Any) -> dict[str, np.ndarray]:
+    return {name: np.asarray(getattr(params, name)).copy() for name in params._fields}
+
+
+def typed_params(model: RigidBodyModel, values: dict[str, np.ndarray]) -> Any:
+    return model.get_rest_pose()._replace(**values)
 
 
 def update_robot_mesh(server: viser.ViserServer, state: RobotState) -> None:
-    mesh = state.model.forward_meshes(**state.params)[0]
+    mesh = state.model.forward_meshes(typed_params(state.model, state.params))[0]
     if state.mesh_handle is not None:
         state.mesh_handle.remove()
     state.mesh_handle = server.scene.add_mesh_simple(
@@ -285,7 +289,7 @@ def apply_hands(state: RobotState, sliders: list[SliderHandle], hands: Literal["
     preset = state.model.get_rest_pose(hands=hands)
     key = pose_key(state.params)
     state.hands = hands
-    state.params[key] = np.asarray(preset[key]).copy()
+    state.params[key] = np.asarray(getattr(preset, key)).copy()
     for slider in sliders:
         if slider.key == key:
             slider.handle.value = float(state.params[key][slider.indices])

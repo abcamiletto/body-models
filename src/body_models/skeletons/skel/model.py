@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from jaxtyping import Float, Int
 
@@ -31,6 +31,18 @@ class SkelConfig:
     """Static SKEL behavior preserved outside array state."""
 
     gender: Literal["male", "female"]
+
+
+class SkelIdentityParameters(NamedTuple):
+    shape: Float[Array, "*batch 10"]
+
+
+class SkelParameters(NamedTuple):
+    identity: SkelIdentityParameters | core.SkelIdentity
+    body_pose: Float[Array, "*batch 43"]
+    head_pose: Float[Array, "*batch 3"]
+    global_rotation: Float[Array, "*batch 3"]
+    global_translation: Float[Array, "*batch 3"]
 
 
 class SKELModel(SkinnedModel):
@@ -118,26 +130,14 @@ class SKELModel(SkinnedModel):
 
     def forward_vertices(
         self,
-        body_pose: Float[Array, "*batch 43"],
-        head_pose: Float[Array, "*batch 3"],
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        parameters: SkelParameters,
         *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed SKEL vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
-
-        pose = self.prepare_pose(body_pose, head_pose, identity=identity)
+        identity = self._identity(parameters)
+        pose = self.prepare_pose(parameters._replace(identity=identity))
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
@@ -147,35 +147,21 @@ class SKELModel(SkinnedModel):
         )
         return skinning.apply_global_transform(
             vertices,
-            global_rotation,
-            global_translation,
+            parameters.global_rotation,
+            parameters.global_translation,
             xp=xp,
         )
 
     def forward_skeleton(
         self,
-        body_pose: Float[Array, "*batch 43"],
-        head_pose: Float[Array, "*batch 3"],
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        parameters: SkelParameters,
         *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed SKEL joint transforms."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape)
-        else:
-            skeleton_identity = identity
-
-        packed_pose = pack_pose(xp, body_pose, head_pose)
+        identity = self._identity(parameters)
+        packed_pose = pack_pose(xp, parameters.body_pose, parameters.head_pose)
         skeleton = core.prepare_skeleton(
             all_axes=self.weights.all_axes,
             rotation_indices=self.weights.rotation_indices,
@@ -189,41 +175,28 @@ class SKELModel(SkinnedModel):
             spine_axes=self.weights.spine_axes,
             parents=self.weights.parents,
             pose=packed_pose,
-            local_joint_offsets=skeleton_identity["local_joint_offsets"],
-            rest_joints=skeleton_identity["rest_joints"],
+            local_joint_offsets=identity["local_joint_offsets"],
+            rest_joints=identity["rest_joints"],
             xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
-            global_rotation,
-            global_translation,
+            parameters.global_rotation,
+            parameters.global_translation,
             joint_indices=joint_indices,
             xp=xp,
         )
 
     def forward_links(
         self,
-        body_pose: Float[Array, "*batch 43"],
-        head_pose: Float[Array, "*batch 3"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        parameters: SkelParameters,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Alias the SKEL joint transforms as anatomical link transforms."""
-        return self.forward_skeleton(
-            body_pose,
-            head_pose,
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            shape=shape,
-            identity=identity,
-        )
+        return self.forward_skeleton(parameters)
 
     def prepare_identity(
         self,
-        shape: Float[Array, "*batch 10"],
+        parameters: SkelIdentityParameters,
     ) -> core.SkelIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
@@ -232,19 +205,17 @@ class SKELModel(SkinnedModel):
             self.weights.j_template,
             self.weights.j_shapedirs,
             self.weights.parent,
-            shape,
+            parameters.shape,
             xp=self._runtime.xp,
         )
 
     def prepare_pose(
         self,
-        body_pose: Float[Array, "*batch 43"],
-        head_pose: Float[Array, "*batch 3"],
-        *,
-        identity: core.SkelIdentity,
+        parameters: SkelParameters,
     ) -> core.SkelPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
+        identity = self._identity(parameters)
+        packed_pose = pack_pose(self._runtime.xp, parameters.body_pose, parameters.head_pose)
         return core.prepare_pose(
             all_axes=self.weights.all_axes,
             rotation_indices=self.weights.rotation_indices,
@@ -265,52 +236,54 @@ class SKELModel(SkinnedModel):
             xp=self._runtime.xp,
         )
 
-    def _prepare_skeleton_identity(
-        self,
-        shape: Float[Array, "*batch 10"],
-    ) -> core.SkelSkeletonIdentity:
-        return core.prepare_skeleton_identity(
-            self.weights.j_template,
-            self.weights.j_shapedirs,
-            self.weights.parent,
-            shape,
-            xp=self._runtime.xp,
-        )
-
     def get_rest_pose(
         self,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> SkelParameters:
         """Return zero shape and pose controls."""
         runtime = self._runtime
-        return {
-            "shape": runtime.zeros((*batch_dims, self.NUM_BETAS), like=self.weights.v_template, dtype=dtype),
-            "body_pose": runtime.zeros(
+        return SkelParameters(
+            identity=SkelIdentityParameters(
+                runtime.zeros((*batch_dims, self.NUM_BETAS), like=self.weights.v_template, dtype=dtype)
+            ),
+            body_pose=runtime.zeros(
                 (*batch_dims, self.body_pose_dim),
                 like=self.weights.v_template,
                 dtype=dtype,
             ),
-            "head_pose": runtime.zeros(
+            head_pose=runtime.zeros(
                 (*batch_dims, self.head_pose_dim),
                 like=self.weights.v_template,
                 dtype=dtype,
             ),
-            "global_rotation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-            "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-        }
+            global_rotation=runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
+            global_translation=runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
+        )
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> SkelParameters:
         """Return the SKEL T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> SkelParameters:
         """Return the SKEL A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        pose = self._runtime.asarray(SKEL_BODY_PRESETS["a_pose"], like=params["body_pose"])
+        pose = self._runtime.asarray(SKEL_BODY_PRESETS["a_pose"], like=params.body_pose)
         pose = self._runtime.xp.broadcast_to(pose, (*batch_dims, *pose.shape))
-        params["body_pose"], params["head_pose"] = unpack_pose(self._runtime.xp, pose)
-        return params
+        body_pose, head_pose = unpack_pose(self._runtime.xp, pose)
+        return params._replace(body_pose=body_pose, head_pose=head_pose)
+
+    def prepare(self, parameters: SkelParameters) -> SkelParameters:
+        return parameters._replace(identity=self._identity(parameters))
+
+    def _identity(self, parameters: SkelParameters) -> core.SkelIdentity:
+        identity = parameters.identity
+        if not isinstance(identity, SkelIdentityParameters):
+            return identity
+        shape = identity.shape
+        batch_shape = parameters.body_pose.shape[:-1]
+        shape = self._runtime.xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        return self.prepare_identity(SkelIdentityParameters(shape))
 
 
-__all__ = ["SKELModel", "SkelConfig"]
+__all__ = ["SKELModel", "SkelConfig", "SkelIdentityParameters", "SkelParameters"]

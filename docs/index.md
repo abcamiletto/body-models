@@ -77,8 +77,12 @@ model = SMPL(gender="neutral")
 params = model.get_rest_pose(batch_dims=(1,))
 
 # Evaluate the mesh vertices and skeleton transforms with the same parameters.
-vertices = model.forward_vertices(**params)
-skeleton = model.forward_skeleton(**params)
+vertices = model.forward_vertices(params)
+skeleton = model.forward_skeleton(params)
 ```
 
 Skinned models share `faces`, `num_vertices`, `num_joints`, `joint_names`, `skin_weights`, `rest_vertices`, `forward_vertices`, `forward_skeleton`, and `get_rest_pose`. Rigid articulated models expose link metadata and `forward_links` instead of skinning weights.
+
+Rest and canonical poses are immutable, model-specific parameter values. Use
+`params._replace(...)` to change controls and `model.prepare(params)` to cache
+identity-dependent state while preserving the same forward API.

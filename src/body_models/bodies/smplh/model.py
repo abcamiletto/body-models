@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -28,6 +28,19 @@ class SmplhConfig:
 
     gender: Literal["neutral", "male", "female"]
     rotation_type: RotationType
+
+
+class SmplhIdentityParameters(NamedTuple):
+    shape: Float[Array, "*batch 10"]
+
+
+class SmplhParameters(NamedTuple):
+    identity: SmplhIdentityParameters | core.SmplhIdentity
+    body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"]
+    hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"]
+    pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
+    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
+    global_translation: Float[Array, "*batch 3"]
 
 
 class SMPLHModel(SkinnedModel):
@@ -117,27 +130,14 @@ class SMPLHModel(SkinnedModel):
 
     def forward_vertices(
         self,
-        body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        parameters: SmplhParameters,
         *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SmplhIdentity | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
-
-        pose = self.prepare_pose(body_pose, hand_pose, pelvis_rotation, identity=identity)
+        identity = self._identity(parameters)
+        pose = self.prepare_pose(parameters._replace(identity=identity))
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
@@ -147,50 +147,35 @@ class SMPLHModel(SkinnedModel):
         )
         return skinning.apply_global_transform(
             vertices,
-            global_rotation,
-            global_translation,
+            parameters.global_rotation,
+            parameters.global_translation,
             self.rotation_type,
             xp=xp,
         )
 
     def forward_skeleton(
         self,
-        body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        parameters: SmplhParameters,
         *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SmplhIdentity | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch 52 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape)
-        else:
-            skeleton_identity = identity
-
+        identity = self._identity(parameters)
         skeleton = core.prepare_skeleton(
             self.weights.kinematic_fronts,
             self.weights.hand_mean,
-            body_pose,
-            hand_pose,
-            pelvis_rotation,
+            parameters.body_pose,
+            parameters.hand_pose,
+            parameters.pelvis_rotation,
             self.rotation_type,
-            local_joint_offsets=skeleton_identity["local_joint_offsets"],
+            local_joint_offsets=identity["local_joint_offsets"],
             xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
-            global_rotation,
-            global_translation,
+            parameters.global_rotation,
+            parameters.global_translation,
             self.rotation_type,
             joint_indices,
             xp=xp,
@@ -198,7 +183,7 @@ class SMPLHModel(SkinnedModel):
 
     def prepare_identity(
         self,
-        shape: Float[Array, "*batch 10"],
+        parameters: SmplhIdentityParameters,
     ) -> core.SmplhIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
@@ -208,41 +193,26 @@ class SMPLHModel(SkinnedModel):
             j_template=self.weights.j_template,
             j_shapedirs=self.weights.j_shapedirs,
             parents=self.weights.parents,
-            shape=shape,
+            shape=parameters.shape,
         )
 
     def prepare_pose(
         self,
-        body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        *,
-        identity: core.SmplhIdentity,
+        parameters: SmplhParameters,
     ) -> core.SmplhPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
+        identity = self._identity(parameters)
         return core.prepare_pose(
             xp=self._runtime.xp,
             posedirs=self.weights.posedirs,
             kinematic_fronts=self.weights.kinematic_fronts,
             hand_mean=self.weights.hand_mean,
-            body_pose=body_pose,
-            hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
+            body_pose=parameters.body_pose,
+            hand_pose=parameters.hand_pose,
+            pelvis_rotation=parameters.pelvis_rotation,
             rotation_type=self.rotation_type,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
-        )
-
-    def _prepare_skeleton_identity(
-        self,
-        shape: Float[Array, "*batch S"],
-    ) -> core.SmplhSkeletonIdentity:
-        return core.prepare_skeleton_identity(
-            xp=self._runtime.xp,
-            j_template=self.weights.j_template,
-            j_shapedirs=self.weights.j_shapedirs,
-            parents=self.weights.parents,
-            shape=shape,
         )
 
     def get_rest_pose(
@@ -250,7 +220,7 @@ class SMPLHModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> SmplhParameters:
         """Return zero identity controls and identity rotations."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -267,36 +237,38 @@ class SMPLHModel(SkinnedModel):
             dtype=dtype,
         )
         pelvis_ref = runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype)
-        params = {
-            "shape": runtime.zeros((*batch_dims, 10), like=self.weights.v_template, dtype=dtype),
-            "body_pose": SO3.identity_as(
+        params = SmplhParameters(
+            identity=SmplhIdentityParameters(
+                runtime.zeros((*batch_dims, 10), like=self.weights.v_template, dtype=dtype)
+            ),
+            body_pose=SO3.identity_as(
                 body_ref,
                 batch_dims=(*batch_dims, self.NUM_BODY_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            "hand_pose": SO3.identity_as(
+            hand_pose=SO3.identity_as(
                 hand_ref,
                 batch_dims=(*batch_dims, self.NUM_HAND_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            "pelvis_rotation": SO3.identity_as(
+            pelvis_rotation=SO3.identity_as(
                 pelvis_ref,
                 batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            "global_rotation": SO3.identity_as(
+            global_rotation=SO3.identity_as(
                 pelvis_ref,
                 batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-        }
+            global_translation=runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
+        )
         if hands != "default":
-            params["hand_pose"] = self._hand_preset(batch_dims, params["hand_pose"], hands)
+            params = params._replace(hand_pose=self._hand_preset(batch_dims, params.hand_pose, hands))
         return params
 
     def _hand_preset(
@@ -314,7 +286,7 @@ class SMPLHModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> SmplhParameters:
         """Return the SMPL-H T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
@@ -323,18 +295,30 @@ class SMPLHModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> SmplhParameters:
         """Return the SMPL-H A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        axis_angle = self._runtime.asarray(SMPLH_BODY_PRESETS["a_pose"], like=params["body_pose"])
+        axis_angle = self._runtime.asarray(SMPLH_BODY_PRESETS["a_pose"], like=params.body_pose)
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(
+        body_pose = SO3.convert(
             axis_angle,
             src="axis_angle",
             dst=self.rotation_type,
             xp=self._runtime.xp,
         )
-        return params
+        return params._replace(body_pose=body_pose)
+
+    def prepare(self, parameters: SmplhParameters) -> SmplhParameters:
+        return parameters._replace(identity=self._identity(parameters))
+
+    def _identity(self, parameters: SmplhParameters) -> core.SmplhIdentity:
+        identity = parameters.identity
+        if not isinstance(identity, SmplhIdentityParameters):
+            return identity
+        shape = identity.shape
+        batch_shape = parameters.body_pose.shape[: -(self.num_rot_dims + 1)]
+        shape = self._runtime.xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        return self.prepare_identity(SmplhIdentityParameters(shape))
 
 
-__all__ = ["SMPLHModel", "SmplhConfig"]
+__all__ = ["SMPLHModel", "SmplhConfig", "SmplhIdentityParameters", "SmplhParameters"]

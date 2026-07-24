@@ -8,9 +8,9 @@ from body_models.runtime import TorchRuntime
 
 def surface_loss(model, params):
     if isinstance(model, RigidBodyModel):
-        values = model.forward_links(**params)[..., :3, 3]
+        values = model.forward_links(params)[..., :3, 3]
     else:
-        values = model.forward_vertices(**params)
+        values = model.forward_vertices(params)
     return (values**2).sum()
 
 
@@ -20,7 +20,7 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
     torch_instance = torch_model(**kwargs)
     torch_instance.double()
     torch_rest = torch_instance.get_rest_pose(batch_dims=(), dtype=torch.float64)
-    torch_rest = {key: value + 0.03 for key, value in torch_rest.items()}
+    torch_rest = model_cases.map_parameters(torch_rest, lambda value: value + 0.03)
 
     jax = pytest.importorskip("jax")
     pytest.importorskip("flax")
@@ -29,12 +29,13 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
 
     jax_instance = jax_model(**kwargs)
     jax_rest = jax_instance.get_rest_pose(batch_dims=(), dtype=jnp.float64)
-    jax_rest = {key: value + 0.03 for key, value in jax_rest.items()}
+    jax_rest = model_cases.map_parameters(jax_rest, lambda value: value + 0.03)
 
-    for key in torch_rest:
-        torch_params = {name: value.detach() for name, value in torch_rest.items()}
-        torch_value = torch_params[key].clone().requires_grad_(True)
-        torch_params[key] = torch_value
+    for key, path, _ in model_cases.parameter_leaves(torch_rest):
+        torch_params = model_cases.map_parameters(torch_rest, lambda value: value.detach())
+        torch_value = dict((name, value) for name, _, value in model_cases.parameter_leaves(torch_params))[key]
+        torch_value = torch_value.clone().requires_grad_(True)
+        torch_params = model_cases.replace_parameter(torch_params, path, torch_value)
         torch_loss_value = surface_loss(torch_instance, torch_params)
         assert torch_loss_value.requires_grad, f"{name}.{key} is disconnected from the Torch output"
         torch_loss_value.backward()
@@ -44,10 +45,16 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
         torch_minus = torch_value.detach().numpy().copy()
         torch_plus.reshape(-1)[0] += 1e-4
         torch_minus.reshape(-1)[0] -= 1e-4
-        plus_params = torch_params.copy()
-        minus_params = torch_params.copy()
-        plus_params[key] = torch.as_tensor(torch_plus, dtype=torch_value.dtype)
-        minus_params[key] = torch.as_tensor(torch_minus, dtype=torch_value.dtype)
+        plus_params = model_cases.replace_parameter(
+            torch_params,
+            path,
+            torch.as_tensor(torch_plus, dtype=torch_value.dtype),
+        )
+        minus_params = model_cases.replace_parameter(
+            torch_params,
+            path,
+            torch.as_tensor(torch_minus, dtype=torch_value.dtype),
+        )
         with torch.no_grad():
             torch_plus_loss = surface_loss(torch_instance, plus_params).item()
             torch_minus_loss = surface_loss(torch_instance, minus_params).item()
@@ -60,11 +67,10 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
             err_msg=f"Torch gradient mismatch for {name}.{key}",
         )
 
-        jax_value = jax_rest[key]
+        jax_value = dict((name, value) for name, _, value in model_cases.parameter_leaves(jax_rest))[key]
 
         def jax_loss(value):
-            params = jax_rest.copy()
-            params[key] = value
+            params = model_cases.replace_parameter(jax_rest, path, value)
             return surface_loss(jax_instance, params)
 
         jax_auto = np.asarray(jax.grad(jax_loss)(jax_value)).reshape(-1)[0]
@@ -187,15 +193,16 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
         for skinning_backend in ("torch", "warp")
     }
     params = models["torch"].get_rest_pose(batch_dims=(1,))
-    params = {key: value + 0.01 * torch.randn_like(value) for key, value in params.items()}
+    params = model_cases.map_parameters(params, lambda value: value + 0.01 * torch.randn_like(value))
     grad_output = torch.randn(1, models["torch"].num_vertices, 3, device="cuda")
-    param_keys = tuple(params)
+    param_keys = tuple(name for name, _, _ in model_cases.parameter_leaves(params))
     results = {}
 
     for skinning_backend, model in models.items():
-        backend_params = {key: value.detach().requires_grad_(True) for key, value in params.items()}
-        vertices = model.forward_vertices(**backend_params)
-        grads = torch.autograd.grad(vertices, tuple(backend_params.values()), grad_output)
+        backend_params = model_cases.map_parameters(params, lambda value: value.detach().requires_grad_(True))
+        vertices = model.forward_vertices(backend_params)
+        leaves = tuple(value for _, _, value in model_cases.parameter_leaves(backend_params))
+        grads = torch.autograd.grad(vertices, leaves, grad_output)
         results[skinning_backend] = vertices, dict(zip(param_keys, grads, strict=True))
 
     torch_vertices, torch_grads = results["torch"]
@@ -224,15 +231,21 @@ def test_torch_skinning_backend_gradients_match_default(
     params = default_model.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     vertex_indices = list(range(min(8, default_model.num_vertices)))
     generator = torch.Generator(device="cuda").manual_seed(0)
-    params = {
-        key: value + 0.1 * torch.randn(value.shape, device=value.device, dtype=value.dtype, generator=generator)
-        for key, value in params.items()
-    }
+    params = model_cases.map_parameters(
+        params,
+        lambda value: (
+            value + 0.1 * torch.randn(value.shape, device=value.device, dtype=value.dtype, generator=generator)
+        ),
+    )
 
     def forward_and_grad(model):
-        model_params = {key: value.detach().clone().requires_grad_() for key, value in params.items()}
-        vertices = model.forward_vertices(**model_params, vertex_indices=vertex_indices)
-        gradients = torch.autograd.grad(vertices.square().sum(), tuple(model_params.values()))
+        model_params = model_cases.map_parameters(
+            params,
+            lambda value: value.detach().clone().requires_grad_(),
+        )
+        vertices = model.forward_vertices(model_params, vertex_indices=vertex_indices)
+        leaves = tuple(value for _, _, value in model_cases.parameter_leaves(model_params))
+        gradients = torch.autograd.grad(vertices.square().sum(), leaves)
         return vertices, gradients
 
     expected_vertices, expected_gradients = forward_and_grad(default_model)
