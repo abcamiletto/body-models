@@ -9,7 +9,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from trimesh import Trimesh
 
-from body_models.rigid import RigidModel
+from body_models.rigid import RigidHandParameters, RigidModel
 from body_models.robots.brainco import core
 from body_models.robots.brainco.constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
 from body_models.robots.brainco.io import Side, load_model_data
@@ -58,10 +58,8 @@ class BrainCoHandModel(RigidModel):
 
     def forward_skeleton(
         self,
-        hand_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidHandParameters,
         *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
@@ -76,41 +74,27 @@ class BrainCoHandModel(RigidModel):
             coupled_driver_indices=weights.coupled_driver_indices,
             coupled_polycoef=weights.coupled_polycoef,
             parents=weights.parents,
-            pose=hand_pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
+            pose=parameters.hand_pose,
+            global_translation=parameters.global_translation,
+            global_rotation=parameters.global_rotation,
             joint_indices=joint_indices,
             xp=self._runtime.xp,
         )
 
     def forward_links(
         self,
-        hand_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidHandParameters,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
-        skeleton = self.forward_skeleton(
-            hand_pose,
-            global_translation,
-            global_rotation=global_rotation,
-        )
+        skeleton = self.forward_skeleton(parameters)
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
-        hand_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidHandParameters,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
-        links = self.forward_links(
-            hand_pose,
-            global_translation,
-            global_rotation=global_rotation,
-        )
+        links = self.forward_links(parameters)
         return self._meshes_from_links(links)
 
     def get_rest_pose(
@@ -118,14 +102,15 @@ class BrainCoHandModel(RigidModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> RigidHandParameters:
         """Return the configured default or canonical hand pose."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
-        params = self._zero_pose("hand_pose", batch_dims, dtype)
+        params = self._zero_hand_parameters(batch_dims, dtype)
         if hands != "default":
-            hand_pose = self._runtime.asarray(BRAINCO_HAND_PRESETS[self.side][hands], like=params["hand_pose"])
-            params["hand_pose"] = self._runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))
+            hand_pose = self._runtime.asarray(BRAINCO_HAND_PRESETS[self.side][hands], like=params.hand_pose)
+            hand_pose = self._runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))
+            params = params._replace(hand_pose=hand_pose)
         return params
 
 

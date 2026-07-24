@@ -1,7 +1,6 @@
 """Pose packing and rotation-conversion helpers for ANNY."""
 
-from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol, Self, TypeVar
 
 from jaxtyping import Float
 from nanomanifold import SO3
@@ -11,19 +10,31 @@ from body_models import rotations
 Array = Any
 
 
+class AnnyPoseParameters(Protocol):
+    body_pose: Float[Array, "..."]
+    head_pose: Float[Array, "..."]
+    hand_pose: Float[Array, "..."]
+    global_rotation: Float[Array, "..."]
+
+    def _replace(self, **changes: Any) -> Self: ...
+
+
+ParameterT = TypeVar("ParameterT", bound=AnnyPoseParameters)
+
+
 def convert_pose(
-    parameters: Mapping[str, Any],
+    parameters: ParameterT,
     *,
     src: rotations.RotationType,
     dst: rotations.RotationType,
-) -> dict[str, Any]:
-    """Convert the rotations in an ANNY parameter dictionary."""
-    converted = dict(parameters)
-    for key in ("body_pose", "head_pose", "hand_pose", "global_rotation"):
-        value = converted.get(key)
-        if value is not None:
-            converted[key] = SO3.convert(value, src=src, dst=dst)
-    return converted
+) -> ParameterT:
+    """Convert every rotation in ANNY parameters."""
+    return parameters._replace(
+        body_pose=SO3.convert(parameters.body_pose, src=src, dst=dst),
+        head_pose=SO3.convert(parameters.head_pose, src=src, dst=dst),
+        hand_pose=SO3.convert(parameters.hand_pose, src=src, dst=dst),
+        global_rotation=SO3.convert(parameters.global_rotation, src=src, dst=dst),
+    )
 
 
 def _joint_axis(pose: Float[Array, "..."]) -> int:

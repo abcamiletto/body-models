@@ -1,6 +1,5 @@
 """Shared model list for cross-model tests."""
 
-from inspect import signature
 from pathlib import Path
 
 from body_models.anny import jax as anny_jax
@@ -98,24 +97,53 @@ REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" /
 
 
 def forward_skeleton(model, params, **kwargs):
-    """Call a model-specific skeleton signature with the parameters it accepts."""
-    arguments = dict(params) | kwargs
-    accepted = signature(model.forward_skeleton).parameters
-    return model.forward_skeleton(**{key: value for key, value in arguments.items() if key in accepted})
+    return model.forward_skeleton(params, **kwargs)
 
 
 def prepare_states(model, params):
-    """Prepare model-specific identity and pose state from public parameters."""
-    identity_parameters = signature(model.prepare_identity).parameters
-    identity = model.prepare_identity(**{key: params[key] for key in identity_parameters if key in params})
-    pose_parameters = signature(model.prepare_pose).parameters
-    arguments = dict(params)
-    arguments["identity"] = identity
-    pose = model.prepare_pose(**{key: arguments[key] for key in pose_parameters if key in arguments})
+    prepared = model.prepare(params)
+    identity = prepared.identity
+    pose = model.prepare_pose(prepared)
     return identity, pose
 
 
-def with_prepared_identity(model, params, identity):
-    """Replace raw identity controls with prepared state in forward arguments."""
-    raw_identity = set(signature(model.prepare_identity).parameters)
-    return {key: value for key, value in params.items() if key not in raw_identity} | {"identity": identity}
+def with_prepared_identity(_model, params, identity):
+    return params._replace(identity=identity)
+
+
+def parameters_from_dict(model, values):
+    """Build typed model parameters from reference input mappings."""
+    params = model.get_rest_pose()
+    changes = {name: values[name] for name in params._fields if name in values}
+    if hasattr(params, "identity"):
+        identity = params.identity
+        identity_changes = {name: values[name] for name in identity._fields if name in values}
+        changes["identity"] = identity._replace(**identity_changes)
+    return params._replace(**changes)
+
+
+def map_parameters(parameters, function):
+    """Apply a function to every array leaf in a parameter value."""
+    if parameters is None:
+        return None
+    if hasattr(parameters, "_fields"):
+        values = {name: map_parameters(getattr(parameters, name), function) for name in parameters._fields}
+        return parameters._replace(**values)
+    return function(parameters)
+
+
+def parameter_leaves(parameters, path=()):
+    if parameters is None:
+        return
+    if hasattr(parameters, "_fields"):
+        for name in parameters._fields:
+            yield from parameter_leaves(getattr(parameters, name), (*path, name))
+        return
+    yield ".".join(path), path, parameters
+
+
+def replace_parameter(parameters, path, value):
+    if len(path) == 1:
+        return parameters._replace(**{path[0]: value})
+    child = replace_parameter(getattr(parameters, path[0]), path[1:], value)
+    return parameters._replace(**{path[0]: child})

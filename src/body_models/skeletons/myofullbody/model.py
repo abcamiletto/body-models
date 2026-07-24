@@ -9,7 +9,7 @@ from typing import Any
 from jaxtyping import Float
 from trimesh import Trimesh
 
-from body_models.rigid import RigidModel
+from body_models.rigid import RigidBodyParameters, RigidModel
 from body_models.runtime import ArrayRuntime
 from body_models.state import StateMaterializer
 from body_models.skeletons.myofullbody import core
@@ -63,10 +63,8 @@ class MyoFullBodyModel(RigidModel):
 
     def forward_skeleton(
         self,
-        body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidBodyParameters,
         *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed body transforms."""
@@ -81,33 +79,27 @@ class MyoFullBodyModel(RigidModel):
             actuated_joint_anchors=weights.actuated_joint_anchors,
             hinge_mask=weights.hinge_mask,
             slide_mask=weights.slide_mask,
-            body_pose=body_pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
+            body_pose=parameters.body_pose,
+            global_translation=parameters.global_translation,
+            global_rotation=parameters.global_rotation,
             joint_indices=joint_indices,
             xp=self._runtime.xp,
         )
 
     def forward_links(
         self,
-        body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidBodyParameters,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
-        skeleton = self.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+        skeleton = self.forward_skeleton(parameters)
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
-        body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidBodyParameters,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
-        links = self.forward_links(body_pose, global_translation, global_rotation=global_rotation)
+        links = self.forward_links(parameters)
         return self._meshes_from_links(links)
 
     def world_sites(self, skeleton: Float[Array, "*batch J 4 4"]) -> Float[Array, "*batch S 3"]:
@@ -123,15 +115,15 @@ class MyoFullBodyModel(RigidModel):
         self,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> RigidBodyParameters:
         """Return zero musculoskeletal controls."""
-        return self._zero_pose("body_pose", batch_dims, dtype)
+        return self._zero_body_parameters(batch_dims, dtype)
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> RigidBodyParameters:
         """Return the MyoFullBody T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> RigidBodyParameters:
         """Return the MyoFullBody A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 
@@ -140,11 +132,11 @@ class MyoFullBodyModel(RigidModel):
         name: str,
         batch_dims: tuple[int, ...],
         **kwargs: Any,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> RigidBodyParameters:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        pose = self._runtime.asarray(MYOFULLBODY_BODY_PRESETS[name], like=params["body_pose"])
-        params["body_pose"] = self._runtime.xp.broadcast_to(pose, (*batch_dims, *pose.shape))
-        return params
+        pose = self._runtime.asarray(MYOFULLBODY_BODY_PRESETS[name], like=params.body_pose)
+        body_pose = self._runtime.xp.broadcast_to(pose, (*batch_dims, *pose.shape))
+        return params._replace(body_pose=body_pose)
 
 
 __all__ = ["MyoFullBodyConfig", "MyoFullBodyModel"]

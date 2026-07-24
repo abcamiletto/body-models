@@ -19,11 +19,11 @@ from body_models.common import skinning
 @pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
 def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
     model = numpy_model(**kwargs)
-    inputs = reference_inputs(name)
+    inputs = model_cases.parameters_from_dict(model, reference_inputs(name))
     if isinstance(model, RigidBodyModel):
-        vertices = np.stack([mesh.vertices for mesh in model.forward_meshes(**inputs)], axis=0)
+        vertices = np.stack([mesh.vertices for mesh in model.forward_meshes(inputs)], axis=0)
     else:
-        vertices = model.forward_vertices(**inputs)
+        vertices = model.forward_vertices(inputs)
     if name == "mhr":
         vertices = vertices * 100
     expected = np.load(model_cases.ASSETS / name / "outputs/0/vertices.npy")
@@ -34,7 +34,7 @@ def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, k
 @pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
 def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
     model = numpy_model(**kwargs)
-    inputs = reference_inputs(name)
+    inputs = model_cases.parameters_from_dict(model, reference_inputs(name))
     skeleton = model_cases.forward_skeleton(model, inputs)
     skeleton_outputs = {"anny": "bone_poses.npy", "mhr": "skeleton.npy", "skel": "joints.npy"}
     filename = skeleton_outputs.get(name, "joints.npy")
@@ -106,8 +106,15 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
             )
 
         global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
-        identity = model.prepare_identity(shape)
-        prepared_pose = model.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
+        params = model.get_rest_pose(batch_dims=(1,))
+        params = params._replace(
+            identity=params.identity._replace(shape=shape),
+            body_pose=body_pose,
+            head_pose=head_pose,
+            hand_pose=hand_pose,
+        )
+        identity = model.prepare_identity(params.identity)
+        prepared_pose = model.prepare_pose(params._replace(identity=identity))
         vertices = skinning.linear_blend_skinning(
             identity["rest_vertices"],
             prepared_pose["skinning_transforms"],

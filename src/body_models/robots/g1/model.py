@@ -10,7 +10,7 @@ from jaxtyping import Float
 from nanomanifold import SO3
 from trimesh import Trimesh
 
-from body_models.rigid import RigidModel
+from body_models.rigid import RigidBodyParameters, RigidModel
 from body_models.robots.g1 import core
 from body_models.robots.g1.constants import G1_BODY_PRESETS, G1_JOINTS
 from body_models.robots.g1.io import load_model_data
@@ -60,10 +60,8 @@ class G1Model(RigidModel):
 
     def forward_skeleton(
         self,
-        body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidBodyParameters,
         *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
@@ -74,48 +72,42 @@ class G1Model(RigidModel):
             actuated_joint_indices=weights.actuated_joint_indices,
             actuated_joint_axes=weights.actuated_joint_axes,
             parents=weights.parents,
-            body_pose=body_pose,
-            global_translation=global_translation,
-            global_rotation=global_rotation,
+            body_pose=parameters.body_pose,
+            global_translation=parameters.global_translation,
+            global_rotation=parameters.global_rotation,
             joint_indices=joint_indices,
             xp=self._runtime.xp,
         )
 
     def forward_links(
         self,
-        body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidBodyParameters,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
-        skeleton = self.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+        skeleton = self.forward_skeleton(parameters)
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
-        body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
+        parameters: RigidBodyParameters,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
-        links = self.forward_links(body_pose, global_translation, global_rotation=global_rotation)
+        links = self.forward_links(parameters)
         return self._meshes_from_links(links)
 
     def get_rest_pose(
         self,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> RigidBodyParameters:
         """Return zero G1 pose controls."""
-        return self._zero_pose("body_pose", batch_dims, dtype)
+        return self._zero_body_parameters(batch_dims, dtype)
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> RigidBodyParameters:
         """Return the G1 T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> RigidBodyParameters:
         """Return the G1 A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 
@@ -124,19 +116,19 @@ class G1Model(RigidModel):
         name: str,
         batch_dims: tuple[int, ...],
         **kwargs: Any,
-    ) -> dict[str, Float[Array, "..."]]:
+    ) -> RigidBodyParameters:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         runtime = self._runtime
-        axis_angle = runtime.asarray(G1_BODY_PRESETS[name], like=params["body_pose"])
+        axis_angle = runtime.asarray(G1_BODY_PRESETS[name], like=params.body_pose)
         axis_angle = runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        params["body_pose"] = SO3.convert(
+        body_pose = SO3.convert(
             axis_angle,
             src="axis_angle",
             dst="hinge",
             dst_kwargs={"axes": self.weights.actuated_joint_axes},
             xp=runtime.xp,
         )[..., 0]
-        return params
+        return params._replace(body_pose=body_pose)
 
 
 __all__ = ["G1Config", "G1Model"]

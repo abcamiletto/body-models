@@ -38,8 +38,8 @@ import body_models
 model = body_models.create_model("smpl", backend="torch")
 params = model.get_rest_pose(batch_dims=(1,))
 
-vertices = model.forward_vertices(**params)
-skeleton = model.forward_skeleton(**params)
+vertices = model.forward_vertices(params)
+skeleton = model.forward_skeleton(params)
 ```
 
 Use `skinning_backend="warp"` when constructing a supported Torch model to replace only
@@ -49,22 +49,26 @@ API and all model-specific preparation remain unchanged.
 Discover available model names with `body_models.list_models()`. Model options
 such as `gender="male"` or `side="left"` are passed as constructor kwargs.
 
-When shape-dependent identity parameters stay fixed across many poses, prepare
-them once and pass the returned dictionary back through `identity`. This avoids
-recomputing rest joints, local offsets, and rest vertices on every forward pass.
+Model inputs are immutable, model-specific parameter values. Identity controls
+are grouped under `params.identity`; pose and world-placement controls are
+direct fields. Use `_replace()` to derive a modified value.
 
 ```python
-shape = params.pop("shape")
-identity = model.prepare_identity(shape)
-
-vertices = model.forward_vertices(**params, identity=identity)
-skeleton = model.forward_skeleton(**params, identity=identity)
+posed = params._replace(body_pose=body_pose)
+vertices = model.forward_vertices(posed)
 ```
 
-For models with expression-dependent rest state, such as SMPL-X and FLAME, pass
-both identity controls to `prepare_identity(shape, expression)`. Prepared
-identities and poses are always complete mesh-ready values; skeleton forwards
-use separate lightweight internal preparation and never return partial state.
+When identity parameters stay fixed across many poses, prepare them once. The
+returned value has the same type, with its raw identity controls replaced by
+prepared model state.
+
+```python
+person = model.prepare(params)
+vertices = model.forward_vertices(person)
+skeleton = model.forward_skeleton(person)
+```
+
+Prepared parameters can be reused with different poses using `_replace()`.
 
 ## Supported Models
 

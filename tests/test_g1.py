@@ -5,14 +5,18 @@ from body_models.robots.g1.io import get_model_path
 from body_models.g1.numpy import G1
 
 
-def test_g1_to_qpos_accepts_rest_pose_motion_dict() -> None:
+def test_g1_to_qpos_accepts_rest_pose_parameters() -> None:
     model = G1()
     motion = model.get_rest_pose(batch_dims=(2,), dtype=np.float32)
 
-    qpos = model.to_qpos(**motion)
+    qpos = model.to_qpos(
+        motion.body_pose,
+        motion.global_translation,
+        global_rotation=motion.global_rotation,
+    )
 
     assert qpos.shape == (2, 7 + model.num_actuated)
-    np.testing.assert_array_equal(qpos[:, 7:], motion["body_pose"])
+    np.testing.assert_array_equal(qpos[:, 7:], motion.body_pose)
 
 
 def test_g1_forward_skeleton_matches_mujoco_fk() -> None:
@@ -26,7 +30,12 @@ def test_g1_forward_skeleton_matches_mujoco_fk() -> None:
 
     data.qpos[:] = model.to_qpos(body_pose, global_translation, global_rotation=global_rotation)[0]
     mujoco.mj_forward(mj_model, data)
-    skeleton = model.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+    parameters = model.get_rest_pose(batch_dims=(1,))._replace(
+        body_pose=body_pose,
+        global_translation=global_translation,
+        global_rotation=global_rotation,
+    )
+    skeleton = model.forward_skeleton(parameters)
     mujoco_to_model = np.asarray(model.mujoco_to_model)
 
     for joint_index, joint_name in enumerate(model.joint_names):
