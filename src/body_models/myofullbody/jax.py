@@ -13,8 +13,6 @@ from body_models.skeletons.myofullbody.model import MyoFullBodyModel
 class MyoFullBody(MyoFullBodyModel, JaxModel):
     """MyoFullBody using JAX arrays."""
 
-    skinning_backends = ("jax",)
-
     def __init__(self, model_path: Path | str | None = None) -> None:
         MyoFullBodyModel.__init__(
             self,

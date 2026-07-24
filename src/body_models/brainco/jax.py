@@ -14,8 +14,6 @@ from body_models.state import jax_state
 class BrainCoHand(BrainCoHandModel, JaxModel):
     """BrainCo Revo 2 using JAX arrays."""
 
-    skinning_backends = ("jax",)
-
     def __init__(self, model_path: Path | str | None = None, *, side: Side = "right") -> None:
         BrainCoHandModel.__init__(
             self,

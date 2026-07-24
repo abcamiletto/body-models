@@ -13,8 +13,6 @@ from body_models.state import jax_state
 class SmplHumanoid(SmplHumanoidModel, JaxModel):
     """SMPL humanoid using JAX arrays."""
 
-    skinning_backends = ("jax",)
-
     def __init__(self, source: Path | str = "humenv") -> None:
         SmplHumanoidModel.__init__(
             self,

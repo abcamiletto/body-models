@@ -30,3 +30,24 @@ def test_pose_blend_shapes_excludes_the_root_rotation() -> None:
     expected = (features @ directions).reshape(2, 2, 3)
 
     np.testing.assert_array_equal(actual, expected)
+
+
+def test_prepare_linear_identity_shares_coefficients_across_joints_and_vertices() -> None:
+    vertex_template = np.zeros((1, 3), dtype=np.float32)
+    vertex_directions = np.ones((1, 3, 1), dtype=np.float32)
+    joint_template = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float32)
+    joint_directions = np.ones((2, 3, 1), dtype=np.float32)
+
+    identity = deformation.prepare_linear_identity(
+        vertex_template=vertex_template,
+        vertex_directions=vertex_directions,
+        joint_template=joint_template,
+        joint_directions=joint_directions,
+        parents=[-1, 0],
+        coefficients=np.array([2.0], dtype=np.float32),
+        xp=np,
+    )
+
+    np.testing.assert_array_equal(identity["rest_vertices"], [[2.0, 2.0, 2.0]])
+    np.testing.assert_array_equal(identity["rest_joints"], [[2.0, 2.0, 2.0], [3.0, 2.0, 2.0]])
+    np.testing.assert_array_equal(identity["local_joint_offsets"], [[2.0, 2.0, 2.0], [1.0, 0.0, 0.0]])

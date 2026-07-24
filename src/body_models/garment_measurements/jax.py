@@ -14,8 +14,6 @@ from body_models.state import jax_state
 class GarmentMeasurements(GarmentMeasurementsModel, JaxModel):
     """GarmentMeasurements using JAX arrays."""
 
-    skinning_backends = ("jax",)
-
     def __init__(
         self,
         model_path: Path | str | None = None,

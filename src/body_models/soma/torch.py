@@ -1,10 +1,12 @@
 """Torch SOMA model."""
 
+import functools
 from pathlib import Path
 from typing import Literal
 
 import torch.nn as nn
 
+from body_models import registry
 from body_models.bodies.soma import correctives_torch
 from body_models.bodies.soma.identities import torch as identity_lowerings
 from body_models.bodies.soma.lowerings import SomaLowerings
@@ -13,13 +15,15 @@ from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
 from body_models.state import torch_state
 
-_LOWERINGS = SomaLowerings(correctives_torch.TorchCorrectiveNetwork, identity_lowerings.create_identity_source)
+_IDENTITY_SOURCE = functools.partial(
+    identity_lowerings.create_identity_source,
+    model_factory=functools.partial(registry.create_model, backend="torch"),
+)
+_LOWERINGS = SomaLowerings(correctives_torch.TorchCorrectiveNetwork, _IDENTITY_SOURCE)
 
 
 class SOMA(SOMAModel, nn.Module):
     """SOMA using Torch tensors and optional Warp skinning."""
-
-    skinning_backends = TorchRuntime.skinning_backends
 
     def __init__(
         self,

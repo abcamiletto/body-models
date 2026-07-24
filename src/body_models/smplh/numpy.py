@@ -12,8 +12,6 @@ from body_models.state import numpy_state
 class SMPLH(SMPLHModel):
     """SMPL-H using NumPy arrays."""
 
-    skinning_backends = ("numpy",)
-
     def __init__(
         self,
         model_path: Path | str | None = None,

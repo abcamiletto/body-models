@@ -11,8 +11,6 @@ from body_models.skeletons.skel.model import SKELModel
 class SKEL(SKELModel):
     """SKEL using NumPy arrays."""
 
-    skinning_backends = ("numpy",)
-
     def __init__(
         self,
         model_path: Path | str | None = None,

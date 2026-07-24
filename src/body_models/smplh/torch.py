@@ -14,8 +14,6 @@ from body_models.state import torch_state
 class SMPLH(SMPLHModel, nn.Module):
     """SMPL-H using Torch tensors and optional Warp kernels."""
 
-    skinning_backends = TorchRuntime.skinning_backends
-
     def __init__(
         self,
         model_path: Path | str | None = None,

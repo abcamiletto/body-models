@@ -13,8 +13,6 @@ from body_models.state import torch_state
 class BrainCoHand(BrainCoHandModel, nn.Module):
     """BrainCo Revo 2 using Torch tensors."""
 
-    skinning_backends = ("torch",)
-
     def __init__(self, model_path: Path | str | None = None, *, side: Side = "right") -> None:
         nn.Module.__init__(self)
         BrainCoHandModel.__init__(

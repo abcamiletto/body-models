@@ -29,7 +29,6 @@ class _ArticulatedModel(ABC):
     parents: list[int]
     has_hands: bool = False
     has_head: bool = False
-    skinning_backends: ClassVar[tuple[str, ...]] = ("numpy",)
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
 
     @property

@@ -14,8 +14,6 @@ from body_models.skeletons.skel.model import SKELModel
 class SKEL(SKELModel, JaxModel):
     """SKEL using JAX arrays."""
 
-    skinning_backends = ("jax",)
-
     def __init__(
         self,
         model_path: Path | str | None = None,
