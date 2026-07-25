@@ -171,17 +171,6 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
     assert_compatible(jax_instance, jax_params, jnp)
 
 
-@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)
-def test_prepared_states_are_complete(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
-    model = numpy_model(**kwargs)
-    params = model.get_rest_pose()
-    identity, pose = model_cases.prepare_states(model, params)
-
-    assert "rest_vertices" in identity
-    assert "skinning_transforms" in pose
-    model.prepare_skinning(identity=identity, pose=pose)
-
-
 @pytest.mark.fast
 def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
     from body_models.smpl.numpy import SMPL

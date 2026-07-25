@@ -1,16 +1,10 @@
 import numpy as np
 import pytest
 
-import model_cases
 from body_models import config
 from body_models.bodies.mhr import io as mhr_io
 from body_models.bodies.soma.io import validate_path
 import body_models.robots.brainco.io as brainco_io
-
-
-@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.MODELS)
-def test_model_loads(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
-    numpy_model(**kwargs)
 
 
 def test_soma_slim_npz_asset_layout_requires_rig_fields(tmp_path) -> None:

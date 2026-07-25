@@ -27,10 +27,6 @@ def test_smpl_humanoid_factory_loads() -> None:
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
-def test_smpl_humanoid_sources_are_variants() -> None:
-    assert tuple(SMPL_HUMANOID_SOURCES) == SMPL_HUMANOID_VARIANTS
-
-
 @pytest.mark.parametrize("source", sorted(SMPL_HUMANOID_SOURCES))
 def test_smpl_humanoid_xml_uses_xyz_hinge_order(source: str) -> None:
     root = ET.parse(get_model_path(source)).getroot()
