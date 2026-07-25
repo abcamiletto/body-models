@@ -10,7 +10,7 @@ from body_models.common.kinematics import (
     invert_rigid_transforms,
     local_joint_offsets,
 )
-from body_models.common.ops import Array, eye_as, set, zeros_as
+from body_models.common.ops import Array, at_set, eye_as, zeros_as
 from body_models.common.rigid import rotate_transforms
 from body_models.common.simplify_mesh import simplify_mesh
 
@@ -26,7 +26,7 @@ __all__ = [
     "invert_rigid_transforms",
     "local_joint_offsets",
     "rotate_transforms",
-    "set",
+    "at_set",
     "simplify_mesh",
     "zeros_as",
 ]

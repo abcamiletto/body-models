@@ -6,8 +6,7 @@ from typing import Literal
 import jax
 
 from body_models.runtime import JaxModel, JaxRuntime
-from body_models.state import jax_state
-from body_models.skeletons.skel.model import SKELModel
+from body_models.skel.model import SKELModel
 
 
 @jax.tree_util.register_pytree_node_class
@@ -26,7 +25,6 @@ class SKEL(SKELModel, JaxModel):
             gender,
             simplify,
             runtime=JaxRuntime(),
-            materialize=jax_state,
         )
 
 

@@ -57,7 +57,7 @@ def download(model: Annotated[str, typer.Argument()] = "all") -> None:
 @app.command("preprocess-soma")
 def preprocess_soma(upstream_dir: Path, output_dir: Path) -> None:
     """Normalize upstream SOMA-X 0.2.1 assets for runtime use."""
-    from body_models.bodies.soma.io import preprocess_model
+    from body_models.soma.io import preprocess_model
 
     path = preprocess_model(upstream_dir, output_dir)
     _save_paths({"soma": path})

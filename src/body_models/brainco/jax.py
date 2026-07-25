@@ -4,10 +4,9 @@ from pathlib import Path
 
 import jax
 
-from body_models.robots.brainco.io import Side
-from body_models.robots.brainco.model import BrainCoHandModel
+from body_models.brainco.io import Side
+from body_models.brainco.model import BrainCoHandModel
 from body_models.runtime import JaxModel, JaxRuntime
-from body_models.state import jax_state
 
 
 @jax.tree_util.register_pytree_node_class
@@ -20,7 +19,6 @@ class BrainCoHand(BrainCoHandModel, JaxModel):
             model_path,
             side=side,
             runtime=JaxRuntime(),
-            materialize=jax_state,
         )
 
 

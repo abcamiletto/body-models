@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from body_models.bodies.mhr.pose import pack_pose
+from body_models.mhr.pose import pack_pose
 
 
 @pytest.mark.fast

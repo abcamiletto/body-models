@@ -27,7 +27,7 @@ def affine_transforms(
     translation = xp.broadcast_to(translation, (*batch_shape, 3))
     upper = xp.concat([linear, translation[..., None]], axis=-1)
     bottom = ops.zeros_as(upper, shape=(*batch_shape, 1, 4), xp=xp)
-    bottom = ops.set(bottom, (..., 0, 3), 1.0, xp=xp)
+    bottom = ops.at_set(bottom, (..., 0, 3), 1.0, xp=xp)
     return xp.concat([upper, bottom], axis=-2)
 
 
@@ -58,7 +58,7 @@ def local_joint_offsets(
     parent_indices = [joint if joint in roots else int(parent) for joint, parent in enumerate(parents)]
     offsets = joints - joints[..., parent_indices, :]
     if roots:
-        offsets = ops.set(offsets, (..., roots, slice(None)), joints[..., roots, :], xp=xp)
+        offsets = ops.at_set(offsets, (..., roots, slice(None)), joints[..., roots, :], xp=xp)
     return offsets
 
 

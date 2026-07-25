@@ -11,7 +11,7 @@ import viser
 
 from body_models.base import RigidBodyModel
 from body_models.registry import create_model
-from body_models.robots.smpl_humanoid import SMPL_HUMANOID_VARIANTS
+from body_models.smpl_humanoid import SMPL_HUMANOID_VARIANTS
 
 
 SMPL_HUMANOID_LABELS = {

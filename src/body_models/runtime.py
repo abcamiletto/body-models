@@ -7,7 +7,7 @@ from typing import Any, ClassVar, Literal
 
 from jaxtyping import Float, Int, Num
 
-from body_models import common
+from body_models import common, state
 from body_models.common import skinning
 
 Array = Any
@@ -15,6 +15,8 @@ Array = Any
 
 class ArrayRuntime(ABC):
     """Shared numerical operations for one array backend."""
+
+    backend: ClassVar[Literal["numpy", "torch", "jax"]]
 
     @property
     @abstractmethod
@@ -42,6 +44,10 @@ class ArrayRuntime(ABC):
     ) -> Float[Array, "..."]:
         """Create zeros with the backend and device of ``like``."""
         return common.zeros_as(like, shape=shape, dtype=dtype, xp=self.xp)
+
+    @abstractmethod
+    def materialize(self, value: Any) -> Any:
+        """Convert loaded model data into backend-managed state."""
 
     def compact_linear_blend_skinning(
         self,
@@ -90,16 +96,22 @@ class ArrayRuntime(ABC):
 class NumpyRuntime(ArrayRuntime):
     """NumPy model runtime."""
 
+    backend = "numpy"
+
     @property
     def xp(self) -> Any:
         import numpy as np
 
         return np
 
+    def materialize(self, value: Any) -> Any:
+        return state.numpy_state(value)
+
 
 class TorchRuntime(ArrayRuntime):
     """Torch model runtime with optional Warp operation lowerings."""
 
+    backend = "torch"
     SKINNING_BACKENDS = ("torch", "warp")
 
     def __init__(self, skinning_backend: Literal["torch", "warp"] = "torch") -> None:
@@ -123,6 +135,9 @@ class TorchRuntime(ArrayRuntime):
         if dtype is None:
             dtype = like.dtype
         return self.xp.as_tensor(value, device=like.device, dtype=dtype)
+
+    def materialize(self, value: Any) -> Any:
+        return state.torch_state(value)
 
     def _compact_linear_blend_skinning(
         self,
@@ -155,6 +170,8 @@ class TorchRuntime(ArrayRuntime):
 class JaxRuntime(ArrayRuntime):
     """JAX model runtime."""
 
+    backend = "jax"
+
     @property
     def xp(self) -> Any:
         import jax.numpy as jnp
@@ -175,6 +192,9 @@ class JaxRuntime(ArrayRuntime):
         array = self.xp.asarray(value, dtype=dtype)
         device = getattr(like, "device", None)
         return array if device is None else jax.device_put(array, device)
+
+    def materialize(self, value: Any) -> Any:
+        return state.jax_state(value)
 
 
 class JaxModel:

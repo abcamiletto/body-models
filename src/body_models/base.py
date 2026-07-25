@@ -5,7 +5,7 @@ from typing import Any, ClassVar, NotRequired, TypedDict
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models.common import eye_as, zeros_as
+from body_models.common import deformation, eye_as, rigid as rigid_ops, zeros_as
 from body_models.constants import Joint
 from trimesh import Trimesh
 
@@ -133,7 +133,12 @@ class SkinnedModel(_ArticulatedModel):
             Mesh vertices [B, V, 3] in meters.
         """
 
-    def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
+    def prepare_skinning(
+        self,
+        *,
+        identity: deformation.SkinningIdentity,
+        pose: deformation.SkinningPose,
+    ) -> SkinningPayload:
         """Pack prepared model state into renderer-ready skinning inputs."""
         skinning: SkinningPayload = {
             "rest_vertices": identity["rest_vertices"],
@@ -158,6 +163,7 @@ class SkinnedModel(_ArticulatedModel):
 class RigidBodyModel(_ArticulatedModel):
     """Base class for rigid articulated models."""
 
+    weights: Any
     mujoco_to_model: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]] = (
         (1.0, 0.0, 0.0),
         (0.0, 1.0, 0.0),
@@ -165,9 +171,36 @@ class RigidBodyModel(_ArticulatedModel):
     )
 
     @property
-    @abstractmethod
+    def faces(self) -> Int[Array, "F 3"]:
+        return self.weights.faces
+
+    @property
+    def joint_names(self) -> list[str]:
+        return self.weights.joint_names
+
+    @property
+    def parents(self) -> list[int]:
+        return self.weights.parents
+
+    @property
     def actuated_joint_names(self) -> list[str]:
-        """Actuated pose coordinate names in ``body_pose``/``hand_pose`` order."""
+        return self.weights.actuated_joint_names
+
+    @property
+    def actuated_joint_limits(self) -> Float[Array, "Q 2"]:
+        return self.weights.actuated_joint_limits
+
+    @property
+    def link_names(self) -> list[str]:
+        return self.weights.link_names
+
+    @property
+    def link_joint_indices(self) -> list[int]:
+        return self.weights.link_joint_indices
+
+    @property
+    def num_vertices(self) -> int:
+        return self.weights.vertices.shape[0]
 
     @property
     def num_actuated(self) -> int:
@@ -256,23 +289,8 @@ class RigidBodyModel(_ArticulatedModel):
 
     @property
     @abstractmethod
-    def actuated_joint_limits(self) -> Float[Array, "Q 2"]:
-        """Limits for each actuated pose coordinate. Shape [Q, 2]."""
-
-    @property
-    @abstractmethod
     def actuated_joint_types(self) -> list[str]:
         """Actuated pose coordinate types in ``actuated_joint_names`` order."""
-
-    @property
-    @abstractmethod
-    def link_names(self) -> list[str]:
-        """Link mesh names in link index order."""
-
-    @property
-    @abstractmethod
-    def link_joint_indices(self) -> list[int]:
-        """Joint index associated with each link mesh."""
 
     @abstractmethod
     def forward_links(self, *args, **kwargs) -> Float[Array, "*batch L 4 4"]:
@@ -281,3 +299,40 @@ class RigidBodyModel(_ArticulatedModel):
     @abstractmethod
     def forward_meshes(self, *args, **kwargs) -> Sequence[Trimesh]:
         """Build one renderer-facing mesh per batch element from link transforms."""
+
+    def _link_transforms(
+        self,
+        skeleton: Float[Array, "*batch J 4 4"],
+    ) -> Float[Array, "*batch L 4 4"]:
+        return rigid_ops.forward_link_transforms(
+            skeleton,
+            self.weights.link_joint_indices,
+            self.weights.link_geom_positions,
+            self.weights.link_geom_rotations,
+            xp=self._runtime.xp,
+        )
+
+    def _meshes_from_links(self, links: Float[Array, "*batch L 4 4"]) -> list[Trimesh]:
+        return rigid_ops.forward_meshes_from_links(
+            links,
+            self.weights.vertices,
+            self.weights.faces,
+            self.weights.link_vertex_starts,
+            self.weights.link_vertex_counts,
+            self.weights.link_face_starts,
+            self.weights.link_face_counts,
+            xp=self._runtime.xp,
+        )
+
+    def _zero_pose(
+        self,
+        pose_key: str,
+        batch_dims: tuple[int, ...],
+        dtype: Any | None,
+    ) -> dict[str, Float[Array, "..."]]:
+        reference = self.weights.vertices
+        return {
+            pose_key: self._runtime.zeros((*batch_dims, self.num_actuated), like=reference, dtype=dtype),
+            "global_rotation": self._runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
+            "global_translation": self._runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
+        }

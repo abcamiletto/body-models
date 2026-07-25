@@ -6,8 +6,8 @@ from nanomanifold import SO3
 
 from body_models.base import RigidBodyModel
 from body_models.registry import create_model, list_models
-from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
-from body_models.robots.smpl_humanoid.io import SMPL_HUMANOID_SOURCES, get_model_path
+from body_models.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
+from body_models.smpl_humanoid.io import SMPL_HUMANOID_SOURCES, get_model_path
 from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 

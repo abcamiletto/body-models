@@ -5,8 +5,7 @@ from pathlib import Path
 import torch.nn as nn
 
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
-from body_models.skeletons.myofullbody.model import MyoFullBodyModel
+from body_models.myofullbody.model import MyoFullBodyModel
 
 
 class MyoFullBody(MyoFullBodyModel, nn.Module):
@@ -18,7 +17,6 @@ class MyoFullBody(MyoFullBodyModel, nn.Module):
             self,
             model_path,
             runtime=TorchRuntime(),
-            materialize=torch_state,
         )
 
 

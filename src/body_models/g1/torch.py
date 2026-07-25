@@ -4,10 +4,9 @@ from pathlib import Path
 
 import torch.nn as nn
 
-from body_models.robots.g1 import core
-from body_models.robots.g1.model import G1Model
+from body_models.g1 import core
+from body_models.g1.model import G1Model
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
 
 
 class G1(G1Model, nn.Module):
@@ -25,7 +24,6 @@ class G1(G1Model, nn.Module):
             model_path,
             convention=convention,
             runtime=TorchRuntime(),
-            materialize=torch_state,
         )
 
 

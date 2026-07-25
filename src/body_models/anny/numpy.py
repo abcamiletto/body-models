@@ -2,10 +2,9 @@
 
 from pathlib import Path
 
-from body_models.bodies.anny.model import ANNYModel
+from body_models.anny.model import ANNYModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
-from body_models.state import numpy_state
 
 
 class ANNY(ANNYModel):
@@ -31,7 +30,6 @@ class ANNY(ANNYModel):
             simplify=simplify,
             rotation_type=rotation_type,
             runtime=NumpyRuntime(),
-            materialize=numpy_state,
         )
 
 

@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
-from typing import Any, Protocol
+from typing import Any
 
 import numpy as np
 
 _JAX_DATACLASSES: set[type] = set()
-
-
-class StateMaterializer(Protocol):
-    """Convert loaded model data into backend-managed state."""
-
-    def __call__(self, value: Any) -> Any: ...
 
 
 def numpy_state(value: Any) -> Any:
@@ -107,4 +101,4 @@ def _register_jax_dataclass(cls: type, jax: Any) -> None:
     _JAX_DATACLASSES.add(cls)
 
 
-__all__ = ["StateMaterializer", "jax_state", "numpy_state", "torch_state"]
+__all__ = ["jax_state", "numpy_state", "torch_state"]

@@ -17,10 +17,10 @@ Each model family follows the same file roles:
 | `body_models/<name>/torch.py` | Add `nn.Module` storage and construct `TorchRuntime`. |
 | `body_models/<name>/jax.py` | Construct `JaxRuntime` and define JAX pytree behavior. |
 
-The public framework packages are real importable modules, while their model
-programs remain organized by semantic family under `bodies/`, `parts/`,
-`robots/`, and `skeletons/`. The wrappers are intentionally thin: a signature
-or behavior change is made once in `model.py`, so backends cannot drift apart.
+Every model is self-contained in `body_models/<name>/`; descriptive categories
+do not create a second package tree. The wrappers are intentionally thin: a
+signature or behavior change is made once in `model.py`, so backends cannot
+drift apart.
 Public identity and pose preparation always returns complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
@@ -28,13 +28,10 @@ cannot create a partial object that later fails in a mesh forward.
 ## Runtime boundary
 
 `ArrayRuntime` owns the array namespace, device- and dtype-aware construction,
-and lowerings of stable shared operations such as compact linear blend
-skinning. It does not own model semantics or framework state.
-
-State materializers form a separate boundary. They adapt immutable loaded data
-to unchanged NumPy state, registered Torch module state, or JAX pytrees. Keeping
-state ownership separate from numerical execution prevents framework lifecycle
-concerns from leaking into shared mathematics.
+state materialization, and lowerings of stable shared operations such as
+compact linear blend skinning. Materialization delegates to the recursive
+converters in `state.py`; callers therefore cannot pair a runtime with the
+wrong framework state. The runtime does not own model semantics.
 
 Warp is a Torch operation lowering, not a fourth copy of a model. Selecting
 `skinning_backend="warp"` changes compact skinning while identity preparation, pose
@@ -59,7 +56,7 @@ not know model names, parameter layouts, or asset formats.
 ## Rigid articulated models
 
 Rigid robots and anatomical models do not implement the skinning protocol.
-They derive from `RigidModel`, which shares metadata, link attachment, mesh
+They derive from `RigidBodyModel`, which shares metadata, link attachment, mesh
 projection, and zero-control construction. Their kinematics remain local:
 BrainCo retains coupled-joint polynomials, G1 retains hinge axes, SmplHumanoid
 retains its Euler convention, and MyoFullBody retains mixed hinge/slide joints.
@@ -77,7 +74,8 @@ would make the runtime understand SOMA and create a leaky abstraction.
 1. Add asset loading and validation in `io.py`.
 2. Put model-specific numerical functions in `core.py` and pass the array
    namespace explicitly.
-3. Define the public program in `model.py` using `ArrayRuntime` or `RigidModel`.
+3. Define the public program in `model.py` using `ArrayRuntime` and the
+   appropriate model base.
 4. Add the three thin framework constructors that the model supports.
 5. Add its factory and asset metadata to `catalog.py`.
 6. Add cross-framework, arbitrary-batch, compile, gradient, and reference tests

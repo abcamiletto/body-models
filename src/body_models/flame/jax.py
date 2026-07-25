@@ -4,10 +4,9 @@ from pathlib import Path
 
 import jax
 
-from body_models.parts.flame.model import FLAMEModel
+from body_models.flame.model import FLAMEModel
 from body_models.rotations import RotationType
 from body_models.runtime import JaxModel, JaxRuntime
-from body_models.state import jax_state
 
 
 @jax.tree_util.register_pytree_node_class
@@ -26,7 +25,6 @@ class FLAME(FLAMEModel, JaxModel):
             simplify,
             rotation_type,
             runtime=JaxRuntime(),
-            materialize=jax_state,
         )
 
 

@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from body_models.runtime import NumpyRuntime
-from body_models.state import numpy_state
-from body_models.skeletons.skel.model import SKELModel
+from body_models.skel.model import SKELModel
 
 
 class SKEL(SKELModel):
@@ -22,7 +21,6 @@ class SKEL(SKELModel):
             gender,
             simplify,
             runtime=NumpyRuntime(),
-            materialize=numpy_state,
         )
 
 

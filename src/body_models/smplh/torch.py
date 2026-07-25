@@ -5,10 +5,9 @@ from typing import Literal
 
 import torch.nn as nn
 
-from body_models.bodies.smplh.model import SMPLHModel
+from body_models.smplh.model import SMPLHModel
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
 
 
 class SMPLH(SMPLHModel, nn.Module):
@@ -32,7 +31,6 @@ class SMPLH(SMPLHModel, nn.Module):
             simplify,
             rotation_type,
             runtime=TorchRuntime(skinning_backend),
-            materialize=torch_state,
         )
 
 
