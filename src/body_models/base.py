@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
-from typing import Any, ClassVar, Generic, NotRequired, TypeVar, TypedDict
+from typing import Any, ClassVar, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -111,10 +111,6 @@ class _ArticulatedModel(ABC):
 class SkinnedModel(_ArticulatedModel):
     """Base class for models that expose one skinned mesh."""
 
-    @abstractmethod
-    def bind(self, *args, **kwargs) -> "BoundModel[Any, Any]":
-        """Prepare identity-dependent state for repeated pose evaluation."""
-
     @property
     @abstractmethod
     def skin_weights(self) -> Float[Array, "V J"]:
@@ -137,7 +133,7 @@ class SkinnedModel(_ArticulatedModel):
             Mesh vertices [B, V, 3] in meters.
         """
 
-    def _prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
+    def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
         """Pack prepared model state into renderer-ready skinning inputs."""
         skinning: SkinningPayload = {
             "rest_vertices": identity["rest_vertices"],
@@ -149,23 +145,14 @@ class SkinnedModel(_ArticulatedModel):
             skinning["pose_offsets"] = pose["pose_offsets"]
         return skinning
 
-
-ModelT = TypeVar("ModelT", bound=SkinnedModel)
-IdentityT = TypeVar("IdentityT", bound=Mapping[str, Any])
-
-
-class BoundModel(Generic[ModelT, IdentityT]):
-    """A skinned model with its identity-dependent state prepared."""
-
-    __slots__ = ("_identity", "model")
-
-    def __init__(self, model: ModelT, identity: IdentityT) -> None:
-        self.model = model
-        self._identity = identity
-
-    def prepare_skinning(self, pose: Mapping[str, Any]) -> SkinningPayload:
-        """Pack a prepared pose into renderer-ready skinning inputs."""
-        return self.model._prepare_skinning(identity=self._identity, pose=pose)
+    @staticmethod
+    def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:
+        if identity is None:
+            return
+        conflicts = [name for name, value in raw_parameters.items() if value is not None]
+        if conflicts:
+            names = ", ".join(conflicts)
+            raise ValueError(f"identity cannot be combined with raw identity parameters: {names}")
 
 
 class RigidBodyModel(_ArticulatedModel):

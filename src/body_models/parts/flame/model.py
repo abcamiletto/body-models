@@ -9,7 +9,7 @@ from typing import Any
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models.base import BoundModel, SkinnedModel
+from body_models.base import SkinnedModel
 from body_models.common import skinning
 from body_models.parts.flame import core
 from body_models.parts.flame.constants import FLAME_JOINT_NAMES
@@ -115,20 +115,35 @@ class FLAMEModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch S"],
-        expression: Float[Array, "*batch E"],
+        shape: Float[Array, "*batch S"] | None = None,
+        expression: Float[Array, "*batch E"] | None = None,
+        identity: core.FlameIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed head vertices."""
         xp = self._runtime.xp
-        batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
-        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-        return self.bind(shape, expression).forward_vertices(
-            head_pose,
-            head_rotation,
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
+        if identity is None:
+            if shape is None or expression is None:
+                raise ValueError("shape and expression are required when identity is not provided")
+            batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression)
+
+        pose = self.prepare_pose(head_pose, head_rotation, identity=identity)
+        vertices = self._runtime.compact_linear_blend_skinning(
+            identity["rest_vertices"] + pose["pose_offsets"],
+            pose["skinning_transforms"],
+            joint_indices=self.weights.lbs_joint_indices,
+            joint_weights=self.weights.lbs_joint_weights,
+            vertex_indices=vertex_indices,
+        )
+        return skinning.apply_global_transform(
+            vertices,
             global_rotation,
             global_translation,
-            vertex_indices=vertex_indices,
+            self.rotation_type,
+            xp=xp,
         )
 
     def forward_skeleton(
@@ -139,21 +154,29 @@ class FLAMEModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch S"],
-        expression: Float[Array, "*batch E"],
+        shape: Float[Array, "*batch S"] | None = None,
+        expression: Float[Array, "*batch E"] | None = None,
+        identity: core.FlameIdentity | None = None,
     ) -> Float[Array, "*batch 5 4 4"]:
         """Compute posed head joint transforms."""
         xp = self._runtime.xp
-        batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
-        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-        identity = self._prepare_skeleton_identity(shape, expression)
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
+        if identity is None:
+            if shape is None or expression is None:
+                raise ValueError("shape and expression are required when identity is not provided")
+            batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            skeleton_identity = self._prepare_skeleton_identity(shape, expression)
+        else:
+            skeleton_identity = identity
+
         skeleton = core.prepare_skeleton(
             self.weights.kinematic_fronts,
             head_pose,
             head_rotation,
             self.rotation_type,
-            local_joint_offsets=identity["local_joint_offsets"],
+            local_joint_offsets=skeleton_identity["local_joint_offsets"],
             xp=xp,
         )
         return skinning.transform_skeleton(
@@ -165,15 +188,7 @@ class FLAMEModel(SkinnedModel):
             xp=xp,
         )
 
-    def bind(
-        self,
-        shape: Float[Array, "*batch S"],
-        expression: Float[Array, "*batch E"],
-    ) -> BoundFLAME:
-        """Prepare a reusable FLAME identity."""
-        return BoundFLAME(self, self._prepare_identity(shape, expression))
-
-    def _prepare_identity(
+    def prepare_identity(
         self,
         shape: Float[Array, "*batch S"],
         expression: Float[Array, "*batch E"],
@@ -192,7 +207,7 @@ class FLAMEModel(SkinnedModel):
             expression=expression,
         )
 
-    def _prepare_pose(
+    def prepare_pose(
         self,
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
@@ -264,69 +279,4 @@ class FLAMEModel(SkinnedModel):
         }
 
 
-class BoundFLAME(BoundModel[FLAMEModel, core.FlameIdentity]):
-    """FLAME with shape- and expression-dependent state prepared."""
-
-    def forward_vertices(
-        self,
-        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
-        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
-    ) -> Float[Array, "*batch V 3"]:
-        """Compute posed head vertices."""
-        model = self.model
-        pose = self.prepare_pose(head_pose, head_rotation)
-        vertices = model._runtime.compact_linear_blend_skinning(
-            self._identity["rest_vertices"] + pose["pose_offsets"],
-            pose["skinning_transforms"],
-            joint_indices=model.weights.lbs_joint_indices,
-            joint_weights=model.weights.lbs_joint_weights,
-            vertex_indices=vertex_indices,
-        )
-        return skinning.apply_global_transform(
-            vertices,
-            global_rotation,
-            global_translation,
-            model.rotation_type,
-            xp=model._runtime.xp,
-        )
-
-    def forward_skeleton(
-        self,
-        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
-        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
-    ) -> Float[Array, "*batch 5 4 4"]:
-        """Compute posed head joint transforms."""
-        model = self.model
-        skeleton = core.prepare_skeleton(
-            model.weights.kinematic_fronts,
-            head_pose,
-            head_rotation,
-            model.rotation_type,
-            local_joint_offsets=self._identity["local_joint_offsets"],
-            xp=model._runtime.xp,
-        )
-        return skinning.transform_skeleton(
-            skeleton,
-            global_rotation,
-            global_translation,
-            model.rotation_type,
-            joint_indices,
-            xp=model._runtime.xp,
-        )
-
-    def prepare_pose(
-        self,
-        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
-        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-    ) -> core.FlamePreparedPose:
-        """Precompute pose-dependent state."""
-        return self.model._prepare_pose(head_pose, head_rotation, identity=self._identity)
-
-
-__all__ = ["BoundFLAME", "FLAMEModel", "FlameConfig"]
+__all__ = ["FLAMEModel", "FlameConfig"]

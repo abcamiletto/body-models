@@ -147,13 +147,14 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
     from body_models.common import skinning
 
     def assert_compatible(model, params, xp):
-        bound, pose_params = model_cases.bind_model(model, params)
-        pose = bound.prepare_pose(
-            pose_params["body_pose"],
-            pose_params.get("head_pose"),
-            pose_params.get("hand_pose"),
+        identity = model.prepare_identity(shape=params["shape"])
+        pose = model.prepare_pose(
+            params["body_pose"],
+            params.get("head_pose"),
+            params.get("hand_pose"),
+            identity=identity,
         )
-        payload = bound.prepare_skinning(pose)
+        payload = model.prepare_skinning(identity=identity, pose=pose)
         assert model.skin_weights.shape[-1] != payload["skinning_transforms"].shape[-3]
         assert not hasattr(payload["skin_weights"], "toarray")
         assert payload["skin_weights"].shape[-1] == payload["skinning_transforms"].shape[-3]
@@ -163,7 +164,8 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
             payload["skin_weights"],
             xp=xp,
         )
-        expected = bound.forward_vertices(**pose_params)
+        prepared_params = model_cases.with_prepared_identity(model, params, identity)
+        expected = model.forward_vertices(**prepared_params)
         np.testing.assert_allclose(np.asarray(vertices), np.asarray(expected), rtol=1e-4, atol=1e-4)
 
     numpy_instance = numpy_model(**kwargs)
@@ -189,11 +191,13 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
 def test_prepared_states_are_complete(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
     model = numpy_model(**kwargs)
     params = model.get_rest_pose()
-    bound, pose = model_cases.prepare_states(model, params)
+    identity, pose = model_cases.prepare_states(model, params)
 
+    assert "skip_vertices" not in signature(model.prepare_identity).parameters
+    assert "skip_vertices" not in signature(model.prepare_pose).parameters
+    assert "rest_vertices" in identity
     assert "skinning_transforms" in pose
-    payload = bound.prepare_skinning(pose)
-    assert "rest_vertices" in payload
+    model.prepare_skinning(identity=identity, pose=pose)
 
 
 def test_mhr_skeleton_is_pose_only() -> None:
@@ -204,15 +208,15 @@ def test_mhr_skeleton_is_pose_only() -> None:
 
 
 @pytest.mark.fast
-def test_bound_model_matches_one_shot_forward() -> None:
+def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
     from body_models.smpl.numpy import SMPL
 
     model = SMPL(gender="neutral")
     params = model.get_rest_pose()
-    bound, pose = model_cases.bind_model(model, params)
+    identity = model.prepare_identity(params["shape"])
 
-    np.testing.assert_allclose(bound.forward_vertices(**pose), model.forward_vertices(**params))
-    np.testing.assert_allclose(bound.forward_skeleton(**pose), model.forward_skeleton(**params))
+    with pytest.raises(ValueError, match="cannot be combined"):
+        model.forward_vertices(**params, identity=identity)
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
@@ -267,15 +271,15 @@ def test_prepared_identity_broadcasts_across_pose_batch(
 ) -> None:
     def assert_broadcasts(model, params):
         identity_params = {key: value[:1] for key, value in params.items()}
-        bound, _ = model_cases.bind_model(model, identity_params)
-        _, pose_params = model_cases.bind_model(model, params)
+        identity, _ = model_cases.prepare_states(model, identity_params)
         vertex_indices = list(range(min(8, model.num_vertices)))
         joint_indices = list(range(min(8, model.num_joints)))
 
         expected_vertices = model.forward_vertices(**params, vertex_indices=vertex_indices)
         expected_skeleton = model_cases.forward_skeleton(model, params, joint_indices=joint_indices)
-        vertices = bound.forward_vertices(**pose_params, vertex_indices=vertex_indices)
-        skeleton = model_cases.forward_skeleton(bound, pose_params, joint_indices=joint_indices)
+        prepared_params = model_cases.with_prepared_identity(model, params, identity)
+        vertices = model.forward_vertices(**prepared_params, vertex_indices=vertex_indices)
+        skeleton = model_cases.forward_skeleton(model, prepared_params, joint_indices=joint_indices)
 
         assert vertices.shape == (3, len(vertex_indices), 3)
         assert skeleton.shape == (3, len(joint_indices), 4, 4)
