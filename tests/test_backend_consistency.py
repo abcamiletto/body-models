@@ -24,27 +24,27 @@ def assert_pose_helpers_round_trip(model, pose) -> None:
 
 
 def assert_qpos_matches_pose(model, params) -> None:
-    pose = params.hand_pose if hasattr(params, "hand_pose") else params.body_pose
+    pose_name = "hand_pose" if "hand_pose" in params else "body_pose"
     qpos = model.to_qpos(
-        pose,
-        global_rotation=params.global_rotation,
-        global_translation=params.global_translation,
+        params[pose_name],
+        global_rotation=params["global_rotation"],
+        global_translation=params["global_translation"],
     )
-    assert qpos.shape == (*pose.shape[:-1], 7 + model.num_actuated)
-    np.testing.assert_allclose(np.asarray(qpos[..., 7:]), np.asarray(pose))
+    assert qpos.shape == (*params[pose_name].shape[:-1], 7 + model.num_actuated)
+    np.testing.assert_allclose(np.asarray(qpos[..., 7:]), np.asarray(params[pose_name]))
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_torch_and_jax_match_numpy(name, numpy_model, torch_model, jax_model, kwargs) -> None:
     numpy_instance = numpy_model(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
-    expected = numpy_instance.forward_vertices(numpy_params)
+    expected = numpy_instance.forward_vertices(**numpy_params)
 
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
     torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     with torch.no_grad():
-        torch_vertices = torch_instance.forward_vertices(torch_params)
+        torch_vertices = torch_instance.forward_vertices(**torch_params)
     np.testing.assert_allclose(torch_vertices.numpy(), expected, rtol=1e-4, atol=1e-4)
 
     pytest.importorskip("jax")
@@ -53,7 +53,7 @@ def test_torch_and_jax_match_numpy(name, numpy_model, torch_model, jax_model, kw
 
     jax_instance = jax_model(**kwargs)
     jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
-    jax_vertices = jax_instance.forward_vertices(jax_params)
+    jax_vertices = jax_instance.forward_vertices(**jax_params)
     np.testing.assert_allclose(np.asarray(jax_vertices), expected, rtol=1e-4, atol=1e-4)
 
 
@@ -61,7 +61,7 @@ def test_torch_and_jax_match_numpy(name, numpy_model, torch_model, jax_model, kw
 def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model, kwargs) -> None:
     numpy_instance = numpy_model(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
-    expected_meshes = numpy_instance.forward_meshes(numpy_params)
+    expected_meshes = numpy_instance.forward_meshes(**numpy_params)
     assert all(isinstance(mesh, Trimesh) for mesh in expected_meshes)
     assert len(expected_meshes) == 2
     expected = mesh_vertices(expected_meshes)
@@ -69,11 +69,12 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
     torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
-    torch_pose = torch_params.hand_pose if hasattr(torch_params, "hand_pose") else torch_params.body_pose
-    assert_pose_helpers_round_trip(torch_instance, torch_pose)
+    assert_pose_helpers_round_trip(
+        torch_instance, torch_params["hand_pose" if "hand_pose" in torch_params else "body_pose"]
+    )
     assert_qpos_matches_pose(torch_instance, torch_params)
     with torch.no_grad():
-        torch_meshes = torch_instance.forward_meshes(torch_params)
+        torch_meshes = torch_instance.forward_meshes(**torch_params)
     assert all(isinstance(mesh, Trimesh) for mesh in torch_meshes)
     assert len(torch_meshes) == 2
     np.testing.assert_allclose(mesh_vertices(torch_meshes), expected, rtol=1e-4, atol=1e-4)
@@ -84,10 +85,9 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
 
     jax_instance = jax_model(**kwargs)
     jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
-    jax_pose = jax_params.hand_pose if hasattr(jax_params, "hand_pose") else jax_params.body_pose
-    assert_pose_helpers_round_trip(jax_instance, jax_pose)
+    assert_pose_helpers_round_trip(jax_instance, jax_params["hand_pose" if "hand_pose" in jax_params else "body_pose"])
     assert_qpos_matches_pose(jax_instance, jax_params)
-    jax_meshes = jax_instance.forward_meshes(jax_params)
+    jax_meshes = jax_instance.forward_meshes(**jax_params)
     assert all(isinstance(mesh, Trimesh) for mesh in jax_meshes)
     assert len(jax_meshes) == 2
     np.testing.assert_allclose(mesh_vertices(jax_meshes), expected, rtol=1e-4, atol=1e-4)
@@ -103,17 +103,17 @@ def test_rigid_body_models_do_not_expose_forward_vertices(name, numpy_model, _to
 def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
     model = numpy_model(**kwargs)
     params = model.get_rest_pose(batch_dims=(2,), dtype=np.float32)
-    pose = params.hand_pose if hasattr(params, "hand_pose") else params.body_pose
-    skeleton = model.forward_skeleton(params)
+    pose_name = "hand_pose" if "hand_pose" in params else "body_pose"
+    skeleton = model.forward_skeleton(**params)
 
     assert len(model.joint_names) == model.num_joints
     assert skeleton.shape[-3] == len(model.joint_names)
     assert len(model.actuated_joint_names) == model.num_actuated
     assert len(model.actuated_joint_types) == model.num_actuated
     assert model.actuated_joint_limits.shape == (model.num_actuated, 2)
-    assert pose.shape == (2, model.num_actuated)
+    assert params[pose_name].shape == (2, model.num_actuated)
 
-    assert_pose_helpers_round_trip(model, pose)
+    assert_pose_helpers_round_trip(model, params[pose_name])
     assert_qpos_matches_pose(model, params)
 
     assert not hasattr(model, "qpos_joint_names")
@@ -133,9 +133,9 @@ def test_skinning_backends_match_default(_name, _numpy_model, torch_model, _jax_
         params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
         vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():
-            expected = torch_instance.forward_vertices(params, vertex_indices=vertex_indices)
+            expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
             model = torch_model(skinning_backend=skinning_backend, **kwargs)
-            actual = model.forward_vertices(params, vertex_indices=vertex_indices)
+            actual = model.forward_vertices(**params, vertex_indices=vertex_indices)
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
@@ -147,9 +147,13 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
     from body_models.common import skinning
 
     def assert_compatible(model, params, xp):
-        prepared = model.prepare(params)
-        identity = prepared.identity
-        pose = model.prepare_pose(prepared)
+        identity = model.prepare_identity(shape=params["shape"])
+        pose = model.prepare_pose(
+            params["body_pose"],
+            params.get("head_pose"),
+            params.get("hand_pose"),
+            identity=identity,
+        )
         payload = model.prepare_skinning(identity=identity, pose=pose)
         assert model.skin_weights.shape[-1] != payload["skinning_transforms"].shape[-3]
         assert not hasattr(payload["skin_weights"], "toarray")
@@ -161,7 +165,7 @@ def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, 
             xp=xp,
         )
         prepared_params = model_cases.with_prepared_identity(model, params, identity)
-        expected = model.forward_vertices(prepared_params)
+        expected = model.forward_vertices(**prepared_params)
         np.testing.assert_allclose(np.asarray(vertices), np.asarray(expected), rtol=1e-4, atol=1e-4)
 
     numpy_instance = numpy_model(**kwargs)
@@ -203,6 +207,18 @@ def test_mhr_skeleton_is_pose_only() -> None:
     assert not {"shape", "expression", "identity"} & parameters.keys()
 
 
+@pytest.mark.fast
+def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
+    from body_models.smpl.numpy import SMPL
+
+    model = SMPL(gender="neutral")
+    params = model.get_rest_pose()
+    identity = model.prepare_identity(params["shape"])
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        model.forward_vertices(**params, identity=identity)
+
+
 @pytest.mark.parametrize(("name", "numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_forward_accepts_arbitrary_leading_dimensions(
     name,
@@ -217,7 +233,7 @@ def test_skinned_forward_accepts_arbitrary_leading_dimensions(
     for batch_shape in LEADING_DIM_BATCH_SHAPES:
         shaped_params = model.get_rest_pose(batch_dims=batch_shape)
 
-        shaped_vertices = model.forward_vertices(shaped_params, vertex_indices=vertex_indices)
+        shaped_vertices = model.forward_vertices(**shaped_params, vertex_indices=vertex_indices)
         shaped_skeleton = model_cases.forward_skeleton(model, shaped_params, joint_indices=joint_indices)
 
         assert shaped_vertices.shape == (*batch_shape, len(vertex_indices), 3)
@@ -225,12 +241,10 @@ def test_skinned_forward_accepts_arbitrary_leading_dimensions(
 
         entry_indices = np.ndindex(batch_shape) if batch_shape else [()]
         for entry_index in entry_indices:
-
-            def select(value):
-                return value[entry_index][None] if batch_shape else value[None]
-
-            entry_params = model_cases.map_parameters(shaped_params, select)
-            entry_vertices = model.forward_vertices(entry_params, vertex_indices=vertex_indices)[0]
+            entry_params = {
+                key: value[entry_index][None] if batch_shape else value[None] for key, value in shaped_params.items()
+            }
+            entry_vertices = model.forward_vertices(**entry_params, vertex_indices=vertex_indices)[0]
             entry_skeleton = model_cases.forward_skeleton(model, entry_params, joint_indices=joint_indices)[0]
 
             np.testing.assert_allclose(
@@ -256,16 +270,15 @@ def test_prepared_identity_broadcasts_across_pose_batch(
     kwargs,
 ) -> None:
     def assert_broadcasts(model, params):
-        identity = model_cases.map_parameters(params.identity, lambda value: value[:1])
-        identity_params = params._replace(identity=identity)
+        identity_params = {key: value[:1] for key, value in params.items()}
         identity, _ = model_cases.prepare_states(model, identity_params)
         vertex_indices = list(range(min(8, model.num_vertices)))
         joint_indices = list(range(min(8, model.num_joints)))
 
-        expected_vertices = model.forward_vertices(params, vertex_indices=vertex_indices)
+        expected_vertices = model.forward_vertices(**params, vertex_indices=vertex_indices)
         expected_skeleton = model_cases.forward_skeleton(model, params, joint_indices=joint_indices)
         prepared_params = model_cases.with_prepared_identity(model, params, identity)
-        vertices = model.forward_vertices(prepared_params, vertex_indices=vertex_indices)
+        vertices = model.forward_vertices(**prepared_params, vertex_indices=vertex_indices)
         skeleton = model_cases.forward_skeleton(model, prepared_params, joint_indices=joint_indices)
 
         assert vertices.shape == (3, len(vertex_indices), 3)
@@ -305,21 +318,19 @@ def test_rigid_body_forward_accepts_arbitrary_leading_dimensions(
     for batch_shape in LEADING_DIM_BATCH_SHAPES:
         shaped_params = model.get_rest_pose(batch_dims=batch_shape)
 
-        shaped_links = model.forward_links(shaped_params)
-        shaped_skeleton = model.forward_skeleton(shaped_params, joint_indices=joint_indices)
+        shaped_links = model.forward_links(**shaped_params)
+        shaped_skeleton = model.forward_skeleton(**shaped_params, joint_indices=joint_indices)
 
         assert shaped_links.shape == (*batch_shape, len(model.link_names), 4, 4)
         assert shaped_skeleton.shape == (*batch_shape, len(joint_indices), 4, 4)
 
         entry_indices = np.ndindex(batch_shape) if batch_shape else [()]
         for entry_index in entry_indices:
-
-            def select(value):
-                return value[entry_index][None] if batch_shape else value[None]
-
-            entry_params = model_cases.map_parameters(shaped_params, select)
-            entry_links = model.forward_links(entry_params)
-            entry_skeleton = model.forward_skeleton(entry_params, joint_indices=joint_indices)[0]
+            entry_params = {
+                key: value[entry_index][None] if batch_shape else value[None] for key, value in shaped_params.items()
+            }
+            entry_links = model.forward_links(**entry_params)
+            entry_skeleton = model.forward_skeleton(**entry_params, joint_indices=joint_indices)[0]
 
             np.testing.assert_allclose(
                 np.asarray(shaped_links[entry_index]),

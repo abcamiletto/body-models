@@ -67,21 +67,19 @@ class _ArticulatedModel(ABC):
         return self.joint_names.index(native_name)
 
     @abstractmethod
-    def forward_skeleton(
-        self,
-        parameters: Any,
-        *,
-        joint_indices: Any | None = None,
-    ) -> Float[Array, "*batch J 4 4"]:
+    def forward_skeleton(self, *args, **kwargs) -> Float[Array, "*batch J 4 4"]:
         """
         Compute skeleton joint transforms.
+
+        Signature varies by model. Outputs use the model's native coordinate system.
+        in meters.
 
         Returns:
             World-space 4x4 transformation matrices [B, J, 4, 4] in meters.
         """
 
     @abstractmethod
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = ()) -> Any:
+    def get_rest_pose(self, batch_dims: tuple[int, ...] = ()) -> dict[str, Float[Array, "..."]]:
         """
         Get default rest pose parameters for this model.
 
@@ -89,14 +87,15 @@ class _ArticulatedModel(ABC):
             batch_dims: Leading batch dimensions.
 
         Returns:
-            Model-specific immutable parameter value.
+            Dictionary with model-specific parameter keys. All arrays are
+            zero-initialized or set to identity poses.
         """
 
     def get_tpose(
         self,
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
-    ) -> Any:
+    ) -> dict[str, Float[Array, "..."]]:
         """Get parameters for the SMPL-style T-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
@@ -104,7 +103,7 @@ class _ArticulatedModel(ABC):
         self,
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
-    ) -> Any:
+    ) -> dict[str, Float[Array, "..."]]:
         """Get parameters for the MHR-style A-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
@@ -123,22 +122,16 @@ class SkinnedModel(_ArticulatedModel):
         """Mesh vertices in rest pose. Shape [V, 3]."""
 
     @abstractmethod
-    def forward_vertices(
-        self,
-        parameters: Any,
-        *,
-        vertex_indices: Any | None = None,
-    ) -> Float[Array, "*batch V 3"]:
+    def forward_vertices(self, *args, **kwargs) -> Float[Array, "*batch V 3"]:
         """
         Compute mesh vertices.
+
+        Signature varies by model. Outputs use the model's native coordinate system.
+        in meters.
 
         Returns:
             Mesh vertices [B, V, 3] in meters.
         """
-
-    @abstractmethod
-    def prepare(self, parameters: Any) -> Any:
-        """Replace raw identity controls with prepared model state."""
 
     def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
         """Pack prepared model state into renderer-ready skinning inputs."""
@@ -151,6 +144,15 @@ class SkinnedModel(_ArticulatedModel):
         if "pose_offsets" in pose:
             skinning["pose_offsets"] = pose["pose_offsets"]
         return skinning
+
+    @staticmethod
+    def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:
+        if identity is None:
+            return
+        conflicts = [name for name, value in raw_parameters.items() if value is not None]
+        if conflicts:
+            names = ", ".join(conflicts)
+            raise ValueError(f"identity cannot be combined with raw identity parameters: {names}")
 
 
 class RigidBodyModel(_ArticulatedModel):
@@ -273,9 +275,9 @@ class RigidBodyModel(_ArticulatedModel):
         """Joint index associated with each link mesh."""
 
     @abstractmethod
-    def forward_links(self, parameters: Any) -> Float[Array, "*batch L 4 4"]:
+    def forward_links(self, *args, **kwargs) -> Float[Array, "*batch L 4 4"]:
         """Compute world-space 4x4 link transforms as the array/autograd primitive."""
 
     @abstractmethod
-    def forward_meshes(self, parameters: Any) -> Sequence[Trimesh]:
+    def forward_meshes(self, *args, **kwargs) -> Sequence[Trimesh]:
         """Build one renderer-facing mesh per batch element from link transforms."""

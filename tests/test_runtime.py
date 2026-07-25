@@ -88,4 +88,4 @@ def test_jax_model_pytree_round_trip(name, _numpy, _torch, jax_model, kwargs) ->
     assert type(restored) is type(model), name
     assert restored.num_vertices == model.num_vertices
     assert restored.joint_names == model.joint_names
-    assert type(restored.get_rest_pose()) is type(model.get_rest_pose())
+    assert restored.get_rest_pose().keys() == model.get_rest_pose().keys()

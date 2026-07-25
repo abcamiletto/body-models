@@ -11,7 +11,7 @@ from nanomanifold import SO3
 from trimesh import Trimesh
 
 from body_models import common
-from body_models.rigid import RigidBodyParameters, RigidModel
+from body_models.rigid import RigidModel
 from body_models.robots.smpl_humanoid import core
 from body_models.robots.smpl_humanoid.constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
 from body_models.robots.smpl_humanoid.io import load_model_data
@@ -48,8 +48,10 @@ class SmplHumanoidModel(RigidModel):
 
     def forward_skeleton(
         self,
-        parameters: RigidBodyParameters,
+        body_pose: Float[Array, "*batch Q"],
+        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed joint transforms."""
@@ -59,42 +61,48 @@ class SmplHumanoidModel(RigidModel):
             rest_local_rotations=weights.rest_local_rotations,
             actuated_joint_indices=weights.actuated_joint_indices,
             parents=weights.parents,
-            body_pose=parameters.body_pose,
-            global_translation=parameters.global_translation,
-            global_rotation=parameters.global_rotation,
+            body_pose=body_pose,
+            global_translation=global_translation,
+            global_rotation=global_rotation,
             joint_indices=joint_indices,
             xp=self._runtime.xp,
         )
 
     def forward_links(
         self,
-        parameters: RigidBodyParameters,
+        body_pose: Float[Array, "*batch Q"],
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        *,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
-        skeleton = self.forward_skeleton(parameters)
+        skeleton = self.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
-        parameters: RigidBodyParameters,
+        body_pose: Float[Array, "*batch Q"],
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        *,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
-        links = self.forward_links(parameters)
+        links = self.forward_links(body_pose, global_translation, global_rotation=global_rotation)
         return self._meshes_from_links(links)
 
     def get_rest_pose(
         self,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
-    ) -> RigidBodyParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero humanoid pose controls."""
-        return self._zero_body_parameters(batch_dims, dtype)
+        return self._zero_pose("body_pose", batch_dims, dtype)
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> RigidBodyParameters:
+    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> RigidBodyParameters:
+    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 
@@ -105,30 +113,30 @@ class SmplHumanoidModel(RigidModel):
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         pelvis_rotation: Float[Array, "*batch 3"] | None = None,
-    ) -> RigidBodyParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         """Convert canonical SMPL motion into humanoid controls."""
-        runtime = self._runtime
         xp = self._runtime.xp
         ordered = xp.stack([smpl_body_pose[..., index, :] for _, index in BODY_JOINTS], axis=-2)
-        batch_shape = smpl_body_pose.shape[:-2]
-        body_pose = SO3.conversions.from_axis_angle_to_euler(
-            ordered,
-            convention="XYZ",
-            xp=xp,
-        ).reshape(*batch_shape, self.num_actuated)
-        if global_translation is None:
-            global_translation = runtime.zeros((*batch_shape, 3), like=smpl_body_pose)
-        if global_rotation is None:
-            global_rotation = runtime.zeros((*batch_shape, 3), like=smpl_body_pose)
-        elif pelvis_rotation is not None:
-            root_rotation = global_rotation
-            root_rotation = SO3.multiply(
-                SO3.convert(global_rotation, src="axis_angle", dst="quat", xp=xp),
-                SO3.convert(pelvis_rotation, src="axis_angle", dst="quat", xp=xp),
+        motion = {
+            "body_pose": SO3.conversions.from_axis_angle_to_euler(
+                ordered,
+                convention="XYZ",
                 xp=xp,
-            )
-            global_rotation = SO3.convert(root_rotation, src="quat", dst="axis_angle", xp=xp)
-        return RigidBodyParameters(body_pose, global_rotation, global_translation)
+            ).reshape(*smpl_body_pose.shape[:-2], self.num_actuated)
+        }
+        if global_translation is not None:
+            motion["global_translation"] = global_translation
+        if global_rotation is not None:
+            root_rotation = global_rotation
+            if pelvis_rotation is not None:
+                root_rotation = SO3.multiply(
+                    SO3.convert(global_rotation, src="axis_angle", dst="quat", xp=xp),
+                    SO3.convert(pelvis_rotation, src="axis_angle", dst="quat", xp=xp),
+                    xp=xp,
+                )
+                root_rotation = SO3.convert(root_rotation, src="quat", dst="axis_angle", xp=xp)
+            motion["global_rotation"] = root_rotation
+        return motion
 
     def to_smpl_motion(self, qpos: Float[Array, "*batch Q"]) -> dict[str, Float[Array, "..."]]:
         """Convert MuJoCo qpos into canonical SMPL motion."""
@@ -166,15 +174,15 @@ class SmplHumanoidModel(RigidModel):
         name: str,
         batch_dims: tuple[int, ...],
         **kwargs: Any,
-    ) -> RigidBodyParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         runtime = self._runtime
         xp = runtime.xp
-        axis_angle = runtime.asarray(SMPL_BODY_PRESETS[name], like=params.body_pose)
+        axis_angle = runtime.asarray(SMPL_BODY_PRESETS[name], like=params["body_pose"])
         ordered = xp.stack([axis_angle[index] for _, index in BODY_JOINTS])
         ordered = SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=xp).reshape(-1)
-        body_pose = xp.broadcast_to(ordered, (*batch_dims, ordered.shape[0]))
-        return params._replace(body_pose=body_pose)
+        params["body_pose"] = xp.broadcast_to(ordered, (*batch_dims, ordered.shape[0]))
+        return params
 
 
 __all__ = ["SmplHumanoidConfig", "SmplHumanoidModel"]
