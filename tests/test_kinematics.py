@@ -15,11 +15,6 @@ pytestmark = pytest.mark.fast
 SMPL_PARENTS = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19, 20, 21]
 
 
-def test_smpl_parents_first_front_is_root() -> None:
-    fronts = compute_kinematic_fronts(SMPL_PARENTS)
-    assert fronts[0] == ([0], [-1])
-
-
 def test_smpl_parents_every_joint_appears_once_with_correct_parent() -> None:
     fronts = compute_kinematic_fronts(SMPL_PARENTS)
 

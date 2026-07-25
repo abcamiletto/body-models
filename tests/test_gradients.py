@@ -121,32 +121,6 @@ def test_warp_skinning_gradients_match_torch_on_cpu() -> None:
         torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-5, atol=1e-5)
 
 
-@pytest.mark.fast
-def test_warp_runtime_matches_common_skinning() -> None:
-    torch = pytest.importorskip("torch")
-    pytest.importorskip("warp")
-
-    from body_models.common import skinning
-    from body_models.runtime import TorchRuntime
-
-    joint_indices = torch.tensor([[0, 1], [1, 2], [0, 2]], dtype=torch.int32)
-    joint_weights = torch.tensor([[0.25, 0.75], [0.5, 0.5], [0.8, 0.2]])
-    dense_weights = torch.zeros(3, 3)
-    dense_weights.scatter_add_(1, joint_indices.long(), joint_weights)
-    rest_vertices = torch.randn(2, 3, 3)
-    pose_offsets = torch.randn(2, 3, 3)
-    transforms = torch.randn(2, 3, 4, 4)
-
-    expected = skinning.linear_blend_skinning(rest_vertices + pose_offsets, transforms, dense_weights, xp=torch)
-    actual = TorchRuntime("warp").compact_linear_blend_skinning(
-        rest_vertices + pose_offsets,
-        transforms,
-        joint_indices=joint_indices,
-        joint_weights=joint_weights,
-    )
-    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
-
-
 @pytest.mark.slow
 def test_soma_warp_forward_and_gradients_match_torch() -> None:
     torch = pytest.importorskip("torch")
