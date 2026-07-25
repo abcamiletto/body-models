@@ -35,7 +35,7 @@ BACKENDS = ("numpy", "torch")
 class BenchmarkSpec:
     model_name: str
     kwargs: dict[str, Any] = field(default_factory=dict)
-    prepare_identity: bool = False
+    bind_identity: bool = False
 
     @property
     def vertices_method(self) -> str:
@@ -53,12 +53,12 @@ class BenchmarkResult:
 
 
 BENCHMARKS = {name: BenchmarkSpec(name) for name in catalog.MODEL_SPECS}
-BENCHMARKS["soma"] = BenchmarkSpec("soma", prepare_identity=True)
+BENCHMARKS["soma"] = BenchmarkSpec("soma", bind_identity=True)
 BENCHMARKS |= {
     f"soma-{model_type}": BenchmarkSpec(
         "soma",
         {"model_type": model_type},
-        prepare_identity=True,
+        bind_identity=True,
     )
     for model_type in ("anny", "mhr", "smpl", "smplx")
 }
@@ -231,13 +231,12 @@ def benchmark_model(
         configurations.append(("forward_vertices", spec.vertices_method, vertices_batch_sizes, vertices_runs))
 
     for result_name, method_name, batch_sizes, runs in configurations:
-        method = getattr(model, method_name)
-        if backend == "torch":
-            method = torch.compile(method, mode=TORCH_COMPILE_MODE)
-
         for batch_size in batch_sizes:
-            params = benchmark_params(model, batch_size, spec.prepare_identity)
+            target, params = benchmark_inputs(model, batch_size, spec.bind_identity)
             params = move_tensors(params, device)
+            method = getattr(target, method_name)
+            if backend == "torch":
+                method = torch.compile(method, mode=TORCH_COMPILE_MODE)
             mean_ms = benchmark_method(method, params, backend, device, runs, warmup)
             results[(result_name, batch_size)] = mean_ms
             print(f"  {method_name} (B={batch_size:>4}): {mean_ms:8.2f} ms")
@@ -245,15 +244,14 @@ def benchmark_model(
     return BenchmarkResult(result_label, results)
 
 
-def benchmark_params(model: Any, batch_size: int, prepare_identity: bool) -> dict[str, Any]:
+def benchmark_inputs(model: Any, batch_size: int, bind_identity: bool) -> tuple[Any, dict[str, Any]]:
     params = model.get_rest_pose(batch_dims=(batch_size,))
-    if not prepare_identity:
-        return params
+    if not bind_identity:
+        return model, params
 
     shape = params.pop("shape")
     scale_params = params.pop("scale_params", None)
-    params["identity"] = model.prepare_identity(shape, scale_params=scale_params)
-    return params
+    return model.bind(shape, scale_params=scale_params), params
 
 
 def benchmark_method(

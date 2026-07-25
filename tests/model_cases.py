@@ -105,17 +105,16 @@ def forward_skeleton(model, params, **kwargs):
 
 
 def prepare_states(model, params):
-    """Prepare model-specific identity and pose state from public parameters."""
-    identity_parameters = signature(model.prepare_identity).parameters
-    identity = model.prepare_identity(**{key: params[key] for key in identity_parameters if key in params})
-    pose_parameters = signature(model.prepare_pose).parameters
-    arguments = dict(params)
-    arguments["identity"] = identity
-    pose = model.prepare_pose(**{key: arguments[key] for key in pose_parameters if key in arguments})
-    return identity, pose
+    """Bind model-specific identity controls and prepare its pose state."""
+    bound, pose_params = bind_model(model, params)
+    pose_parameters = signature(bound.prepare_pose).parameters
+    pose = bound.prepare_pose(**{key: pose_params[key] for key in pose_parameters if key in pose_params})
+    return bound, pose
 
 
-def with_prepared_identity(model, params, identity):
-    """Replace raw identity controls with prepared state in forward arguments."""
-    raw_identity = set(signature(model.prepare_identity).parameters)
-    return {key: value for key, value in params.items() if key not in raw_identity} | {"identity": identity}
+def bind_model(model, params):
+    """Bind the identity controls accepted by a model and return pose controls."""
+    identity_parameters = signature(model.bind).parameters
+    identity = {key: params[key] for key in identity_parameters if key in params}
+    pose = {key: value for key, value in params.items() if key not in identity}
+    return model.bind(**identity), pose

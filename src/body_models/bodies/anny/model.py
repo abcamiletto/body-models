@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models.base import SkinnedModel, SkinningPayload
+from body_models.base import BoundModel, SkinnedModel, SkinningPayload
 from body_models.bodies.anny import core, pose as pose_utils
 from body_models.bodies.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
 from body_models.bodies.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
@@ -120,8 +120,8 @@ class ANNYModel(SkinnedModel):
     def parents(self) -> list[int]:
         return self.weights.parents
 
-    def prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
-        payload = super().prepare_skinning(identity=identity, pose=pose)
+    def _prepare_skinning(self, *, identity: Mapping[str, Any], pose: Mapping[str, Any]) -> SkinningPayload:
+        payload = super()._prepare_skinning(identity=identity, pose=pose)
         payload["faces"] = _triangulate_faces(self.faces, self._runtime.xp)
         return payload
 
@@ -134,33 +134,19 @@ class ANNYModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch 6"] | None = None,
-        identity: core.AnnyIdentity | None = None,
+        shape: Float[Array, "*batch 6"],
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed ANNY vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
-
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
-        vertices = self._runtime.compact_linear_blend_skinning(
-            identity["rest_vertices"],
-            pose["skinning_transforms"],
-            joint_indices=self.weights.lbs_joint_indices,
-            joint_weights=self.weights.lbs_joint_weights,
-            vertex_indices=vertex_indices,
-        )
-        return skinning.apply_global_transform(
-            vertices,
+        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        return self.bind(shape).forward_vertices(
+            body_pose,
+            head_pose,
+            hand_pose,
             global_rotation,
             global_translation,
-            self.rotation_type,
-            xp=xp,
+            vertex_indices=vertex_indices,
         )
 
     def forward_skeleton(
@@ -172,22 +158,13 @@ class ANNYModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch 6"] | None = None,
-        identity: core.AnnyIdentity | None = None,
+        shape: Float[Array, "*batch 6"],
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed ANNY joint transforms."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape)
-        else:
-            skeleton_identity = identity
-
-        batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
+        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        identity = self._prepare_skeleton_identity(shape)
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
@@ -199,7 +176,7 @@ class ANNYModel(SkinnedModel):
             self.weights.kinematic_fronts,
             packed_pose,
             self.rotation_type,
-            rest_skeleton_transforms=skeleton_identity["rest_skeleton_transforms"],
+            rest_skeleton_transforms=identity["rest_skeleton_transforms"],
             xp=xp,
         )
         return skinning.transform_skeleton(
@@ -211,7 +188,11 @@ class ANNYModel(SkinnedModel):
             xp=xp,
         )
 
-    def prepare_identity(
+    def bind(self, shape: Float[Array, "*batch 6"]) -> BoundANNY:
+        """Prepare a reusable ANNY identity."""
+        return BoundANNY(self, self._prepare_identity(shape))
+
+    def _prepare_identity(
         self,
         shape: Float[Array, "*batch 6"],
     ) -> core.AnnyIdentity:
@@ -245,7 +226,7 @@ class ANNYModel(SkinnedModel):
         """Pack named phenotype controls into the ANNY shape vector."""
         return self._runtime.xp.stack([gender, age, muscle, weight, height, proportions], axis=-1)
 
-    def prepare_pose(
+    def _prepare_pose(
         self,
         body_pose: Float[Array, "*batch 64 N"] | Float[Array, "*batch 64 3 3"],
         head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
@@ -366,4 +347,85 @@ def _triangulate_faces(faces: Int[Array, "F _"], xp: Any) -> Int[Array, "Ftri 3"
     return xp.concat([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
 
 
-__all__ = ["ANNYModel", "AnnyConfig"]
+class BoundANNY(BoundModel[ANNYModel, core.AnnyIdentity]):
+    """ANNY with phenotype-dependent state prepared."""
+
+    def forward_vertices(
+        self,
+        body_pose: Float[Array, "*batch 64 N"] | Float[Array, "*batch 64 3 3"],
+        head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
+        hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
+    ) -> Float[Array, "*batch V 3"]:
+        """Compute posed ANNY vertices."""
+        model = self.model
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose)
+        vertices = model._runtime.compact_linear_blend_skinning(
+            self._identity["rest_vertices"],
+            pose["skinning_transforms"],
+            joint_indices=model.weights.lbs_joint_indices,
+            joint_weights=model.weights.lbs_joint_weights,
+            vertex_indices=vertex_indices,
+        )
+        return skinning.apply_global_transform(
+            vertices,
+            global_rotation,
+            global_translation,
+            model.rotation_type,
+            xp=model._runtime.xp,
+        )
+
+    def forward_skeleton(
+        self,
+        body_pose: Float[Array, "*batch 64 N"] | Float[Array, "*batch 64 3 3"],
+        head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
+        hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
+    ) -> Float[Array, "*batch J 4 4"]:
+        """Compute posed ANNY joint transforms."""
+        model = self.model
+        batch_shape = tuple(body_pose.shape[: -(model.num_rot_dims + 1)])
+        root_rotation = SO3.identity_as(
+            body_pose,
+            batch_dims=batch_shape,
+            rotation_type=model.rotation_type,
+            xp=model._runtime.xp,
+        )
+        packed_pose = pose_utils.pack_pose(
+            model._runtime.xp,
+            root_rotation,
+            body_pose,
+            head_pose,
+            hand_pose,
+        )
+        skeleton = core.prepare_skeleton(
+            model.weights.kinematic_fronts,
+            packed_pose,
+            model.rotation_type,
+            rest_skeleton_transforms=self._identity["rest_skeleton_transforms"],
+            xp=model._runtime.xp,
+        )
+        return skinning.transform_skeleton(
+            skeleton,
+            global_rotation,
+            global_translation,
+            model.rotation_type,
+            joint_indices,
+            xp=model._runtime.xp,
+        )
+
+    def prepare_pose(
+        self,
+        body_pose: Float[Array, "*batch 64 N"] | Float[Array, "*batch 64 3 3"],
+        head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
+        hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
+    ) -> core.AnnyPreparedPose:
+        """Precompute pose-dependent state."""
+        return self.model._prepare_pose(body_pose, head_pose, hand_pose, identity=self._identity)
+
+
+__all__ = ["ANNYModel", "AnnyConfig", "BoundANNY"]

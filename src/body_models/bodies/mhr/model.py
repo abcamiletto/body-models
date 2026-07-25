@@ -8,7 +8,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 
 from body_models import common
-from body_models.base import SkinnedModel
+from body_models.base import BoundModel, SkinnedModel
 from body_models.bodies.mhr import core
 from body_models.bodies.mhr.constants import (
     MHR_BODY_POSE_DIM,
@@ -103,34 +103,21 @@ class MHRModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch 45"] | None = None,
-        expression: Float[Array, "*batch 72"] | None = None,
-        identity: core.MhrIdentity | None = None,
+        shape: Float[Array, "*batch 45"],
+        expression: Float[Array, "*batch 72"],
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape, expression=expression)
-        if identity is None:
-            if shape is None or expression is None:
-                raise ValueError("shape and expression are required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-            identity = self.prepare_identity(shape, expression)
-
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose)
-        vertices = self._runtime.compact_linear_blend_skinning(
-            identity["rest_vertices"] + pose["pose_offsets"],
-            pose["skinning_transforms"],
-            joint_indices=self.weights.skin_indices,
-            joint_weights=self.weights.skin_weights,
-            vertex_indices=vertex_indices,
-        )
-        return skinning.apply_global_transform(
-            vertices,
+        batch_shape = body_pose.shape[:-1]
+        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+        return self.bind(shape, expression).forward_vertices(
+            body_pose,
+            head_pose,
+            hand_pose,
             global_rotation,
             global_translation,
-            xp=xp,
+            vertex_indices=vertex_indices,
         )
 
     def forward_skeleton(
@@ -164,7 +151,15 @@ class MHRModel(SkinnedModel):
             xp=xp,
         )
 
-    def prepare_identity(
+    def bind(
+        self,
+        shape: Float[Array, "*batch 45"],
+        expression: Float[Array, "*batch 72"],
+    ) -> BoundMHR:
+        """Prepare a reusable MHR identity."""
+        return BoundMHR(self, self._prepare_identity(shape, expression))
+
+    def _prepare_identity(
         self,
         shape: Float[Array, "*batch 45"],
         expression: Float[Array, "*batch 72"],
@@ -178,7 +173,7 @@ class MHRModel(SkinnedModel):
             expression=expression,
         )
 
-    def prepare_pose(
+    def _prepare_pose(
         self,
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
@@ -259,4 +254,62 @@ class MHRModel(SkinnedModel):
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
 
-__all__ = ["MHRModel"]
+class BoundMHR(BoundModel[MHRModel, core.MhrIdentity]):
+    """MHR with shape- and expression-dependent state prepared."""
+
+    def forward_vertices(
+        self,
+        body_pose: Float[Array, "*batch 94"],
+        head_pose: Float[Array, "*batch 6"],
+        hand_pose: Float[Array, "*batch 104"],
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
+    ) -> Float[Array, "*batch V 3"]:
+        """Compute posed mesh vertices."""
+        model = self.model
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose)
+        vertices = model._runtime.compact_linear_blend_skinning(
+            self._identity["rest_vertices"] + pose["pose_offsets"],
+            pose["skinning_transforms"],
+            joint_indices=model.weights.skin_indices,
+            joint_weights=model.weights.skin_weights,
+            vertex_indices=vertex_indices,
+        )
+        return skinning.apply_global_transform(
+            vertices,
+            global_rotation,
+            global_translation,
+            xp=model._runtime.xp,
+        )
+
+    def forward_skeleton(
+        self,
+        body_pose: Float[Array, "*batch 94"],
+        head_pose: Float[Array, "*batch 6"],
+        hand_pose: Float[Array, "*batch 104"],
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
+    ) -> Float[Array, "*batch J 4 4"]:
+        """Compute posed joint transforms."""
+        return self.model.forward_skeleton(
+            body_pose,
+            head_pose,
+            hand_pose,
+            global_rotation,
+            global_translation,
+            joint_indices,
+        )
+
+    def prepare_pose(
+        self,
+        body_pose: Float[Array, "*batch 94"],
+        head_pose: Float[Array, "*batch 6"],
+        hand_pose: Float[Array, "*batch 104"],
+    ) -> core.MhrPreparedPose:
+        """Precompute pose-dependent state."""
+        return self.model._prepare_pose(body_pose, head_pose, hand_pose)
+
+
+__all__ = ["BoundMHR", "MHRModel"]

@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from jaxtyping import Float, Int
 
-from body_models.base import SkinnedModel
+from body_models.base import BoundModel, SkinnedModel
 from body_models.common import skinning
 from body_models.runtime import ArrayRuntime
 from body_models.state import StateMaterializer
@@ -124,32 +124,18 @@ class SKELModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        shape: Float[Array, "*batch 10"],
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed SKEL vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
-
-        pose = self.prepare_pose(body_pose, head_pose, identity=identity)
-        vertices = self._runtime.compact_linear_blend_skinning(
-            identity["rest_vertices"] + pose["pose_offsets"],
-            pose["skinning_transforms"],
-            joint_indices=self.weights.skin_joint_indices,
-            joint_weights=self.weights.skin_joint_weights,
-            vertex_indices=vertex_indices,
-        )
-        return skinning.apply_global_transform(
-            vertices,
+        batch_shape = body_pose.shape[:-1]
+        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        return self.bind(shape).forward_vertices(
+            body_pose,
+            head_pose,
             global_rotation,
             global_translation,
-            xp=xp,
+            vertex_indices=vertex_indices,
         )
 
     def forward_skeleton(
@@ -160,21 +146,13 @@ class SKELModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        shape: Float[Array, "*batch 10"],
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed SKEL joint transforms."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape)
-        else:
-            skeleton_identity = identity
-
+        batch_shape = body_pose.shape[:-1]
+        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        identity = self._prepare_skeleton_identity(shape)
         packed_pose = pack_pose(xp, body_pose, head_pose)
         skeleton = core.prepare_skeleton(
             all_axes=self.weights.all_axes,
@@ -189,8 +167,8 @@ class SKELModel(SkinnedModel):
             spine_axes=self.weights.spine_axes,
             parents=self.weights.parents,
             pose=packed_pose,
-            local_joint_offsets=skeleton_identity["local_joint_offsets"],
-            rest_joints=skeleton_identity["rest_joints"],
+            local_joint_offsets=identity["local_joint_offsets"],
+            rest_joints=identity["rest_joints"],
             xp=xp,
         )
         return skinning.transform_skeleton(
@@ -208,8 +186,7 @@ class SKELModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        shape: Float[Array, "*batch 10"],
     ) -> Float[Array, "*batch 24 4 4"]:
         """Alias the SKEL joint transforms as anatomical link transforms."""
         return self.forward_skeleton(
@@ -218,10 +195,13 @@ class SKELModel(SkinnedModel):
             global_rotation=global_rotation,
             global_translation=global_translation,
             shape=shape,
-            identity=identity,
         )
 
-    def prepare_identity(
+    def bind(self, shape: Float[Array, "*batch 10"]) -> BoundSKEL:
+        """Prepare a reusable SKEL identity."""
+        return BoundSKEL(self, self._prepare_identity(shape))
+
+    def _prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
     ) -> core.SkelIdentity:
@@ -236,7 +216,7 @@ class SKELModel(SkinnedModel):
             xp=self._runtime.xp,
         )
 
-    def prepare_pose(
+    def _prepare_pose(
         self,
         body_pose: Float[Array, "*batch 43"],
         head_pose: Float[Array, "*batch 3"],
@@ -313,4 +293,93 @@ class SKELModel(SkinnedModel):
         return params
 
 
-__all__ = ["SKELModel", "SkelConfig"]
+class BoundSKEL(BoundModel[SKELModel, core.SkelIdentity]):
+    """SKEL with shape-dependent state prepared."""
+
+    def forward_vertices(
+        self,
+        body_pose: Float[Array, "*batch 43"],
+        head_pose: Float[Array, "*batch 3"],
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
+    ) -> Float[Array, "*batch V 3"]:
+        """Compute posed SKEL vertices."""
+        model = self.model
+        pose = self.prepare_pose(body_pose, head_pose)
+        vertices = model._runtime.compact_linear_blend_skinning(
+            self._identity["rest_vertices"] + pose["pose_offsets"],
+            pose["skinning_transforms"],
+            joint_indices=model.weights.skin_joint_indices,
+            joint_weights=model.weights.skin_joint_weights,
+            vertex_indices=vertex_indices,
+        )
+        return skinning.apply_global_transform(
+            vertices,
+            global_rotation,
+            global_translation,
+            xp=model._runtime.xp,
+        )
+
+    def forward_skeleton(
+        self,
+        body_pose: Float[Array, "*batch 43"],
+        head_pose: Float[Array, "*batch 3"],
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
+    ) -> Float[Array, "*batch 24 4 4"]:
+        """Compute posed SKEL joint transforms."""
+        model = self.model
+        packed_pose = pack_pose(model._runtime.xp, body_pose, head_pose)
+        skeleton = core.prepare_skeleton(
+            all_axes=model.weights.all_axes,
+            rotation_indices=model.weights.rotation_indices,
+            apose_R=model.weights.apose_R,
+            apose_t=model.weights.apose_t,
+            per_joint_rot=model.weights.per_joint_rot,
+            child=model.weights.child,
+            fixed_orientation_joints=model.weights.fixed_orientation_joints,
+            scapula_r_axes=model.weights.scapula_r_axes,
+            scapula_l_axes=model.weights.scapula_l_axes,
+            spine_axes=model.weights.spine_axes,
+            parents=model.weights.parents,
+            pose=packed_pose,
+            local_joint_offsets=self._identity["local_joint_offsets"],
+            rest_joints=self._identity["rest_joints"],
+            xp=model._runtime.xp,
+        )
+        return skinning.transform_skeleton(
+            skeleton,
+            global_rotation,
+            global_translation,
+            joint_indices=joint_indices,
+            xp=model._runtime.xp,
+        )
+
+    def forward_links(
+        self,
+        body_pose: Float[Array, "*batch 43"],
+        head_pose: Float[Array, "*batch 3"],
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        *,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+    ) -> Float[Array, "*batch 24 4 4"]:
+        """Alias the SKEL joint transforms as anatomical link transforms."""
+        return self.forward_skeleton(
+            body_pose,
+            head_pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
+        )
+
+    def prepare_pose(
+        self,
+        body_pose: Float[Array, "*batch 43"],
+        head_pose: Float[Array, "*batch 3"],
+    ) -> core.SkelPreparedPose:
+        """Precompute pose-dependent state."""
+        return self.model._prepare_pose(body_pose, head_pose, identity=self._identity)
+
+
+__all__ = ["BoundSKEL", "SKELModel", "SkelConfig"]
