@@ -26,7 +26,7 @@ from body_models.anny.torch import ANNY
 
 model = ANNY(rotation_type="sixd")
 parameters = convert_pose(cached_parameters, src=cached_rotation_type, dst=model.rotation_type)
-vertices = model.forward_vertices(parameters)
+vertices = model.forward_vertices(**parameters)
 ```
 
 ::: body_models.anny.numpy.ANNY

@@ -267,17 +267,8 @@ def init_states(server: viser.ViserServer, models: dict[str, SkinnedModel]) -> d
     return states
 
 
-def mutable_params(params: Any) -> dict[str, np.ndarray]:
-    values = {name: np.asarray(getattr(params, name)).copy() for name in params._fields if name != "identity"}
-    if hasattr(params, "identity"):
-        values.update(
-            {
-                name: np.asarray(getattr(params.identity, name)).copy()
-                for name in params.identity._fields
-                if getattr(params.identity, name) is not None
-            }
-        )
-    return values
+def mutable_params(params: dict[str, Any]) -> dict[str, np.ndarray]:
+    return {key: np.asarray(value).copy() for key, value in params.items()}
 
 
 def runtime_vertices(
@@ -547,8 +538,8 @@ def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -
         raise ValueError(f"Unknown pose: {pose_name}")
     updated_keys = set()
     for key in ("body_pose", "head_pose", "hand_pose", "global_rotation"):
-        if hasattr(preset, key) and key in state.params:
-            state.params[key] = np.asarray(getattr(preset, key)).copy()
+        if key in preset and key in state.params:
+            state.params[key] = np.asarray(preset[key]).copy()
             updated_keys.add(key)
     if state.display_global_rotation is not None:
         state.params["global_rotation"] = state.display_global_rotation.copy()
@@ -562,7 +553,7 @@ def apply_pose(state: ModelState, sliders: list[SliderHandle], pose_name: str) -
 def apply_hands(state: ModelState, sliders: list[SliderHandle], hands: Literal["default", "flat", "rest"]) -> None:
     preset = state.model.get_rest_pose(hands=hands)
     state.hands = hands
-    state.params["hand_pose"] = np.asarray(preset.hand_pose).copy()
+    state.params["hand_pose"] = np.asarray(preset["hand_pose"]).copy()
     for slider in sliders:
         if slider.key == "hand_pose":
             slider.handle.value = float(state.params[slider.key][slider.indices])

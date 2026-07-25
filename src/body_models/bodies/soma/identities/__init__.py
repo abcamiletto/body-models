@@ -74,18 +74,13 @@ def mhr_identity_shape(
     zero_pose = common.set(zero_pose, (..., slice(-num_scale_params, None)), scale_params, xp=xp)
     body_pose, head_pose, hand_pose = mhr_pose.unpack_pose(xp, zero_pose)
     expression = common.zeros_as(identity, shape=(*batch_shape, model.EXPR_DIM), xp=xp)
-    parameters = model.get_rest_pose(batch_dims=batch_shape)
-    identity_parameters = parameters.identity._replace(
+    return model.forward_vertices(
         shape=identity,
-        expression=expression,
-    )
-    parameters = parameters._replace(
-        identity=identity_parameters,
         body_pose=body_pose,
         head_pose=head_pose,
         hand_pose=hand_pose,
+        expression=expression,
     )
-    return model.forward_vertices(parameters)
 
 
 def anny_identity_shape(

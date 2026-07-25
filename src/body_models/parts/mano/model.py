@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -28,18 +28,6 @@ class ManoConfig:
 
     side: Literal["right", "left"]
     rotation_type: RotationType
-
-
-class ManoIdentityParameters(NamedTuple):
-    shape: Float[Array, "*batch 10"]
-
-
-class ManoParameters(NamedTuple):
-    identity: ManoIdentityParameters | core.ManoIdentity
-    hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"]
-    wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
-    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
-    global_translation: Float[Array, "*batch 3"]
 
 
 class MANOModel(SkinnedModel):
@@ -131,14 +119,26 @@ class MANOModel(SkinnedModel):
 
     def forward_vertices(
         self,
-        parameters: ManoParameters,
-        *,
+        hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
+        wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
+        *,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: core.ManoIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed hand vertices."""
         xp = self._runtime.xp
-        identity = self._identity(parameters)
-        pose = self.prepare_pose(parameters._replace(identity=identity))
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = hand_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+
+        pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity)
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
@@ -148,34 +148,48 @@ class MANOModel(SkinnedModel):
         )
         return skinning.apply_global_transform(
             vertices,
-            parameters.global_rotation,
-            parameters.global_translation,
+            global_rotation,
+            global_translation,
             self.rotation_type,
             xp=xp,
         )
 
     def forward_skeleton(
         self,
-        parameters: ManoParameters,
-        *,
+        hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
+        wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
+        *,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: core.ManoIdentity | None = None,
     ) -> Float[Array, "*batch 16 4 4"]:
         """Compute posed hand joint transforms."""
         xp = self._runtime.xp
-        identity = self._identity(parameters)
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = hand_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            skeleton_identity = self._prepare_skeleton_identity(shape)
+        else:
+            skeleton_identity = identity
+
         skeleton = core.prepare_skeleton(
             self.weights.kinematic_fronts,
             self.weights.hand_mean,
-            parameters.hand_pose,
-            parameters.wrist_rotation,
+            hand_pose,
+            wrist_rotation,
             self.rotation_type,
-            local_joint_offsets=identity["local_joint_offsets"],
+            local_joint_offsets=skeleton_identity["local_joint_offsets"],
             xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
-            parameters.global_rotation,
-            parameters.global_translation,
+            global_rotation,
+            global_translation,
             self.rotation_type,
             joint_indices,
             xp=xp,
@@ -183,7 +197,7 @@ class MANOModel(SkinnedModel):
 
     def prepare_identity(
         self,
-        parameters: ManoIdentityParameters,
+        shape: Float[Array, "*batch 10"],
     ) -> core.ManoIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
@@ -193,25 +207,39 @@ class MANOModel(SkinnedModel):
             j_template=self.weights.j_template,
             j_shapedirs=self.weights.j_shapedirs,
             parents=self.weights.parents,
-            shape=parameters.shape,
+            shape=shape,
         )
 
     def prepare_pose(
         self,
-        parameters: ManoParameters,
+        hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
+        wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        *,
+        identity: core.ManoIdentity,
     ) -> core.ManoPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        identity = self._identity(parameters)
         return core.prepare_pose(
             xp=self._runtime.xp,
             posedirs=self.weights.posedirs,
             kinematic_fronts=self.weights.kinematic_fronts,
             hand_mean=self.weights.hand_mean,
-            hand_pose=parameters.hand_pose,
-            wrist_rotation=parameters.wrist_rotation,
+            hand_pose=hand_pose,
+            wrist_rotation=wrist_rotation,
             rotation_type=self.rotation_type,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
+        )
+
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch S"],
+    ) -> core.ManoSkeletonIdentity:
+        return core.prepare_skeleton_identity(
+            xp=self._runtime.xp,
+            j_template=self.weights.j_template,
+            j_shapedirs=self.weights.j_shapedirs,
+            parents=self.weights.parents,
+            shape=shape,
         )
 
     def get_rest_pose(
@@ -219,7 +247,7 @@ class MANOModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
-    ) -> ManoParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero shape controls and identity rotations."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -239,25 +267,23 @@ class MANOModel(SkinnedModel):
         )
         if hands != "default":
             hand_pose = self._hand_preset(batch_dims, hand_pose, hands)
-        return ManoParameters(
-            identity=ManoIdentityParameters(
-                runtime.zeros((*batch_dims, 10), like=self.weights.v_template, dtype=dtype)
-            ),
-            hand_pose=hand_pose,
-            wrist_rotation=SO3.identity_as(
+        return {
+            "shape": runtime.zeros((*batch_dims, 10), like=self.weights.v_template, dtype=dtype),
+            "hand_pose": hand_pose,
+            "wrist_rotation": SO3.identity_as(
                 wrist_ref,
                 batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            global_rotation=SO3.identity_as(
+            "global_rotation": SO3.identity_as(
                 wrist_ref,
                 batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            global_translation=runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-        )
+            "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
+        }
 
     def _hand_preset(
         self,
@@ -272,17 +298,5 @@ class MANOModel(SkinnedModel):
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=self._runtime.xp)
 
-    def prepare(self, parameters: ManoParameters) -> ManoParameters:
-        return parameters._replace(identity=self._identity(parameters))
 
-    def _identity(self, parameters: ManoParameters) -> core.ManoIdentity:
-        identity = parameters.identity
-        if not isinstance(identity, ManoIdentityParameters):
-            return identity
-        shape = identity.shape
-        batch_shape = parameters.hand_pose.shape[: -(self.num_rot_dims + 1)]
-        shape = self._runtime.xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        return self.prepare_identity(ManoIdentityParameters(shape))
-
-
-__all__ = ["MANOModel", "ManoConfig", "ManoIdentityParameters", "ManoParameters"]
+__all__ = ["MANOModel", "ManoConfig"]

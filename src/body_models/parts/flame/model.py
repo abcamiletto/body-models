@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -26,19 +26,6 @@ class FlameConfig:
     """Static FLAME behavior preserved outside array state."""
 
     rotation_type: RotationType
-
-
-class FlameIdentityParameters(NamedTuple):
-    shape: Float[Array, "*batch S"]
-    expression: Float[Array, "*batch E"]
-
-
-class FlameParameters(NamedTuple):
-    identity: FlameIdentityParameters | core.FlameIdentity
-    head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"]
-    head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
-    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
-    global_translation: Float[Array, "*batch 3"]
 
 
 class FLAMEModel(SkinnedModel):
@@ -122,14 +109,28 @@ class FLAMEModel(SkinnedModel):
 
     def forward_vertices(
         self,
-        parameters: FlameParameters,
-        *,
+        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
+        *,
+        shape: Float[Array, "*batch S"] | None = None,
+        expression: Float[Array, "*batch E"] | None = None,
+        identity: core.FlameIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed head vertices."""
         xp = self._runtime.xp
-        identity = self._identity(parameters)
-        pose = self.prepare_pose(parameters._replace(identity=identity))
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
+        if identity is None:
+            if shape is None or expression is None:
+                raise ValueError("shape and expression are required when identity is not provided")
+            batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            identity = self.prepare_identity(shape, expression)
+
+        pose = self.prepare_pose(head_pose, head_rotation, identity=identity)
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
@@ -139,33 +140,49 @@ class FLAMEModel(SkinnedModel):
         )
         return skinning.apply_global_transform(
             vertices,
-            parameters.global_rotation,
-            parameters.global_translation,
+            global_rotation,
+            global_translation,
             self.rotation_type,
             xp=xp,
         )
 
     def forward_skeleton(
         self,
-        parameters: FlameParameters,
-        *,
+        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
+        *,
+        shape: Float[Array, "*batch S"] | None = None,
+        expression: Float[Array, "*batch E"] | None = None,
+        identity: core.FlameIdentity | None = None,
     ) -> Float[Array, "*batch 5 4 4"]:
         """Compute posed head joint transforms."""
         xp = self._runtime.xp
-        identity = self._identity(parameters)
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
+        if identity is None:
+            if shape is None or expression is None:
+                raise ValueError("shape and expression are required when identity is not provided")
+            batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+            skeleton_identity = self._prepare_skeleton_identity(shape, expression)
+        else:
+            skeleton_identity = identity
+
         skeleton = core.prepare_skeleton(
             self.weights.kinematic_fronts,
-            parameters.head_pose,
-            parameters.head_rotation,
+            head_pose,
+            head_rotation,
             self.rotation_type,
-            local_joint_offsets=identity["local_joint_offsets"],
+            local_joint_offsets=skeleton_identity["local_joint_offsets"],
             xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
-            parameters.global_rotation,
-            parameters.global_translation,
+            global_rotation,
+            global_translation,
             self.rotation_type,
             joint_indices,
             xp=xp,
@@ -173,7 +190,8 @@ class FLAMEModel(SkinnedModel):
 
     def prepare_identity(
         self,
-        parameters: FlameIdentityParameters,
+        shape: Float[Array, "*batch S"],
+        expression: Float[Array, "*batch E"],
     ) -> core.FlameIdentity:
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
@@ -185,32 +203,49 @@ class FLAMEModel(SkinnedModel):
             j_shapedirs=self.weights.j_shapedirs,
             j_exprdirs=self.weights.j_exprdirs,
             parents=self.weights.parents,
-            shape=parameters.shape,
-            expression=parameters.expression,
+            shape=shape,
+            expression=expression,
         )
 
     def prepare_pose(
         self,
-        parameters: FlameParameters,
+        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        *,
+        identity: core.FlameIdentity,
     ) -> core.FlamePreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        identity = self._identity(parameters)
         return core.prepare_pose(
             xp=self._runtime.xp,
             posedirs=self.weights.posedirs,
             kinematic_fronts=self.weights.kinematic_fronts,
-            head_pose=parameters.head_pose,
-            head_rotation=parameters.head_rotation,
+            head_pose=head_pose,
+            head_rotation=head_rotation,
             rotation_type=self.rotation_type,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
+        )
+
+    def _prepare_skeleton_identity(
+        self,
+        shape: Float[Array, "*batch S"],
+        expression: Float[Array, "*batch E"],
+    ) -> core.FlameSkeletonIdentity:
+        return core.prepare_skeleton_identity(
+            xp=self._runtime.xp,
+            j_template=self.weights.j_template,
+            j_shapedirs=self.weights.j_shapedirs,
+            j_exprdirs=self.weights.j_exprdirs,
+            parents=self.weights.parents,
+            shape=shape,
+            expression=expression,
         )
 
     def get_rest_pose(
         self,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
-    ) -> FlameParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero identity controls and identity rotations."""
         runtime = self._runtime
         head_ref = runtime.zeros(
@@ -219,45 +254,29 @@ class FLAMEModel(SkinnedModel):
             dtype=dtype,
         )
         root_ref = runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype)
-        return FlameParameters(
-            identity=FlameIdentityParameters(
-                shape=runtime.zeros((*batch_dims, 300), like=self.weights.v_template, dtype=dtype),
-                expression=runtime.zeros((*batch_dims, 100), like=self.weights.v_template, dtype=dtype),
-            ),
-            head_pose=SO3.identity_as(
+        return {
+            "shape": runtime.zeros((*batch_dims, 300), like=self.weights.v_template, dtype=dtype),
+            "expression": runtime.zeros((*batch_dims, 100), like=self.weights.v_template, dtype=dtype),
+            "head_pose": SO3.identity_as(
                 head_ref,
                 batch_dims=(*batch_dims, self.NUM_HEAD_JOINTS),
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            head_rotation=SO3.identity_as(
+            "head_rotation": SO3.identity_as(
                 root_ref,
                 batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            global_rotation=SO3.identity_as(
+            "global_rotation": SO3.identity_as(
                 root_ref,
                 batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            global_translation=runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-        )
-
-    def prepare(self, parameters: FlameParameters) -> FlameParameters:
-        return parameters._replace(identity=self._identity(parameters))
-
-    def _identity(self, parameters: FlameParameters) -> core.FlameIdentity:
-        identity = parameters.identity
-        if not isinstance(identity, FlameIdentityParameters):
-            return identity
-        batch_shape = parameters.head_pose.shape[: -(self.num_rot_dims + 1)]
-        shape = identity.shape
-        expression = identity.expression
-        shape = self._runtime.xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        expression = self._runtime.xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-        return self.prepare_identity(FlameIdentityParameters(shape, expression))
+            "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
+        }
 
 
-__all__ = ["FLAMEModel", "FlameConfig", "FlameIdentityParameters", "FlameParameters"]
+__all__ = ["FLAMEModel", "FlameConfig"]

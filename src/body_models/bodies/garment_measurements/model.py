@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal
 
 import numpy as np
 from jaxtyping import Float, Int
@@ -33,20 +33,6 @@ class GarmentMeasurementsConfig:
     """Static GarmentMeasurements behavior preserved outside array state."""
 
     rotation_type: RotationType
-
-
-class GarmentMeasurementsIdentityParameters(NamedTuple):
-    shape: Float[Array, "*batch C"]
-
-
-class GarmentMeasurementsParameters(NamedTuple):
-    identity: GarmentMeasurementsIdentityParameters | core.GarmentMeasurementsIdentity
-    body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"]
-    head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"]
-    hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"]
-    pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
-    global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]
-    global_translation: Float[Array, "*batch 3"]
 
 
 class GarmentMeasurementsModel(SkinnedModel):
@@ -114,14 +100,28 @@ class GarmentMeasurementsModel(SkinnedModel):
 
     def forward_vertices(
         self,
-        parameters: GarmentMeasurementsParameters,
-        *,
+        body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
+        head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
+        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
+        *,
+        shape: Float[Array, "*batch C"] | None = None,
+        identity: core.GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed GarmentMeasurements vertices."""
         xp = self._runtime.xp
-        identity = self._identity(parameters)
-        pose = self.prepare_pose(parameters._replace(identity=identity))
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"],
             pose["skinning_transforms"],
@@ -131,27 +131,41 @@ class GarmentMeasurementsModel(SkinnedModel):
         )
         return skinning.apply_global_transform(
             vertices,
-            parameters.global_rotation,
-            parameters.global_translation,
+            global_rotation,
+            global_translation,
             self.rotation_type,
             xp=xp,
         )
 
     def forward_skeleton(
         self,
-        parameters: GarmentMeasurementsParameters,
-        *,
+        body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
+        head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
+        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
+        *,
+        shape: Float[Array, "*batch C"] | None = None,
+        identity: core.GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed GarmentMeasurements joint transforms."""
         xp = self._runtime.xp
-        identity = self._identity(parameters)
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+
         packed_pose = pack_pose(
             xp,
-            parameters.pelvis_rotation,
-            parameters.body_pose,
-            parameters.head_pose,
-            parameters.hand_pose,
+            pelvis_rotation,
+            body_pose,
+            head_pose,
+            hand_pose,
         )
         skeleton = core.prepare_skeleton(
             self.weights.bind_quats,
@@ -163,8 +177,8 @@ class GarmentMeasurementsModel(SkinnedModel):
         )
         return skinning.transform_skeleton(
             skeleton,
-            parameters.global_rotation,
-            parameters.global_translation,
+            global_rotation,
+            global_translation,
             self.rotation_type,
             joint_indices,
             xp=xp,
@@ -172,7 +186,7 @@ class GarmentMeasurementsModel(SkinnedModel):
 
     def prepare_identity(
         self,
-        parameters: GarmentMeasurementsIdentityParameters,
+        shape: Float[Array, "*batch C"],
     ) -> core.GarmentMeasurementsIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
@@ -183,21 +197,25 @@ class GarmentMeasurementsModel(SkinnedModel):
             bind_quats=self.weights.bind_quats,
             mvc_weights=self.weights.mvc_weights,
             kinematic_fronts=self.weights.kinematic_fronts,
-            shape=parameters.shape,
+            shape=shape,
         )
 
     def prepare_pose(
         self,
-        parameters: GarmentMeasurementsParameters,
+        body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
+        head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
+        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
+        *,
+        identity: core.GarmentMeasurementsIdentity,
     ) -> core.GarmentMeasurementsPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        identity = self._identity(parameters)
         packed_pose = pack_pose(
             self._runtime.xp,
-            parameters.pelvis_rotation,
-            parameters.body_pose,
-            parameters.head_pose,
-            parameters.hand_pose,
+            pelvis_rotation,
+            body_pose,
+            head_pose,
+            hand_pose,
         )
         return core.prepare_pose(
             self.weights.bind_quats,
@@ -214,7 +232,7 @@ class GarmentMeasurementsModel(SkinnedModel):
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
-    ) -> GarmentMeasurementsParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return zero shape controls and identity rotations."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
@@ -242,74 +260,55 @@ class GarmentMeasurementsModel(SkinnedModel):
                 dst=self.rotation_type,
                 xp=runtime.xp,
             )
-        return GarmentMeasurementsParameters(
-            identity=GarmentMeasurementsIdentityParameters(
-                runtime.zeros(
-                    (*batch_dims, self.num_shape_components),
-                    like=self.weights.mean_vertices,
-                    dtype=dtype,
-                )
+        return {
+            "shape": runtime.zeros(
+                (*batch_dims, self.num_shape_components),
+                like=self.weights.mean_vertices,
+                dtype=dtype,
             ),
-            body_pose=body_pose,
-            head_pose=head_pose,
-            hand_pose=hand_pose,
-            pelvis_rotation=pelvis_rotation,
-            global_rotation=SO3.identity_as(
+            "body_pose": body_pose,
+            "head_pose": head_pose,
+            "hand_pose": hand_pose,
+            "pelvis_rotation": pelvis_rotation,
+            "global_rotation": SO3.identity_as(
                 global_ref,
                 batch_dims=batch_dims,
                 rotation_type=self.rotation_type,
                 xp=runtime.xp,
             ),
-            global_translation=runtime.zeros(
+            "global_translation": runtime.zeros(
                 (*batch_dims, 3),
                 like=self.weights.mean_vertices,
                 dtype=dtype,
             ),
-        )
+        }
 
     def get_tpose(
         self,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> GarmentMeasurementsParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the GarmentMeasurements T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
-        axis_angle = self._runtime.asarray(GARMENT_BODY_PRESETS["t_pose"], like=params.body_pose)
+        axis_angle = self._runtime.asarray(GARMENT_BODY_PRESETS["t_pose"], like=params["body_pose"])
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-        body_pose = SO3.convert(
+        params["body_pose"] = SO3.convert(
             axis_angle,
             src="axis_angle",
             dst=self.rotation_type,
             xp=self._runtime.xp,
         )
-        return params._replace(body_pose=body_pose)
+        return params
 
     def get_apose(
         self,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
-    ) -> GarmentMeasurementsParameters:
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the GarmentMeasurements rest A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
-    def prepare(self, parameters: GarmentMeasurementsParameters) -> GarmentMeasurementsParameters:
-        return parameters._replace(identity=self._identity(parameters))
 
-    def _identity(self, parameters: GarmentMeasurementsParameters) -> core.GarmentMeasurementsIdentity:
-        identity = parameters.identity
-        if not isinstance(identity, GarmentMeasurementsIdentityParameters):
-            return identity
-        shape = identity.shape
-        batch_shape = parameters.body_pose.shape[: -(self.num_rot_dims + 1)]
-        shape = self._runtime.xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        return self.prepare_identity(GarmentMeasurementsIdentityParameters(shape))
-
-
-__all__ = [
-    "GarmentMeasurementsConfig",
-    "GarmentMeasurementsIdentityParameters",
-    "GarmentMeasurementsModel",
-    "GarmentMeasurementsParameters",
-]
+__all__ = ["GarmentMeasurementsConfig", "GarmentMeasurementsModel"]
