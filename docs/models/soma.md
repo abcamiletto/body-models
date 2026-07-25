@@ -20,8 +20,10 @@ The native implementation does not require installing `py-soma-x`.
 
 The constructor accepts `lod="mid"`, `lod="low"`, or `lod="xlo"`. The hosted assets are preprocessed to keep runtime loading NPZ-only: `mid` has 18,056 vertices, `low` has 4,505 vertices, and `xlo` has 612 vertices.
 
-`bind(..., repose=True)` matches the default SOMA-X bind-pose behavior. Pass `repose=False` to keep the fitted identity rest shape and fitted skeleton before reposing it to the bind pose.
-Use `bind(..., bind_pose="fit")` for the default identity-dependent bind pose. Pass `bind_pose="fit_detached"` to fit from the current shape without gradients through the fit, or `bind_pose="canonical"` to use the model bind pose directly.
+`prepare_identity(..., repose=True)` matches the default SOMA-X bind-pose behavior. Pass `repose=False` to keep the fitted identity rest shape and fitted skeleton before reposing it to the bind pose.
+Use `prepare_identity(..., bind_pose="fit")` for the default identity-dependent bind pose. Pass `bind_pose="fit_detached"` to fit from the current shape without gradients through the fit, or `bind_pose="canonical"` to use the model bind pose directly.
+
+`cache_identity=True` can be passed to the constructor for interactive viewers that repeatedly evaluate the same identity with different poses. The default is `False`, which keeps training and JAX-transformed calls graph-safe unless caching is explicitly requested.
 
 ## API
 

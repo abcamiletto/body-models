@@ -21,15 +21,9 @@ The public framework packages are real importable modules, while their model
 programs remain organized by semantic family under `bodies/`, `parts/`,
 `robots/`, and `skeletons/`. The wrappers are intentionally thin: a signature
 or behavior change is made once in `model.py`, so backends cannot drift apart.
-Bound identity and prepared pose state are always complete and mesh-ready.
-One-shot skeleton forwards use distinct model-local preparation paths so they
-do not pay for vertex preparation.
-
-Identity has two explicit public forms. One-shot forwards accept raw controls
-such as `shape` and `expression`. For repeated poses, `model.bind(...)` returns
-a model-specific `BoundModel` whose forward signatures contain only pose,
-selection, and global-transform arguments. Prepared identity arrays remain
-private to the bound model, so raw and prepared identity cannot be mixed.
+Public identity and pose preparation always returns complete mesh-ready state.
+Skeleton forwards use distinct model-local preparation paths, so an optimization
+cannot create a partial object that later fails in a mesh forward.
 
 ## Runtime boundary
 
@@ -65,8 +59,8 @@ not know model names, parameter layouts, or asset formats.
 ## Rigid articulated models
 
 Rigid robots and anatomical models do not implement the skinning protocol.
-They derive from `RigidBodyModel`, which shares articulated metadata and pose
-utilities. Their kinematics remain local:
+They derive from `RigidModel`, which shares metadata, link attachment, mesh
+projection, and zero-control construction. Their kinematics remain local:
 BrainCo retains coupled-joint polynomials, G1 retains hinge axes, SmplHumanoid
 retains its Euler convention, and MyoFullBody retains mixed hinge/slide joints.
 
@@ -83,9 +77,7 @@ would make the runtime understand SOMA and create a leaky abstraction.
 1. Add asset loading and validation in `io.py`.
 2. Put model-specific numerical functions in `core.py` and pass the array
    namespace explicitly.
-3. Define the public program in `model.py` using `SkinnedModel` or
-   `RigidBodyModel`. Identity-bearing models should expose a typed `bind(...)`
-   method and concrete bound forward signatures.
+3. Define the public program in `model.py` using `Runtime` or `RigidModel`.
 4. Add the three thin framework constructors that the model supports.
 5. Add its factory and asset metadata to `catalog.py`.
 6. Add cross-framework, arbitrary-batch, compile, gradient, and reference tests

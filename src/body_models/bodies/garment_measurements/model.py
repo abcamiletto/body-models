@@ -10,7 +10,7 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models.base import BoundModel, SkinnedModel
+from body_models.base import SkinnedModel
 from body_models.bodies.garment_measurements import core
 from body_models.bodies.garment_measurements.constants import (
     GARMENT_BODY_PRESETS,
@@ -108,20 +108,33 @@ class GarmentMeasurementsModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch C"],
+        shape: Float[Array, "*batch C"] | None = None,
+        identity: core.GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed GarmentMeasurements vertices."""
         xp = self._runtime.xp
-        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        return self.bind(shape).forward_vertices(
-            body_pose,
-            head_pose,
-            hand_pose,
-            pelvis_rotation,
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
+        vertices = self._runtime.compact_linear_blend_skinning(
+            identity["rest_vertices"],
+            pose["skinning_transforms"],
+            joint_indices=self.weights.skin_joint_indices,
+            joint_weights=self.weights.skin_joint_weights,
+            vertex_indices=vertex_indices,
+        )
+        return skinning.apply_global_transform(
+            vertices,
             global_rotation,
             global_translation,
-            vertex_indices=vertex_indices,
+            self.rotation_type,
+            xp=xp,
         )
 
     def forward_skeleton(
@@ -134,27 +147,44 @@ class GarmentMeasurementsModel(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
         *,
-        shape: Float[Array, "*batch C"],
+        shape: Float[Array, "*batch C"] | None = None,
+        identity: core.GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed GarmentMeasurements joint transforms."""
         xp = self._runtime.xp
-        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
-        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        return self.bind(shape).forward_skeleton(
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+
+        packed_pose = pack_pose(
+            xp,
+            pelvis_rotation,
             body_pose,
             head_pose,
             hand_pose,
-            pelvis_rotation,
+        )
+        skeleton = core.prepare_skeleton(
+            self.weights.bind_quats,
+            self.weights.kinematic_fronts,
+            packed_pose,
+            self.rotation_type,
+            local_bind_translations=identity["local_bind_translations"],
+            xp=xp,
+        )
+        return skinning.transform_skeleton(
+            skeleton,
             global_rotation,
             global_translation,
-            joint_indices=joint_indices,
+            self.rotation_type,
+            joint_indices,
+            xp=xp,
         )
 
-    def bind(self, shape: Float[Array, "*batch C"]) -> BoundGarmentMeasurements:
-        """Prepare a reusable GarmentMeasurements identity."""
-        return BoundGarmentMeasurements(self, self._prepare_identity(shape))
-
-    def _prepare_identity(
+    def prepare_identity(
         self,
         shape: Float[Array, "*batch C"],
     ) -> core.GarmentMeasurementsIdentity:
@@ -170,7 +200,7 @@ class GarmentMeasurementsModel(SkinnedModel):
             shape=shape,
         )
 
-    def _prepare_pose(
+    def prepare_pose(
         self,
         body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
@@ -281,88 +311,4 @@ class GarmentMeasurementsModel(SkinnedModel):
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
 
-class BoundGarmentMeasurements(BoundModel[GarmentMeasurementsModel, core.GarmentMeasurementsIdentity]):
-    """GarmentMeasurements with shape-dependent state prepared."""
-
-    def forward_vertices(
-        self,
-        body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
-        head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
-    ) -> Float[Array, "*batch V 3"]:
-        """Compute posed GarmentMeasurements vertices."""
-        model = self.model
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation)
-        vertices = model._runtime.compact_linear_blend_skinning(
-            self._identity["rest_vertices"],
-            pose["skinning_transforms"],
-            joint_indices=model.weights.skin_joint_indices,
-            joint_weights=model.weights.skin_joint_weights,
-            vertex_indices=vertex_indices,
-        )
-        return skinning.apply_global_transform(
-            vertices,
-            global_rotation,
-            global_translation,
-            model.rotation_type,
-            xp=model._runtime.xp,
-        )
-
-    def forward_skeleton(
-        self,
-        body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
-        head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
-    ) -> Float[Array, "*batch J 4 4"]:
-        """Compute posed GarmentMeasurements joint transforms."""
-        model = self.model
-        packed_pose = pack_pose(
-            model._runtime.xp,
-            pelvis_rotation,
-            body_pose,
-            head_pose,
-            hand_pose,
-        )
-        skeleton = core.prepare_skeleton(
-            model.weights.bind_quats,
-            model.weights.kinematic_fronts,
-            packed_pose,
-            model.rotation_type,
-            local_bind_translations=self._identity["local_bind_translations"],
-            xp=model._runtime.xp,
-        )
-        return skinning.transform_skeleton(
-            skeleton,
-            global_rotation,
-            global_translation,
-            model.rotation_type,
-            joint_indices,
-            xp=model._runtime.xp,
-        )
-
-    def prepare_pose(
-        self,
-        body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
-        head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
-    ) -> core.GarmentMeasurementsPreparedPose:
-        """Precompute pose-dependent state."""
-        return self.model._prepare_pose(
-            body_pose,
-            head_pose,
-            hand_pose,
-            pelvis_rotation,
-            identity=self._identity,
-        )
-
-
-__all__ = ["BoundGarmentMeasurements", "GarmentMeasurementsConfig", "GarmentMeasurementsModel"]
+__all__ = ["GarmentMeasurementsConfig", "GarmentMeasurementsModel"]

@@ -106,13 +106,12 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
             )
 
         global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
-        bound = model.bind(shape)
-        prepared_pose = bound.prepare_pose(body_pose, head_pose, hand_pose)
-        payload = bound.prepare_skinning(prepared_pose)
+        identity = model.prepare_identity(shape)
+        prepared_pose = model.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = skinning.linear_blend_skinning(
-            payload["rest_vertices"],
+            identity["rest_vertices"],
             prepared_pose["skinning_transforms"],
-            payload["skin_weights"],
+            model.prepare_skinning(identity=identity, pose=prepared_pose)["skin_weights"],
             xp=np,
         )
         vertices = skinning.apply_global_transform(vertices, global_rotation, None, xp=np)

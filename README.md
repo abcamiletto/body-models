@@ -49,21 +49,22 @@ API and all model-specific preparation remain unchanged.
 Discover available model names with `body_models.list_models()`. Model options
 such as `gender="male"` or `side="left"` are passed as constructor kwargs.
 
-When identity controls stay fixed across many poses, bind them once. The bound
-model keeps prepared rest geometry and joint state private, and exposes the same
-forward methods without identity arguments.
+When shape-dependent identity parameters stay fixed across many poses, prepare
+them once and pass the returned dictionary back through `identity`. This avoids
+recomputing rest joints, local offsets, and rest vertices on every forward pass.
 
 ```python
 shape = params.pop("shape")
-bound = model.bind(shape)
+identity = model.prepare_identity(shape)
 
-vertices = bound.forward_vertices(**params)
-skeleton = bound.forward_skeleton(**params)
+vertices = model.forward_vertices(**params, identity=identity)
+skeleton = model.forward_skeleton(**params, identity=identity)
 ```
 
-Models with expression-dependent rest state, such as SMPL-X and FLAME, accept
-both controls in `bind(shape, expression)`. One-shot forwards continue to accept
-the raw identity controls explicitly.
+For models with expression-dependent rest state, such as SMPL-X and FLAME, pass
+both identity controls to `prepare_identity(shape, expression)`. Prepared
+identities and poses are always complete mesh-ready values; skeleton forwards
+use separate lightweight internal preparation and never return partial state.
 
 ## Supported Models
 
