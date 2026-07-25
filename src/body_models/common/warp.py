@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from torch.compiler import disable as disable_compile
 
-__all__ = ["compact_linear_blend_skinning", "forward_kinematics"]
+__all__ = ["compact_linear_blend_skinning"]
 
 
 def _require_float32(**tensors: Float[Tensor, "..."]) -> None:
@@ -18,68 +18,6 @@ def _require_float32(**tensors: Float[Tensor, "..."]) -> None:
     if invalid:
         names = ", ".join(invalid)
         raise TypeError(f"Warp kernels require float32 tensors; got another dtype for {names}.")
-
-
-@disable_compile
-def forward_kinematics(
-    rotations: Float[Tensor, "*batch J 3 3"],
-    translations: Float[Tensor, "*batch J 3"],
-    parents: Int[Tensor, "J"],
-) -> Float[Tensor, "*batch J 4 4"]:
-    """Compose float32 Torch joint transforms with Warp."""
-    _require_float32(rotations=rotations, translations=translations)
-    _init_warp()
-    batch_shape = rotations.shape[:-3]
-    num_joints = rotations.shape[-3]
-    rotations = rotations.reshape(-1, num_joints, 3, 3)
-    translations = translations.reshape(-1, num_joints, 3)
-    parents = parents.to(device=rotations.device, dtype=torch.int32).contiguous()
-    output = _WarpForwardKinematics.apply(rotations, translations, parents)
-    return output.reshape(*batch_shape, num_joints, 4, 4)
-
-
-class _WarpForwardKinematics(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, rotations, translations, parents):
-        rotations = rotations.contiguous()
-        translations = translations.contiguous()
-        output = torch.empty((*rotations.shape[:2], 4, 4), device=rotations.device, dtype=rotations.dtype)
-
-        wp_rotations = wp.from_torch(rotations.reshape(-1), requires_grad=ctx.needs_input_grad[0])
-        wp_translations = wp.from_torch(translations.reshape(-1), requires_grad=ctx.needs_input_grad[1])
-        wp_parents = wp.from_torch(parents)
-        needs_backward = any(ctx.needs_input_grad[:2])
-        wp_output = wp.from_torch(output.reshape(-1), requires_grad=needs_backward)
-
-        batch_size, num_joints = translations.shape[:2]
-        tape = wp.Tape() if needs_backward else None
-        with tape if tape is not None else contextlib.nullcontext():
-            wp.launch(
-                _forward_kinematics_kernel,
-                dim=batch_size,
-                inputs=[wp_rotations, wp_translations, wp_parents, num_joints, wp_output],
-                device=wp_rotations.device,
-            )
-
-        if needs_backward:
-            ctx.tape = tape
-            ctx.wp_inputs = wp_rotations, wp_translations
-            ctx.wp_output = wp_output
-            ctx.input_shapes = rotations.shape, translations.shape
-        return output
-
-    @staticmethod
-    def backward(ctx, *grad_outputs):
-        (grad_output,) = grad_outputs
-        wp_grad_output = wp.from_torch(grad_output.contiguous().reshape(-1))
-        ctx.tape.backward(grads={ctx.wp_output: wp_grad_output})
-        wp_rotations, wp_translations = ctx.wp_inputs
-        rotation_shape, translation_shape = ctx.input_shapes
-        grad_rotations = wp.to_torch(wp_rotations.grad).reshape(rotation_shape) if wp_rotations.requires_grad else None
-        grad_translations = (
-            wp.to_torch(wp_translations.grad).reshape(translation_shape) if wp_translations.requires_grad else None
-        )
-        return grad_rotations, grad_translations, None
 
 
 @disable_compile
@@ -232,78 +170,6 @@ def _init_warp() -> None:
     wp.config.quiet = True
     with contextlib.redirect_stdout(io.StringIO()):
         wp.init()
-
-
-@wp.kernel
-def _forward_kinematics_kernel(
-    rotations: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-    translations: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-    parents: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
-    num_joints: int,
-    output: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
-):
-    batch = wp.tid()
-    for joint in range(num_joints):
-        parent = parents[joint]
-        local_r = (batch * num_joints + joint) * 9  # ty: ignore[unsupported-operator]
-        local_t = (batch * num_joints + joint) * 3  # ty: ignore[unsupported-operator]
-        out = (batch * num_joints + joint) * 16  # ty: ignore[unsupported-operator]
-
-        if parent < 0:
-            output[out] = rotations[local_r]
-            output[out + 1] = rotations[local_r + 1]
-            output[out + 2] = rotations[local_r + 2]
-            output[out + 3] = translations[local_t]
-            output[out + 4] = rotations[local_r + 3]
-            output[out + 5] = rotations[local_r + 4]
-            output[out + 6] = rotations[local_r + 5]
-            output[out + 7] = translations[local_t + 1]
-            output[out + 8] = rotations[local_r + 6]
-            output[out + 9] = rotations[local_r + 7]
-            output[out + 10] = rotations[local_r + 8]
-            output[out + 11] = translations[local_t + 2]
-        else:
-            p = (batch * num_joints + parent) * 16
-            lr00 = rotations[local_r]
-            lr01 = rotations[local_r + 1]
-            lr02 = rotations[local_r + 2]
-            lr10 = rotations[local_r + 3]
-            lr11 = rotations[local_r + 4]
-            lr12 = rotations[local_r + 5]
-            lr20 = rotations[local_r + 6]
-            lr21 = rotations[local_r + 7]
-            lr22 = rotations[local_r + 8]
-
-            pr00 = output[p]
-            pr01 = output[p + 1]
-            pr02 = output[p + 2]
-            pr10 = output[p + 4]
-            pr11 = output[p + 5]
-            pr12 = output[p + 6]
-            pr20 = output[p + 8]
-            pr21 = output[p + 9]
-            pr22 = output[p + 10]
-            tx = translations[local_t]
-            ty = translations[local_t + 1]
-            tz = translations[local_t + 2]
-
-            output[out] = pr00 * lr00 + pr01 * lr10 + pr02 * lr20
-            output[out + 1] = pr00 * lr01 + pr01 * lr11 + pr02 * lr21
-            output[out + 2] = pr00 * lr02 + pr01 * lr12 + pr02 * lr22
-            output[out + 3] = pr00 * tx + pr01 * ty + pr02 * tz + output[p + 3]
-            output[out + 4] = pr10 * lr00 + pr11 * lr10 + pr12 * lr20
-            output[out + 5] = pr10 * lr01 + pr11 * lr11 + pr12 * lr21
-            output[out + 6] = pr10 * lr02 + pr11 * lr12 + pr12 * lr22
-            output[out + 7] = pr10 * tx + pr11 * ty + pr12 * tz + output[p + 7]
-            output[out + 8] = pr20 * lr00 + pr21 * lr10 + pr22 * lr20
-            output[out + 9] = pr20 * lr01 + pr21 * lr11 + pr22 * lr21
-            output[out + 10] = pr20 * lr02 + pr21 * lr12 + pr22 * lr22
-            output[out + 11] = pr20 * tx + pr21 * ty + pr22 * tz + output[p + 11]
-
-        output[out + 12] = 0.0
-        output[out + 13] = 0.0
-        output[out + 14] = 0.0
-        output[out + 15] = 1.0
 
 
 @wp.kernel

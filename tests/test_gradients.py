@@ -122,31 +122,6 @@ def test_warp_skinning_gradients_match_torch_on_cpu() -> None:
 
 
 @pytest.mark.fast
-def test_warp_forward_kinematics_gradients_match_common_on_cpu() -> None:
-    torch = pytest.importorskip("torch")
-    pytest.importorskip("warp")
-
-    from body_models.common import kinematics
-    from body_models.common import warp as warp_backend
-
-    torch.manual_seed(17)
-    parents = [-1, 0, 1, 1]
-    rotations = torch.randn(2, 4, 3, 3, requires_grad=True)
-    translations = torch.randn(2, 4, 3, requires_grad=True)
-    grad_output = torch.randn(2, 4, 4, 4)
-
-    fronts = kinematics.compute_kinematic_fronts(parents)
-    expected = kinematics.forward_kinematics(rotations, translations, fronts, xp=torch)
-    expected_grads = torch.autograd.grad(expected, (rotations, translations), grad_output)
-    actual = warp_backend.forward_kinematics(rotations, translations, torch.as_tensor(parents))
-    actual_grads = torch.autograd.grad(actual, (rotations, translations), grad_output)
-
-    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
-    for actual_grad, expected_grad in zip(actual_grads, expected_grads, strict=True):
-        torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-5, atol=1e-5)
-
-
-@pytest.mark.fast
 def test_warp_runtime_matches_common_skinning() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")

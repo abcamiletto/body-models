@@ -33,10 +33,10 @@ class StateMapping(nn.Module, Mapping[str, Any]):
             _store(self, self._static, key, value)
 
     def __getitem__(self, key: str) -> Any:
+        if key in self._static:
+            return self._static[key]
         try:
-            return self._static[key] if key in self._static else getattr(self, key)
-        except KeyError as exc:
-            raise KeyError(key) from exc
+            return getattr(self, key)
         except AttributeError as exc:
             raise KeyError(key) from exc
 

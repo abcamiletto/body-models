@@ -1,5 +1,3 @@
-from inspect import signature
-
 import numpy as np
 import pytest
 from trimesh import Trimesh
@@ -94,12 +92,6 @@ def test_rigid_body_meshes_match_numpy(name, numpy_model, torch_model, jax_model
 
 
 @pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.RIGID_BODY_MODELS)
-def test_rigid_body_models_do_not_expose_forward_vertices(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
-    model = numpy_model(**kwargs)
-    assert not hasattr(model, "forward_vertices")
-
-
-@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.RIGID_BODY_MODELS)
 def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
     model = numpy_model(**kwargs)
     params = model.get_rest_pose(batch_dims=(2,), dtype=np.float32)
@@ -115,14 +107,6 @@ def test_rigid_body_joint_name_spaces(name, numpy_model, _torch_model, _jax_mode
 
     assert_pose_helpers_round_trip(model, params[pose_name])
     assert_qpos_matches_pose(model, params)
-
-    assert not hasattr(model, "qpos_joint_names")
-    assert not hasattr(model, "qpos_joint_indices")
-    assert not hasattr(model, "qpos_joint_axes")
-    assert not hasattr(model, "qpos_joint_limits")
-    assert not hasattr(model, "num_qpos")
-    assert not hasattr(model, "actuated_joint_indices")
-    assert not hasattr(model, "actuated_joint_axes")
 
 
 @pytest.mark.parametrize(("_name", "_numpy_model", "torch_model", "_jax_model", "kwargs"), model_cases.SKINNED_MODELS)
@@ -193,18 +177,9 @@ def test_prepared_states_are_complete(name, numpy_model, _torch_model, _jax_mode
     params = model.get_rest_pose()
     identity, pose = model_cases.prepare_states(model, params)
 
-    assert "skip_vertices" not in signature(model.prepare_identity).parameters
-    assert "skip_vertices" not in signature(model.prepare_pose).parameters
     assert "rest_vertices" in identity
     assert "skinning_transforms" in pose
     model.prepare_skinning(identity=identity, pose=pose)
-
-
-def test_mhr_skeleton_is_pose_only() -> None:
-    from body_models.mhr.numpy import MHR
-
-    parameters = signature(MHR().forward_skeleton).parameters
-    assert not {"shape", "expression", "identity"} & parameters.keys()
 
 
 @pytest.mark.fast

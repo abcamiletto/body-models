@@ -77,7 +77,7 @@ would make the runtime understand SOMA and create a leaky abstraction.
 1. Add asset loading and validation in `io.py`.
 2. Put model-specific numerical functions in `core.py` and pass the array
    namespace explicitly.
-3. Define the public program in `model.py` using `Runtime` or `RigidModel`.
+3. Define the public program in `model.py` using `ArrayRuntime` or `RigidModel`.
 4. Add the three thin framework constructors that the model supports.
 5. Add its factory and asset metadata to `catalog.py`.
 6. Add cross-framework, arbitrary-batch, compile, gradient, and reference tests
