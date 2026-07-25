@@ -1,6 +1,6 @@
 """Backend-agnostic linear deformation primitives."""
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from jaxtyping import Float
 
@@ -16,10 +16,14 @@ class SkeletonIdentity(TypedDict):
     local_joint_offsets: Float[Array, "*batch J 3"]
 
 
-class LinearIdentity(SkeletonIdentity):
-    """Identity-dependent joints and vertices from linear bases."""
+class SkinningIdentity(TypedDict):
+    """Identity-dependent rest surface consumed by skinning."""
 
     rest_vertices: Float[Array, "*batch V 3"]
+
+
+class LinearIdentity(SkeletonIdentity, SkinningIdentity):
+    """Identity-dependent joints and vertices from linear bases."""
 
 
 class SkinningPose(TypedDict):
@@ -27,7 +31,7 @@ class SkinningPose(TypedDict):
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
     skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: Float[Array, "*batch V 3"]
+    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
 
 
 def prepare_linear_identity(
@@ -118,6 +122,7 @@ def pose_blend_shapes(
 __all__ = [
     "LinearIdentity",
     "SkeletonIdentity",
+    "SkinningIdentity",
     "SkinningPose",
     "blend_shapes",
     "pose_blend_shapes",

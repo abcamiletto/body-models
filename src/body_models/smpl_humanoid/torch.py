@@ -4,9 +4,8 @@ from pathlib import Path
 
 import torch.nn as nn
 
-from body_models.robots.smpl_humanoid.model import SmplHumanoidModel
+from body_models.smpl_humanoid.model import SmplHumanoidModel
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
 
 
 class SmplHumanoid(SmplHumanoidModel, nn.Module):
@@ -18,7 +17,6 @@ class SmplHumanoid(SmplHumanoidModel, nn.Module):
             self,
             source,
             runtime=TorchRuntime(),
-            materialize=torch_state,
         )
 
 

@@ -1,7 +1,8 @@
-"""Rotation type definitions for body models."""
+"""Rotation representations accepted by body models."""
 
 from typing import Literal
 
+# `matrix` is an arbitrary 3×3 transform; `rotmat` is a proper SO(3) rotation.
 RotationType = Literal["axis_angle", "quat", "sixd", "matrix", "rotmat"]
 
 VALID_ROTATION_TYPES: tuple[RotationType, ...] = (

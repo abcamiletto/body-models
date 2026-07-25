@@ -9,7 +9,7 @@ from trimesh import Trimesh
 from trimesh.util import concatenate
 
 from body_models.common.kinematics import affine_transforms
-from body_models.common.ops import eye_as, set, zeros_as
+from body_models.common.ops import at_set, eye_as, zeros_as
 from body_models.rotations import RotationType
 
 Array = Any
@@ -26,7 +26,7 @@ def rotate_transforms(
         return transforms
     rotation_matrix = SO3.convert(rotation, src=rotation_type, dst="rotmat", xp=xp)
     rotated = rotation_matrix[..., None, :, :] @ transforms[..., :3, :]
-    return set(transforms, (..., slice(None, 3), slice(None)), rotated, xp=xp)
+    return at_set(transforms, (..., slice(None, 3), slice(None)), rotated, xp=xp)
 
 
 def forward_skeleton_from_local_rotations(
@@ -48,7 +48,7 @@ def forward_skeleton_from_local_rotations(
 
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
     local_rot = eye_as(body_rotations, batch_dims=(*batch_shape, num_joints), xp=xp)
-    local_rot = set(local_rot, (..., actuated_joint_indices, slice(None), slice(None)), body_rotations, xp=xp)
+    local_rot = at_set(local_rot, (..., actuated_joint_indices, slice(None), slice(None)), body_rotations, xp=xp)
     local_rot = xp.broadcast_to(rest_rot, (*batch_shape, num_joints, 3, 3)) @ local_rot
     return forward_skeleton_from_local_transforms(
         local_rot,

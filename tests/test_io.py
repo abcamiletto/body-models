@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 
 from body_models import config
-from body_models.bodies.mhr import io as mhr_io
-from body_models.bodies.soma.io import validate_path
-import body_models.robots.brainco.io as brainco_io
+from body_models.mhr import io as mhr_io
+from body_models.soma.io import validate_path
+import body_models.brainco.io as brainco_io
 
 
 def test_soma_slim_npz_asset_layout_requires_rig_fields(tmp_path) -> None:
@@ -61,15 +61,15 @@ def test_validate_model_path_myofullbody(tmp_path) -> None:
 
 @pytest.mark.fast
 def test_g1_get_model_path_uses_cache(tmp_path, monkeypatch) -> None:
-    from body_models.robots.g1 import io as g1_io
+    from body_models.g1 import io as g1_io
 
-    monkeypatch.setattr("body_models.robots.g1.io.get_cache_dir", lambda: tmp_path)
+    monkeypatch.setattr("body_models.g1.io.get_cache_dir", lambda: tmp_path)
     monkeypatch.setattr(g1_io.config, "get_model_path", lambda model: None)
 
     def _raise(*args, **kwargs):
         raise AssertionError("download_hf_archive should not be called when cache is populated")
 
-    monkeypatch.setattr("body_models.robots.g1.io.download_hf_archive", _raise)
+    monkeypatch.setattr("body_models.g1.io.download_hf_archive", _raise)
 
     cache_xml = tmp_path / "g1" / "g1.xml"
     cache_xml.parent.mkdir(parents=True)

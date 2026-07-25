@@ -5,10 +5,9 @@ from typing import Literal
 
 import jax
 
-from body_models.parts.mano.model import MANOModel
+from body_models.mano.model import MANOModel
 from body_models.rotations import RotationType
 from body_models.runtime import JaxModel, JaxRuntime
-from body_models.state import jax_state
 
 
 @jax.tree_util.register_pytree_node_class
@@ -31,7 +30,6 @@ class MANO(MANOModel, JaxModel):
             simplify,
             rotation_type,
             runtime=JaxRuntime(),
-            materialize=jax_state,
         )
 
 

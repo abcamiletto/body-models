@@ -4,10 +4,9 @@ from pathlib import Path
 
 import jax
 
-from body_models.bodies.anny.model import ANNYModel
+from body_models.anny.model import ANNYModel
 from body_models.rotations import RotationType
 from body_models.runtime import JaxModel, JaxRuntime
-from body_models.state import jax_state
 
 
 @jax.tree_util.register_pytree_node_class
@@ -35,7 +34,6 @@ class ANNY(ANNYModel, JaxModel):
             simplify=simplify,
             rotation_type=rotation_type,
             runtime=JaxRuntime(),
-            materialize=jax_state,
         )
 
 

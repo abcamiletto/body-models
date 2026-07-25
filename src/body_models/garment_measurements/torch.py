@@ -5,10 +5,9 @@ from typing import Literal
 
 import torch.nn as nn
 
-from body_models.bodies.garment_measurements.model import GarmentMeasurementsModel
+from body_models.garment_measurements.model import GarmentMeasurementsModel
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
 
 
 class GarmentMeasurements(GarmentMeasurementsModel, nn.Module):
@@ -27,7 +26,6 @@ class GarmentMeasurements(GarmentMeasurementsModel, nn.Module):
             model_path,
             rotation_type=rotation_type,
             runtime=TorchRuntime(skinning_backend),
-            materialize=torch_state,
         )
 
 

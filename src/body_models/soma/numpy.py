@@ -1,23 +1,11 @@
 """NumPy SOMA model."""
 
-import functools
 from pathlib import Path
 
-from body_models import registry
-from body_models.bodies.soma import correctives_numpy
-from body_models.bodies.soma.identities import numpy as identity_lowerings
-from body_models.bodies.soma.lowerings import SomaLowerings
-from body_models.bodies.soma.model import SOMAModel
+from body_models.soma import correctives_numpy
+from body_models.soma.model import SOMAModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
-from body_models.state import numpy_state
-
-_IDENTITY_SOURCE = functools.partial(
-    identity_lowerings.create_identity_source,
-    model_factory=functools.partial(registry.create_model, backend="numpy"),
-)
-_LOWERINGS = SomaLowerings(correctives_numpy.NumpyCorrectiveNetwork, _IDENTITY_SOURCE)
-
 
 class SOMA(SOMAModel):
     """SOMA using NumPy arrays and SciPy sparse correctives."""
@@ -40,8 +28,7 @@ class SOMA(SOMAModel):
             rotation_type=rotation_type,
             match_warp=match_warp,
             runtime=NumpyRuntime(),
-            materialize=numpy_state,
-            lowerings=_LOWERINGS,
+            corrective_network=correctives_numpy.NumpyCorrectiveNetwork,
         )
 
 

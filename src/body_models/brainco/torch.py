@@ -4,10 +4,9 @@ from pathlib import Path
 
 import torch.nn as nn
 
-from body_models.robots.brainco.io import Side
-from body_models.robots.brainco.model import BrainCoHandModel
+from body_models.brainco.io import Side
+from body_models.brainco.model import BrainCoHandModel
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
 
 
 class BrainCoHand(BrainCoHandModel, nn.Module):
@@ -20,7 +19,6 @@ class BrainCoHand(BrainCoHandModel, nn.Module):
             model_path,
             side=side,
             runtime=TorchRuntime(),
-            materialize=torch_state,
         )
 
 

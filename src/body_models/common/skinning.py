@@ -62,7 +62,7 @@ def bind_relative_transforms(
     rotations = skeleton_transforms[..., :3, :3]
     translations = skeleton_transforms[..., :3, 3]
     bind_translations = translations - xp.squeeze(rotations @ rest_joints[..., None], axis=-1)
-    return ops.set(
+    return ops.at_set(
         skeleton_transforms,
         (..., slice(None, 3), 3),
         bind_translations,
@@ -112,7 +112,7 @@ def transform_skeleton(
         if translation is None:
             return transforms
         positions = transforms[..., :3, 3] + translation[..., None, :]
-        return ops.set(transforms, (..., slice(None, 3), 3), positions, xp=xp)
+        return ops.at_set(transforms, (..., slice(None, 3), 3), positions, xp=xp)
 
     rotations = transforms[..., :3, :3]
     positions = transforms[..., :3, 3]

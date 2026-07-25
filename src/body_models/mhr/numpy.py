@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-from body_models.bodies.mhr.model import MHRModel
+from body_models.mhr.model import MHRModel
 from body_models.runtime import NumpyRuntime
-from body_models.state import numpy_state
 
 
 class MHR(MHRModel):
@@ -22,7 +21,6 @@ class MHR(MHRModel):
             lod=lod,
             simplify=simplify,
             runtime=NumpyRuntime(),
-            materialize=numpy_state,
         )
 
 

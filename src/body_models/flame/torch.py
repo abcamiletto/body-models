@@ -5,10 +5,9 @@ from typing import Literal
 
 import torch.nn as nn
 
-from body_models.parts.flame.model import FLAMEModel
+from body_models.flame.model import FLAMEModel
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
 
 
 class FLAME(FLAMEModel, nn.Module):
@@ -28,7 +27,6 @@ class FLAME(FLAMEModel, nn.Module):
             simplify,
             rotation_type,
             runtime=TorchRuntime(skinning_backend),
-            materialize=torch_state,
         )
 
 

@@ -5,8 +5,7 @@ from pathlib import Path
 import jax
 
 from body_models.runtime import JaxModel, JaxRuntime
-from body_models.state import jax_state
-from body_models.skeletons.myofullbody.model import MyoFullBodyModel
+from body_models.myofullbody.model import MyoFullBodyModel
 
 
 @jax.tree_util.register_pytree_node_class
@@ -18,7 +17,6 @@ class MyoFullBody(MyoFullBodyModel, JaxModel):
             self,
             model_path,
             runtime=JaxRuntime(),
-            materialize=jax_state,
         )
 
 

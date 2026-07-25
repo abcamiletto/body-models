@@ -7,10 +7,10 @@ from typing import Any
 from jaxtyping import Float, Num
 
 Array = Any
-__all__ = ["Array", "eye_as", "set", "zeros_as"]
+__all__ = ["Array", "eye_as", "at_set", "zeros_as"]
 
 
-def set(
+def at_set(
     array: Num[Array, "..."],
     slices: tuple,
     values: Num[Array, "..."] | float | int,
@@ -54,5 +54,5 @@ def eye_as(
     n = ref.shape[-1]
     eye = zeros_as(ref, shape=(*batch_dims, n, n), xp=xp)
     for i in range(n):
-        eye = set(eye, (..., i, i), 1.0, xp=xp)
+        eye = at_set(eye, (..., i, i), 1.0, xp=xp)
     return eye

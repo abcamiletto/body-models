@@ -5,9 +5,8 @@ from typing import Literal
 
 import torch.nn as nn
 
-from body_models.bodies.mhr.model import MHRModel
+from body_models.mhr.model import MHRModel
 from body_models.runtime import TorchRuntime
-from body_models.state import torch_state
 
 
 class MHR(MHRModel, nn.Module):
@@ -28,7 +27,6 @@ class MHR(MHRModel, nn.Module):
             lod=lod,
             simplify=simplify,
             runtime=TorchRuntime(skinning_backend),
-            materialize=torch_state,
         )
 
 
