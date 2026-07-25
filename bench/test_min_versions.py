@@ -82,19 +82,19 @@ def tier2_numpy_forward() -> bool:
         params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(
             params["body_pose"],
+            params["head_pose"],
             params["hand_pose"],
-            expression=params["expression"],
-            global_rotation=params["global_rotation"],
-            global_translation=params["global_translation"],
+            params["global_rotation"],
+            params["global_translation"],
             shape=params["shape"],
+            expression=params["expression"],
         )
         skel = model.forward_skeleton(
             params["body_pose"],
+            params["head_pose"],
             params["hand_pose"],
-            expression=params["expression"],
-            global_rotation=params["global_rotation"],
-            global_translation=params["global_translation"],
-            shape=params["shape"],
+            params["global_rotation"],
+            params["global_translation"],
         )
         assert verts.shape == (2, model.num_vertices, 3), f"MHR verts shape: {verts.shape}"
         assert skel.shape[0] == 2 and skel.shape[2:] == (4, 4), f"MHR skel shape: {skel.shape}"
@@ -155,19 +155,19 @@ def tier3_torch_forward() -> bool:
         with torch.no_grad():
             verts = model.forward_vertices(
                 params["body_pose"],
+                params["head_pose"],
                 params["hand_pose"],
-                expression=params["expression"],
-                global_rotation=params["global_rotation"],
-                global_translation=params["global_translation"],
+                params["global_rotation"],
+                params["global_translation"],
                 shape=params["shape"],
+                expression=params["expression"],
             )
             skel = model.forward_skeleton(
                 params["body_pose"],
+                params["head_pose"],
                 params["hand_pose"],
-                expression=params["expression"],
-                global_rotation=params["global_rotation"],
-                global_translation=params["global_translation"],
-                shape=params["shape"],
+                params["global_rotation"],
+                params["global_translation"],
             )
         assert verts.shape == (2, model.num_vertices, 3)
         assert skel.shape[0] == 2 and skel.shape[2:] == (4, 4)
@@ -226,19 +226,19 @@ def tier4_jax_forward() -> bool:
         params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(
             params["body_pose"],
+            params["head_pose"],
             params["hand_pose"],
-            expression=params["expression"],
-            global_rotation=params["global_rotation"],
-            global_translation=params["global_translation"],
+            params["global_rotation"],
+            params["global_translation"],
             shape=params["shape"],
+            expression=params["expression"],
         )
         skel = model.forward_skeleton(
             params["body_pose"],
+            params["head_pose"],
             params["hand_pose"],
-            expression=params["expression"],
-            global_rotation=params["global_rotation"],
-            global_translation=params["global_translation"],
-            shape=params["shape"],
+            params["global_rotation"],
+            params["global_translation"],
         )
         assert verts.shape == (2, model.num_vertices, 3)
         assert skel.shape[0] == 2 and skel.shape[2:] == (4, 4)

@@ -11,7 +11,12 @@ def test_skinned_torch_compile_and_jax_jit(name, _numpy_model, torch_model, jax_
     torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     with torch.no_grad():
         torch_vertices = torch.compile(torch_instance.forward_vertices, backend="eager", fullgraph=True)(**torch_params)
+        torch_bound, torch_pose = model_cases.bind_model(torch_instance, torch_params)
+        torch_bound_vertices = torch.compile(torch_bound.forward_vertices, backend="eager", fullgraph=True)(
+            **torch_pose
+        )
     assert torch_vertices.shape[-1] == 3
+    assert torch_bound_vertices.shape == torch_vertices.shape
 
     jax = pytest.importorskip("jax")
     pytest.importorskip("flax")
@@ -20,7 +25,10 @@ def test_skinned_torch_compile_and_jax_jit(name, _numpy_model, torch_model, jax_
     jax_instance = jax_model(**kwargs)
     jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     jax_vertices = jax.jit(jax_instance.forward_vertices)(**jax_params)
+    jax_bound, jax_pose = model_cases.bind_model(jax_instance, jax_params)
+    jax_bound_vertices = jax.jit(jax_bound.forward_vertices)(**jax_pose)
     assert np.asarray(jax_vertices).shape[-1] == 3
+    assert np.asarray(jax_bound_vertices).shape == np.asarray(jax_vertices).shape
 
 
 @pytest.mark.parametrize(("name", "_numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.RIGID_BODY_MODELS)

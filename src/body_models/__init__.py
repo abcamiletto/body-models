@@ -16,7 +16,7 @@ from body_models import (
     smplx,
     soma,
 )
-from body_models.base import RigidBodyModel, SkinnedModel
+from body_models.base import BoundModel, RigidBodyModel, SkinnedModel
 from body_models.constants import Joint
 from body_models.registry import create_model, list_models
 
@@ -36,6 +36,7 @@ __all__ = [
     "smplh",
     "smplx",
     "soma",
+    "BoundModel",
     "Joint",
     "RigidBodyModel",
     "SkinnedModel",
