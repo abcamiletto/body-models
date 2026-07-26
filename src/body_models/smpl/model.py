@@ -10,12 +10,12 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models.base import SkinnedModel
-from body_models.smpl import core
-from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS
-from body_models.smpl.io import get_model_path, load_model_data
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models.runtime import ArrayRuntime
+from body_models.smpl import core
+from body_models.smpl.constants import SMPL_BODY_PRESETS, SMPL_JOINT_NAMES, SMPL_JOINTS
+from body_models.smpl.io import get_model_path, load_model_data
 
 Array = Any
 

@@ -12,9 +12,12 @@ from nanomanifold import SO3
 
 from body_models import registry
 from body_models.base import SkinnedModel, SkinningPayload
+from body_models.common import deformation, skinning
+from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
+from body_models.runtime import ArrayRuntime
 from body_models.soma import core, identities
-from body_models.soma.correctives import CorrectiveNetwork
 from body_models.soma.constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
+from body_models.soma.correctives import CorrectiveNetwork
 from body_models.soma.io import (
     MODEL_TYPE_SPECS,
     get_identity_model_path,
@@ -23,9 +26,6 @@ from body_models.soma.io import (
     public_joint_metadata,
 )
 from body_models.soma.pose import pack_pose, unpack_pose
-from body_models.common import deformation, skinning
-from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models.runtime import ArrayRuntime
 
 Array = Any
 PathLike = Path | str
@@ -93,12 +93,8 @@ class SOMAModel(SkinnedModel):
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, normalized_model_type)
             identity_model = _create_identity_model(normalized_model_type, runtime)
-            transfer = identities.prepare_transfer(
-                normalized_model_type, transfer_data, identity_model, runtime
-            )
-            self._identity_source = runtime.materialize(
-                identities.IdentitySource(identity_model, transfer)
-            )
+            transfer = identities.prepare_transfer(normalized_model_type, transfer_data, identity_model, runtime)
+            self._identity_source = runtime.materialize(identities.IdentitySource(identity_model, transfer))
 
     @property
     def model_type(self) -> str:

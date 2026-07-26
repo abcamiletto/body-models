@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
+import body_models.brainco.io as brainco_io
 from body_models import config
 from body_models.mhr import io as mhr_io
 from body_models.soma.io import validate_path
-import body_models.brainco.io as brainco_io
 
 
 def test_soma_slim_npz_asset_layout_requires_rig_fields(tmp_path) -> None:

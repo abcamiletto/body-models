@@ -23,8 +23,7 @@ from __future__ import annotations
 import importlib
 import struct
 from pathlib import Path
-from typing import Annotated
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import numpy as np
 import typer

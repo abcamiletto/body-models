@@ -2,9 +2,9 @@
 
 from typing import Any
 
+import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
-import numpy as np
 from trimesh import Trimesh
 from trimesh.util import concatenate
 

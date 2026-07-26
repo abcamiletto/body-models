@@ -10,12 +10,12 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models.base import SkinnedModel
-from body_models.smplh import core
-from body_models.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
-from body_models.smplh.io import get_model_path, load_model_data
 from body_models.common import skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models.runtime import ArrayRuntime
+from body_models.smplh import core
+from body_models.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
+from body_models.smplh.io import get_model_path, load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]

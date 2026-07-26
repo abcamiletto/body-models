@@ -8,8 +8,8 @@ The upstream model is the ``musclemimic_models`` package from
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +18,8 @@ from jaxtyping import Float, Int
 
 from body_models import config
 from body_models.cache import download_hf_archive, get_cache_dir
-from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 from body_models.common import mjcf
+from body_models.common.stl import load_stl_mesh as _load_stl_mesh
 
 # MUJOCO_TO_KIMODO maps MuJoCo's Z-up world to body-models Y-up. MyoFullBody's
 # OpenSim-derived bodies still come out with their lateral axis on Z, so an

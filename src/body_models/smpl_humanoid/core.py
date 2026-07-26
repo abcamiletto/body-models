@@ -6,6 +6,7 @@ from typing import Any
 
 from jaxtyping import Float
 from nanomanifold import SO3
+
 from body_models.common import rigid
 
 Array = Any

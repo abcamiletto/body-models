@@ -7,13 +7,13 @@ from typing import Any
 from jaxtyping import Float, Num
 
 Array = Any
-__all__ = ["Array", "eye_as", "at_set", "zeros_as"]
+__all__ = ["Array", "at_set", "eye_as", "zeros_as"]
 
 
 def at_set(
     array: Num[Array, "..."],
     slices: tuple,
-    values: Num[Array, "..."] | float | int,
+    values: Num[Array, "..."] | float,
     *,
     copy: bool = True,
     xp: Any,

@@ -6,6 +6,7 @@ from pathlib import Path
 from body_models.anny import jax as anny_jax
 from body_models.anny import numpy as anny_numpy
 from body_models.anny import torch as anny_torch
+from body_models.base import RigidBodyModel, SkinnedModel
 from body_models.brainco import jax as brainco_jax
 from body_models.brainco import numpy as brainco_numpy
 from body_models.brainco import torch as brainco_torch
@@ -30,12 +31,12 @@ from body_models.myofullbody import torch as myofullbody_torch
 from body_models.skel import jax as skel_jax
 from body_models.skel import numpy as skel_numpy
 from body_models.skel import torch as skel_torch
-from body_models.smpl_humanoid import jax as smpl_humanoid_jax
-from body_models.smpl_humanoid import numpy as smpl_humanoid_numpy
-from body_models.smpl_humanoid import torch as smpl_humanoid_torch
 from body_models.smpl import jax as smpl_jax
 from body_models.smpl import numpy as smpl_numpy
 from body_models.smpl import torch as smpl_torch
+from body_models.smpl_humanoid import jax as smpl_humanoid_jax
+from body_models.smpl_humanoid import numpy as smpl_humanoid_numpy
+from body_models.smpl_humanoid import torch as smpl_humanoid_torch
 from body_models.smplh import jax as smplh_jax
 from body_models.smplh import numpy as smplh_numpy
 from body_models.smplh import torch as smplh_torch
@@ -45,7 +46,6 @@ from body_models.smplx import torch as smplx_torch
 from body_models.soma import jax as soma_jax
 from body_models.soma import numpy as soma_numpy
 from body_models.soma import torch as soma_torch
-from body_models.base import RigidBodyModel, SkinnedModel
 
 ASSETS = Path(__file__).parent / "assets"
 

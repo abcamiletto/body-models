@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import Literal
 
-from body_models.smpl.model import SMPLModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
+from body_models.smpl.model import SMPLModel
 
 
 class SMPL(SMPLModel):

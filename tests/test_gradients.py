@@ -1,7 +1,7 @@
+import model_cases
 import numpy as np
 import pytest
 
-import model_cases
 from body_models.base import RigidBodyModel
 from body_models.runtime import TorchRuntime
 
@@ -62,9 +62,9 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
 
         jax_value = jax_rest[key]
 
-        def jax_loss(value):
+        def jax_loss(value, parameter=key):
             params = jax_rest.copy()
-            params[key] = value
+            params[parameter] = value
             return surface_loss(jax_instance, params)
 
         jax_auto = np.asarray(jax.grad(jax_loss)(jax_value)).reshape(-1)[0]

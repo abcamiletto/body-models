@@ -2,10 +2,11 @@
 
 from pathlib import Path
 
-from body_models.soma import correctives_numpy
-from body_models.soma.model import SOMAModel
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
+from body_models.soma import correctives_numpy
+from body_models.soma.model import SOMAModel
+
 
 class SOMA(SOMAModel):
     """SOMA using NumPy arrays and SciPy sparse correctives."""

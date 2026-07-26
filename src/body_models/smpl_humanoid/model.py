@@ -12,10 +12,10 @@ from trimesh import Trimesh
 
 from body_models import common
 from body_models.base import RigidBodyModel
+from body_models.runtime import ArrayRuntime
 from body_models.smpl_humanoid import core
 from body_models.smpl_humanoid.constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
 from body_models.smpl_humanoid.io import load_model_data
-from body_models.runtime import ArrayRuntime
 
 Array = Any
 

@@ -11,8 +11,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import config
-from body_models.common import Front, compute_kinematic_fronts, simplify_mesh
 from body_models.cache import download_hf_archive, get_cache_dir
+from body_models.common import Front, compute_kinematic_fronts, simplify_mesh
 
 PathLike = Path | str
 SUPPORTED_LODS = tuple(range(7))
@@ -23,13 +23,13 @@ MHR_ASSETS = (
 )
 
 __all__ = [
-    "get_model_path",
-    "download_model",
-    "load_model_data",
     "MhrWeights",
     "compute_kinematic_fronts",
-    "simplify_mesh",
+    "download_model",
+    "get_model_path",
+    "load_model_data",
     "load_pose_correctives_weights",
+    "simplify_mesh",
 ]
 
 

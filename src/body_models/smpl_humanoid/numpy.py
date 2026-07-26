@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from body_models.smpl_humanoid.model import SmplHumanoidModel
 from body_models.runtime import NumpyRuntime
+from body_models.smpl_humanoid.model import SmplHumanoidModel
 
 
 class SmplHumanoid(SmplHumanoidModel):

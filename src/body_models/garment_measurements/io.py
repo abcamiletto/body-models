@@ -219,9 +219,9 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
 
 
 __all__ = [
+    "PREPROCESSED_FILENAME",
     "Front",
     "GarmentMeasurementsWeights",
-    "PREPROCESSED_FILENAME",
     "compute_kinematic_fronts",
     "download_model",
     "get_model_path",

@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from body_models.runtime import NumpyRuntime
 from body_models.myofullbody.model import MyoFullBodyModel
+from body_models.runtime import NumpyRuntime
 
 
 class MyoFullBody(MyoFullBodyModel):

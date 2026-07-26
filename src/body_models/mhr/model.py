@@ -9,6 +9,7 @@ from jaxtyping import Float, Int
 
 from body_models import common
 from body_models.base import SkinnedModel
+from body_models.common import skinning
 from body_models.mhr import core
 from body_models.mhr.constants import (
     MHR_BODY_POSE_DIM,
@@ -20,7 +21,6 @@ from body_models.mhr.constants import (
 )
 from body_models.mhr.io import get_model_path, load_model_data
 from body_models.mhr.pose import pack_pose, unpack_pose
-from body_models.common import skinning
 from body_models.runtime import ArrayRuntime
 
 Array = Any

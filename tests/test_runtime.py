@@ -2,10 +2,10 @@
 
 import pickle
 
+import model_cases
 import numpy as np
 import pytest
 
-import model_cases
 from body_models.runtime import NumpyRuntime, TorchRuntime
 
 

@@ -5,9 +5,9 @@ from typing import Literal
 
 import jax
 
-from body_models.smplh.model import SMPLHModel
 from body_models.rotations import RotationType
 from body_models.runtime import JaxModel, JaxRuntime
+from body_models.smplh.model import SMPLHModel
 
 
 @jax.tree_util.register_pytree_node_class

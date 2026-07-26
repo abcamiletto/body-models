@@ -1,7 +1,6 @@
 from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
-
 SMPLX_JOINTS = {
     Joint.LEFT_SHOULDER: "L_Shoulder",
     Joint.RIGHT_SHOULDER: "R_Shoulder",
@@ -54,4 +53,4 @@ _POSES = load_npz("body_models.smplx")
 SMPLX_BODY_PRESETS = _POSES["body"]
 SMPLX_HAND_PRESETS = _POSES["hand"]
 
-__all__ = ["SMPLX_JOINTS", "SMPLX_BODY_PRESETS", "SMPLX_HAND_PRESETS"]
+__all__ = ["SMPLX_BODY_PRESETS", "SMPLX_HAND_PRESETS", "SMPLX_JOINTS"]

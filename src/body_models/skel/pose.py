@@ -46,8 +46,8 @@ def unpack_pose(
 
 __all__ = [
     "SKEL_BODY_POSE_DIM",
-    "SKEL_HEAD_POSE_DIM",
     "SKEL_CANONICAL_POSE_DIM",
+    "SKEL_HEAD_POSE_DIM",
     "pack_pose",
     "unpack_pose",
 ]

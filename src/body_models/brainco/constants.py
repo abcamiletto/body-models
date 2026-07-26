@@ -1,7 +1,6 @@
 from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
-
 LEFT_BRAINCO_JOINTS = {
     Joint.LEFT_WRIST: "left_base_skel",
     Joint.LEFT_THUMB_CMC: "left_thumb_metacarpal_skel",

@@ -1,8 +1,8 @@
 """Persistent model-asset path configuration."""
 
 import json
-from importlib import import_module
 import tomllib
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 

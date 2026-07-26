@@ -9,10 +9,11 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models.base import SkinnedModel, SkinningPayload
-from body_models.anny import core, pose as pose_utils
+from body_models.anny import core
+from body_models.anny import pose as pose_utils
 from body_models.anny.constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
 from body_models.anny.io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_model_data_numpy
+from body_models.base import SkinnedModel, SkinningPayload
 from body_models.common import deformation, skinning
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models.runtime import ArrayRuntime

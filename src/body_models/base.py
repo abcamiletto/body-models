@@ -4,10 +4,11 @@ from typing import Any, ClassVar, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
-
-from body_models.common import deformation, eye_as, rigid as rigid_ops, zeros_as
-from body_models.constants import Joint
 from trimesh import Trimesh
+
+from body_models.common import deformation, eye_as, zeros_as
+from body_models.common import rigid as rigid_ops
+from body_models.constants import Joint
 
 Array = Any
 

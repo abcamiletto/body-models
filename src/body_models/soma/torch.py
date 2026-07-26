@@ -3,12 +3,13 @@
 from pathlib import Path
 from typing import Literal
 
-import torch.nn as nn
+from torch import nn
 
-from body_models.soma import correctives_torch
-from body_models.soma.model import SOMAModel
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
+from body_models.soma import correctives_torch
+from body_models.soma.model import SOMAModel
+
 
 class SOMA(SOMAModel, nn.Module):
     """SOMA using Torch tensors and optional Warp skinning."""

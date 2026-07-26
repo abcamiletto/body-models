@@ -4,8 +4,8 @@ from pathlib import Path
 
 import jax
 
-from body_models.runtime import JaxModel, JaxRuntime
 from body_models.myofullbody.model import MyoFullBodyModel
+from body_models.runtime import JaxModel, JaxRuntime
 
 
 @jax.tree_util.register_pytree_node_class

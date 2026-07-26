@@ -44,7 +44,7 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.0.2",
     "mujoco>=3.3.7",
-    "ruff>=0.9.0",
+    "ruff>=0.16.0",
     "ty>=0.0.1a13",
     # Include optional backends for type checking
     "torch>=2.3.0",
@@ -87,7 +87,16 @@ line-length = 120
 ignore = [
     "F722",  # jaxtyping annotations use syntax ruff doesn't understand
     "F821",  # jaxtyping dimension names appear as undefined
+    "UP037",  # quoted jaxtyping dimensions are shape expressions, not forward references
     "E741",  # ambiguous variable names (I, l, O) are standard in math notation
+]
+
+[tool.ruff.lint.per-file-ignores]
+"bench/test_min_versions.py" = [
+    "BLE001",  # the compatibility harness reports every dependency failure before exiting
+]
+"src/body_models/common/warp.py" = [
+    "UP018",  # Warp uses float(...) to distinguish mutable kernel variables from constants
 ]
 
 [tool.pytest.ini_options]

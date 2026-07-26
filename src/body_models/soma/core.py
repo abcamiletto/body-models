@@ -1,6 +1,7 @@
 """SOMA identity, rigging, and pose mathematics."""
 
 from __future__ import annotations
+
 import contextlib
 from typing import Any, Literal, TypedDict
 
@@ -8,9 +9,9 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.soma.correctives import CorrectiveNetwork, hidden_activations
 from body_models.common import skinning
 from body_models.rotations import RotationType
+from body_models.soma.correctives import CorrectiveNetwork, hidden_activations
 
 Array = Any
 Front = tuple[list[int], list[int]]
