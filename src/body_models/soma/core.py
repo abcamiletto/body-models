@@ -9,9 +9,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.common import skinning
+from body_models.common import skinning, sparse
 from body_models.rotations import RotationType
-from body_models.soma.correctives import CorrectiveNetwork, hidden_activations
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -315,7 +314,6 @@ def prepare_pose(
     local_joint_translations: Float[Array, "*batch Jf 3"],
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"],
     xp: Any,
-    corrective_network: CorrectiveNetwork,
 ) -> SomaPreparedPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     pose_rot_public, pose_rot_full, skeleton_transforms_full = _prepare_skeleton_state(
@@ -334,13 +332,14 @@ def prepare_pose(
             data.public.t_pose_world,
             data.public.topology.parent_indices_full,
         )
-    hidden = hidden_activations(
+    hidden = _corrective_hidden_activations(
         correctives_pose_rot,
         data.correctives.corrective_bindpose,
-        data.correctives.corrective_W1,
+        data.correctives.hidden_weights,
         xp=xp,
     )
-    pose_offsets = corrective_network(hidden)
+    pose_offsets = sparse.linear(hidden, data.correctives.output_weights)
+    pose_offsets = pose_offsets.reshape(*pose_offsets.shape[:-1], -1, 3)
     if data.vertex_map is not None:
         pose_offsets = pose_offsets[..., data.vertex_map, :]
     return {
@@ -348,6 +347,24 @@ def prepare_pose(
         "skinning_transforms": skinning_transforms[..., 1:, :, :],
         "pose_offsets": pose_offsets * 0.01,
     }
+
+
+def _corrective_hidden_activations(
+    pose_rotations: Float[Array, "*batch J 3 3"],
+    bindpose: Float[Array, "J 3 3"],
+    weights: Float[Array, "input hidden"],
+    *,
+    xp: Any,
+) -> Float[Array, "*batch H"]:
+    """Evaluate SOMA's pose features and rectified hidden layer."""
+    batch_shape = pose_rotations.shape[:-3]
+    relative = bindpose.swapaxes(-2, -1) @ pose_rotations
+    features = relative[..., :, :, :2]
+    features = common.at_set(features, (..., slice(None), 0, 0), features[..., :, 0, 0] - 1, xp=xp)
+    features = common.at_set(features, (..., slice(None), 1, 1), features[..., :, 1, 1] - 1, xp=xp)
+    features = features.reshape(*batch_shape, -1)
+    hidden = features @ weights
+    return xp.maximum(hidden, xp.zeros_like(hidden))
 
 
 def prepare_skeleton(

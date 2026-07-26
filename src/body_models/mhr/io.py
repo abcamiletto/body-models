@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ from nanomanifold import SO3
 
 from body_models import config
 from body_models.cache import download_hf_archive, get_cache_dir
-from body_models.common import Front, compute_kinematic_fronts, simplify_mesh
+from body_models.common import Front, compute_kinematic_fronts, simplify_mesh, sparse
 
 PathLike = Path | str
 SUPPORTED_LODS = tuple(range(7))
@@ -23,6 +24,7 @@ MHR_ASSETS = (
 )
 
 __all__ = [
+    "MhrCorrectives",
     "MhrWeights",
     "compute_kinematic_fronts",
     "download_model",
@@ -31,6 +33,12 @@ __all__ = [
     "load_pose_correctives_weights",
     "simplify_mesh",
 ]
+
+
+@dataclass(frozen=True)
+class MhrCorrectives:
+    hidden_weights: Float[np.ndarray, "input hidden"]
+    output_weights: sparse.SparseMatrix
 
 
 @dataclass(frozen=True)
@@ -46,8 +54,7 @@ class MhrWeights:
     parameter_transform: Float[np.ndarray, "D N"]
     bind_inv_linear: Float[np.ndarray, "J 3 3"]
     bind_inv_translation: Float[np.ndarray, "J 3"]
-    corrective_W1: Float[np.ndarray, "3000 750"]
-    corrective_W2: Float[np.ndarray, "V*3 3000"]
+    correctives: MhrCorrectives
     parents: list[int]
     kinematic_fronts: list[Front]
     joint_names: list[str]
@@ -103,17 +110,14 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
     skin_weights = data["skin_weights"]
     skin_indices = data["skin_indices"].astype(np.int64)
     faces = data["faces"].astype(np.int64)
-    corrective_weights = load_pose_correctives_weights(asset_dir, lod)
-    corrective_W2 = corrective_weights["W2"]
-
+    vertex_map = None
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
         base_vertices, faces, vertex_map = simplify_mesh(base_vertices, faces.astype(int), target_faces)
         blendshape_dirs = blendshape_dirs[:, vertex_map]
         skin_weights = skin_weights[vertex_map]
         skin_indices = skin_indices[vertex_map]
-        corrective_W2_vertices = corrective_W2.reshape(-1, 3, corrective_W2.shape[-1])
-        corrective_W2 = corrective_W2_vertices[vertex_map].reshape(-1, corrective_W2.shape[-1])
+    correctives = load_pose_correctives_weights(asset_dir, lod, vertex_map=vertex_map)
 
     inv_bind = data["inverse_bind_pose"]
     t, q, s = inv_bind[..., :3], inv_bind[..., 3:7], inv_bind[..., 7:8]
@@ -132,8 +136,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
         parameter_transform=np.array(data["parameter_transform"], copy=True),
         bind_inv_linear=np.array(SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s[..., None], copy=True),
         bind_inv_translation=np.array(t, copy=True),
-        corrective_W1=np.array(corrective_weights["W1"], copy=True),
-        corrective_W2=np.array(corrective_W2, copy=True),
+        correctives=correctives,
         parents=joint_parents.tolist(),
         kinematic_fronts=compute_kinematic_fronts(joint_parents),
         joint_names=list(data["joint_names"]),
@@ -264,28 +267,77 @@ def _build_dense_skinning(
     return dense_indices, dense_weights
 
 
-def load_pose_correctives_weights(asset_dir: Path, lod: int) -> dict[str, Float[np.ndarray, "..."]]:
-    """Load pose correctives weights as numpy arrays (backend-agnostic).
-
-    Args:
-        asset_dir: Path to MHR assets directory.
-        lod: Level of detail (1 = default).
-
-    Returns:
-        Dict with 'W1' [3000, 750] and 'W2' [V*3, 3000] weight matrices.
-    """
-    blend_data = dict(np.load(asset_dir / f"corrective_blendshapes_lod{lod}.npz"))
-    act_data = dict(np.load(asset_dir / "corrective_activation.npz"))
-
-    sparse_indices = act_data["0.sparse_indices"]
-    sparse_weight = act_data["0.sparse_weight"]
-
+def load_pose_correctives_weights(
+    asset_dir: Path,
+    lod: int,
+    *,
+    vertex_map: Int[np.ndarray, "V"] | None = None,
+) -> MhrCorrectives:
+    """Load MHR pose-corrective weights in sparse input-output orientation."""
+    with np.load(asset_dir / "corrective_activation.npz") as data:
+        sparse_indices = data["0.sparse_indices"]
+        sparse_values = data["0.sparse_weight"]
     out_features, in_features = 125 * 24, 125 * 6
-    W1 = np.zeros((out_features, in_features), dtype=np.float32)
-    W1[sparse_indices[0], sparse_indices[1]] = sparse_weight
+    hidden_weights = np.zeros((in_features, out_features), dtype=np.float32)
+    hidden_weights[sparse_indices[1], sparse_indices[0]] = sparse_values
 
-    corrective_blendshapes = blend_data["corrective_blendshapes"]
-    n_comp = corrective_blendshapes.shape[0]
-    W2 = corrective_blendshapes.reshape(n_comp, -1).T.astype(np.float32)
+    output_weights = _load_output_weights(asset_dir, lod)
+    if vertex_map is not None:
+        output_weights = _select_output_vertices(output_weights, vertex_map)
 
-    return {"W1": W1, "W2": W2}
+    return MhrCorrectives(
+        hidden_weights=hidden_weights,
+        output_weights=output_weights,
+    )
+
+
+def _load_output_weights(asset_dir: Path, lod: int) -> sparse.SparseMatrix:
+    cache_file = _output_weights_cache_file(asset_dir, lod)
+    if cache_file.exists():
+        with np.load(cache_file, allow_pickle=False) as data:
+            shape = data["shape"]
+            return sparse.SparseMatrix(
+                row_indices=np.asarray(data["rows"], dtype=np.int64).copy(),
+                column_indices=np.asarray(data["columns"], dtype=np.int64).copy(),
+                values=np.asarray(data["values"], dtype=np.float32).copy(),
+                shape=(int(shape[0]), int(shape[1])),
+            )
+
+    with np.load(asset_dir / f"corrective_blendshapes_lod{lod}.npz") as data:
+        blendshapes = np.asarray(data["corrective_blendshapes"], dtype=np.float32)
+    num_components = blendshapes.shape[0]
+    output_weights = sparse.from_dense(blendshapes.reshape(num_components, -1))
+    np.savez_compressed(
+        cache_file,
+        rows=output_weights.row_indices,
+        columns=output_weights.column_indices,
+        values=output_weights.values,
+        shape=np.asarray(output_weights.shape, dtype=np.int64),
+    )
+    return output_weights
+
+
+def _output_weights_cache_file(asset_dir: Path, lod: int) -> Path:
+    source = asset_dir / f"corrective_blendshapes_lod{lod}.npz"
+    stat = source.stat()
+    key = hashlib.md5(f"v1:{source.resolve()}:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()
+    cache_dir = get_cache_dir() / "mhr" / "preprocessed"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"correctives_{key}.npz"
+
+
+def _select_output_vertices(
+    weights: sparse.SparseMatrix,
+    vertex_map: Int[np.ndarray, "V"],
+) -> sparse.SparseMatrix:
+    selected_columns = (vertex_map[:, None] * 3 + np.arange(3)).reshape(-1)
+    column_map = np.full(weights.shape[1], -1, dtype=np.int64)
+    column_map[selected_columns] = np.arange(selected_columns.size)
+    remapped_columns = column_map[weights.column_indices]
+    keep = remapped_columns >= 0
+    return sparse.SparseMatrix(
+        row_indices=weights.row_indices[keep],
+        column_indices=remapped_columns[keep],
+        values=weights.values[keep],
+        shape=(weights.shape[0], selected_columns.size),
+    )

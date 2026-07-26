@@ -11,7 +11,23 @@ _JAX_DATACLASSES: set[type] = set()
 
 
 def numpy_state(value: Any) -> Any:
-    """Keep loaded NumPy model data unchanged."""
+    """Materialize model data for NumPy."""
+    from body_models.common import sparse
+
+    if isinstance(value, sparse.SparseMatrix):
+        from body_models.common import sparse_numpy
+
+        return sparse_numpy.SparseLinear(value)
+
+    if is_dataclass(value):
+        cls = type(value)
+        return cls(**{field.name: numpy_state(getattr(value, field.name)) for field in fields(value)})
+    if isinstance(value, list):
+        return [numpy_state(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(numpy_state(item) for item in value)
+    if isinstance(value, dict):
+        return {key: numpy_state(item) for key, item in value.items()}
     return value
 
 
@@ -21,6 +37,12 @@ def torch_state(value: Any) -> Any:
     from torch import nn
 
     from body_models._torch_state import StateMapping, StateSequence
+    from body_models.common import sparse
+
+    if isinstance(value, sparse.SparseMatrix):
+        from body_models.common import sparse_torch
+
+        return sparse_torch.SparseLinear(value)
 
     if is_dataclass(value):
         module = nn.Module()
@@ -56,6 +78,15 @@ def jax_state(value: Any) -> Any:
     """Convert model arrays to JAX arrays while preserving dataclass types."""
     import jax
     import jax.numpy as jnp
+
+    from body_models.common import sparse
+
+    if isinstance(value, sparse.SparseMatrix):
+        from body_models.common import sparse_jax
+
+        materialized = sparse_jax.SparseLinear.from_matrix(value)
+        _register_jax_dataclass(type(materialized), jax)
+        return materialized
 
     if is_dataclass(value):
         cls = type(value)

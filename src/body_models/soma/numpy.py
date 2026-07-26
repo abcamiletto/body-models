@@ -4,7 +4,6 @@ from pathlib import Path
 
 from body_models.rotations import RotationType
 from body_models.runtime import NumpyRuntime
-from body_models.soma import correctives_numpy
 from body_models.soma.model import SOMAModel
 
 
@@ -29,7 +28,6 @@ class SOMA(SOMAModel):
             rotation_type=rotation_type,
             match_warp=match_warp,
             runtime=NumpyRuntime(),
-            corrective_network=correctives_numpy.NumpyCorrectiveNetwork,
         )
 
 

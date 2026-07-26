@@ -193,8 +193,8 @@ class MHRModel(SkinnedModel):
             shape_dim=self.SHAPE_DIM,
             bind_inv_linear=self.weights.bind_inv_linear,
             bind_inv_translation=self.weights.bind_inv_translation,
-            corrective_W1=self.weights.corrective_W1,
-            corrective_W2=self.weights.corrective_W2,
+            corrective_hidden_weights=self.weights.correctives.hidden_weights,
+            corrective_output_weights=self.weights.correctives.output_weights,
             pose=pose,
             xp=self._runtime.xp,
         )
