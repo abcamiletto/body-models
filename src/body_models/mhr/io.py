@@ -108,7 +108,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
     base_vertices = data["base_vertices"]
     blendshape_dirs = data["blendshape_dirs"]
     skin_weights = data["skin_weights"]
-    skin_indices = data["skin_indices"].astype(np.int64)
+    skin_indices = data["skin_indices"].astype(np.int32)
     faces = data["faces"].astype(np.int64)
     vertex_map = None
     if simplify > 1.0:
@@ -249,11 +249,11 @@ def _build_dense_skinning(
 ) -> tuple[Int[np.ndarray, "V K"], Float[np.ndarray, "V K"]]:
     """Build dense skinning matrices from sparse representation."""
     vert_indices = vert_indices.astype(np.int64, copy=False)
-    joint_indices = joint_indices.astype(np.int64, copy=False)
+    joint_indices = joint_indices.astype(np.int32, copy=False)
     counts = np.bincount(vert_indices, minlength=num_vertices)
     K = int(counts.max())
 
-    dense_indices = np.zeros((num_vertices, K), dtype=np.int64)
+    dense_indices = np.zeros((num_vertices, K), dtype=np.int32)
     dense_weights = np.zeros((num_vertices, K), dtype=joint_weights.dtype)
 
     offsets = np.zeros(num_vertices + 1, dtype=np.int64)

@@ -190,7 +190,7 @@ def load_model_data_numpy(
         bone_rolls_rotmat=data["bone_rolls_rotmat"].astype(dtype),
         phenotype_mask=data["phenotype_mask"].astype(dtype),
         lbs_weights=lbs_weights.astype(dtype),
-        lbs_joint_indices=data["vertex_bone_indices"].astype(np.int64),
+        lbs_joint_indices=data["vertex_bone_indices"].astype(np.int32),
         lbs_joint_weights=data["vertex_bone_weights"].astype(dtype),
         faces=data["faces"],
         bone_labels=data["bone_labels"],

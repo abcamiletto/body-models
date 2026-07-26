@@ -137,7 +137,7 @@ def compute_sparse_skin_weights(
     weight 0.
     """
     counts = (np.abs(weights) > threshold).sum(axis=1)
-    indices = np.full((weights.shape[0], int(counts.max(initial=0))), -1, dtype=np.int64)
+    indices = np.full((weights.shape[0], int(counts.max(initial=0))), -1, dtype=np.int32)
     values = np.zeros(indices.shape, dtype=weights.dtype)
     for vertex, row in enumerate(weights):
         active = np.flatnonzero(np.abs(row) > threshold)

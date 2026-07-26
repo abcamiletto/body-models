@@ -3,12 +3,16 @@
 Examples:
     uv run bench/run.py -m smpl --backend numpy
     uv run bench/run.py -m smpl --backend torch --skinning-backend warp -d cuda
+    uv run bench/run.py -m smplx --backend torch -d cuda --prepared-identity
     uv run bench/run.py --method skeleton --batch-sizes 512,1024
+    uv run bench/run.py --backend torch --torch-mode eager
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
+import platform
 import statistics
 import time
 from contextlib import nullcontext
@@ -35,7 +39,6 @@ BACKENDS = ("numpy", "torch")
 class BenchmarkSpec:
     model_name: str
     kwargs: dict[str, Any] = field(default_factory=dict)
-    prepare_identity: bool = False
 
     @property
     def vertices_method(self) -> str:
@@ -47,18 +50,23 @@ class BenchmarkSpec:
 
 
 @dataclass(frozen=True)
+class BenchmarkMeasurement:
+    first_call_ms: float
+    steady_state_ms: float
+    peak_memory_mib: float | None
+
+
+@dataclass(frozen=True)
 class BenchmarkResult:
     label: str
-    timings: dict[tuple[str, int], float]
+    measurements: dict[tuple[str, int], BenchmarkMeasurement]
 
 
 BENCHMARKS = {name: BenchmarkSpec(name) for name in catalog.MODEL_SPECS}
-BENCHMARKS["soma"] = BenchmarkSpec("soma", prepare_identity=True)
 BENCHMARKS |= {
     f"soma-{model_type}": BenchmarkSpec(
         "soma",
         {"model_type": model_type},
-        prepare_identity=True,
     )
     for model_type in ("anny", "mhr", "smpl", "smplx")
 }
@@ -75,7 +83,14 @@ def main() -> None:
     devices = parse_devices(args.devices)
     methods = args.methods or ["skeleton", "vertices"]
 
-    preflight_models(benchmark_names, backends, skinning_backends, methods)
+    preflight_models(
+        benchmark_names,
+        backends,
+        skinning_backends,
+        methods,
+        args.prepared_identity,
+        args.torch_mode,
+    )
     results = benchmark_all(
         benchmark_names=benchmark_names,
         backends=backends,
@@ -87,6 +102,8 @@ def main() -> None:
         skeleton_runs=args.skeleton_runs,
         vertices_runs=args.vertices_runs,
         warmup=args.warmup,
+        prepared_identity=args.prepared_identity,
+        torch_mode=args.torch_mode,
     )
 
     if args.output is not None:
@@ -102,6 +119,8 @@ def main() -> None:
             methods=methods,
             skeleton_batch_sizes=skeleton_batch_sizes,
             vertices_batch_sizes=vertices_batch_sizes,
+            prepared_identity=args.prepared_identity,
+            torch_mode=args.torch_mode,
         )
 
 
@@ -110,6 +129,8 @@ def preflight_models(
     backends: list[str],
     skinning_backends: list[str],
     methods: list[str],
+    prepared_identity: bool,
+    torch_mode: str,
 ) -> None:
     print("Checking model instantiation...")
     for benchmark_name in benchmark_names:
@@ -118,8 +139,16 @@ def preflight_models(
             for skinning_backend in implementations(spec, backend, skinning_backends):
                 if not benchmark_methods(methods, skinning_backend):
                     continue
-                create_model(spec, backend, skinning_backend, torch.device("cpu"))
-                print(f"  {label(benchmark_name, backend, skinning_backend)}")
+                model = create_model(spec, backend, skinning_backend, torch.device("cpu"))
+                uses_prepared_identity = prepared_identity and hasattr(model, "prepare_identity")
+                result_label = label(
+                    benchmark_name,
+                    backend,
+                    skinning_backend,
+                    prepared_identity=uses_prepared_identity,
+                    torch_mode=torch_mode,
+                )
+                print(f"  {result_label}")
 
 
 def benchmark_all(
@@ -134,6 +163,8 @@ def benchmark_all(
     skeleton_runs: int,
     vertices_runs: int,
     warmup: int,
+    prepared_identity: bool,
+    torch_mode: str,
 ) -> list[BenchmarkResult]:
     results = []
     for benchmark_name in benchmark_names:
@@ -146,7 +177,15 @@ def benchmark_all(
                 backend_devices = devices if backend == "torch" else [None]
                 for device in backend_devices:
                     model = create_model(spec, backend, skinning_backend, device)
-                    result_label = label(benchmark_name, backend, skinning_backend, device)
+                    uses_prepared_identity = prepared_identity and hasattr(model, "prepare_identity")
+                    result_label = label(
+                        benchmark_name,
+                        backend,
+                        skinning_backend,
+                        device,
+                        uses_prepared_identity,
+                        torch_mode,
+                    )
                     results.append(
                         benchmark_model(
                             result_label,
@@ -160,6 +199,8 @@ def benchmark_all(
                             skeleton_runs,
                             vertices_runs,
                             warmup,
+                            uses_prepared_identity,
+                            torch_mode,
                         )
                     )
     return results
@@ -201,11 +242,18 @@ def label(
     backend: str,
     skinning_backend: str | None,
     device: torch.device | None = None,
+    prepared_identity: bool = False,
+    torch_mode: str = "compile",
 ) -> str:
     implementation = backend if skinning_backend is None else f"{backend}/{skinning_backend}"
     if device is not None:
         device_name = "gpu" if device.type == "cuda" else device.type
         implementation = f"{implementation}, {device_name}"
+    if backend == "torch":
+        execution = "compiled" if torch_mode == "compile" else "eager"
+        implementation = f"{implementation}, {execution}"
+    if prepared_identity:
+        implementation = f"{implementation}, prepared identity"
     return f"{benchmark_name.upper()} ({implementation})"
 
 
@@ -221,9 +269,11 @@ def benchmark_model(
     skeleton_runs: int,
     vertices_runs: int,
     warmup: int,
+    prepared_identity: bool,
+    torch_mode: str,
 ) -> BenchmarkResult:
     print(f"\nBenchmarking {result_label}...")
-    results = {}
+    measurements = {}
     configurations = []
     if "skeleton" in methods:
         configurations.append(("forward_skeleton", "forward_skeleton", skeleton_batch_sizes, skeleton_runs))
@@ -232,27 +282,36 @@ def benchmark_model(
 
     for result_name, method_name, batch_sizes, runs in configurations:
         method = getattr(model, method_name)
-        if backend == "torch":
+        if backend == "torch" and torch_mode == "compile":
             method = torch.compile(method, mode=TORCH_COMPILE_MODE)
 
         for batch_size in batch_sizes:
-            params = benchmark_params(model, batch_size, spec.prepare_identity)
+            params = benchmark_params(model, batch_size, prepared_identity)
             params = move_tensors(params, device)
-            mean_ms = benchmark_method(method, params, backend, device, runs, warmup)
-            results[(result_name, batch_size)] = mean_ms
-            print(f"  {method_name} (B={batch_size:>4}): {mean_ms:8.2f} ms")
+            measurement = benchmark_method(method, params, backend, device, runs, warmup)
+            measurements[(result_name, batch_size)] = measurement
+            memory = f", peak {measurement.peak_memory_mib:.1f} MiB" if measurement.peak_memory_mib is not None else ""
+            print(
+                f"  {method_name} (B={batch_size:>4}): "
+                f"{measurement.steady_state_ms:8.2f} ms steady, "
+                f"{measurement.first_call_ms:.2f} ms first{memory}"
+            )
 
-    return BenchmarkResult(result_label, results)
+    return BenchmarkResult(result_label, measurements)
 
 
-def benchmark_params(model: Any, batch_size: int, prepare_identity: bool) -> dict[str, Any]:
+def benchmark_params(model: Any, batch_size: int, prepared_identity: bool) -> dict[str, Any]:
     params = model.get_rest_pose(batch_dims=(batch_size,))
-    if not prepare_identity:
+    if not prepared_identity:
         return params
 
-    shape = params.pop("shape")
-    scale_params = params.pop("scale_params", None)
-    params["identity"] = model.prepare_identity(shape, scale_params=scale_params)
+    identity_params = {}
+    for name, parameter in inspect.signature(model.prepare_identity).parameters.items():
+        if name in params:
+            identity_params[name] = params.pop(name)
+        elif parameter.default is inspect.Parameter.empty:
+            raise ValueError(f"get_rest_pose() does not provide required identity parameter {name!r}")
+    params["identity"] = model.prepare_identity(**identity_params)
     return params
 
 
@@ -263,16 +322,24 @@ def benchmark_method(
     device: torch.device | None,
     runs: int,
     warmup: int,
-) -> float:
+) -> BenchmarkMeasurement:
     context = torch.inference_mode if backend == "torch" else nullcontext
+    synchronize(device)
+    start = time.perf_counter()
     with context():
         method(**params)
     synchronize(device)
+    first_call_ms = (time.perf_counter() - start) * 1000
 
     for _ in range(warmup):
         with context():
             method(**params)
         synchronize(device)
+
+    baseline_memory = None
+    if device is not None and device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+        baseline_memory = torch.cuda.memory_allocated(device)
 
     times = []
     for _ in range(runs):
@@ -282,7 +349,16 @@ def benchmark_method(
             method(**params)
         synchronize(device)
         times.append((time.perf_counter() - start) * 1000)
-    return mean_without_outliers(times)
+
+    peak_memory_mib = None
+    if baseline_memory is not None:
+        peak_memory = torch.cuda.max_memory_allocated(device) - baseline_memory
+        peak_memory_mib = peak_memory / 2**20
+    return BenchmarkMeasurement(
+        first_call_ms=first_call_ms,
+        steady_state_ms=mean_without_outliers(times),
+        peak_memory_mib=peak_memory_mib,
+    )
 
 
 def write_markdown(
@@ -298,8 +374,11 @@ def write_markdown(
     methods: list[str],
     skeleton_batch_sizes: list[int],
     vertices_batch_sizes: list[int],
+    prepared_identity: bool,
+    torch_mode: str,
 ) -> None:
-    torch_devices = ", ".join("gpu" if device.type == "cuda" else device.type for device in devices)
+    torch_devices = ", ".join(device_description(device) for device in devices)
+    torch_execution = f"torch.compile(mode={TORCH_COMPILE_MODE!r})" if torch_mode == "compile" else "eager"
     lines = [
         "# Benchmark Results",
         "",
@@ -309,7 +388,9 @@ def write_markdown(
         f"- **Backends**: {', '.join(backends)}",
         f"- **Torch skinning backends**: {', '.join(skinning_backends)}",
         f"- **Torch devices**: {torch_devices}",
-        f"- **Torch mode**: `torch.compile(mode={TORCH_COMPILE_MODE!r})`",
+        f"- **Torch execution**: {torch_execution}",
+        f"- **Prepared identities**: {prepared_identity}",
+        f"- **Platform**: {platform.platform()}",
         f"- **PyTorch version**: {torch.__version__}",
         f"- **CUDA available**: {torch.cuda.is_available()}",
         "",
@@ -319,7 +400,15 @@ def write_markdown(
             [
                 "## `forward_skeleton` (ms)",
                 "",
-                format_table(results, "forward_skeleton", skeleton_batch_sizes),
+                format_table(results, "forward_skeleton", skeleton_batch_sizes, "steady_state_ms"),
+                "",
+                "### First call (ms)",
+                "",
+                format_table(results, "forward_skeleton", skeleton_batch_sizes, "first_call_ms"),
+                "",
+                "### Peak CUDA memory (MiB)",
+                "",
+                format_table(results, "forward_skeleton", skeleton_batch_sizes, "peak_memory_mib"),
                 "",
             ]
         )
@@ -328,7 +417,15 @@ def write_markdown(
             [
                 "## `forward_vertices` / `forward_links` (ms)",
                 "",
-                format_table(results, "forward_vertices", vertices_batch_sizes),
+                format_table(results, "forward_vertices", vertices_batch_sizes, "steady_state_ms"),
+                "",
+                "### First call (ms)",
+                "",
+                format_table(results, "forward_vertices", vertices_batch_sizes, "first_call_ms"),
+                "",
+                "### Peak CUDA memory (MiB)",
+                "",
+                format_table(results, "forward_vertices", vertices_batch_sizes, "peak_memory_mib"),
                 "",
             ]
         )
@@ -337,12 +434,18 @@ def write_markdown(
     print(f"\nResults saved to {output_path}")
 
 
-def format_table(results: list[BenchmarkResult], method_name: str, batch_sizes: list[int]) -> str:
+def format_table(
+    results: list[BenchmarkResult],
+    method_name: str,
+    batch_sizes: list[int],
+    metric: str,
+) -> str:
     header = "| Model | " + " | ".join(f"B={batch_size}" for batch_size in batch_sizes) + " |"
     separator = "|---|" + "|".join("---:" for _ in batch_sizes) + "|"
     rows = []
     for result in results:
-        values = [result.timings.get((method_name, batch_size)) for batch_size in batch_sizes]
+        measurements = [result.measurements.get((method_name, batch_size)) for batch_size in batch_sizes]
+        values = [getattr(measurement, metric) if measurement is not None else None for measurement in measurements]
         cells = [f"{value:.2f}" if value is not None else "N/A" for value in values]
         rows.append(f"| {result.label} | " + " | ".join(cells) + " |")
     return "\n".join([header, separator, *rows])
@@ -367,6 +470,12 @@ def move_tensors(params: dict[str, Any], device: torch.device | None) -> dict[st
 def synchronize(device: torch.device | None) -> None:
     if device is not None and device.type == "cuda":
         torch.cuda.synchronize()
+
+
+def device_description(device: torch.device) -> str:
+    if device.type != "cuda":
+        return device.type
+    return f"cuda ({torch.cuda.get_device_name(device)})"
 
 
 def parse_args() -> argparse.Namespace:
@@ -415,6 +524,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skeleton-runs", type=int, default=DEFAULT_SKELETON_RUNS)
     parser.add_argument("--vertices-runs", type=int, default=DEFAULT_VERTICES_RUNS)
     parser.add_argument("-w", "--warmup", type=int, default=DEFAULT_WARMUP)
+    parser.add_argument(
+        "--prepared-identity",
+        action="store_true",
+        help="Precompute identity-dependent state for models that support it",
+    )
+    parser.add_argument(
+        "--torch-mode",
+        choices=("compile", "eager"),
+        default="compile",
+        help="Torch execution mode (default: compile)",
+    )
     parser.add_argument(
         "--output",
         type=Path,

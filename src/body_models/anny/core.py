@@ -298,8 +298,8 @@ def _phenotype_to_coeffs(
             {label: interpolation[..., position] for position, label in enumerate(PHENOTYPE_VARIATIONS[name])}
         )
 
-    race = xp.full((*gender.shape, 3), 1 / 3, dtype=dtype)
-    weights.update(african=race[..., 0], asian=race[..., 1], caucasian=race[..., 2])
+    race = xp.full_like(gender, 1 / 3, dtype=dtype)
+    weights.update(african=race, asian=race, caucasian=race)
     phenotype_weights = xp.stack(
         [weights[label] for labels in PHENOTYPE_VARIATIONS.values() for label in labels],
         axis=-1,
