@@ -18,7 +18,7 @@ def numpy_state(value: Any) -> Any:
 def torch_state(value: Any) -> Any:
     """Recursively register model arrays as PyTorch buffers."""
     import torch
-    import torch.nn as nn
+    from torch import nn
 
     from body_models._torch_state import StateMapping, StateSequence
 

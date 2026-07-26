@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 import torch
-import torch.nn as nn
 from jaxtyping import Float, Int
-from torch import Tensor
+from torch import Tensor, nn
 
 from body_models.runtime import ArrayRuntime
 

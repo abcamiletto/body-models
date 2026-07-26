@@ -6,7 +6,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def _store(module: nn.Module, static: dict[str, Any], name: str, value: Any) -> None:

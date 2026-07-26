@@ -1,7 +1,6 @@
+import model_cases
 import numpy as np
 import pytest
-
-import model_cases
 
 
 @pytest.mark.parametrize(("name", "_numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)

@@ -54,7 +54,9 @@ def forward_skeleton(
 
     rest_rot = xp.asarray(rest_local_rotations, dtype=dtype)
     local_rot = common.eye_as(local_joint_rot, batch_dims=(*batch_shape, num_joints), xp=xp)
-    local_rot = common.at_set(local_rot, (..., actuated_joint_indices, slice(None), slice(None)), local_joint_rot, xp=xp)
+    local_rot = common.at_set(
+        local_rot, (..., actuated_joint_indices, slice(None), slice(None)), local_joint_rot, xp=xp
+    )
     if coupled_joint_indices:
         driver_pose = pose[..., coupled_driver_indices]
         coeffs = xp.asarray(coupled_polycoef, dtype=dtype)

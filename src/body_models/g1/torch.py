@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import torch.nn as nn
+from torch import nn
 
 from body_models.g1 import core
 from body_models.g1.model import G1Model

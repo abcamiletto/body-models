@@ -10,10 +10,10 @@ from jaxtyping import Float
 from trimesh import Trimesh
 
 from body_models.base import RigidBodyModel
-from body_models.runtime import ArrayRuntime
 from body_models.myofullbody import core
 from body_models.myofullbody.constants import MYOFULLBODY_BODY_PRESETS, MYOFULLBODY_JOINTS
 from body_models.myofullbody.io import load_model_data
+from body_models.runtime import ArrayRuntime
 
 Array = Any
 

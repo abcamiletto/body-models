@@ -4,8 +4,8 @@ from pathlib import Path
 
 import jax
 
-from body_models.smpl_humanoid.model import SmplHumanoidModel
 from body_models.runtime import JaxModel, JaxRuntime
+from body_models.smpl_humanoid.model import SmplHumanoidModel
 
 
 @jax.tree_util.register_pytree_node_class

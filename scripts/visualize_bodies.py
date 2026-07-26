@@ -14,7 +14,6 @@ from nanomanifold import SO3
 from body_models.base import SkinnedModel
 from body_models.registry import create_model
 
-
 DISPLAY_GLOBAL_ROTATIONS = {
     "ANNY": (-np.pi / 2, 0.0, 0.0),
 }

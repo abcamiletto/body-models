@@ -12,14 +12,14 @@ directly to produce vertices and joints, and saves inputs/outputs under
 `tests/assets/mhr`.
 """
 
+import json
 import shutil
-import numpy as np
 import tempfile
 import zipfile
 from pathlib import Path
 from urllib import request
 
-import json
+import numpy as np
 import torch
 
 torch.manual_seed(0)

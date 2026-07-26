@@ -3,10 +3,9 @@
 from typing import Any
 
 from jaxtyping import Float
-
-from body_models.common import deformation, kinematics, skinning
 from nanomanifold import SO3
 
+from body_models.common import deformation, kinematics, skinning
 from body_models.rotations import RotationType, rotation_ndim
 
 Array = Any  # Generic array type (numpy, torch, jax)

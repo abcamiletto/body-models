@@ -1,7 +1,6 @@
 from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
-
 MANO_JOINT_NAMES = [
     "wrist",
     "index1",
@@ -66,4 +65,4 @@ MANO_HAND_PRESETS = {
     "right": _POSES["right"],
 }
 
-__all__ = ["MANO_JOINT_NAMES", "LEFT_MANO_JOINTS", "RIGHT_MANO_JOINTS", "MANO_HAND_PRESETS"]
+__all__ = ["LEFT_MANO_JOINTS", "MANO_HAND_PRESETS", "MANO_JOINT_NAMES", "RIGHT_MANO_JOINTS"]

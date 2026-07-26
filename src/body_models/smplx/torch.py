@@ -3,11 +3,11 @@
 from pathlib import Path
 from typing import Literal
 
-import torch.nn as nn
+from torch import nn
 
-from body_models.smplx.model import SMPLXModel
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
+from body_models.smplx.model import SMPLXModel
 
 
 class SMPLX(SMPLXModel, nn.Module):

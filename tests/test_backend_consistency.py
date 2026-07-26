@@ -1,8 +1,8 @@
+import model_cases
 import numpy as np
 import pytest
 from trimesh import Trimesh
 
-import model_cases
 from body_models.runtime import TorchRuntime
 
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]

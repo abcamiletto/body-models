@@ -22,9 +22,9 @@ _SCRIPT_DIR = str(Path(__file__).resolve().parent)
 if sys.path and sys.path[0] == _SCRIPT_DIR:
     sys.path.pop(0)
 
-import numpy as np  # noqa: E402
-from jaxtyping import Float, Int, Shaped  # noqa: E402
-from scipy.sparse import csc_matrix  # noqa: E402
+import numpy as np
+from jaxtyping import Float, Int, Shaped
+from scipy.sparse import csc_matrix
 
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"

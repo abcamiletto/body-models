@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal
 
-import torch.nn as nn
+from torch import nn
 
 from body_models.garment_measurements.model import GarmentMeasurementsModel
 from body_models.rotations import RotationType

@@ -4,9 +4,9 @@ import shutil
 import tarfile
 import urllib.parse
 import urllib.request
-from urllib.error import HTTPError
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError
 
 from .cache import get_cache_dir
 

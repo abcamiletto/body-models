@@ -1,10 +1,10 @@
 """STL mesh loading helpers."""
 
-from pathlib import Path
 import struct
+from pathlib import Path
 
-from jaxtyping import Float, Int
 import numpy as np
+from jaxtyping import Float, Int
 
 Array = np.ndarray
 

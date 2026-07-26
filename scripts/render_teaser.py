@@ -28,6 +28,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 from body_models.anny.numpy import ANNY
+from body_models.base import RigidBodyModel
 from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
@@ -39,7 +40,6 @@ from body_models.smpl.numpy import SMPL
 from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
-from body_models.base import RigidBodyModel
 
 # ── Lineup configuration ─────────────────────────────────────────────────────
 MODEL_HEIGHT = 1.75

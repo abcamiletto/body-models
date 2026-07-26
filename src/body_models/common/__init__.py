@@ -18,6 +18,7 @@ __all__ = [
     "Array",
     "Front",
     "affine_transforms",
+    "at_set",
     "compose_local_transforms",
     "compute_kinematic_fronts",
     "compute_sparse_skin_weights",
@@ -26,7 +27,6 @@ __all__ = [
     "invert_rigid_transforms",
     "local_joint_offsets",
     "rotate_transforms",
-    "at_set",
     "simplify_mesh",
     "zeros_as",
 ]

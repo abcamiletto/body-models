@@ -6,19 +6,19 @@ import hashlib
 import shutil
 import subprocess
 from dataclasses import dataclass, replace
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
+from jaxtyping import Float, Int, Shaped
 from scipy import linalg as scipy_linalg
 from scipy import sparse as scipy_sparse
 from scipy.sparse import csc_matrix
-from jaxtyping import Float, Int, Shaped
 
 from body_models import config
-from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 from body_models.cache import download_hf_archive, get_cache_dir
+from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 
 PathLike = Path | str
 
@@ -64,21 +64,21 @@ SOMA_PROCEDURAL_NPZ_FIELDS = tuple(f"procedural_{name}" for name in SOMA_PROCEDU
 
 __all__ = [
     "SomaIdentityTransfer",
-    "SomaPublicRig",
     "SomaProceduralRig",
+    "SomaPublicRig",
     "SomaWeights",
-    "get_model_path",
+    "compute_kinematic_fronts",
     "download_model",
+    "get_identity_model_path",
+    "get_model_path",
+    "load_identity_transfer_data",
     "load_model_data",
     "load_model_data_for_lod",
-    "with_lod_mesh",
-    "get_identity_model_path",
-    "load_identity_transfer_data",
     "preprocess_model",
-    "compute_kinematic_fronts",
     "public_joint_metadata",
-    "with_active_mesh",
     "simplify_mesh",
+    "with_active_mesh",
+    "with_lod_mesh",
 ]
 
 
@@ -644,7 +644,7 @@ def _build_identity_laplacian_data(
     return unknown_ids, anchor_ids, solve_matrix, anchor_matrix, rhs_base
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_identity_transfer_data(asset_dir: Path, model_type: str) -> SomaIdentityTransfer:
     normalized = model_type.lower()
     spec = MODEL_TYPE_SPECS.get(normalized)
@@ -963,7 +963,7 @@ def _load_or_build_joint_position_regressor(
     return joint_regressor
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_model_data_cached(model_dir: str) -> SomaWeights:
     asset_dir = Path(model_dir)
     correctives = _load_pose_correctives_weights(asset_dir)

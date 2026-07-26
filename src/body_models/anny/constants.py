@@ -1,7 +1,6 @@
 from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
-
 ANNY_JOINTS = {
     Joint.LEFT_SHOULDER: "shoulder01.L",
     Joint.RIGHT_SHOULDER: "shoulder01.R",
@@ -54,4 +53,4 @@ _POSES = load_npz("body_models.anny")
 ANNY_BODY_PRESETS = _POSES["body"]
 ANNY_HAND_PRESETS = _POSES["hand"]
 
-__all__ = ["ANNY_JOINTS", "ANNY_BODY_PRESETS", "ANNY_HAND_PRESETS"]
+__all__ = ["ANNY_BODY_PRESETS", "ANNY_HAND_PRESETS", "ANNY_JOINTS"]

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import xml.etree.ElementTree as ET
 
 import numpy as np
-from jaxtyping import Float, Int
 import trimesh.creation
+from jaxtyping import Float, Int
 from trimesh import Trimesh
 
 from body_models import config

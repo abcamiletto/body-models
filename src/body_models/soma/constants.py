@@ -1,7 +1,6 @@
 from body_models.common.pose_assets import load_npz
 from body_models.constants import Joint
 
-
 SOMA_JOINTS = {
     Joint.LEFT_SHOULDER: "LeftArm",
     Joint.RIGHT_SHOULDER: "RightArm",
@@ -55,7 +54,7 @@ SOMA_BODY_PRESETS = _POSES["body"]
 SOMA_HAND_PRESETS = _POSES["hand"]
 
 __all__ = [
-    "SOMA_JOINTS",
     "SOMA_BODY_PRESETS",
     "SOMA_HAND_PRESETS",
+    "SOMA_JOINTS",
 ]

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import torch.nn as nn
+from torch import nn
 
 from body_models.brainco.io import Side
 from body_models.brainco.model import BrainCoHandModel
