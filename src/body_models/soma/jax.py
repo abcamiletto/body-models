@@ -6,7 +6,6 @@ import jax
 
 from body_models.rotations import RotationType
 from body_models.runtime import JaxModel, JaxRuntime
-from body_models.soma import correctives_jax
 from body_models.soma.io import public_joint_metadata
 from body_models.soma.model import SOMAModel
 
@@ -35,12 +34,10 @@ class SOMA(SOMAModel, JaxModel):
             rotation_type=rotation_type,
             match_warp=match_warp,
             runtime=JaxRuntime(),
-            corrective_network=correctives_jax.JaxCorrectiveNetwork,
         )
 
     def _rebuild_jax_state(self) -> None:
         self.parents, self._joint_names = public_joint_metadata(self.weights)
-        self._corrective_network = correctives_jax.JaxCorrectiveNetwork(self._runtime, self.weights)
 
 
 __all__ = ["SOMA"]

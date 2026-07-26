@@ -1,6 +1,6 @@
 """Common utilities."""
 
-from body_models.common import deformation
+from body_models.common import deformation, sparse
 from body_models.common.kinematics import (
     Front,
     affine_transforms,
@@ -28,5 +28,6 @@ __all__ = [
     "local_joint_offsets",
     "rotate_transforms",
     "simplify_mesh",
+    "sparse",
     "zeros_as",
 ]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -17,7 +16,6 @@ from body_models.rotations import VALID_ROTATION_TYPES, RotationType, rotation_n
 from body_models.runtime import ArrayRuntime
 from body_models.soma import core, identities
 from body_models.soma.constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
-from body_models.soma.correctives import CorrectiveNetwork
 from body_models.soma.io import (
     MODEL_TYPE_SPECS,
     get_identity_model_path,
@@ -64,7 +62,6 @@ class SOMAModel(SkinnedModel):
         rotation_type: RotationType = "axis_angle",
         match_warp: bool = True,
         runtime: ArrayRuntime,
-        corrective_network: Callable[[ArrayRuntime, Any], CorrectiveNetwork],
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -88,7 +85,6 @@ class SOMAModel(SkinnedModel):
         )
         self.parents, self._joint_names = public_joint_metadata(weights)
         self.weights = runtime.materialize(weights)
-        self._corrective_network = corrective_network(runtime, self.weights)
         self._identity_source = None
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, normalized_model_type)
@@ -309,7 +305,6 @@ class SOMAModel(SkinnedModel):
             local_joint_translations=identity["local_joint_translations"],
             inverse_bind_transforms=identity["inverse_bind_transforms"],
             xp=xp,
-            corrective_network=self._corrective_network,
         )
 
     def _prepare_skeleton_identity(

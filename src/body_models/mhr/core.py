@@ -7,6 +7,7 @@ from jaxtyping import Float
 from nanomanifold import SO3
 
 from body_models import common
+from body_models.common import sparse
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -30,12 +31,11 @@ class MhrPreparedPose(TypedDict):
 
 def _apply_pose_correctives(
     joint_params: Float[Array, "B J 7"],
-    W1: Float[Array, "3000 750"],
-    W2: Float[Array, "V*3 3000"],
+    hidden_weights: Float[Array, "input hidden"],
+    output_weights: sparse.SparseLinear,
     *,
     xp: Any,
 ) -> Float[Array, "B V 3"]:
-    V = W2.shape[0] // 3
     dtype = joint_params.dtype
 
     euler = joint_params[..., 2:, 3:6]
@@ -46,11 +46,11 @@ def _apply_pose_correctives(
 
     batch_shape = feat.shape[:-2]
     feat_flat = feat.reshape(*batch_shape, -1)
-    h = feat_flat @ W1.T
+    h = feat_flat @ hidden_weights
     h = xp.maximum(h, xp.asarray(0.0, dtype=dtype))
-    out = h @ W2.T
+    out = sparse.linear(h, output_weights)
 
-    return out.reshape(*batch_shape, V, 3)
+    return out.reshape(*batch_shape, -1, 3)
 
 
 def prepare_pose(
@@ -62,8 +62,8 @@ def prepare_pose(
     shape_dim: int,
     bind_inv_linear: Float[Array, "J 3 3"],
     bind_inv_translation: Float[Array, "J 3"],
-    corrective_W1: Float[Array, "3000 750"],
-    corrective_W2: Float[Array, "V*3 3000"],
+    corrective_hidden_weights: Float[Array, "input hidden"],
+    corrective_output_weights: sparse.SparseLinear,
     pose: Float[Array, "B 204"],
     *,
     xp: Any,
@@ -91,7 +91,13 @@ def prepare_pose(
             bind_inv_linear=bind_inv_linear,
             bind_inv_translation=bind_inv_translation,
         ),
-        "pose_offsets": _apply_pose_correctives(j_p, corrective_W1, corrective_W2, xp=xp) * 0.01,
+        "pose_offsets": _apply_pose_correctives(
+            j_p,
+            corrective_hidden_weights,
+            corrective_output_weights,
+            xp=xp,
+        )
+        * 0.01,
     }
 
 

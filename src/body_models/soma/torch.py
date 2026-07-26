@@ -7,7 +7,6 @@ from torch import nn
 
 from body_models.rotations import RotationType
 from body_models.runtime import TorchRuntime
-from body_models.soma import correctives_torch
 from body_models.soma.model import SOMAModel
 
 
@@ -35,7 +34,6 @@ class SOMA(SOMAModel, nn.Module):
             rotation_type=rotation_type,
             match_warp=match_warp,
             runtime=TorchRuntime(skinning_backend),
-            corrective_network=correctives_torch.TorchCorrectiveNetwork,
         )
 
 

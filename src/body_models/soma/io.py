@@ -18,7 +18,7 @@ from scipy.sparse import csc_matrix
 
 from body_models import config
 from body_models.cache import download_hf_archive, get_cache_dir
-from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
+from body_models.common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh, sparse
 
 PathLike = Path | str
 
@@ -93,10 +93,8 @@ class _SparseCoo:
 @dataclass(frozen=True)
 class SomaCorrectives:
     corrective_bindpose: Float[np.ndarray, "Jf 3 3"]
-    corrective_W1: Float[np.ndarray, "D K"]
-    corrective_W2_rows: Int[np.ndarray, "NNZ"]
-    corrective_W2_cols: Int[np.ndarray, "NNZ"]
-    corrective_W2_values: Float[np.ndarray, "NNZ"]
+    hidden_weights: Float[np.ndarray, "input hidden"]
+    output_weights: sparse.SparseMatrix
 
 
 @dataclass(frozen=True)
@@ -728,7 +726,7 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> SomaIdentit
 
 def _correctives_cache_file(asset_dir: Path) -> Path:
     preprocessed_dir = _soma_preprocessed_cache_dir()
-    key = hashlib.md5(f"v3:{(asset_dir / SOMA_CORRECTIVES_ASSET).resolve()}".encode()).hexdigest()
+    key = hashlib.md5(f"v5:{(asset_dir / SOMA_CORRECTIVES_ASSET).resolve()}".encode()).hexdigest()
     return preprocessed_dir / f"correctives_{key}.npz"
 
 
@@ -799,10 +797,8 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
                 raise ValueError(f"Unsupported SOMA corrective cache with tanh activation: {cache_file}")
             return SomaCorrectives(
                 corrective_bindpose=np.asarray(data["bindpose"], dtype=np.float32).copy(),
-                corrective_W1=np.asarray(data["W1"], dtype=np.float32).copy(),
-                corrective_W2_rows=np.asarray(data["W2_rows"], dtype=np.int64).copy(),
-                corrective_W2_cols=np.asarray(data["W2_cols"], dtype=np.int64).copy(),
-                corrective_W2_values=np.asarray(data["W2_values"], dtype=np.float32).copy(),
+                hidden_weights=np.asarray(data["W1"], dtype=np.float32).copy(),
+                output_weights=_cached_sparse_matrix(data, "W2"),
             )
 
     checkpoint_path = asset_dir / SOMA_CORRECTIVES_ASSET
@@ -814,14 +810,20 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     W2_sparse = cast(_SparseCoo, ckpt["W2"])
     bindpose = np.asarray(cast(np.ndarray, ckpt["bindpose"]), dtype=np.float32)
     cors_per_joint = int(ckpt["C_max"])
-    W1 = _dense_from_sparse(W1_sparse)
+    W1_rows = W1_sparse.indices[0].astype(np.int64, copy=False)
+    W1_cols = W1_sparse.indices[1].astype(np.int64, copy=False)
+    W1_values = W1_sparse.values.astype(np.float32, copy=False)
     W2_rows = W2_sparse.indices[0].astype(np.int64, copy=False)
     W2_cols = W2_sparse.indices[1].astype(np.int64, copy=False)
     W2_values = W2_sparse.values.astype(np.float32, copy=False)
 
     if "M1_mask" in ckpt:
         M1_mask = _as_dense_float32(cast(np.ndarray | _SparseCoo, ckpt["M1_mask"]))
-        W1 *= np.repeat(np.repeat(M1_mask, 6, axis=0), cors_per_joint, axis=1)
+        scale = np.repeat(np.repeat(M1_mask, 6, axis=0), cors_per_joint, axis=1)[W1_rows, W1_cols]
+        keep = scale != 0.0
+        W1_rows = W1_rows[keep]
+        W1_cols = W1_cols[keep]
+        W1_values = W1_values[keep] * scale[keep]
 
     if "M2_mask" in ckpt:
         M2_mask = _as_dense_float32(cast(np.ndarray | _SparseCoo, ckpt["M2_mask"]))
@@ -831,24 +833,47 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
         W2_cols = W2_cols[keep]
         W2_values = W2_values[keep] * scale[keep]
 
-    num_vertices = W2_sparse.size[1] // 3
+    W2 = _sparse_matrix(W2_rows, W2_cols, W2_values, W2_sparse.size)
+    hidden_weights = np.zeros(W1_sparse.size, dtype=np.float32)
+    hidden_weights[W1_rows, W1_cols] = W1_values
     np.savez_compressed(
         cache_file,
         bindpose=bindpose,
-        W1=W1,
-        W2_rows=W2_rows,
-        W2_cols=W2_cols,
-        W2_values=W2_values,
-        num_vertices=np.array([num_vertices], dtype=np.int64),
+        W1=hidden_weights,
+        W2_rows=W2.row_indices,
+        W2_cols=W2.column_indices,
+        W2_values=W2.values,
+        W2_shape=np.asarray(W2.shape, dtype=np.int64),
         use_tanh=np.array([False], dtype=np.bool_),
     )
 
     return SomaCorrectives(
         corrective_bindpose=bindpose.copy(),
-        corrective_W1=W1.copy(),
-        corrective_W2_rows=W2_rows.copy(),
-        corrective_W2_cols=W2_cols.copy(),
-        corrective_W2_values=W2_values.copy(),
+        hidden_weights=hidden_weights,
+        output_weights=W2,
+    )
+
+
+def _cached_sparse_matrix(data: Any, name: str) -> sparse.SparseMatrix:
+    return _sparse_matrix(
+        np.asarray(data[f"{name}_rows"], dtype=np.int64),
+        np.asarray(data[f"{name}_cols"], dtype=np.int64),
+        np.asarray(data[f"{name}_values"], dtype=np.float32),
+        tuple(np.asarray(data[f"{name}_shape"], dtype=np.int64).tolist()),
+    )
+
+
+def _sparse_matrix(
+    rows: Int[np.ndarray, "NNZ"],
+    columns: Int[np.ndarray, "NNZ"],
+    values: Float[np.ndarray, "NNZ"],
+    shape: tuple[int, ...],
+) -> sparse.SparseMatrix:
+    return sparse.SparseMatrix(
+        row_indices=np.array(rows, dtype=np.int64, copy=True),
+        column_indices=np.array(columns, dtype=np.int64, copy=True),
+        values=np.array(values, dtype=np.float32, copy=True),
+        shape=cast(tuple[int, int], tuple(shape)),
     )
 
 
