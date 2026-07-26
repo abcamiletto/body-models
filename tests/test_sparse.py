@@ -31,15 +31,19 @@ def test_numpy_sparse_linear_matches_dense() -> None:
 
 
 @pytest.mark.fast
-def test_torch_sparse_linear_matches_dense_after_dtype_conversion() -> None:
+def test_torch_sparse_linear_matches_dense_under_compile() -> None:
     torch = pytest.importorskip("torch")
     weights, dense = _weights()
     linear = state.torch_state(weights).to(dtype=torch.float64)
-    inputs = torch.arange(16, dtype=torch.float64).reshape(2, 2, 4)
+    inputs = torch.arange(16, dtype=torch.float64).reshape(2, 2, 4).requires_grad_()
 
-    actual = sparse.linear(inputs, linear)
+    actual = torch.compile(sparse.linear, backend="eager")(inputs, linear)
+    expected = inputs @ torch.as_tensor(dense, dtype=torch.float64)
 
-    torch.testing.assert_close(actual, inputs @ torch.as_tensor(dense, dtype=torch.float64))
+    torch.testing.assert_close(actual, expected)
+    actual_grad = torch.autograd.grad(actual.square().sum(), inputs)[0]
+    expected_grad = torch.autograd.grad(expected.square().sum(), inputs)[0]
+    torch.testing.assert_close(actual_grad, expected_grad)
 
 
 @pytest.mark.fast

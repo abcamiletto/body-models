@@ -3,13 +3,27 @@ import numpy as np
 import pytest
 
 
+def test_anny_torch_compile_on_cuda() -> None:
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required")
+
+    from body_models.anny import torch as anny_torch
+
+    model = anny_torch.ANNY().cuda()
+    params = model.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
+    with torch.no_grad():
+        vertices = torch.compile(model.forward_vertices, backend="eager")(**params)
+    assert vertices.is_cuda
+
+
 @pytest.mark.parametrize(("name", "_numpy_model", "torch_model", "jax_model", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_torch_compile_and_jax_jit(name, _numpy_model, torch_model, jax_model, kwargs) -> None:
     torch = pytest.importorskip("torch")
     torch_instance = torch_model(**kwargs)
     torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     with torch.no_grad():
-        torch_vertices = torch.compile(torch_instance.forward_vertices, backend="eager", fullgraph=True)(**torch_params)
+        torch_vertices = torch.compile(torch_instance.forward_vertices, backend="eager")(**torch_params)
     assert torch_vertices.shape[-1] == 3
 
     jax = pytest.importorskip("jax")

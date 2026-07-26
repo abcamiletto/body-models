@@ -37,19 +37,23 @@ def compact_linear_blend_skinning(
     xp: Any,
 ) -> Float[Array, "*batch V 3"]:
     """Apply linear blend skinning from compact per-vertex joint weights."""
-    result = xp.zeros_like(vertices)
+    blended = ops.zeros_as(
+        vertices,
+        shape=(*vertices.shape[:-1], 3, 4),
+        xp=xp,
+    )
     transforms_by_joint = xp.moveaxis(transforms, -3, 0)
     for slot in range(joint_indices.shape[1]):
         indices = joint_indices[:, slot]
         valid = indices >= 0
         safe_indices = xp.maximum(indices, xp.zeros_like(indices))
         vertex_transforms = xp.moveaxis(transforms_by_joint[safe_indices], 0, -3)
-        rotations = vertex_transforms[..., :3, :3]
-        translations = vertex_transforms[..., :3, 3]
-        transformed = xp.einsum("...vij,...vj->...vi", rotations, vertices) + translations
         weights = joint_weights[:, slot] * valid
-        result = result + transformed * weights[:, None]
-    return result
+        blended = blended + vertex_transforms[..., :3, :] * weights[:, None, None]
+
+    rotations = blended[..., :3]
+    translations = blended[..., 3]
+    return xp.einsum("...vij,...vj->...vi", rotations, vertices) + translations
 
 
 def bind_relative_transforms(

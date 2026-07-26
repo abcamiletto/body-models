@@ -83,7 +83,7 @@ def test_torch_and_jax_gradients_match_finite_difference(name, _numpy_model, tor
 
 
 @pytest.mark.fast
-def test_warp_skinning_gradients_match_torch_on_cpu() -> None:
+def test_compact_and_warp_skinning_gradients_match_dense_on_cpu() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
 
@@ -108,17 +108,26 @@ def test_warp_skinning_gradients_match_torch_on_cpu() -> None:
 
     expected = skinning.linear_blend_skinning(vertices, transforms, dense_weights, xp=torch)
     expected_grads = torch.autograd.grad(expected, (vertices, transforms), grad_output)
-    actual = warp_backend.compact_linear_blend_skinning(
+    compact = skinning.compact_linear_blend_skinning(
+        vertices,
+        transforms,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
+        xp=torch,
+    )
+    compact_grads = torch.autograd.grad(compact, (vertices, transforms), grad_output)
+    warp = warp_backend.compact_linear_blend_skinning(
         vertices,
         transforms,
         joint_indices=joint_indices,
         joint_weights=joint_weights,
     )
-    actual_grads = torch.autograd.grad(actual, (vertices, transforms), grad_output)
+    warp_grads = torch.autograd.grad(warp, (vertices, transforms), grad_output)
 
-    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
-    for actual_grad, expected_grad in zip(actual_grads, expected_grads, strict=True):
-        torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-5, atol=1e-5)
+    for actual, actual_grads in ((compact, compact_grads), (warp, warp_grads)):
+        torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads, strict=True):
+            torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.slow
