@@ -51,6 +51,7 @@ class _WarpCompactSkinning(nn.Module):
         self.register_buffer("_plan_chunk_starts", plan.chunk_starts, persistent=False)
         self.register_buffer("_plan_chunk_ends", plan.chunk_ends, persistent=False)
         self.register_buffer("_plan_chunk_joints", plan.chunk_joints, persistent=False)
+        self.register_load_state_dict_post_hook(_rebuild_transform_gradient_plan)
 
     @property
     def transform_gradient_plan(self) -> _TransformGradientPlan:
@@ -267,6 +268,15 @@ def _build_transform_gradient_plan(joint_indices: Int[Tensor, "V K"]) -> _Transf
         chunk_ends=chunk_ends.to(torch.int32).contiguous(),
         chunk_joints=chunk_joints.to(torch.int32).contiguous(),
     )
+
+
+def _rebuild_transform_gradient_plan(module: _WarpCompactSkinning, incompatible_keys: object) -> None:
+    del incompatible_keys
+    plan = _build_transform_gradient_plan(module.joint_indices)
+    module._plan_permutation = plan.permutation
+    module._plan_chunk_starts = plan.chunk_starts
+    module._plan_chunk_ends = plan.chunk_ends
+    module._plan_chunk_joints = plan.chunk_joints
 
 
 def _launch_compact_linear_blend_skinning(

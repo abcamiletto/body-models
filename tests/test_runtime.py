@@ -181,6 +181,22 @@ def test_soma_is_a_jax_pytree(model_type) -> None:
     assert jax.jit(lambda value: value.num_vertices)(model) == model.num_vertices
 
 
+@pytest.mark.fast
+def test_soma_torch_module_owns_external_identity_model() -> None:
+    torch = pytest.importorskip("torch")
+    from body_models.soma import SOMA
+
+    model = SOMA(model_type="smpl", runtime="torch")
+    module = model.as_module()
+    identity_model = model._identity_source.model.model
+
+    assert model._identity_source.model is identity_model.as_module()
+    assert any(name.startswith("_identity_source.model._weights.") for name in module.state_dict())
+
+    module.double()
+    assert identity_model.rest_vertices.dtype == torch.float64
+
+
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_jax_model_pytree_round_trip(name, model_class, kwargs) -> None:
     jax = pytest.importorskip("jax")

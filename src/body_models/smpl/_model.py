@@ -87,10 +87,6 @@ class SMPL(SmplFamilyModel):
     def lbs_weights(self) -> Float[Array, "V 24"]:
         return self._weights.lbs_weights
 
-    @property
-    def parents(self) -> list[int]:
-        return self._weights.parents
-
     def forward_vertices(
         self,
         body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],

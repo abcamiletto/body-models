@@ -60,8 +60,8 @@ def get_model_path(model_path: PathLike | None, side: Literal["right", "left"] |
 
     if resolved_path is None:
         raise FileNotFoundError(
-            "MANO model not found. Download from https://mano.is.tue.mpg.de/ "
-            f"and run: body-models set mano-{side} /path/to/MANO_{side.upper()}.pkl"
+            "MANO model not found. Run `body-models download mano` or configure an existing file with "
+            f"`body-models set mano-{side} /path/to/MANO_{side.upper()}.pkl`."
         )
 
     return validate_path(resolved_path)

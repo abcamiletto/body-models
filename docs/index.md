@@ -17,6 +17,26 @@ uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
 ```
 
+## Model assets
+
+Public assets download automatically on first use when `model_path` is omitted.
+They live in the operating system's private user cache, not beside the
+configuration file or inside the Python environment. Run `body-models` to see
+both locations.
+
+Use the CLI to prefetch assets or choose an exact destination:
+
+```bash
+body-models download anny
+body-models download anny --output-dir /path/to/models/anny
+```
+
+The custom path is saved as the model's configured override. With
+`body-models download all --output-dir /path/to/models`, each family gets its
+own subdirectory. Licensed models cannot download silently on first use because
+they require accepted licenses and account credentials; their setup command
+prompts for those credentials and stores the resulting private-cache path.
+
 ## Supported Models
 
 ### Full Bodies

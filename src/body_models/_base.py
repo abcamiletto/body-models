@@ -67,7 +67,6 @@ class _ArticulatedModel(ABC):
     _runtime: ArrayRuntime
     parents: list[int]
     has_hands: bool = False
-    has_head: bool = False
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
 
     @property
@@ -141,7 +140,7 @@ class _ArticulatedModel(ABC):
     @property
     def common_joints(self) -> Mapping[Joint, str]:
         """Common anatomical joints mapped to this model's native joint names."""
-        return self.JOINTS
+        return dict(self.JOINTS)
 
     def joint_index(self, joint: Joint) -> int:
         """Resolve a standard joint to this model's native joint index."""
@@ -303,15 +302,15 @@ class RigidBodyModel(_ArticulatedModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._weights.joint_names
+        return list(self._weights.joint_names)
 
     @property
     def parents(self) -> list[int]:
-        return self._weights.parents
+        return list(self._weights.parents)
 
     @property
     def actuated_joint_names(self) -> list[str]:
-        return self._weights.actuated_joint_names
+        return list(self._weights.actuated_joint_names)
 
     @property
     def actuated_joint_limits(self) -> Float[Array, "Q 2"]:
@@ -319,11 +318,11 @@ class RigidBodyModel(_ArticulatedModel):
 
     @property
     def link_names(self) -> list[str]:
-        return self._weights.link_names
+        return list(self._weights.link_names)
 
     @property
     def link_joint_indices(self) -> list[int]:
-        return self._weights.link_joint_indices
+        return list(self._weights.link_joint_indices)
 
     @property
     def num_vertices(self) -> int:

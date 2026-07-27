@@ -30,6 +30,12 @@ uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
 ```
 
+Public model assets download on first use into the operating system's private
+user cache. Licensed assets use `body-models download MODEL`, which prompts for
+credentials. Pass `--output-dir` to either command when the assets should live
+in a specific directory; run `body-models` to inspect the cache and configured
+paths.
+
 ## Quick Start
 
 ```python

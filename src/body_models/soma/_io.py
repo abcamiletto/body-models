@@ -70,7 +70,6 @@ __all__ = [
     "SomaWeights",
     "compute_kinematic_fronts",
     "download_model",
-    "get_identity_model_path",
     "get_model_path",
     "load_identity_transfer_data",
     "load_model_data",
@@ -200,12 +199,9 @@ class _ModelTypeSpec:
     identity_model_kwargs: dict[str, Any] = field(default_factory=dict)
     source_scale: float = 1.0
     output_scale: float = 1.0
-    config_key: str | None = None
     asset_dir: str | None = None
     source_mesh_name: str | None = None
     target_mesh_name: str | None = None
-    requires_direct_file: bool = False
-    filename_hint: str | None = None
     use_laplacian: bool = True
 
 
@@ -215,7 +211,6 @@ MODEL_TYPE_SPECS = {
         identity_dim=45,
         num_scale_params=68,
         source_scale=100.0,
-        config_key="mhr",
         asset_dir="MHR",
         source_mesh_name="base_body_lod1.obj",
         target_mesh_name="SOMA_wrap_lod1.obj",
@@ -224,7 +219,6 @@ MODEL_TYPE_SPECS = {
         identity_dim=6,
         default_identity_value=0.5,
         output_scale=100.0,
-        config_key="anny",
         asset_dir="Anny",
         identity_model_kwargs={"all_phenotypes": False},
         source_mesh_name="base_body.obj",
@@ -234,24 +228,18 @@ MODEL_TYPE_SPECS = {
     "smpl": _ModelTypeSpec(
         identity_dim=10,
         output_scale=100.0,
-        config_key="smpl-neutral",
         asset_dir="SMPL",
-        identity_model_kwargs={"gender": None},
+        identity_model_kwargs={"gender": "neutral"},
         source_mesh_name="base_body.obj",
         target_mesh_name="SOMA_wrap.obj",
-        requires_direct_file=True,
-        filename_hint="SMPL_NEUTRAL",
     ),
     "smplx": _ModelTypeSpec(
         identity_dim=10,
         output_scale=100.0,
-        config_key="smplx-neutral",
         asset_dir="SMPLX",
-        identity_model_kwargs={"gender": None},
+        identity_model_kwargs={"gender": "neutral"},
         source_mesh_name="base_body.obj",
         target_mesh_name="SOMA_wrap.obj",
-        requires_direct_file=True,
-        filename_hint="SMPLX_NEUTRAL",
     ),
 }
 IDENTITY_MODEL_TYPES = tuple(name for name, spec in MODEL_TYPE_SPECS.items() if spec.asset_dir is not None)
@@ -278,9 +266,6 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
         model_path = config.get_model_path("soma")
 
     if model_path is not None:
-        model_path = Path(model_path)
-        if model_path.is_dir() and (model_path / SOMA_CORE_ASSET).exists() and _missing_assets(model_path):
-            return download_model(model_path)
         return validate_path(model_path)
 
     cache_path = get_cache_dir() / "soma"
@@ -290,16 +275,15 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
     return download_model()
 
 
-def download_model(model_dir: PathLike | None = None) -> Path:
+def download_model(output_dir: PathLike | None = None) -> Path:
     """Download SOMA assets from Hugging Face."""
-    cache_dir = Path(model_dir) if model_dir is not None else get_cache_dir() / "soma"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    missing = [name for name in SOMA_ASSETS if not (cache_dir / name).exists()]
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "soma"
+    missing = [name for name in SOMA_ASSETS if not (output_dir / name).exists()]
     if missing:
-        print(f"Downloading SOMA model to {cache_dir}...")
-        download_hf_archive("soma/assets.zip", cache_dir)
+        print(f"Downloading SOMA model to {output_dir}...")
+        download_hf_archive("soma/assets.zip", output_dir)
         print("Done")
-    return validate_path(cache_dir)
+    return validate_path(output_dir)
 
 
 def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
@@ -336,29 +320,6 @@ def preprocess_model(upstream_dir: PathLike, output_dir: PathLike) -> Path:
     if not output_file.is_file():
         raise RuntimeError(f"SOMA preprocessing did not produce {output_file}")
     return output_dir
-
-
-def get_identity_model_path(model_type: str) -> Path | None:
-    normalized = model_type.lower()
-    spec = MODEL_TYPE_SPECS.get(normalized)
-    if spec is None or spec.config_key is None:
-        raise ValueError(f"Unsupported SOMA identity backend: {model_type}")
-
-    model_path = config.get_model_path(spec.config_key)
-    if model_path is None:
-        return None
-
-    path = Path(model_path)
-    if spec.requires_direct_file and path.is_dir():
-        raise ValueError(
-            f"Directory paths are no longer supported for {normalized}: {path}\n"
-            f"Please set {spec.config_key} to a direct {spec.filename_hint}.npz or {spec.filename_hint}.pkl path."
-        )
-    if spec.requires_direct_file and not path.is_file():
-        raise FileNotFoundError(f"SOMA {normalized} identity model file not found: {path}")
-    if spec.requires_direct_file and path.suffix not in {".pkl", ".npz"}:
-        raise ValueError(f"Expected a SOMA {normalized} identity .pkl or .npz file, got: {path}")
-    return path
 
 
 def _dense_skin_weights(rig_data: dict[str, Any]) -> Float[np.ndarray, "V J"]:

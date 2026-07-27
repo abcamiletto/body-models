@@ -61,8 +61,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
     if resolved_path is None:
         raise FileNotFoundError(
-            "SMPLX model not found. Download from https://smpl-x.is.tue.mpg.de/ "
-            f"and run: body-models set smplx-{gender} /path/to/SMPLX_{gender.upper()}.npz"
+            "SMPL-X model not found. Run `body-models download smplx` or configure an existing file with "
+            f"`body-models set smplx-{gender} /path/to/SMPLX_{gender.upper()}.npz`."
         )
 
     return validate_path(resolved_path)

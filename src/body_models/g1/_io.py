@@ -165,13 +165,16 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
     return download_model()
 
 
-def download_model() -> Path:
+def download_model(output_dir: PathLike | None = None) -> Path:
     """Download G1 XML and STL assets from Hugging Face."""
-    cache_dir = get_cache_dir() / "g1"
-    print(f"Downloading G1 model to {cache_dir}...")
-    download_hf_archive("g1/assets.zip", cache_dir)
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "g1"
+    model_path = output_dir / "g1.xml"
+    if model_path.is_file():
+        return validate_path(model_path)
+    print(f"Downloading G1 model to {output_dir}...")
+    download_hf_archive("g1/assets.zip", output_dir)
     print("Done")
-    return cache_dir / "g1.xml"
+    return validate_path(model_path)
 
 
 def validate_path(path: PathLike) -> Path:

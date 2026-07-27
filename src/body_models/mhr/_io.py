@@ -87,13 +87,15 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
     return download_model()
 
 
-def download_model() -> Path:
+def download_model(output_dir: PathLike | None = None) -> Path:
     """Download MHR model assets."""
-    cache_dir = get_cache_dir() / "mhr"
-    print(f"Downloading MHR model to {cache_dir}...")
-    download_hf_archive("mhr/assets.zip", cache_dir)
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "mhr"
+    if _has_model(output_dir):
+        return validate_path(output_dir)
+    print(f"Downloading MHR model to {output_dir}...")
+    download_hf_archive("mhr/assets.zip", output_dir)
     print("Done")
-    return cache_dir
+    return validate_path(output_dir)
 
 
 def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrWeights:

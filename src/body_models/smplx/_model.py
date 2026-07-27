@@ -33,7 +33,6 @@ class SMPLX(SmplFamilyModel):
     """Skinned body model with articulated hands and facial controls."""
 
     has_hands = True
-    has_head = True
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
@@ -87,7 +86,7 @@ class SMPLX(SmplFamilyModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._weights.joint_names
+        return list(self._weights.joint_names)
 
     @property
     def exprdirs(self) -> Float[Array, "V 3 E"]:
@@ -96,10 +95,6 @@ class SMPLX(SmplFamilyModel):
     @property
     def lbs_weights(self) -> Float[Array, "V 55"]:
         return self._weights.lbs_weights
-
-    @property
-    def parents(self) -> list[int]:
-        return self._weights.parents
 
     def forward_vertices(
         self,

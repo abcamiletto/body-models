@@ -84,13 +84,15 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
     return download_model()
 
 
-def download_model() -> Path:
+def download_model(output_dir: PathLike | None = None) -> Path:
     """Download the BrainCo Revo 2 model assets."""
-    cache_dir = get_cache_dir() / "brainco"
-    print(f"Downloading BrainCo model to {cache_dir}...")
-    download_hf_archive("brainco/assets.zip", cache_dir)
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "brainco"
+    if _has_model(output_dir):
+        return validate_path(output_dir)
+    print(f"Downloading BrainCo model to {output_dir}...")
+    download_hf_archive("brainco/assets.zip", output_dir)
     print("Done")
-    return validate_path(cache_dir)
+    return validate_path(output_dir)
 
 
 def validate_path(path: PathLike) -> Path:

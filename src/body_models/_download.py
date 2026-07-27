@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import shutil
 import tarfile
+import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 from urllib.error import HTTPError
 
-from ._cache import get_cache_dir
+from ._cache import extract_archive, get_cache_dir
 
 SMPL_URL = "https://download.is.tue.mpg.de/download.php?domain=smpl&sfile=SMPL_python_v.1.1.0.zip"
 SMPLX_URL = "https://download.is.tue.mpg.de/download.php?domain=smplx&sfile=models_smplx_v1_1.zip"
@@ -61,154 +62,143 @@ def _download_archive(url: str, archive_path: Path, username: str, password: str
     )
 
 
-def _extract_archive(archive_path: Path, dest: Path) -> None:
-    if zipfile.is_zipfile(archive_path):
-        with zipfile.ZipFile(archive_path) as zf:
-            zf.extractall(dest)
-        return
-    with tarfile.open(archive_path) as tf:
-        _extract_tar(tf, dest)
-
-
-def _fetch(name: str, url: str, cache_dir: Path, username: str | None, password: str | None) -> None:
+def _fetch(name: str, url: str, output_dir: Path, username: str | None, password: str | None) -> None:
     if username is None or password is None:
         raise ValueError(f"{name} credentials are required to download the model.")
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    archive_path = cache_dir / "archive"
-    _download_archive(url, archive_path, username, password)
-    _extract_archive(archive_path, cache_dir)
-    archive_path.unlink(missing_ok=True)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f".{output_dir.name}-", dir=output_dir.parent) as temporary:
+        archive_path = Path(temporary) / "archive"
+        _download_archive(url, archive_path, username, password)
+        extract_archive(archive_path, output_dir)
 
 
 def download_smpl(
-    cache_dir: Path | None = None,
+    output_dir: Path | None = None,
     username: str | None = None,
     password: str | None = None,
 ) -> dict[str, Path]:
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "smpl"
-    paths = {model: next(cache_dir.rglob(name), None) for model, name in SMPL_FILES.items()}
+    output_dir = Path(output_dir) if output_dir else get_cache_dir() / "smpl"
+    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPL_FILES.items()}
     if None not in paths.values():
         return {model: path for model, path in paths.items() if path is not None}
 
-    _fetch("SMPL", SMPL_URL, cache_dir, username, password)
+    _fetch("SMPL", SMPL_URL, output_dir, username, password)
 
-    paths = {model: next(cache_dir.rglob(name), None) for model, name in SMPL_FILES.items()}
+    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPL_FILES.items()}
     if None in paths.values():
-        raise FileNotFoundError(f"Expected SMPL model files were not found in {cache_dir}")
+        raise FileNotFoundError(f"Expected SMPL model files were not found in {output_dir}")
 
     return {model: path for model, path in paths.items() if path is not None}
 
 
 def download_smplx(
-    cache_dir: Path | None = None,
+    output_dir: Path | None = None,
     username: str | None = None,
     password: str | None = None,
 ) -> dict[str, Path]:
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "smplx"
-    paths = {model: next(cache_dir.rglob(name), None) for model, name in SMPLX_FILES.items()}
+    output_dir = Path(output_dir) if output_dir else get_cache_dir() / "smplx"
+    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPLX_FILES.items()}
     if None not in paths.values():
         return {model: path for model, path in paths.items() if path is not None}
 
-    _fetch("SMPL-X", SMPLX_URL, cache_dir, username, password)
+    _fetch("SMPL-X", SMPLX_URL, output_dir, username, password)
 
-    paths = {model: next(cache_dir.rglob(name), None) for model, name in SMPLX_FILES.items()}
+    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPLX_FILES.items()}
     if None in paths.values():
-        raise FileNotFoundError(f"Expected SMPL-X model files were not found in {cache_dir}")
+        raise FileNotFoundError(f"Expected SMPL-X model files were not found in {output_dir}")
 
     return {model: path for model, path in paths.items() if path is not None}
 
 
 def download_smplh(
-    cache_dir: Path | None = None,
+    output_dir: Path | None = None,
     username: str | None = None,
     password: str | None = None,
 ) -> dict[str, Path]:
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "smplh"
-    paths = {model: _find_relative_path(cache_dir, name) for model, name in SMPLH_FILES.items()}
+    output_dir = Path(output_dir) if output_dir else get_cache_dir() / "smplh"
+    paths = {model: _find_relative_path(output_dir, name) for model, name in SMPLH_FILES.items()}
     if None not in paths.values():
         return {model: path for model, path in paths.items() if path is not None}
 
-    _fetch("SMPL-H", SMPLH_URL, cache_dir, username, password)
+    _fetch("SMPL-H", SMPLH_URL, output_dir, username, password)
 
-    paths = {model: _find_relative_path(cache_dir, name) for model, name in SMPLH_FILES.items()}
+    paths = {model: _find_relative_path(output_dir, name) for model, name in SMPLH_FILES.items()}
     if None in paths.values():
-        raise FileNotFoundError(f"Expected SMPL-H model files were not found in {cache_dir}")
+        raise FileNotFoundError(f"Expected SMPL-H model files were not found in {output_dir}")
 
     return {model: path for model, path in paths.items() if path is not None}
 
 
 def download_mano(
-    cache_dir: Path | None = None,
+    output_dir: Path | None = None,
     username: str | None = None,
     password: str | None = None,
 ) -> dict[str, Path]:
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "mano"
-    paths = {model: next(cache_dir.rglob(name), None) for model, name in MANO_FILES.items()}
+    output_dir = Path(output_dir) if output_dir else get_cache_dir() / "mano"
+    paths = {model: next(output_dir.rglob(name), None) for model, name in MANO_FILES.items()}
     if None not in paths.values():
         return {model: path for model, path in paths.items() if path is not None}
 
-    _fetch("MANO", MANO_URL, cache_dir, username, password)
+    _fetch("MANO", MANO_URL, output_dir, username, password)
 
-    paths = {model: next(cache_dir.rglob(name), None) for model, name in MANO_FILES.items()}
+    paths = {model: next(output_dir.rglob(name), None) for model, name in MANO_FILES.items()}
     if None in paths.values():
-        raise FileNotFoundError(f"Expected MANO model files were not found in {cache_dir}")
+        raise FileNotFoundError(f"Expected MANO model files were not found in {output_dir}")
 
     return {model: path for model, path in paths.items() if path is not None}
 
 
 def download_flame(
-    cache_dir: Path | None = None,
+    output_dir: Path | None = None,
     username: str | None = None,
     password: str | None = None,
 ) -> Path:
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "flame"
+    output_dir = Path(output_dir) if output_dir else get_cache_dir() / "flame"
     for name in FLAME_FILES:
-        path = next(cache_dir.rglob(name), None)
+        path = next(output_dir.rglob(name), None)
         if path is not None:
             return path
 
-    _fetch("FLAME", FLAME_URL, cache_dir, username, password)
+    _fetch("FLAME", FLAME_URL, output_dir, username, password)
 
     for name in FLAME_FILES:
-        path = next(cache_dir.rglob(name), None)
+        path = next(output_dir.rglob(name), None)
         if path is not None:
             return path
 
-    raise FileNotFoundError(f"Expected FLAME model file was not found in {cache_dir}")
+    raise FileNotFoundError(f"Expected FLAME model file was not found in {output_dir}")
 
 
 def download_skel(
-    cache_dir: Path | None = None,
+    output_dir: Path | None = None,
     username: str | None = None,
     password: str | None = None,
 ) -> Path:
-    cache_dir = Path(cache_dir) if cache_dir else get_cache_dir() / "skel"
-    if (cache_dir / "skel_male.pkl").exists():
-        return cache_dir
-    existing_dir = next(cache_dir.glob("skel_models_v*"), None)
+    output_dir = Path(output_dir) if output_dir else get_cache_dir() / "skel"
+    if (output_dir / "skel_male.pkl").exists():
+        return output_dir
+    existing_dir = next(output_dir.glob("skel_models_v*"), None)
     if existing_dir is not None and (existing_dir / "skel_male.pkl").exists():
         return existing_dir
 
-    _fetch("SKEL", SKEL_URL, cache_dir, username, password)
+    _fetch("SKEL", SKEL_URL, output_dir, username, password)
 
-    if (cache_dir / "skel_male.pkl").exists():
-        return cache_dir
-    existing_dir = next(cache_dir.glob("skel_models_v*"), None)
+    if (output_dir / "skel_male.pkl").exists():
+        return output_dir
+    existing_dir = next(output_dir.glob("skel_models_v*"), None)
     if existing_dir is not None and (existing_dir / "skel_male.pkl").exists():
         return existing_dir
 
-    raise FileNotFoundError(f"Expected SKEL model files were not found in {cache_dir}")
+    raise FileNotFoundError(f"Expected SKEL model files were not found in {output_dir}")
 
 
 def download_skel_assets(
-    cache_dir: Path | None = None,
+    output_dir: Path | None = None,
     username: str | None = None,
     password: str | None = None,
 ) -> dict[str, Path]:
     """Download SKEL and return its configured asset paths."""
-    directory = download_skel(cache_dir=cache_dir, username=username, password=password)
+    directory = download_skel(output_dir=output_dir, username=username, password=password)
     return {
         "skel-female": directory / "skel_female.pkl",
         "skel-male": directory / "skel_male.pkl",
@@ -221,15 +211,3 @@ def _find_relative_path(cache_dir: Path, relative_path: str) -> Path | None:
         if len(path.parts) >= len(wanted.parts) and path.parts[-len(wanted.parts) :] == wanted.parts:
             return path
     return None
-
-
-def _extract_tar(tf: tarfile.TarFile, dest: Path) -> None:
-    members = tf.getmembers()
-    for member in members:
-        member_path = Path(member.name)
-        if member_path.is_absolute() or ".." in member_path.parts:
-            raise RuntimeError(f"Unsafe path in archive: {member.name}")
-    try:
-        tf.extractall(dest, members=members, filter="data")
-    except TypeError:
-        tf.extractall(dest, members=members)
