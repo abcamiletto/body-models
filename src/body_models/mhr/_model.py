@@ -8,7 +8,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 
 from body_models import _common as common
-from body_models._base import SkinnedModel
+from body_models._base import ParameterSpec, SkinnedModel
 from body_models._common import skinning
 from body_models._runtime import RuntimeLike
 from body_models.mhr import _core as core
@@ -79,6 +79,18 @@ class MHR(SkinnedModel):
     @property
     def hand_pose_dim(self) -> int:
         return MHR_HAND_POSE_DIM
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        return {
+            "shape": ParameterSpec((self.SHAPE_DIM,), "identity"),
+            "body_pose": ParameterSpec((self.body_pose_dim,), "pose"),
+            "head_pose": ParameterSpec((self.head_pose_dim,), "pose"),
+            "hand_pose": ParameterSpec((self.hand_pose_dim,), "pose"),
+            "expression": ParameterSpec((self.EXPR_DIM,), "identity"),
+            "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
@@ -209,21 +221,12 @@ class MHR(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        runtime = self._runtime
-        reference = self.weights.base_vertices
-        hand_pose = runtime.zeros((*batch_dims, self.hand_pose_dim), like=reference, dtype=dtype)
+        params = super().get_rest_pose(batch_dims, dtype)
         if hands != "default":
-            hand_pose = runtime.asarray(MHR_HAND_PRESETS[hands], like=reference, dtype=dtype)
-            hand_pose = runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.hand_pose_dim))
-        return {
-            "shape": runtime.zeros((*batch_dims, self.SHAPE_DIM), like=reference, dtype=dtype),
-            "body_pose": runtime.zeros((*batch_dims, self.body_pose_dim), like=reference, dtype=dtype),
-            "head_pose": runtime.zeros((*batch_dims, self.head_pose_dim), like=reference, dtype=dtype),
-            "hand_pose": hand_pose,
-            "expression": runtime.zeros((*batch_dims, self.EXPR_DIM), like=reference, dtype=dtype),
-            "global_rotation": runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
-            "global_translation": runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
-        }
+            runtime = self.runtime
+            hand_pose = runtime.asarray(MHR_HAND_PRESETS[hands], like=params["hand_pose"], dtype=dtype)
+            params["hand_pose"] = runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.hand_pose_dim))
+        return params
 
     def get_tpose(
         self,

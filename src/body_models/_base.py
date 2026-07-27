@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -11,12 +12,41 @@ from trimesh import Trimesh
 from body_models._common import deformation, eye_as, zeros_as
 from body_models._common import rigid as rigid_ops
 from body_models._constants import Joint
+from body_models._rotations import RotationType, rotation_ndim, rotation_shape
 from body_models._runtime import ArrayRuntime, RuntimeLike, resolve_runtime
 
 if TYPE_CHECKING:
     from torch import nn
 
 Array = Any
+ParameterRole = Literal["identity", "pose", "transform"]
+
+
+@dataclass(frozen=True)
+class ParameterSpec:
+    """Shape, role, and canonical default of one model parameter."""
+
+    shape: tuple[int, ...]
+    role: ParameterRole
+    default: float | Literal["identity"] = 0.0
+    rotation_type: RotationType | None = None
+
+    @classmethod
+    def rotation(
+        cls,
+        rotation_type: RotationType,
+        count: int | None = None,
+        *,
+        role: ParameterRole = "pose",
+    ) -> ParameterSpec:
+        """Describe one rotation or a vector of rotations."""
+        leading_shape = () if count is None else (count,)
+        return cls(
+            shape=(*leading_shape, *rotation_shape(rotation_type)),
+            role=role,
+            default="identity",
+            rotation_type=rotation_type,
+        )
 
 
 class SkinningPayload(TypedDict):
@@ -114,6 +144,16 @@ class _ArticulatedModel(ABC):
             raise KeyError(f"{self.__class__.__name__} has no standard joint {joint.value!r}") from exc
         return self.joint_names.index(native_name)
 
+    @property
+    @abstractmethod
+    def parameter_spec(self) -> Mapping[str, ParameterSpec]:
+        """Machine-readable parameters accepted by this model."""
+
+    @property
+    @abstractmethod
+    def _parameter_reference(self) -> Float[Array, "..."]:
+        """Array whose backend, device, and dtype parameter defaults follow."""
+
     @abstractmethod
     def forward_skeleton(self, *args, **kwargs) -> Float[Array, "*batch J 4 4"]:
         """
@@ -126,18 +166,44 @@ class _ArticulatedModel(ABC):
             World-space 4x4 transformation matrices [B, J, 4, 4] in meters.
         """
 
-    @abstractmethod
-    def get_rest_pose(self, batch_dims: tuple[int, ...] = ()) -> dict[str, Float[Array, "..."]]:
+    def get_rest_pose(
+        self,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """
-        Get default rest pose parameters for this model.
+        Construct canonical parameter defaults from :attr:`parameter_spec`.
 
         Args:
             batch_dims: Leading batch dimensions.
+            dtype: Optional floating-point dtype.
 
         Returns:
-            Dictionary with model-specific parameter keys. All arrays are
-            zero-initialized or set to identity poses.
+            Complete model parameters at rest.
         """
+        return {name: self._parameter_default(spec, batch_dims, dtype) for name, spec in self.parameter_spec.items()}
+
+    def _parameter_default(
+        self,
+        spec: ParameterSpec,
+        batch_dims: tuple[int, ...],
+        dtype: Any | None,
+    ) -> Float[Array, "..."]:
+        runtime = self.runtime
+        reference = self._parameter_reference
+        if spec.rotation_type is not None:
+            encoded_dims = rotation_ndim(spec.rotation_type)
+            rotation_batch = spec.shape[:-encoded_dims]
+            like = runtime.zeros(batch_dims, like=reference, dtype=dtype)
+            return SO3.identity_as(
+                like,
+                batch_dims=(*batch_dims, *rotation_batch),
+                rotation_type=spec.rotation_type,
+                xp=runtime.xp,
+            )
+
+        value = runtime.zeros((*batch_dims, *spec.shape), like=reference, dtype=dtype)
+        return value if spec.default == 0.0 else value + spec.default
 
     def get_tpose(
         self,
@@ -168,6 +234,10 @@ class SkinnedModel(_ArticulatedModel):
     @abstractmethod
     def rest_vertices(self) -> Float[Array, "V 3"]:
         """Mesh vertices in rest pose. Shape [V, 3]."""
+
+    @property
+    def _parameter_reference(self) -> Float[Array, "V 3"]:
+        return self.rest_vertices
 
     @abstractmethod
     def forward_vertices(self, *args, **kwargs) -> Float[Array, "*batch V 3"]:
@@ -249,6 +319,10 @@ class RigidBodyModel(_ArticulatedModel):
     @property
     def num_vertices(self) -> int:
         return self.weights.vertices.shape[0]
+
+    @property
+    def _parameter_reference(self) -> Float[Array, "V 3"]:
+        return self.weights.vertices
 
     @property
     def num_actuated(self) -> int:
@@ -371,19 +445,6 @@ class RigidBodyModel(_ArticulatedModel):
             self.weights.link_face_counts,
             xp=self._runtime.xp,
         )
-
-    def _zero_pose(
-        self,
-        pose_key: str,
-        batch_dims: tuple[int, ...],
-        dtype: Any | None,
-    ) -> dict[str, Float[Array, "..."]]:
-        reference = self.weights.vertices
-        return {
-            pose_key: self._runtime.zeros((*batch_dims, self.num_actuated), like=reference, dtype=dtype),
-            "global_rotation": self._runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
-            "global_translation": self._runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
-        }
 
 
 _JAX_MODELS: set[type] = set()

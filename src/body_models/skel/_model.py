@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from jaxtyping import Float, Int
 
-from body_models._base import SkinnedModel
+from body_models._base import ParameterSpec, SkinnedModel
 from body_models._common import skinning
 from body_models._runtime import RuntimeLike
 from body_models.skel import _core as core
@@ -113,6 +113,16 @@ class SKEL(SkinnedModel):
     @property
     def head_pose_dim(self) -> int:
         return SKEL_HEAD_POSE_DIM
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        return {
+            "shape": ParameterSpec((self.NUM_BETAS,), "identity"),
+            "body_pose": ParameterSpec((self.body_pose_dim,), "pose"),
+            "head_pose": ParameterSpec((self.head_pose_dim,), "pose"),
+            "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
 
     def forward_vertices(
         self,
@@ -274,29 +284,6 @@ class SKEL(SkinnedModel):
             shape,
             xp=self._runtime.xp,
         )
-
-    def get_rest_pose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
-        """Return zero shape and pose controls."""
-        runtime = self._runtime
-        return {
-            "shape": runtime.zeros((*batch_dims, self.NUM_BETAS), like=self.weights.v_template, dtype=dtype),
-            "body_pose": runtime.zeros(
-                (*batch_dims, self.body_pose_dim),
-                like=self.weights.v_template,
-                dtype=dtype,
-            ),
-            "head_pose": runtime.zeros(
-                (*batch_dims, self.head_pose_dim),
-                like=self.weights.v_template,
-                dtype=dtype,
-            ),
-            "global_rotation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-            "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-        }
 
     def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SKEL T-pose."""

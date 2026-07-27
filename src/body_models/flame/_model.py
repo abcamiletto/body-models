@@ -7,9 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from jaxtyping import Float, Int
-from nanomanifold import SO3
 
-from body_models._base import SkinnedModel
+from body_models._base import ParameterSpec, SkinnedModel
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -60,6 +59,18 @@ class FLAME(SkinnedModel):
     @property
     def num_rot_dims(self) -> int:
         return rotation_ndim(self.rotation_type)
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        rotation = self.rotation_type
+        return {
+            "shape": ParameterSpec((300,), "identity"),
+            "expression": ParameterSpec((100,), "identity"),
+            "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
+            "head_rotation": ParameterSpec.rotation(rotation),
+            "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -238,43 +249,6 @@ class FLAME(SkinnedModel):
             shape=shape,
             expression=expression,
         )
-
-    def get_rest_pose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
-        """Return zero identity controls and identity rotations."""
-        runtime = self._runtime
-        head_ref = runtime.zeros(
-            (*batch_dims, self.NUM_HEAD_JOINTS, 3),
-            like=self.weights.v_template,
-            dtype=dtype,
-        )
-        root_ref = runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype)
-        return {
-            "shape": runtime.zeros((*batch_dims, 300), like=self.weights.v_template, dtype=dtype),
-            "expression": runtime.zeros((*batch_dims, 100), like=self.weights.v_template, dtype=dtype),
-            "head_pose": SO3.identity_as(
-                head_ref,
-                batch_dims=(*batch_dims, self.NUM_HEAD_JOINTS),
-                rotation_type=self.rotation_type,
-                xp=runtime.xp,
-            ),
-            "head_rotation": SO3.identity_as(
-                root_ref,
-                batch_dims=batch_dims,
-                rotation_type=self.rotation_type,
-                xp=runtime.xp,
-            ),
-            "global_rotation": SO3.identity_as(
-                root_ref,
-                batch_dims=batch_dims,
-                rotation_type=self.rotation_type,
-                xp=runtime.xp,
-            ),
-            "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-        }
 
 
 __all__ = ["FLAME", "FlameConfig"]

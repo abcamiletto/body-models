@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import _registry as registry
-from body_models._base import SkinnedModel, SkinningPayload
+from body_models._base import ParameterSpec, SkinnedModel, SkinningPayload
 from body_models._common import deformation, skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime, RuntimeLike
@@ -24,7 +24,7 @@ from body_models.soma._io import (
     load_model_data_for_lod,
     public_joint_metadata,
 )
-from body_models.soma._pose import pack_pose, unpack_pose
+from body_models.soma._pose import pack_pose
 
 Array = Any
 PathLike = Path | str
@@ -114,6 +114,25 @@ class SOMA(SkinnedModel):
     @property
     def num_rot_dims(self) -> int:
         return rotation_ndim(self.rotation_type)
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        rotation = self.rotation_type
+        parameters = {
+            "body_pose": ParameterSpec.rotation(rotation, 23),
+            "head_pose": ParameterSpec.rotation(rotation, 5),
+            "hand_pose": ParameterSpec.rotation(rotation, 48),
+            "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+            "shape": ParameterSpec(
+                (self.identity_dim,),
+                "identity",
+                default=self._config.default_identity_value,
+            ),
+        }
+        if self.num_scale_params is not None:
+            parameters["scale_params"] = ParameterSpec((self.num_scale_params,), "identity")
+        return parameters
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -346,34 +365,16 @@ class SOMA(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        runtime = self._runtime
-        xp = runtime.xp
-        pose_reference = runtime.zeros((*batch_dims, self.num_joints, 3), like=self.weights.mean_active, dtype=dtype)
-        pose = SO3.identity_as(
-            pose_reference,
-            batch_dims=(*batch_dims, self.num_joints),
-            rotation_type=self.rotation_type,
-            xp=xp,
-        )
-        global_rotation, body_pose, head_pose, hand_pose = unpack_pose(xp, pose)
+        params = super().get_rest_pose(batch_dims, dtype)
         if hands != "default":
-            axis_angle = runtime.asarray(SOMA_HAND_PRESETS[hands], like=pose_reference).reshape(-1, 3)
-            axis_angle = xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-            hand_pose = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=xp)
-
-        params = {
-            "body_pose": body_pose,
-            "head_pose": head_pose,
-            "hand_pose": hand_pose,
-            "global_rotation": global_rotation,
-            "global_translation": runtime.zeros((*batch_dims, 3), like=pose_reference),
-            "shape": runtime.zeros((*batch_dims, self.identity_dim), like=pose_reference)
-            + self._config.default_identity_value,
-        }
-        if self.num_scale_params is not None:
-            params["scale_params"] = runtime.zeros(
-                (*batch_dims, self.num_scale_params),
-                like=pose_reference,
+            runtime = self.runtime
+            axis_angle = runtime.asarray(SOMA_HAND_PRESETS[hands], like=params["hand_pose"]).reshape(-1, 3)
+            axis_angle = runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
+            params["hand_pose"] = SO3.convert(
+                axis_angle,
+                src="axis_angle",
+                dst=self.rotation_type,
+                xp=runtime.xp,
             )
         return params
 

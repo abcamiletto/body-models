@@ -42,6 +42,21 @@ vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
+Every model exposes a machine-readable description of those parameters:
+
+```python
+model.parameter_spec
+# {
+#     "shape": ParameterSpec(shape=(10,), role="identity", ...),
+#     "body_pose": ParameterSpec(shape=(23, 3), role="pose", rotation_type="axis_angle", ...),
+#     ...
+# }
+```
+
+Each entry reports the unbatched array shape, semantic role, canonical default,
+and rotation representation when applicable. `get_rest_pose()` constructs its
+arrays directly from this specification.
+
 Runtime-specific options stay in the runtime rather than every model signature:
 
 ```python
