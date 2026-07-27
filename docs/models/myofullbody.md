@@ -1,6 +1,6 @@
 # MyoFullBody
 
-MyoFullBody is a MuJoCo-derived musculoskeletal full-body model from `amathislab/musclemimic_models`. It exposes rigid STL link meshes, body-frame skeleton transforms, site positions, and tendon metadata through the same NumPy, PyTorch, and JAX backend layout as the other models.
+MyoFullBody is a MuJoCo-derived musculoskeletal full-body model from `amathislab/musclemimic_models`. It exposes rigid STL link meshes, body-frame skeleton transforms, site positions, and tendon metadata through the same runtime-independent API as the other models.
 
 ## Setup
 
@@ -17,7 +17,7 @@ When passed manually, `model_path` should contain `body/myofullbody.xml` and the
 ## Usage
 
 ```python
-from body_models.myofullbody.numpy import MyoFullBody
+from body_models.myofullbody import MyoFullBody
 
 # Load the rigid articulated model and start from its bundled A-pose.
 model = MyoFullBody()
@@ -38,4 +38,4 @@ MyoFullBody is a rigid articulated model, so it does not define `skin_weights`. 
 
 ## API
 
-::: body_models.myofullbody.numpy.MyoFullBody
+::: body_models.myofullbody.MyoFullBody

@@ -12,7 +12,7 @@ from nanomanifold import SO3
 from body_models._base import SkinnedModel
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.smplx import _core as core
 from body_models.smplx._constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
 from body_models.smplx._io import get_model_path, load_model_data
@@ -29,7 +29,7 @@ class SmplxConfig:
     rotation_type: RotationType
 
 
-class SMPLXModel(SkinnedModel):
+class SMPLX(SkinnedModel):
     """Backend-independent SMPL-X interface and orchestration."""
 
     has_hands = True
@@ -48,7 +48,7 @@ class SMPLXModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         *,
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender!r}")
@@ -59,7 +59,7 @@ class SMPLXModel(SkinnedModel):
 
         resolved_path = get_model_path(model_path, gender)
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = SmplxConfig(gender=gender or "neutral", rotation_type=rotation_type)
         self.weights = runtime.materialize(weights)
 
@@ -369,4 +369,4 @@ class SMPLXModel(SkinnedModel):
         return params
 
 
-__all__ = ["SMPLXModel", "SmplxConfig"]
+__all__ = ["SMPLX", "SmplxConfig"]

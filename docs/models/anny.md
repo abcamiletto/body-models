@@ -21,12 +21,11 @@ Store ``rotation_type`` with cached fitted parameters, then convert them when
 loading into a model configured with another representation:
 
 ```python
-from body_models.anny import convert_pose
-from body_models.anny.torch import ANNY
+from body_models.anny import ANNY, convert_pose
 
-model = ANNY(rotation_type="sixd")
+model = ANNY(rotation_type="sixd", runtime="torch")
 parameters = convert_pose(cached_parameters, src=cached_rotation_type, dst=model.rotation_type)
 vertices = model.forward_vertices(**parameters)
 ```
 
-::: body_models.anny.numpy.ANNY
+::: body_models.anny.ANNY

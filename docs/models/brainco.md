@@ -18,10 +18,10 @@ The original BrainCo Revo2 description license is included with the hosted asset
 ## Usage
 
 ```python
-from body_models.brainco.numpy import BrainCoHand
+from body_models.brainco import BrainCoHand
 
 # Load the right hand with scalar hinge coordinates for the active joints.
-hand = BrainCoHand(side="right", rotation_type="hinge")
+hand = BrainCoHand(side="right")
 ```
 
 ## Notes
@@ -30,4 +30,4 @@ The model exposes the six active Revo 2 joints for each hand: thumb metacarpal, 
 
 ## API
 
-::: body_models.brainco.numpy.BrainCoHand
+::: body_models.brainco.BrainCoHand

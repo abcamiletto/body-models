@@ -1,1 +1,7 @@
-"""Public FLAME package; models are exposed by the backend modules."""
+"""Public FLAME API."""
+
+from body_models.flame._model import FLAME
+
+FLAME.__module__ = __name__
+
+__all__ = ["FLAME"]

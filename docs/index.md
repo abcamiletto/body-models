@@ -61,21 +61,21 @@ uv add "body-models[jax]"
 
 ## Common Usage
 
-Each model exposes backend modules under `body_models.<model>.torch`, `body_models.<model>.numpy`, and `body_models.<model>.jax` when that backend is supported. The model pages use the NumPy backend for API generation because it has the same public model interface without optional backend dependencies.
+Each model package exports one class. Select NumPy, Torch, or JAX with the
+`runtime` argument; the class identity and model API stay the same. NumPy is the
+default and does not require an optional framework dependency.
 
-Each framework module is a thin constructor around one model program. See the
+Names exported from `body_models` and model packages are the stable public API.
+Underscore-prefixed modules are private implementation details and are not
+covered by compatibility guarantees. See the
 [architecture guide](architecture.md) for the runtime boundary and extension
 rules.
 
-Names exported from `body_models`, names exported from model packages, and the
-backend modules are the stable public API. Underscore-prefixed modules are
-private implementation details and are not covered by compatibility guarantees.
-
 ```python
-from body_models.smpl.torch import SMPL
+from body_models.smpl import SMPL
 
 # Load the neutral SMPL model from the configured model path.
-model = SMPL(gender="neutral")
+model = SMPL(gender="neutral", runtime="torch")
 
 # Start from a batched rest pose.
 params = model.get_rest_pose(batch_dims=(1,))
@@ -84,5 +84,9 @@ params = model.get_rest_pose(batch_dims=(1,))
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
+
+Call `model.as_module()` when PyTorch module lifecycle behavior such as
+`.to()`, `.cuda()`, or `state_dict()` is needed. Pass a configured runtime
+object for runtime-specific behavior such as Warp skinning.
 
 Skinned models share `faces`, `num_vertices`, `num_joints`, `joint_names`, `skin_weights`, `rest_vertices`, `forward_vertices`, `forward_skeleton`, and `get_rest_pose`. Rigid articulated models expose link metadata and `forward_links` instead of skinning weights.

@@ -12,7 +12,7 @@ from nanomanifold import SO3
 from body_models._base import SkinnedModel
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.mano import _core as core
 from body_models.mano._constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
 from body_models.mano._io import get_model_path, load_model_data
@@ -29,7 +29,7 @@ class ManoConfig:
     rotation_type: RotationType
 
 
-class MANOModel(SkinnedModel):
+class MANO(SkinnedModel):
     """Backend-independent MANO interface and orchestration."""
 
     has_hands = True
@@ -44,7 +44,7 @@ class MANOModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         *,
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side!r}")
@@ -55,7 +55,7 @@ class MANOModel(SkinnedModel):
 
         resolved_path = get_model_path(model_path, side)
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = ManoConfig(side=side or "right", rotation_type=rotation_type)
         self.weights = runtime.materialize(weights)
 
@@ -297,4 +297,4 @@ class MANOModel(SkinnedModel):
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=self._runtime.xp)
 
 
-__all__ = ["MANOModel", "ManoConfig"]
+__all__ = ["MANO", "ManoConfig"]

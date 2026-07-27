@@ -66,21 +66,59 @@ def test_runtime_is_serializable() -> None:
 
 
 @pytest.mark.fast
+def test_model_class_identity_is_backend_independent() -> None:
+    pytest.importorskip("torch")
+    pytest.importorskip("jax")
+    from body_models import create_model
+    from body_models.g1 import G1
+
+    models = [G1(), create_model("g1", runtime="torch"), create_model("g1", runtime="jax")]
+
+    assert all(type(model) is G1 for model in models)
+    assert [model.runtime.backend for model in models] == ["numpy", "torch", "jax"]
+
+
+@pytest.mark.fast
+def test_model_pickle_uses_public_class_identity() -> None:
+    from body_models.g1 import G1
+
+    model = pickle.loads(pickle.dumps(G1()))
+
+    assert type(model) is G1
+    assert type(model).__module__ == "body_models.g1"
+
+
+@pytest.mark.fast
+def test_torch_module_manages_model_state() -> None:
+    torch = pytest.importorskip("torch")
+    from body_models.g1 import G1
+
+    model = G1(runtime="torch")
+    module = model.as_module().double()
+
+    assert isinstance(module, torch.nn.Module)
+    assert module.model is model
+    assert module.weights is model.weights
+    assert module.state_dict()
+    assert model.weights.vertices.dtype == torch.float64
+
+
+@pytest.mark.fast
 @pytest.mark.parametrize("model_type", ["soma", "smpl"])
 def test_soma_is_a_jax_pytree(model_type) -> None:
     jax = pytest.importorskip("jax")
 
-    from body_models.soma.jax import SOMA
+    from body_models.soma import SOMA
 
-    model = SOMA(model_type=model_type)
+    model = SOMA(model_type=model_type, runtime="jax")
     assert all(leaf is not model for leaf in jax.tree_util.tree_leaves(model))
     assert jax.jit(lambda value: value.num_vertices)(model) == model.num_vertices
 
 
-@pytest.mark.parametrize(("name", "_numpy", "_torch", "jax_model", "kwargs"), model_cases.MODELS)
-def test_jax_model_pytree_round_trip(name, _numpy, _torch, jax_model, kwargs) -> None:
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
+def test_jax_model_pytree_round_trip(name, model_class, kwargs) -> None:
     jax = pytest.importorskip("jax")
-    model = jax_model(**kwargs)
+    model = model_class(**kwargs, runtime="jax")
 
     leaves, tree = jax.tree_util.tree_flatten(model)
     restored = jax.tree_util.tree_unflatten(tree, leaves)

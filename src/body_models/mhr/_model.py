@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 from body_models import _common as common
 from body_models._base import SkinnedModel
 from body_models._common import skinning
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.mhr import _core as core
 from body_models.mhr._constants import (
     MHR_BODY_POSE_DIM,
@@ -26,7 +26,7 @@ from body_models.mhr._pose import pack_pose, unpack_pose
 Array = Any
 
 
-class MHRModel(SkinnedModel):
+class MHR(SkinnedModel):
     """Backend-independent MHR interface and orchestration."""
 
     has_hands = True
@@ -41,10 +41,10 @@ class MHRModel(SkinnedModel):
         *,
         lod: int = 1,
         simplify: float = 1.0,
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         weights = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = None
         self.weights = runtime.materialize(weights)
 
@@ -257,4 +257,4 @@ class MHRModel(SkinnedModel):
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
 
-__all__ = ["MHRModel"]
+__all__ = ["MHR"]
