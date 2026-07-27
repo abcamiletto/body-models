@@ -197,7 +197,7 @@ class SOMAModel(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.skin_joint_indices_active - 1,
+            joint_indices=self.weights.skin_joint_indices_active,
             joint_weights=self.weights.skin_joint_weights_active,
             vertex_indices=vertex_indices,
         )
