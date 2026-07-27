@@ -36,7 +36,6 @@ class SomaConfig:
     model_type: str
     lod: str
     rotation_type: RotationType
-    match_warp: bool
     identity_dim: int
     num_scale_params: int | None
     default_identity_value: float
@@ -60,7 +59,6 @@ class SOMAModel(SkinnedModel):
         lod: str = "mid",
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        match_warp: bool = True,
         runtime: ArrayRuntime,
     ) -> None:
         normalized_model_type = model_type.lower()
@@ -78,7 +76,6 @@ class SOMAModel(SkinnedModel):
             model_type=normalized_model_type,
             lod=normalized_lod,
             rotation_type=rotation_type,
-            match_warp=match_warp,
             identity_dim=spec.identity_dim,
             num_scale_params=spec.num_scale_params,
             default_identity_value=spec.default_identity_value,
@@ -103,10 +100,6 @@ class SOMAModel(SkinnedModel):
     @property
     def rotation_type(self) -> RotationType:
         return self._config.rotation_type
-
-    @property
-    def match_warp(self) -> bool:
-        return self._config.match_warp
 
     @property
     def identity_dim(self) -> int:
@@ -274,7 +267,6 @@ class SOMAModel(SkinnedModel):
             data=self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            match_warp=self.match_warp,
             xp=self._runtime.xp,
             repose=repose,
             bind_pose=bind_pose,
@@ -318,7 +310,6 @@ class SOMAModel(SkinnedModel):
             self.weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            match_warp=self.match_warp,
             xp=self._runtime.xp,
         )
 

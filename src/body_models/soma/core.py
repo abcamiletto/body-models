@@ -47,7 +47,6 @@ def prepare_identity_from_rest_shape(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    match_warp: bool,
     xp: Any,
     repose: bool = True,
     bind_pose: BindPoseMode = "fit",
@@ -56,7 +55,6 @@ def prepare_identity_from_rest_shape(
         data,
         rest_shape_full=rest_shape_full,
         rest_shape_active=rest_shape_active,
-        match_warp=match_warp,
         xp=xp,
         repose=repose,
         bind_pose=bind_pose,
@@ -69,7 +67,6 @@ def prepare_skeleton_identity_from_rest_shape(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    match_warp: bool,
     xp: Any,
     repose: bool = True,
     bind_pose: BindPoseMode = "fit",
@@ -79,7 +76,6 @@ def prepare_skeleton_identity_from_rest_shape(
         data,
         rest_shape_full=rest_shape_full,
         rest_shape_active=rest_shape_active,
-        match_warp=match_warp,
         xp=xp,
         repose=repose,
         bind_pose=bind_pose,
@@ -92,7 +88,6 @@ def _prepare_bind_state(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    match_warp: bool,
     xp: Any,
     repose: bool,
     bind_pose: BindPoseMode,
@@ -102,7 +97,6 @@ def _prepare_bind_state(
             data,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            match_warp=match_warp,
             xp=xp,
             repose=repose,
             bind_pose=bind_pose,
@@ -120,7 +114,6 @@ def _prepare_bind_state(
         skinned_vertex_indices_full_index=data.topology.skinned_vertex_indices_full_index,
         parents_full=data.topology.parents_full,
         rest_shape=rest_shape_full,
-        match_warp=match_warp,
     )
     bind_shape_active = rest_shape_active
     world_bind_pose = world_bind_pose_fit
@@ -142,7 +135,6 @@ def _prepare_procedural_bind_state(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    match_warp: bool,
     xp: Any,
     repose: bool,
     bind_pose: BindPoseMode,
@@ -161,7 +153,6 @@ def _prepare_procedural_bind_state(
         skinned_vertex_indices_full_index=public.topology.skinned_vertex_indices_full_index,
         parents_full=public.topology.parents_full,
         rest_shape=rest_shape_full,
-        match_warp=match_warp,
     )
     bind_shape_active = rest_shape_active
     public_world_bind_pose = public_world_bind_pose_fit
@@ -257,7 +248,6 @@ def _bind_pose_for_rest_shape(
     skinned_vertex_indices_full_index: Int[Array, "J K"],
     parents_full: list[int],
     rest_shape: Float[Array, "B V 3"],
-    match_warp: bool,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     if mode not in ("fit", "fit_detached", "canonical"):
         raise ValueError(f"Unknown SOMA bind_pose mode: {mode!r}.")
@@ -285,7 +275,6 @@ def _bind_pose_for_rest_shape(
             skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
             parents_full=parents_full,
             rest_shape=rest_shape,
-            match_warp=match_warp,
         )
     if mode == "fit_detached" and xp.__name__ != "torch":
         world_bind_pose = _stop_gradient(xp, world_bind_pose)
@@ -606,7 +595,6 @@ def _fit_rest_shape_to_bind_pose(
     skinned_vertex_indices_full_index: Int[Array, "J K"],
     parents_full: list[int],
     rest_shape: Float[Array, "B V 3"],
-    match_warp: bool,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     joint_positions = xp.einsum("jv,...vc->...jc", joint_regressor, rest_shape)
     world_bind_pose = _fit_joint_rotations(
@@ -620,7 +608,6 @@ def _fit_rest_shape_to_bind_pose(
         parents_full=parents_full,
         joint_positions=joint_positions,
         target_shape=rest_shape,
-        match_warp=match_warp,
     )
     return rest_shape, world_bind_pose
 
@@ -688,7 +675,6 @@ def _fit_joint_rotations(
     parents_full: list[int],
     joint_positions: Float[Array, "B J 3"],
     target_shape: Float[Array, "B V 3"],
-    match_warp: bool,
 ) -> Float[Array, "B J 4 4"]:
     batch_shape = joint_positions.shape[:-2]
     J = joint_positions.shape[-2]
@@ -712,7 +698,6 @@ def _fit_joint_rotations(
                 xp,
                 skinned_new,
                 skinned_orig,
-                match_warp=match_warp,
             )
         else:
             R_init = common.eye_as(bind_rot, batch_dims=batch_shape, xp=xp)
@@ -725,7 +710,6 @@ def _fit_joint_rotations(
             xp,
             pos_children_new,
             pos_children_orig,
-            match_warp=match_warp,
         )
         R_joint = align_rot @ R_init @ bind_rot[joint_index]
         rotations.append(R_joint)
@@ -738,29 +722,12 @@ def _align_vectors(
     xp,
     target: Float[Array, "B N 3"],
     source: Float[Array, "B N 3"],
-    *,
-    match_warp: bool,
 ) -> Float[Array, "B 3 3"]:
     if target.shape[-2] == 1:
         return _rotation_between_vectors(xp, target[..., 0, :], source[..., 0, :])
 
-    H = xp.einsum("...ni,...nj->...ij", target, source)
-    # SOMALayer's default warp path uses plain covariance; the alternate path adds a virtual normal.
-    if not match_warp:
-        p0, p1 = target[..., 0, :], target[..., 1, :]
-        q0, q1 = source[..., 0, :], source[..., 1, :]
-        n_target = xp.linalg.cross(p0, p1)
-        n_source = xp.linalg.cross(q0, q1)
-        len_target = xp.linalg.vector_norm(n_target, axis=-1, keepdims=True)
-        len_source = xp.linalg.vector_norm(n_source, axis=-1, keepdims=True)
-        scale_target = xp.linalg.vector_norm(p0, axis=-1, keepdims=True) / (len_target + 1e-8)
-        scale_source = xp.linalg.vector_norm(q0, axis=-1, keepdims=True) / (len_source + 1e-8)
-        valid = (len_target[..., 0] > 1e-9) & (len_source[..., 0] > 1e-9)
-        v_target = n_target * scale_target
-        v_source = n_source * scale_source
-        virtual = xp.einsum("...i,...j->...ij", v_target, v_source)
-        H = xp.where(valid[..., None, None], H + virtual, H)
-    return _kabsch(xp, H)
+    covariance = xp.einsum("...ni,...nj->...ij", target, source)
+    return _kabsch(xp, covariance)
 
 
 def _kabsch(xp, H: Float[Array, "B 3 3"]) -> Float[Array, "B 3 3"]:

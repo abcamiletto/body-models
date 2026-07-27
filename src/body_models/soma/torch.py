@@ -21,7 +21,6 @@ class SOMA(SOMAModel, nn.Module):
         lod: str = "mid",
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        match_warp: bool = True,
         skinning_backend: Literal["torch", "warp"] = "torch",
     ) -> None:
         nn.Module.__init__(self)
@@ -32,7 +31,6 @@ class SOMA(SOMAModel, nn.Module):
             lod=lod,
             simplify=simplify,
             rotation_type=rotation_type,
-            match_warp=match_warp,
             runtime=TorchRuntime(skinning_backend),
         )
 
