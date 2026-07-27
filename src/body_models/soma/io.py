@@ -412,6 +412,7 @@ def with_active_mesh(
     vertex_map: Int[np.ndarray, "Va"] | None,
 ) -> SomaWeights:
     skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
+    skin_joint_indices_active = np.maximum(skin_joint_indices_active - 1, -1)
     public_skin_weights_active = _active_public_skin_weights(data, vertex_map)
     public = None if data.public is None else replace(data.public, skin_weights_active=public_skin_weights_active)
     return replace(
@@ -1078,6 +1079,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
 
     parents_full = joint_parents_full.astype(np.int64).tolist()
     skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
+    skin_joint_indices = np.maximum(skin_joint_indices - 1, -1)
     return SomaWeights(
         mean_full=mean,
         mean_active=mean,

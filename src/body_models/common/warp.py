@@ -3,6 +3,8 @@
 import contextlib
 import functools
 import io
+import weakref
+from dataclasses import dataclass
 
 import torch
 import warp as wp
@@ -11,6 +13,22 @@ from torch import Tensor
 from torch.compiler import disable as disable_compile
 
 __all__ = ["compact_linear_blend_skinning"]
+
+_TRANSFORM_GRADIENT_CHUNK_SIZE = 32
+
+
+@dataclass(frozen=True)
+class _TransformGradientPlan:
+    permutation: Int[Tensor, "N"]
+    chunk_starts: Int[Tensor, "C"]
+    chunk_ends: Int[Tensor, "C"]
+    chunk_joints: Int[Tensor, "C"]
+
+
+_TRANSFORM_GRADIENT_PLANS: dict[
+    int,
+    tuple[weakref.ReferenceType[Tensor], _TransformGradientPlan],
+] = {}
 
 
 def _require_float32(**tensors: Float[Tensor, "..."]) -> None:
@@ -104,19 +122,81 @@ def _transform_gradients(
     joint_indices: Int[Tensor, "V K"],
     joint_weights: Float[Tensor, "V K"],
 ) -> Float[Tensor, "B J 4 4"]:
-    homogeneous_vertices = torch.cat([vertices, torch.ones_like(vertices[..., :1])], dim=-1)
-    contributions = grad_output[..., None] * homogeneous_vertices[..., None, :]
+    plan = _transform_gradient_plan(joint_indices)
     grad_transforms = torch.zeros_like(transforms)
-    grad_affine = grad_transforms[:, :, :3, :]
-    batch_size, num_vertices = vertices.shape[:2]
-    for slot in range(joint_indices.shape[1]):
-        indices = joint_indices[:, slot]
-        valid = indices >= 0
-        indices = indices.clamp_min(0).view(1, num_vertices, 1, 1)
-        indices = indices.expand(batch_size, num_vertices, 3, 4)
-        weights = (joint_weights[:, slot] * valid).view(1, num_vertices, 1, 1)
-        grad_affine.scatter_add_(1, indices, contributions * weights)
+    if plan.permutation.numel() == 0:
+        return grad_transforms
+
+    with _torch_stream(vertices):
+        wp.launch(
+            _skin_affine_vertices_backward_transforms_kernel,
+            dim=(vertices.shape[0], plan.chunk_starts.shape[0], 12),
+            inputs=[
+                _from_torch(vertices.reshape(-1)),
+                _from_torch(grad_output.reshape(-1)),
+                _from_torch(joint_weights.reshape(-1)),
+                _from_torch(plan.permutation),
+                _from_torch(plan.chunk_starts),
+                _from_torch(plan.chunk_ends),
+                _from_torch(plan.chunk_joints),
+                vertices.shape[1],
+                transforms.shape[1],
+                joint_indices.shape[1],
+                _from_torch(grad_transforms.reshape(-1)),
+            ],
+            device=_from_torch(vertices).device,
+        )
     return grad_transforms
+
+
+def _transform_gradient_plan(joint_indices: Int[Tensor, "V K"]) -> _TransformGradientPlan:
+    key = id(joint_indices)
+    cached = _TRANSFORM_GRADIENT_PLANS.get(key)
+    if cached is not None and cached[0]() is joint_indices:
+        return cached[1]
+
+    plan = _build_transform_gradient_plan(joint_indices)
+
+    def remove(reference: weakref.ReferenceType[Tensor]) -> None:
+        current = _TRANSFORM_GRADIENT_PLANS.get(key)
+        if current is not None and current[0] is reference:
+            del _TRANSFORM_GRADIENT_PLANS[key]
+
+    reference = weakref.ref(joint_indices, remove)
+    _TRANSFORM_GRADIENT_PLANS[key] = reference, plan
+    return plan
+
+
+def _build_transform_gradient_plan(joint_indices: Int[Tensor, "V K"]) -> _TransformGradientPlan:
+    flat_indices = joint_indices.reshape(-1)
+    valid_positions = torch.nonzero(flat_indices >= 0, as_tuple=False).flatten()
+    permutation = valid_positions[torch.argsort(flat_indices[valid_positions])]
+    sorted_joints = flat_indices[permutation]
+    joints, counts = torch.unique_consecutive(sorted_joints, return_counts=True)
+
+    chunks_per_joint = torch.div(
+        counts + _TRANSFORM_GRADIENT_CHUNK_SIZE - 1,
+        _TRANSFORM_GRADIENT_CHUNK_SIZE,
+        rounding_mode="floor",
+    )
+    chunk_joints = torch.repeat_interleave(joints, chunks_per_joint)
+    joint_starts = torch.cumsum(counts, dim=0) - counts
+    chunk_group_starts = torch.cumsum(chunks_per_joint, dim=0) - chunks_per_joint
+    chunk_offsets = torch.arange(chunk_joints.shape[0], device=joint_indices.device)
+    chunk_offsets -= torch.repeat_interleave(chunk_group_starts, chunks_per_joint)
+    chunk_starts = torch.repeat_interleave(joint_starts, chunks_per_joint)
+    chunk_starts += chunk_offsets * _TRANSFORM_GRADIENT_CHUNK_SIZE
+    joint_ends = torch.repeat_interleave(joint_starts + counts, chunks_per_joint)
+    chunk_ends = torch.minimum(
+        chunk_starts + _TRANSFORM_GRADIENT_CHUNK_SIZE,
+        joint_ends,
+    )
+    return _TransformGradientPlan(
+        permutation=permutation.to(torch.int32).contiguous(),
+        chunk_starts=chunk_starts.to(torch.int32).contiguous(),
+        chunk_ends=chunk_ends.to(torch.int32).contiguous(),
+        chunk_joints=chunk_joints.to(torch.int32).contiguous(),
+    )
 
 
 def _launch_affine_blend_skinning(
@@ -270,3 +350,36 @@ def _skin_affine_vertices_backward_vertices_kernel(
     grad_vertices[vertex_base] = grad_x
     grad_vertices[vertex_base + 1] = grad_y
     grad_vertices[vertex_base + 2] = grad_z
+
+
+@wp.kernel
+def _skin_affine_vertices_backward_transforms_kernel(
+    vertices: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+    grad_output: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+    joint_weights: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+    permutation: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
+    chunk_starts: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
+    chunk_ends: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
+    chunk_joints: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
+    num_vertices: int,
+    num_joints: int,
+    num_slots: int,
+    grad_transforms: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
+):
+    batch, chunk, component = wp.tid()  # ty: ignore[invalid-assignment, not-iterable]
+    row = component // 4
+    column = component - row * 4
+    total = float(0.0)
+
+    for influence in range(chunk_starts[chunk], chunk_ends[chunk]):
+        flat_index = permutation[influence]
+        vertex = flat_index // num_slots
+        vertex_base = (batch * num_vertices + vertex) * 3
+        coordinate = float(1.0)
+        if column < 3:
+            coordinate = vertices[vertex_base + column]
+        total += joint_weights[flat_index] * grad_output[vertex_base + row] * coordinate
+
+    joint = chunk_joints[chunk]
+    transform_base = (batch * num_joints + joint) * 16
+    wp.atomic_add(grad_transforms, transform_base + component, total)
