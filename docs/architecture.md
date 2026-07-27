@@ -47,9 +47,10 @@ requirements without mode flags.
 
 Each instance exposes `parameter_spec`, an ordered mapping from public parameter
 names to `ParameterSpec`. A specification records the unbatched array shape,
-semantic role (`identity`, `pose`, or `transform`), canonical default, and
-rotation representation where applicable. Dimensions derived from assets or
-configuration are therefore represented accurately. The shared base constructs
+semantic role (`identity`, `pose`, or `transform`), numeric default, and rotation
+representation where applicable. A rotation representation determines the
+corresponding identity rotation. Dimensions derived from assets or configuration
+are therefore represented accurately. The shared base constructs
 `get_rest_pose()` from this mapping; model-local overrides only apply named
 presets such as flat or relaxed hands.
 

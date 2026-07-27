@@ -25,11 +25,11 @@ ParameterRole = Literal["identity", "pose", "transform"]
 
 @dataclass(frozen=True)
 class ParameterSpec:
-    """Shape, role, and canonical default of one model parameter."""
+    """Shape, role, and numeric default of one model parameter."""
 
     shape: tuple[int, ...]
     role: ParameterRole
-    default: float | Literal["identity"] = 0.0
+    default: float = 0.0
     rotation_type: RotationType | None = None
 
     @classmethod
@@ -45,7 +45,6 @@ class ParameterSpec:
         return cls(
             shape=(*leading_shape, *rotation_shape(rotation_type)),
             role=role,
-            default="identity",
             rotation_type=rotation_type,
         )
 

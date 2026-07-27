@@ -53,9 +53,10 @@ model.parameter_spec
 # }
 ```
 
-Each entry reports the unbatched array shape, semantic role, canonical default,
-and rotation representation when applicable. `get_rest_pose()` constructs its
-arrays directly from this specification.
+Each entry reports the unbatched array shape, semantic role, numeric default,
+and rotation representation when applicable. A rotation representation implies
+the corresponding identity rotation. `get_rest_pose()` constructs its arrays
+directly from this specification.
 
 Runtime-specific options stay in the runtime rather than every model signature:
 
