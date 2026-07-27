@@ -19,10 +19,6 @@ class ModelSpec:
     kind: ModelKind
     defaults: Mapping[str, Any] = field(default_factory=dict)
 
-    @property
-    def public_module(self) -> str:
-        return self.module.removeprefix("body_models.")
-
 
 @dataclass(frozen=True)
 class AssetSpec:

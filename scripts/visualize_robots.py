@@ -136,7 +136,7 @@ def load_models(
     for name in names or list(model_specs):
         print(f"Loading {name}", flush=True)
         model_id, kwargs = model_specs[name]
-        model = create_model(model_id, backend="numpy", **kwargs)
+        model = create_model(model_id, runtime="numpy", **kwargs)
         if not isinstance(model, RigidBodyModel):
             raise TypeError(f"{name} is not a rigid body model")
         models[name] = model

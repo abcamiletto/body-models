@@ -9,10 +9,14 @@ from body_models.smpl_humanoid._io import (
     load_model_data,
     validate_path,
 )
+from body_models.smpl_humanoid._model import SmplHumanoid
+
+SmplHumanoid.__module__ = __name__
 
 __all__ = [
     "SMPL_HUMANOID_SOURCES",
     "SMPL_HUMANOID_VARIANTS",
+    "SmplHumanoid",
     "SmplHumanoidWeights",
     "download_model",
     "get_model_path",

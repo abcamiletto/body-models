@@ -230,11 +230,10 @@ def create_model(
     device: torch.device | None,
 ) -> Any:
     kwargs = dict(spec.kwargs)
-    if skinning_backend is not None:
-        kwargs["skinning_backend"] = skinning_backend
-    model = registry.create_model(spec.model_name, backend=backend, **kwargs)
+    runtime = TorchRuntime(skinning_backend or "torch") if backend == "torch" else backend
+    model = registry.create_model(spec.model_name, runtime=runtime, **kwargs)
     if backend == "torch":
-        model = model.to(device).eval()
+        model = model.as_module().to(device).eval()
     return model
 
 

@@ -222,7 +222,7 @@ def load_models(names: list[str] | None) -> dict[str, SkinnedModel]:
     models = {}
     for name in names or list(MODEL_IDS):
         print(f"Loading {name}", flush=True)
-        model = create_model(MODEL_IDS[name], backend="numpy")
+        model = create_model(MODEL_IDS[name], runtime="numpy")
         if not isinstance(model, SkinnedModel):
             raise TypeError(f"{name} is not a skinned model")
         models[name] = model

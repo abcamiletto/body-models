@@ -10,7 +10,7 @@ from jaxtyping import Float
 from trimesh import Trimesh
 
 from body_models._base import RigidBodyModel
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.myofullbody import _core as core
 from body_models.myofullbody._constants import MYOFULLBODY_BODY_PRESETS, MYOFULLBODY_JOINTS
 from body_models.myofullbody._io import load_model_data
@@ -23,7 +23,7 @@ class MyoFullBodyConfig:
     """Static MyoFullBody behavior outside array state."""
 
 
-class MyoFullBodyModel(RigidBodyModel):
+class MyoFullBody(RigidBodyModel):
     """Backend-independent MyoFullBody interface and orchestration."""
 
     JOINTS = MYOFULLBODY_JOINTS
@@ -33,9 +33,9 @@ class MyoFullBodyModel(RigidBodyModel):
         self,
         model_path: Path | str | None = None,
         *,
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = MyoFullBodyConfig()
         self.weights = runtime.materialize(load_model_data(model_path))
 
@@ -145,4 +145,4 @@ class MyoFullBodyModel(RigidBodyModel):
         return params
 
 
-__all__ = ["MyoFullBodyConfig", "MyoFullBodyModel"]
+__all__ = ["MyoFullBody", "MyoFullBodyConfig"]

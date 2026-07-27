@@ -4,34 +4,29 @@ from __future__ import annotations
 
 from fnmatch import fnmatchcase
 from importlib import import_module
-from typing import Any, Literal
+from typing import Any
 
 from body_models._base import RigidBodyModel, SkinnedModel
 from body_models._catalog import MODEL_SPECS, ModelSpec
-
-Backend = Literal["numpy", "torch", "jax"]
-BACKENDS: tuple[Backend, ...] = ("numpy", "torch", "jax")
+from body_models._runtime import RuntimeLike
 
 
 def create_model(
     model_name: str,
     *,
-    backend: Backend = "numpy",
+    runtime: RuntimeLike = "numpy",
     **kwargs: Any,
 ) -> SkinnedModel | RigidBodyModel:
-    """Create a model by catalog name without importing unrelated backends."""
+    """Create a model by catalog name and array runtime."""
     name = _normalize_name(model_name)
     try:
         spec = MODEL_SPECS[name]
     except KeyError as exc:
         available = ", ".join(list_models())
         raise ValueError(f"Unknown model {model_name!r}. Available models: {available}") from exc
-    if backend not in BACKENDS:
-        raise ValueError(f"Unknown backend {backend!r}. Expected one of {BACKENDS}.")
-
-    module = import_module(f"{spec.module}.{backend}")
+    module = import_module(spec.module)
     model_class = getattr(module, spec.class_name)
-    return model_class(**(dict(spec.defaults) | kwargs))
+    return model_class(**(dict(spec.defaults) | kwargs), runtime=runtime)
 
 
 def get_model_spec(model_name: str) -> ModelSpec:
@@ -55,4 +50,4 @@ def _normalize_name(name: str) -> str:
     return name.strip().lower().replace("_", "-")
 
 
-__all__ = ["BACKENDS", "Backend", "create_model", "get_model_spec", "list_models"]
+__all__ = ["create_model", "get_model_spec", "list_models"]

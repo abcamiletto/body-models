@@ -35,27 +35,33 @@ uv add "body-models[jax]"
 ```python
 import body_models
 
-model = body_models.create_model("smpl", backend="torch")
+model = body_models.create_model("smpl", runtime="torch")
 params = model.get_rest_pose(batch_dims=(1,))
 
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
-Use `skinning_backend="warp"` when constructing a supported Torch model to replace only
-its compact skinning operation with the differentiable Warp lowering. The model
-API and all model-specific preparation remain unchanged.
+Runtime-specific options stay in the runtime rather than every model signature:
+
+```python
+runtime = body_models.TorchRuntime(skinning_backend="warp")
+model = body_models.create_model("smpl", runtime=runtime)
+module = model.as_module().cuda()
+```
+
+`as_module()` adds PyTorch's device, state-dict, and buffer lifecycle without
+changing the underlying model class.
 
 Discover available model names with `body_models.list_models()`. Model options
 such as `gender="male"` or `side="left"` are passed as constructor kwargs.
 
 ## Public API
 
-The stable API consists of names exported from `body_models`, names exported
-from each model package, and the NumPy, Torch, and JAX backend modules. For
-example, `body_models.smpl.torch.SMPL` is public; underscore-prefixed modules
-such as `body_models.smpl._model` and `body_models._runtime` are implementation
-details and are not covered by semantic-versioning compatibility guarantees.
+The stable API consists of names exported from `body_models` and each model
+package. For example, `body_models.smpl.SMPL` is public; underscore-prefixed
+modules such as `body_models.smpl._model` are implementation details and are
+not covered by semantic-versioning compatibility guarantees.
 
 When shape-dependent identity parameters stay fixed across many poses, prepare
 them once and pass the returned dictionary back through `identity`. This avoids

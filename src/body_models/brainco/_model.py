@@ -10,7 +10,7 @@ from jaxtyping import Float
 from trimesh import Trimesh
 
 from body_models._base import RigidBodyModel
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.brainco import _core as core
 from body_models.brainco._constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
 from body_models.brainco._io import Side, load_model_data
@@ -23,7 +23,7 @@ class BrainCoConfig:
     side: Side
 
 
-class BrainCoHandModel(RigidBodyModel):
+class BrainCoHand(RigidBodyModel):
     """Backend-independent BrainCo interface and orchestration."""
 
     has_hands = True
@@ -34,11 +34,11 @@ class BrainCoHandModel(RigidBodyModel):
         model_path: Path | str | None = None,
         *,
         side: Side = "right",
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         if side not in ("left", "right"):
             raise ValueError(f"Invalid side: {side!r}")
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = BrainCoConfig(side)
         self.weights = runtime.materialize(load_model_data(model_path, side=side))
 
@@ -127,4 +127,4 @@ class BrainCoHandModel(RigidBodyModel):
         return params
 
 
-__all__ = ["BrainCoConfig", "BrainCoHandModel"]
+__all__ = ["BrainCoConfig", "BrainCoHand"]

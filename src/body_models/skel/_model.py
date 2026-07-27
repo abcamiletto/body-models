@@ -10,7 +10,7 @@ from jaxtyping import Float, Int
 
 from body_models._base import SkinnedModel
 from body_models._common import skinning
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.skel import _core as core
 from body_models.skel._constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 from body_models.skel._io import get_model_path, load_model_data
@@ -32,7 +32,7 @@ class SkelConfig:
     gender: Literal["male", "female"]
 
 
-class SKELModel(SkinnedModel):
+class SKEL(SkinnedModel):
     """Backend-independent SKEL interface and orchestration."""
 
     NUM_BETAS = 10
@@ -46,7 +46,7 @@ class SKELModel(SkinnedModel):
         gender: Literal["male", "female"] | None = None,
         simplify: float = 1.0,
         *,
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         if gender not in ("male", "female"):
             raise ValueError(f"Invalid gender: {gender!r}")
@@ -54,7 +54,7 @@ class SKELModel(SkinnedModel):
             raise ValueError("simplify must be >= 1.0")
 
         weights = load_model_data(get_model_path(model_path, gender), simplify=simplify)
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = SkelConfig(gender=gender)
         self.weights = runtime.materialize(weights)
 
@@ -311,4 +311,4 @@ class SKELModel(SkinnedModel):
         return params
 
 
-__all__ = ["SKELModel", "SkelConfig"]
+__all__ = ["SKEL", "SkelConfig"]

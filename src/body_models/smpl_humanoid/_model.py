@@ -12,7 +12,7 @@ from trimesh import Trimesh
 
 from body_models import _common as common
 from body_models._base import RigidBodyModel
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.smpl_humanoid import _core as core
 from body_models.smpl_humanoid._constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
 from body_models.smpl_humanoid._io import load_model_data
@@ -25,7 +25,7 @@ class SmplHumanoidConfig:
     source: Path | str
 
 
-class SmplHumanoidModel(RigidBodyModel):
+class SmplHumanoid(RigidBodyModel):
     """Backend-independent SMPL humanoid interface and orchestration."""
 
     JOINTS = SMPL_HUMANOID_JOINTS
@@ -34,9 +34,9 @@ class SmplHumanoidModel(RigidBodyModel):
         self,
         source: Path | str = "humenv",
         *,
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = SmplHumanoidConfig(source)
         self.weights = runtime.materialize(load_model_data(source))
 
@@ -183,4 +183,4 @@ class SmplHumanoidModel(RigidBodyModel):
         return params
 
 
-__all__ = ["SmplHumanoidConfig", "SmplHumanoidModel"]
+__all__ = ["SmplHumanoid", "SmplHumanoidConfig"]

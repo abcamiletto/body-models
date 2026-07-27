@@ -6,9 +6,9 @@ from nanomanifold import SO3
 
 from body_models._base import RigidBodyModel
 from body_models._registry import create_model, list_models
+from body_models.smpl_humanoid import SmplHumanoid
 from body_models.smpl_humanoid._constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 from body_models.smpl_humanoid._io import SMPL_HUMANOID_SOURCES, get_model_path
-from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
 @pytest.fixture
@@ -170,9 +170,6 @@ def test_smpl_humanoid_to_smpl_motion_backends_match_numpy(smpl_humanoid_xml) ->
     pytest.importorskip("jax")
     import jax.numpy as jnp
 
-    from body_models.smpl_humanoid.jax import SmplHumanoid as JaxSmplHumanoid
-    from body_models.smpl_humanoid.torch import SmplHumanoid as TorchSmplHumanoid
-
     model = SmplHumanoid(smpl_humanoid_xml)
     body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
@@ -180,8 +177,8 @@ def test_smpl_humanoid_to_smpl_motion_backends_match_numpy(smpl_humanoid_xml) ->
     qpos = model.to_qpos(body_pose, global_translation, global_rotation=global_rotation)
     expected = model.to_smpl_motion(qpos)
 
-    torch_motion = TorchSmplHumanoid(smpl_humanoid_xml).to_smpl_motion(torch.as_tensor(qpos))
-    jax_motion = JaxSmplHumanoid(smpl_humanoid_xml).to_smpl_motion(jnp.asarray(qpos))
+    torch_motion = SmplHumanoid(smpl_humanoid_xml, runtime="torch").to_smpl_motion(torch.as_tensor(qpos))
+    jax_motion = SmplHumanoid(smpl_humanoid_xml, runtime="jax").to_smpl_motion(jnp.asarray(qpos))
 
     for key, value in expected.items():
         np.testing.assert_allclose(torch_motion[key].detach().numpy(), value, rtol=1e-5, atol=1e-5)

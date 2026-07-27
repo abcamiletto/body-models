@@ -1,16 +1,14 @@
 # Architecture
 
 `body-models` has one implementation of each model and a small execution layer
-for array ownership and genuinely shared operations. Framework support is no
-longer organized as a matrix of model-specific backend modules.
+for array ownership and genuinely shared operations.
 
 ## Public API boundary
 
 The stable public API is intentionally small:
 
 - names exported from `body_models`;
-- names explicitly exported from a model package; and
-- the `numpy`, `torch`, and `jax` modules within each model package.
+- names explicitly exported from a model package.
 
 All underscore-prefixed modules are private implementation details. This
 includes model programs and loaders such as `smpl._model` and `smpl._io`, and
@@ -26,15 +24,13 @@ Each model family follows the same file roles:
 | --- | --- |
 | `_io.py` | Resolve assets and load immutable NumPy model data. |
 | `_core.py` | Model-specific mathematics with an explicit array namespace. |
-| `_model.py` | Define validation, state preparation, and forward orchestration. |
-| `body_models/<name>/numpy.py` | Construct the model program with `NumpyRuntime`. |
-| `body_models/<name>/torch.py` | Add `nn.Module` storage and construct `TorchRuntime`. |
-| `body_models/<name>/jax.py` | Construct `JaxRuntime` and define JAX pytree behavior. |
+| `_model.py` | Define the model class, validation, state preparation, and forward orchestration. |
+| `__init__.py` | Export the model class and give it its stable public identity. |
 
 Every model is self-contained in `body_models/<name>/`; descriptive categories
-do not create a second package tree. The wrappers are intentionally thin: a
-signature or behavior change is made once in `_model.py`, so backends cannot
-drift apart.
+do not create a second package tree. There is one class per model, independent
+of its runtime, so `isinstance`, error messages, and pickles all use the stable
+package identity and signatures cannot drift across frameworks.
 Public identity and pose preparation always returns complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
@@ -47,9 +43,22 @@ compact linear blend skinning. Materialization delegates to the recursive
 converters in `_state.py`; callers therefore cannot pair a runtime with the
 wrong framework state. The runtime does not own model semantics.
 
-Warp is a Torch operation lowering, not a fourth copy of a model. Selecting
-`skinning_backend="warp"` changes compact skinning while identity preparation, pose
-semantics, correctives, and public outputs remain the same model program.
+Models accept either a runtime name or an `ArrayRuntime` instance. Runtime
+options are configured once on that object, so adding an execution option does
+not change every model constructor. Warp is a Torch operation lowering, not a
+fourth model backend:
+
+```python
+from body_models import TorchRuntime
+from body_models.smpl import SMPL
+
+model = SMPL(runtime=TorchRuntime(skinning_backend="warp"))
+```
+
+Torch lifecycle behavior is orthogonal to model identity. `model.as_module()`
+wraps Torch-backed state in `torch.nn.Module` semantics for `.to()`,
+`state_dict()`, and buffer registration. JAX-backed instances of the same model
+class implement the pytree protocol.
 
 Linear identity preparation is shared by the SMPL family, MANO, and FLAME
 because those models apply the same coefficients to vertex and joint bases.
@@ -88,11 +97,11 @@ would make the runtime understand SOMA and create a leaky abstraction.
 1. Add asset loading and validation in `_io.py`.
 2. Put model-specific numerical functions in `_core.py` and pass the array
    namespace explicitly.
-3. Define the public program in `_model.py` using `ArrayRuntime` and the
+3. Define the public class in `_model.py` using `ArrayRuntime` and the
    appropriate model base.
-4. Add the three thin framework constructors that the model supports.
+4. Export the class from the model package.
 5. Add its factory and asset metadata to `_catalog.py`.
-6. Add cross-framework, arbitrary-batch, compile, gradient, and reference tests
+6. Add cross-runtime, arbitrary-batch, compile, gradient, and reference tests
    in proportion to the operations it supports.
 
 Before promoting repeated code into `_common/`, check that the candidate has the

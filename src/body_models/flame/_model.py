@@ -12,7 +12,7 @@ from nanomanifold import SO3
 from body_models._base import SkinnedModel
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.flame import _core as core
 from body_models.flame._constants import FLAME_JOINT_NAMES
 from body_models.flame._io import get_model_path, load_model_data
@@ -27,7 +27,7 @@ class FlameConfig:
     rotation_type: RotationType
 
 
-class FLAMEModel(SkinnedModel):
+class FLAME(SkinnedModel):
     """Backend-independent FLAME interface and orchestration."""
 
     has_head = True
@@ -40,7 +40,7 @@ class FLAMEModel(SkinnedModel):
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
         *,
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
@@ -49,7 +49,7 @@ class FLAMEModel(SkinnedModel):
 
         resolved_path = get_model_path(model_path)
         weights = load_model_data(resolved_path, simplify=simplify)
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = FlameConfig(rotation_type=rotation_type)
         self.weights = runtime.materialize(weights)
 
@@ -277,4 +277,4 @@ class FLAMEModel(SkinnedModel):
         }
 
 
-__all__ = ["FLAMEModel", "FlameConfig"]
+__all__ = ["FLAME", "FlameConfig"]

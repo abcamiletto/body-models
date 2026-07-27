@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
-from typing import Any, ClassVar, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -9,6 +11,10 @@ from trimesh import Trimesh
 from body_models._common import deformation, eye_as, zeros_as
 from body_models._common import rigid as rigid_ops
 from body_models._constants import Joint
+from body_models._runtime import ArrayRuntime, RuntimeLike, resolve_runtime
+
+if TYPE_CHECKING:
+    from torch import nn
 
 Array = Any
 
@@ -26,11 +32,52 @@ class SkinningPayload(TypedDict):
 class _ArticulatedModel(ABC):
     """Shared skeleton interface for skinned and rigid articulated models."""
 
-    _runtime: Any
+    _state_fields: ClassVar[tuple[str, ...]] = ("weights",)
+    _config: Any
+    _runtime: ArrayRuntime
     parents: list[int]
     has_hands: bool = False
     has_head: bool = False
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
+
+    @property
+    def runtime(self) -> ArrayRuntime:
+        """Array runtime used by this model."""
+        return self._runtime
+
+    def as_module(self) -> nn.Module:
+        """Wrap a Torch-backed model in ``torch.nn.Module`` lifecycle semantics."""
+        from body_models._torch_module import TorchModule
+
+        return TorchModule(self)
+
+    def _set_runtime(self, runtime: RuntimeLike) -> ArrayRuntime:
+        resolved = resolve_runtime(runtime)
+        self._runtime = resolved
+        if resolved.backend == "jax":
+            _register_jax_model(type(self))
+        return resolved
+
+    def tree_flatten(self):
+        if self.runtime.backend != "jax":
+            raise TypeError("Only JAX-backed models can be used as JAX pytrees.")
+        children = tuple(getattr(self, name) for name in self._state_fields)
+        return children, self._config
+
+    @classmethod
+    def tree_unflatten(cls, config, children):
+        from body_models._runtime import JaxRuntime
+
+        obj = cls.__new__(cls)
+        obj._runtime = JaxRuntime()
+        obj._config = config
+        for name, value in zip(cls._state_fields, children, strict=True):
+            setattr(obj, name, value)
+        obj._rebuild_jax_state()
+        return obj
+
+    def _rebuild_jax_state(self) -> None:
+        """Restore state derived from pytree children after reconstruction."""
 
     @property
     @abstractmethod
@@ -337,3 +384,15 @@ class RigidBodyModel(_ArticulatedModel):
             "global_rotation": self._runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
             "global_translation": self._runtime.zeros((*batch_dims, 3), like=reference, dtype=dtype),
         }
+
+
+_JAX_MODELS: set[type] = set()
+
+
+def _register_jax_model(model_type: type) -> None:
+    if model_type in _JAX_MODELS:
+        return
+    import jax
+
+    jax.tree_util.register_pytree_node_class(model_type)
+    _JAX_MODELS.add(model_type)

@@ -11,7 +11,7 @@ from nanomanifold import SO3
 from trimesh import Trimesh
 
 from body_models._base import RigidBodyModel
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.g1 import _core as core
 from body_models.g1._constants import G1_BODY_PRESETS, G1_JOINTS
 from body_models.g1._io import load_model_data
@@ -24,7 +24,7 @@ class G1Config:
     convention: core.Convention
 
 
-class G1Model(RigidBodyModel):
+class G1(RigidBodyModel):
     """Backend-independent Unitree G1 interface and orchestration."""
 
     JOINTS = G1_JOINTS
@@ -34,11 +34,11 @@ class G1Model(RigidBodyModel):
         model_path: Path | str | None = None,
         *,
         convention: core.Convention = "soma",
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         if convention not in ("soma", "mujoco"):
             raise ValueError(f"Invalid G1 convention: {convention!r}")
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = G1Config(convention)
         self.weights = runtime.materialize(load_model_data(model_path, convention=convention))
 
@@ -137,4 +137,4 @@ class G1Model(RigidBodyModel):
         return params
 
 
-__all__ = ["G1Config", "G1Model"]
+__all__ = ["G1", "G1Config"]

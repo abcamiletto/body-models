@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, TypeAlias
 
 from jaxtyping import Float, Int, Num
 
@@ -12,12 +12,13 @@ from body_models import _state as state
 from body_models._common import skinning
 
 Array = Any
+Backend = Literal["numpy", "torch", "jax"]
 
 
 class ArrayRuntime(ABC):
     """Shared numerical operations for one array backend."""
 
-    backend: ClassVar[Literal["numpy", "torch", "jax"]]
+    backend: ClassVar[Backend]
 
     @property
     @abstractmethod
@@ -198,29 +199,28 @@ class JaxRuntime(ArrayRuntime):
         return state.jax_state(value)
 
 
-class JaxModel:
-    """Pytree contract for models with array ``weights`` and static ``_config``."""
-
-    _jax_children: ClassVar[tuple[str, ...]] = ("weights",)
-    weights: Any
-    _config: Any
-    _runtime: JaxRuntime
-
-    def tree_flatten(self):
-        return tuple(getattr(self, name) for name in self._jax_children), self._config
-
-    def _rebuild_jax_state(self) -> None:
-        """Restore state derived from pytree children after reconstruction."""
-
-    @classmethod
-    def tree_unflatten(cls, config, children):
-        obj = cls.__new__(cls)
-        obj._runtime = JaxRuntime()
-        obj._config = config
-        for name, value in zip(cls._jax_children, children, strict=True):
-            setattr(obj, name, value)
-        obj._rebuild_jax_state()
-        return obj
+RuntimeLike: TypeAlias = Backend | ArrayRuntime
 
 
-__all__ = ["ArrayRuntime", "JaxModel", "JaxRuntime", "NumpyRuntime", "TorchRuntime"]
+def resolve_runtime(runtime: RuntimeLike) -> ArrayRuntime:
+    """Resolve a runtime name while preserving explicitly configured runtimes."""
+    if isinstance(runtime, ArrayRuntime):
+        return runtime
+    if runtime == "numpy":
+        return NumpyRuntime()
+    if runtime == "torch":
+        return TorchRuntime()
+    if runtime == "jax":
+        return JaxRuntime()
+    raise ValueError(f"Unknown runtime {runtime!r}. Expected numpy, torch, or jax.")
+
+
+__all__ = [
+    "ArrayRuntime",
+    "Backend",
+    "JaxRuntime",
+    "NumpyRuntime",
+    "RuntimeLike",
+    "TorchRuntime",
+    "resolve_runtime",
+]

@@ -13,7 +13,7 @@ from body_models import _registry as registry
 from body_models._base import SkinnedModel, SkinningPayload
 from body_models._common import deformation, skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import ArrayRuntime, RuntimeLike
 from body_models.soma import _core as core
 from body_models.soma import _identities as identities
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
@@ -42,9 +42,10 @@ class SomaConfig:
     default_identity_value: float
 
 
-class SOMAModel(SkinnedModel):
+class SOMA(SkinnedModel):
     """Backend-independent SOMA interface and orchestration."""
 
+    _state_fields = ("weights", "_identity_source")
     has_hands = True
     has_head = True
     SHAPE_DIM = 128
@@ -60,7 +61,7 @@ class SOMAModel(SkinnedModel):
         lod: str = "mid",
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         normalized_model_type = model_type.lower()
         if normalized_model_type not in self.VALID_MODEL_TYPES:
@@ -72,7 +73,7 @@ class SOMAModel(SkinnedModel):
         normalized_lod = lod.lower()
         resolved_path, weights = load_model_data_for_lod(model_path, normalized_lod, simplify=simplify)
         spec = MODEL_TYPE_SPECS[normalized_model_type]
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = SomaConfig(
             model_type=normalized_model_type,
             lod=normalized_lod,
@@ -399,6 +400,9 @@ class SOMAModel(SkinnedModel):
         params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=xp)
         return params
 
+    def _rebuild_jax_state(self) -> None:
+        self.parents, self._joint_names = public_joint_metadata(self.weights)
+
 
 def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> Any:
     kwargs: dict[str, Any] = {
@@ -409,7 +413,7 @@ def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> Any:
         kwargs["all_phenotypes"] = False
     elif model_type != "mhr":
         kwargs["gender"] = None
-    return registry.create_model(model_type, backend=runtime.backend, **kwargs)
+    return registry.create_model(model_type, runtime=runtime, **kwargs)
 
 
-__all__ = ["SOMAModel", "SomaConfig"]
+__all__ = ["SOMA", "SomaConfig"]

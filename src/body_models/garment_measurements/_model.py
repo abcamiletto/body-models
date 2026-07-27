@@ -13,7 +13,7 @@ from nanomanifold import SO3
 from body_models._base import SkinnedModel
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import ArrayRuntime
+from body_models._runtime import RuntimeLike
 from body_models.garment_measurements import _core as core
 from body_models.garment_measurements._constants import (
     GARMENT_BODY_PRESETS,
@@ -34,7 +34,7 @@ class GarmentMeasurementsConfig:
     rotation_type: RotationType
 
 
-class GarmentMeasurementsModel(SkinnedModel):
+class GarmentMeasurements(SkinnedModel):
     """Backend-independent GarmentMeasurements interface and orchestration."""
 
     has_hands = True
@@ -46,13 +46,13 @@ class GarmentMeasurementsModel(SkinnedModel):
         model_path: Path | str | None = None,
         *,
         rotation_type: RotationType = "axis_angle",
-        runtime: ArrayRuntime,
+        runtime: RuntimeLike = "numpy",
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
         weights = load_model_data(get_model_path(model_path), dtype=np.float32)
-        self._runtime = runtime
+        runtime = self._set_runtime(runtime)
         self._config = GarmentMeasurementsConfig(rotation_type=rotation_type)
         self.weights = runtime.materialize(weights)
 
@@ -309,4 +309,4 @@ class GarmentMeasurementsModel(SkinnedModel):
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
 
 
-__all__ = ["GarmentMeasurementsConfig", "GarmentMeasurementsModel"]
+__all__ = ["GarmentMeasurements", "GarmentMeasurementsConfig"]

@@ -6,8 +6,10 @@ from array_api_compat import get_namespace
 from jaxtyping import Float
 
 from body_models.myofullbody import _core as core
+from body_models.myofullbody._model import MyoFullBody
 
 Array = Any
+MyoFullBody.__module__ = __name__
 
 
 def from_mujoco_qpos(qpos: Float[Array, "*batch qpos"]) -> dict[str, Float[Array, "..."]]:
@@ -15,4 +17,4 @@ def from_mujoco_qpos(qpos: Float[Array, "*batch qpos"]) -> dict[str, Float[Array
     return core.from_mujoco_qpos(qpos, xp=get_namespace(qpos))
 
 
-__all__ = ["from_mujoco_qpos"]
+__all__ = ["MyoFullBody", "from_mujoco_qpos"]
