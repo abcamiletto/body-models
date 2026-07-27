@@ -13,7 +13,7 @@ from body_models._catalog import ASSET_SPECS
 CONFIG_DIR = Path(user_config_dir("body-models"))
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
-MODELS = tuple(ASSET_SPECS)
+ASSET_KEYS = tuple(ASSET_SPECS)
 Config = dict[str, Any]
 
 
