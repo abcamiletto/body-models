@@ -8,7 +8,7 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models._runtime import NumpyRuntime, TorchRuntime
+from body_models._runtime import JaxRuntime, NumpyRuntime, TorchRuntime
 
 
 @pytest.mark.fast
@@ -38,6 +38,22 @@ def test_runtime_zeros_have_independent_mutable_storage() -> None:
         torch_zeros,
         torch.tensor([[1, 0, 0], [0, 0, 0]], dtype=torch_zeros.dtype),
     )
+
+
+@pytest.mark.fast
+def test_runtime_stop_gradient() -> None:
+    numpy_value = np.ones(2, dtype=np.float32)
+    assert NumpyRuntime().stop_gradient(numpy_value) is numpy_value
+
+    torch = pytest.importorskip("torch")
+    torch_value = torch.ones(2, requires_grad=True)
+    assert not TorchRuntime().stop_gradient(torch_value).requires_grad
+
+    jax = pytest.importorskip("jax")
+    import jax.numpy as jnp
+
+    gradient = jax.grad(lambda value: JaxRuntime().stop_gradient(value).sum())(jnp.ones(2))
+    np.testing.assert_array_equal(gradient, np.zeros(2, dtype=np.float32))
 
 
 @pytest.mark.fast

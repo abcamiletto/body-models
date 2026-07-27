@@ -190,7 +190,7 @@ def from_mujoco_qpos(
     body_pose = qpos[..., 7:]
 
     coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=qpos.dtype)
-    kimodo_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)
+    kimodo_to_mujoco = coord.mT
 
     global_translation = xp.squeeze(coord @ root_t_mj[..., None], axis=-1)
     R_mj = SO3.conversions.from_quat_to_rotmat(root_q_mj, convention="wxyz", xp=xp)

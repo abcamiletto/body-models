@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, TypeAlias
 
+import numpy as np
 from jaxtyping import Float, Int, Num
 
 from body_models import _common as common
@@ -56,6 +57,14 @@ class ArrayRuntime(ABC):
     @abstractmethod
     def materialize(self, value: Any) -> Any:
         """Convert loaded model data into backend-managed state."""
+
+    @abstractmethod
+    def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
+        """Return ``value`` without gradient propagation."""
+
+    @abstractmethod
+    def to_numpy(self, value: Num[Array, "..."]) -> Num[np.ndarray, "..."]:
+        """Convert an array to NumPy host memory."""
 
     def compact_linear_blend_skinning(
         self,
@@ -109,12 +118,16 @@ class NumpyRuntime(ArrayRuntime):
 
     @property
     def xp(self) -> Any:
-        import numpy as np
-
         return np
 
     def materialize(self, value: Any) -> Any:
         return state.numpy_state(value)
+
+    def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
+        return value
+
+    def to_numpy(self, value: Num[Array, "..."]) -> Num[np.ndarray, "..."]:
+        return np.asarray(value)
 
 
 @dataclass(frozen=True)
@@ -148,6 +161,12 @@ class TorchRuntime(ArrayRuntime):
 
     def materialize(self, value: Any) -> Any:
         return state.torch_state(value)
+
+    def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
+        return value.detach()
+
+    def to_numpy(self, value: Num[Array, "..."]) -> Num[np.ndarray, "..."]:
+        return value.detach().cpu().numpy()
 
     def _compact_linear_blend_skinning(
         self,
@@ -206,6 +225,16 @@ class JaxRuntime(ArrayRuntime):
 
     def materialize(self, value: Any) -> Any:
         return state.jax_state(value)
+
+    def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
+        import jax
+
+        return jax.lax.stop_gradient(value)
+
+    def to_numpy(self, value: Num[Array, "..."]) -> Num[np.ndarray, "..."]:
+        import jax
+
+        return np.asarray(jax.device_get(value))
 
 
 RuntimeLike: TypeAlias = Backend | ArrayRuntime

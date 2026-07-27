@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from typing import Any, Literal, TypedDict
 
 from jaxtyping import Float, Int
@@ -11,6 +10,7 @@ from nanomanifold import SO3
 from body_models import _common as common
 from body_models._common import skinning, sparse
 from body_models._rotations import RotationType
+from body_models._runtime import ArrayRuntime
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -47,15 +47,16 @@ def prepare_identity_from_rest_shape(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    xp: Any,
+    runtime: ArrayRuntime,
     repose: bool = True,
     bind_pose: BindPoseMode = "fit",
 ) -> SomaIdentity:
+    xp = runtime.xp
     bind_shape, world_bind_pose = _prepare_bind_state(
         data,
         rest_shape_full=rest_shape_full,
         rest_shape_active=rest_shape_active,
-        xp=xp,
+        runtime=runtime,
         repose=repose,
         bind_pose=bind_pose,
     )
@@ -67,16 +68,17 @@ def prepare_skeleton_identity_from_rest_shape(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    xp: Any,
+    runtime: ArrayRuntime,
     repose: bool = True,
     bind_pose: BindPoseMode = "fit",
 ) -> SomaSkeletonIdentity:
     """Prepare only identity-dependent SOMA joint state."""
+    xp = runtime.xp
     _, world_bind_pose = _prepare_bind_state(
         data,
         rest_shape_full=rest_shape_full,
         rest_shape_active=rest_shape_active,
-        xp=xp,
+        runtime=runtime,
         repose=repose,
         bind_pose=bind_pose,
     )
@@ -88,22 +90,23 @@ def _prepare_bind_state(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    xp: Any,
+    runtime: ArrayRuntime,
     repose: bool,
     bind_pose: BindPoseMode,
 ) -> tuple[Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
+    xp = runtime.xp
     if data.public is not None:
         return _prepare_procedural_bind_state(
             data,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            xp=xp,
+            runtime=runtime,
             repose=repose,
             bind_pose=bind_pose,
         )
 
     rest_shape_full, world_bind_pose_fit = _bind_pose_for_rest_shape(
-        xp=xp,
+        runtime=runtime,
         mode=bind_pose,
         bind_shape=data.bind_shape_full,
         bind_pose_world=data.bind_pose_world,
@@ -135,14 +138,15 @@ def _prepare_procedural_bind_state(
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    xp: Any,
+    runtime: ArrayRuntime,
     repose: bool,
     bind_pose: BindPoseMode,
 ) -> tuple[Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
+    xp = runtime.xp
     public = data.public
 
     rest_shape_full, public_world_bind_pose_fit = _bind_pose_for_rest_shape(
-        xp=xp,
+        runtime=runtime,
         mode=bind_pose,
         bind_shape=data.bind_shape_full,
         bind_pose_world=public.bind_pose_world,
@@ -224,20 +228,9 @@ def _pin_root_transform(
     return common.at_set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
 
 
-def _stop_gradient(xp: Any, x: Float[Array, "..."]) -> Float[Array, "..."]:
-    name = xp.__name__
-    if name == "jax.numpy":
-        import jax
-
-        return jax.lax.stop_gradient(x)
-    if name == "numpy":
-        return x
-    raise NotImplementedError(f'bind_pose="fit_detached" is not implemented for {name}.')
-
-
 def _bind_pose_for_rest_shape(
     *,
-    xp: Any,
+    runtime: ArrayRuntime,
     mode: BindPoseMode,
     bind_shape: Float[Array, "V 3"],
     bind_pose_world: Float[Array, "J 4 4"],
@@ -249,6 +242,7 @@ def _bind_pose_for_rest_shape(
     parents_full: list[int],
     rest_shape: Float[Array, "B V 3"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    xp = runtime.xp
     if mode not in ("fit", "fit_detached", "canonical"):
         raise ValueError(f"Unknown SOMA bind_pose mode: {mode!r}.")
 
@@ -257,27 +251,21 @@ def _bind_pose_for_rest_shape(
         world_bind_pose = xp.broadcast_to(bind_pose_world, (*batch_shape, *bind_pose_world.shape))
         return rest_shape, world_bind_pose
 
-    fit_context = contextlib.nullcontext()
-    if mode == "fit_detached" and xp.__name__ == "torch":
-        import torch
-
-        fit_context = torch.no_grad()
-
-    with fit_context:
-        rest_shape, world_bind_pose = _fit_rest_shape_to_bind_pose(
-            xp=xp,
-            bind_shape=bind_shape,
-            bind_pose_world=bind_pose_world,
-            joint_regressor=joint_regressor,
-            joint_children_full=joint_children_full,
-            joint_children_indices_full=joint_children_indices_full,
-            skinned_vertex_indices_full=skinned_vertex_indices_full,
-            skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
-            parents_full=parents_full,
-            rest_shape=rest_shape,
-        )
-    if mode == "fit_detached" and xp.__name__ != "torch":
-        world_bind_pose = _stop_gradient(xp, world_bind_pose)
+    rest_shape, world_bind_pose = _fit_rest_shape_to_bind_pose(
+        xp=xp,
+        bind_shape=bind_shape,
+        bind_pose_world=bind_pose_world,
+        joint_regressor=joint_regressor,
+        joint_children_full=joint_children_full,
+        joint_children_indices_full=joint_children_indices_full,
+        skinned_vertex_indices_full=skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
+        parents_full=parents_full,
+        rest_shape=rest_shape,
+    )
+    if mode == "fit_detached":
+        rest_shape = runtime.stop_gradient(rest_shape)
+        world_bind_pose = runtime.stop_gradient(world_bind_pose)
     return rest_shape, world_bind_pose
 
 
@@ -347,7 +335,7 @@ def _corrective_hidden_activations(
 ) -> Float[Array, "*batch H"]:
     """Evaluate SOMA's pose features and rectified hidden layer."""
     batch_shape = pose_rotations.shape[:-3]
-    relative = bindpose.swapaxes(-2, -1) @ pose_rotations
+    relative = bindpose.mT @ pose_rotations
     features = relative[..., :, :, :2]
     features = common.at_set(features, (..., slice(None), 0, 0), features[..., :, 0, 0] - 1, xp=xp)
     features = common.at_set(features, (..., slice(None), 1, 1), features[..., :, 1, 1] - 1, xp=xp)
@@ -437,7 +425,7 @@ def _expand_public_pose_rotations(
     source_axis_ids = xp.asarray(procedural.source_axis_ids)
     source_axis_signs = xp.asarray(procedural.source_axis_signs, dtype=pose_rot.dtype)
     twist_values = _local_axis_twist_angles(xp, pose_rot_public, source_axis_ids) * source_axis_signs
-    twist_angles = twist_values @ xp.asarray(procedural.rotation_matrix, dtype=pose_rot.dtype).swapaxes(-2, -1)
+    twist_angles = twist_values @ xp.asarray(procedural.rotation_matrix, dtype=pose_rot.dtype).mT
     twist_rot = _single_axis_rotation_matrices(
         xp,
         twist_angles,
@@ -464,7 +452,7 @@ def _local_axis_twist_angles(
     angles = xp.stack([x, y, z], axis=-1)
     index = axis_ids.reshape(*((1,) * (angles.ndim - 2)), -1, 1)
     index = xp.broadcast_to(index, (*angles.shape[:-1], 1))
-    return _take_along_axis(xp, angles, index, axis=-1)[..., 0]
+    return common.take_along_axis(angles, index, axis=-1, xp=xp)[..., 0]
 
 
 def _single_axis_rotation_matrices(
@@ -505,18 +493,7 @@ def _single_axis_rotation_matrices(
     matrices = xp.stack([rx, ry, rz], axis=-3)
     gather = axis_ids.reshape(*((1,) * (matrices.ndim - 4)), -1, 1, 1, 1)
     gather = xp.broadcast_to(gather, (*matrices.shape[:-4], matrices.shape[-4], 1, 3, 3))
-    return _take_along_axis(xp, matrices, gather, axis=-3)[..., 0, :, :]
-
-
-def _take_along_axis(
-    xp: Any,
-    array: Float[Array, "..."],
-    indices: Int[Array, "..."],
-    axis: int,
-) -> Float[Array, "..."]:
-    if hasattr(xp, "take_along_axis"):
-        return xp.take_along_axis(array, indices, axis=axis)
-    return xp.gather(array, dim=axis, index=indices)
+    return common.take_along_axis(matrices, gather, axis=-3, xp=xp)[..., 0, :, :]
 
 
 def fit_rigid_transform(
@@ -529,13 +506,13 @@ def fit_rigid_transform(
     target_center = xp.mean(target_points, axis=0)
     source_centered = source_points - source_center
     target_centered = target_points - target_center
-    covariance = source_centered.swapaxes(-2, -1) @ target_centered
+    covariance = source_centered.mT @ target_centered
     U, _S, Vh = xp.linalg.svd(covariance)
     reflection = common.eye_as(covariance, batch_dims=(), xp=xp)
-    det = xp.linalg.det(Vh.swapaxes(-2, -1) @ U.swapaxes(-2, -1))
+    det = xp.linalg.det(Vh.mT @ U.mT)
     reflection = common.at_set(reflection, (-1, -1), xp.where(det < 0, -1.0, 1.0), xp=xp)
-    rotation = Vh.swapaxes(-2, -1) @ reflection @ U.swapaxes(-2, -1)
-    translation = target_center - source_center @ rotation.swapaxes(-2, -1)
+    rotation = Vh.mT @ reflection @ U.mT
+    translation = target_center - source_center @ rotation.mT
     return rotation, translation
 
 
@@ -578,7 +555,7 @@ def apply_rigid_transform(
     translation: Float[Array, "3"] | None = None,
     xp: Any,
 ) -> Float[Array, "... 3"]:
-    transformed = points @ rotation.swapaxes(-2, -1)
+    transformed = points @ rotation.mT
     if translation is not None:
         transformed = transformed + translation
     return transformed
@@ -650,7 +627,7 @@ def _orient_pose_rot_full(
     root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
     pose_rot_full = xp.concat([root_identity, pose_rot], axis=-3)
     orient = t_pose_world[:, :3, :3]
-    orient_parent_T = orient[parent_indices_full].swapaxes(-2, -1)
+    orient_parent_T = orient[parent_indices_full].mT
     return orient_parent_T @ pose_rot_full @ orient
 
 
@@ -732,7 +709,7 @@ def _align_vectors(
 
 def _kabsch(xp, H: Float[Array, "B 3 3"]) -> Float[Array, "B 3 3"]:
     U, _, Vh = xp.linalg.svd(H)
-    UVt = U @ Vh.swapaxes(-2, -1)
+    UVt = U @ Vh.mT
     det_sign = xp.where(_det3(UVt) < 0, xp.asarray(-1.0, dtype=H.dtype), xp.asarray(1.0, dtype=H.dtype))
     D = common.eye_as(H, batch_dims=H.shape[:-2], xp=xp)
     D = common.at_set(D, (..., 2, 2), det_sign, xp=xp)

@@ -1,5 +1,6 @@
 """Shared rigid articulated mesh helpers."""
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -13,6 +14,7 @@ from body_models._common.ops import at_set, eye_as, zeros_as
 from body_models._rotations import RotationType
 
 Array = Any
+_ToNumpy = Callable[[Any], np.ndarray]
 
 
 def rotate_transforms(
@@ -146,6 +148,7 @@ def forward_meshes_from_links(
     link_face_starts: list[int],
     link_face_counts: list[int],
     *,
+    to_numpy: _ToNumpy,
     xp: Any,
 ) -> list[Trimesh]:
     """Build one concatenated ``Trimesh`` per batch element."""
@@ -165,8 +168,8 @@ def forward_meshes_from_links(
         transformed = xp.squeeze(link_rot[..., link_idx, None, :, :] @ local_vertices[..., None], axis=-1)
         mesh_vertices = transformed + link_pos[..., link_idx, None, :]
         mesh_faces = source_faces[face_start : face_start + face_count] - vertex_start
-        batched_vertices = _as_batched_vertices(mesh_vertices, batch_size=batch_size)
-        faces_np = _as_numpy(mesh_faces)
+        batched_vertices = _as_batched_vertices(mesh_vertices, batch_size=batch_size, to_numpy=to_numpy)
+        faces_np = to_numpy(mesh_faces)
         for batch_idx, batch_vertices in enumerate(batched_vertices):
             meshes_by_batch[batch_idx].append(_make_trimesh(vertices=batch_vertices, faces=faces_np))
 
@@ -175,27 +178,19 @@ def forward_meshes_from_links(
 
 def _make_trimesh(
     *,
-    vertices: Float[Array, "... V 3"],
-    faces: Int[Array, "F 3"],
+    vertices: Float[np.ndarray, "V 3"],
+    faces: Int[np.ndarray, "F 3"],
 ) -> Trimesh:
-    return Trimesh(
-        vertices=_as_unbatched_vertices(vertices),
-        faces=_as_numpy(faces),
-        process=False,
-    )
+    return Trimesh(vertices=vertices, faces=faces, process=False)
 
 
-def _as_unbatched_vertices(vertices: Float[Array, "... V 3"]) -> Float[np.ndarray, "V 3"]:
-    vertices = _as_numpy(vertices)
-    if vertices.ndim > 2 and int(np.prod(vertices.shape[:-2])) == 1:
-        vertices = vertices.reshape(vertices.shape[-2], vertices.shape[-1])
-    if vertices.ndim != 2:
-        raise ValueError("Trimesh construction only supports unbatched vertices.")
-    return vertices
-
-
-def _as_batched_vertices(vertices: Float[Array, "... V 3"], *, batch_size: int) -> Float[np.ndarray, "B V 3"]:
-    vertices = _as_numpy(vertices)
+def _as_batched_vertices(
+    vertices: Float[Array, "... V 3"],
+    *,
+    batch_size: int,
+    to_numpy: _ToNumpy,
+) -> Float[np.ndarray, "B V 3"]:
+    vertices = to_numpy(vertices)
     if vertices.ndim == 2:
         vertices = vertices[None]
     if vertices.ndim < 3:
@@ -214,11 +209,3 @@ def _concatenate_meshes(meshes: list[Trimesh]) -> Trimesh:
     if not meshes:
         return Trimesh(vertices=np.empty((0, 3)), faces=np.empty((0, 3), dtype=np.int64), process=False)
     return concatenate(meshes)
-
-
-def _as_numpy(value: Any) -> Float[np.ndarray, "..."] | Int[np.ndarray, "..."]:
-    if hasattr(value, "detach"):
-        value = value.detach()
-    if hasattr(value, "cpu"):
-        value = value.cpu()
-    return np.asarray(value)
