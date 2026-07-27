@@ -71,7 +71,7 @@ class ArrayRuntime(ABC):
         vertices: Float[Array, "*batch V 3"],
         transforms: Float[Array, "*batch J 4 4"],
         *,
-        skinning: skinning_ops.CompactSkinning,
+        skinning: skinning_ops.CompactSkinningState,
         vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch selected 3"]:
         """Select optional vertices and apply compact linear blend skinning."""
@@ -97,7 +97,7 @@ class ArrayRuntime(ABC):
         vertices: Float[Array, "*batch V 3"],
         transforms: Float[Array, "*batch J 4 4"],
         *,
-        skinning: skinning_ops.CompactSkinning,
+        skinning: skinning_ops.CompactSkinningState,
     ) -> Float[Array, "*batch V 3"]:
         """Lower compact linear blend skinning to one backend implementation."""
         return skinning_ops.compact_linear_blend_skinning(
@@ -172,7 +172,7 @@ class TorchRuntime(ArrayRuntime):
         vertices: Float[Array, "*batch V 3"],
         transforms: Float[Array, "*batch J 4 4"],
         *,
-        skinning: skinning_ops.CompactSkinning,
+        skinning: skinning_ops.CompactSkinningState,
     ) -> Float[Array, "*batch V 3"]:
         if self.skinning_backend == "torch":
             return super()._compact_linear_blend_skinning(

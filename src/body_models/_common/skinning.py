@@ -1,7 +1,7 @@
 """Backend-agnostic linear blend skinning operations."""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -16,6 +16,13 @@ Array = Any
 @dataclass(frozen=True)
 class CompactSkinning:
     """Compact per-vertex skinning weights."""
+
+    joint_indices: Int[Array, "V K"]
+    joint_weights: Float[Array, "V K"]
+
+
+class CompactSkinningState(Protocol):
+    """Materialized compact skinning arrays."""
 
     joint_indices: Int[Array, "V K"]
     joint_weights: Float[Array, "V K"]

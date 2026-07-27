@@ -4,6 +4,8 @@ from typing import Any
 
 from torch import nn
 
+from body_models import _base
+
 
 class TorchModule(nn.Module):
     """Cached ``nn.Module`` view over a Torch-backed model's shared state."""
@@ -14,6 +16,8 @@ class TorchModule(nn.Module):
         super().__init__()
         for name in model._state_fields:
             value = getattr(model, name)
+            if isinstance(value, _base._ArticulatedModel):
+                value = value.as_module()
             if value is not None:
                 self.add_module(name, value)
         object.__setattr__(self, "_wrapped_model", model)

@@ -31,7 +31,8 @@ from body_models.soma._pose import pack_pose
 
 Array = Any
 PathLike = Path | str
-_IDENTITY_MODEL_CLASSES: dict[str, Callable[..., SkinnedModel]] = {
+_IdentityModel = ANNY | MHR | SMPL | SMPLX
+_IDENTITY_MODEL_CLASSES: dict[str, Callable[..., _IdentityModel]] = {
     "anny": ANNY,
     "mhr": MHR,
     "smpl": SMPL,
@@ -56,7 +57,7 @@ class SomaConfig:
 class SOMA(SkinnedModel):
     """Native SOMA-X model with identity, pose, and corrective controls."""
 
-    _state_fields = ("_weights", "_identity_source")
+    _state_fields = ("_weights", "_identity_model", "_identity_transfer")
     has_hands = True
     SHAPE_DIM = 128
     NUM_JOINTS = 77
@@ -96,12 +97,18 @@ class SOMA(SkinnedModel):
             joint_names=tuple(joint_names),
         )
         self._weights = runtime.materialize(weights)
-        self._identity_source = None
+        self._identity_model = None
+        self._identity_transfer = None
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, normalized_model_type)
-            identity_model = _create_identity_model(normalized_model_type, runtime)
-            transfer = identities.prepare_transfer(normalized_model_type, transfer_data, identity_model, runtime)
-            self._identity_source = runtime.materialize(identities.IdentitySource(identity_model, transfer))
+            self._identity_model = _create_identity_model(normalized_model_type, runtime)
+            transfer = identities.prepare_transfer(
+                normalized_model_type,
+                transfer_data,
+                self._identity_model,
+                runtime,
+            )
+            self._identity_transfer = runtime.materialize(transfer)
 
     @property
     def model_type(self) -> str:
@@ -368,7 +375,8 @@ class SOMA(SkinnedModel):
         return identities.rest_shapes(
             data=self._weights,
             model_type=self.model_type,
-            identity_source=self._identity_source,
+            identity_model=self._identity_model,
+            identity_transfer=self._identity_transfer,
             identity=shape,
             scale_params=scale_params,
             xp=self._runtime.xp,
@@ -421,7 +429,7 @@ class SOMA(SkinnedModel):
         return params
 
 
-def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> SkinnedModel:
+def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> _IdentityModel:
     spec = MODEL_TYPE_SPECS[model_type]
     model_class = _IDENTITY_MODEL_CLASSES[model_type]
     return model_class(

@@ -60,11 +60,12 @@ relaxed hands.
 `ArrayRuntime` owns the array namespace, device- and dtype-aware construction,
 state materialization, and lowerings of stable shared operations such as
 compact linear blend skinning. Materialization delegates to the recursive
-converters in `_state.py`; callers therefore cannot pair a runtime with the
-wrong framework state. Materialized weights are private because their container
-types are runtime-specific; stable model properties provide public access to
-meshes, skeletons, and deformation bases. The runtime does not own model
-semantics.
+converters in `_state.py`, which accept loader data rather than model objects;
+models composed inside another model remain models. Callers therefore cannot
+pair a runtime with the wrong framework state. Materialized weights are private
+because their container types are runtime-specific; stable model properties
+provide public access to meshes, skeletons, and deformation bases. The runtime
+does not own model semantics.
 
 Models accept either a runtime name or an `ArrayRuntime` instance. Runtime
 options are configured once on that object, so adding an execution option does

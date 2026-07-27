@@ -13,7 +13,7 @@ from jaxtyping import Float, Int
 from torch import Tensor, nn
 from torch.compiler import disable as disable_compile
 
-from body_models._common.skinning import CompactSkinning
+from body_models._common.skinning import CompactSkinningState
 
 __all__ = ["compact_linear_blend_skinning", "prepare_compact_skinning"]
 
@@ -64,7 +64,7 @@ class _WarpCompactSkinning(nn.Module):
 
 
 def prepare_compact_skinning(
-    skinning: CompactSkinning | _WarpCompactSkinning,
+    skinning: CompactSkinningState,
 ) -> _WarpCompactSkinning:
     """Materialize compact skinning weights and their Warp gradient plan."""
     if isinstance(skinning, _WarpCompactSkinning):
@@ -88,7 +88,7 @@ def compact_linear_blend_skinning(
     vertices: Float[Tensor, "*batch V 3"],
     transforms: Float[Tensor, "*batch J 4 4"],
     *,
-    skinning: CompactSkinning | _WarpCompactSkinning,
+    skinning: CompactSkinningState,
 ) -> Float[Tensor, "*batch V 3"]:
     """Apply sparse float32 linear blend skinning with Warp autograd."""
     skinning = prepare_compact_skinning(skinning)

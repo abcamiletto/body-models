@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 _JAX_DATACLASSES: set[type] = set()
+_STATIC_LEAF_TYPES = (type(None), bool, int, float, str, bytes, np.generic)
 
 
 def numpy_state(value: Any) -> Any:
@@ -34,7 +35,7 @@ def numpy_state(value: Any) -> Any:
         return tuple(numpy_state(item) for item in value)
     if isinstance(value, dict):
         return {key: numpy_state(item) for key, item in value.items()}
-    return value
+    return _static_leaf(value)
 
 
 def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
@@ -42,12 +43,8 @@ def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
     import torch
     from torch import nn
 
-    from body_models._base import _ArticulatedModel
     from body_models._common import skinning, sparse
     from body_models._torch_state import StateMapping, StateSequence
-
-    if isinstance(value, _ArticulatedModel):
-        return value.as_module()
 
     if isinstance(value, skinning.CompactSkinning) and skinning_backend == "warp":
         try:
@@ -93,7 +90,7 @@ def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
         tensor = torch.tensor(value) if isinstance(value, np.ndarray) else value
         return nn.Buffer(tensor, persistent=True)
 
-    return value
+    return _static_leaf(value)
 
 
 def jax_state(value: Any) -> Any:
@@ -123,7 +120,16 @@ def jax_state(value: Any) -> Any:
         return {key: jax_state(item) for key, item in value.items()}
     if isinstance(value, np.ndarray):
         return jnp.asarray(value)
-    return value
+    if isinstance(value, jax.Array):
+        return value
+    return _static_leaf(value)
+
+
+def _static_leaf(value: Any) -> Any:
+    if isinstance(value, _STATIC_LEAF_TYPES):
+        return value
+    value_type = type(value)
+    raise TypeError(f"Unsupported model state leaf: {value_type.__module__}.{value_type.__qualname__}")
 
 
 def register_jax_state(value: Any) -> None:
