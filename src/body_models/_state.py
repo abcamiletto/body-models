@@ -1,4 +1,9 @@
-"""Materialize immutable model data for an array backend."""
+"""Materialize immutable model data for an array backend.
+
+Backend-specific operations live on materialized state objects when they own
+model-lifetime prepared data, as ``SparseLinear`` does. Stateless operations
+whose inputs arrive per call are lowered by ``ArrayRuntime`` instead.
+"""
 
 from __future__ import annotations
 
