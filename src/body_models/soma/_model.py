@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -9,11 +10,14 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models import _registry as registry
 from body_models._base import ParameterSpec, SkinnedModel, SkinningPayload
 from body_models._common import deformation, skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime, RuntimeLike
+from body_models.anny import ANNY
+from body_models.mhr import MHR
+from body_models.smpl import SMPL
+from body_models.smplx import SMPLX
 from body_models.soma import _core as core
 from body_models.soma import _identities as identities
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
@@ -28,6 +32,12 @@ from body_models.soma._pose import pack_pose
 
 Array = Any
 PathLike = Path | str
+_IDENTITY_MODEL_CLASSES: dict[str, Callable[..., SkinnedModel]] = {
+    "anny": ANNY,
+    "mhr": MHR,
+    "smpl": SMPL,
+    "smplx": SMPLX,
+}
 
 
 @dataclass(frozen=True)
@@ -410,16 +420,15 @@ class SOMA(SkinnedModel):
         return params
 
 
-def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> Any:
-    kwargs: dict[str, Any] = {
-        "model_path": get_identity_model_path(model_type),
-        "simplify": 1.0,
-    }
-    if model_type == "anny":
-        kwargs["all_phenotypes"] = False
-    elif model_type != "mhr":
-        kwargs["gender"] = None
-    return registry.create_model(model_type, runtime=runtime, **kwargs)
+def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> SkinnedModel:
+    spec = MODEL_TYPE_SPECS[model_type]
+    model_class = _IDENTITY_MODEL_CLASSES[model_type]
+    return model_class(
+        model_path=get_identity_model_path(model_type),
+        simplify=1.0,
+        runtime=runtime,
+        **spec.identity_model_kwargs,
+    )
 
 
 __all__ = ["SOMA", "SomaConfig"]
