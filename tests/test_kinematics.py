@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from body_models.common.kinematics import (
+from body_models._common.kinematics import (
     affine_transforms,
     compute_kinematic_fronts,
     compute_sparse_skin_weights,

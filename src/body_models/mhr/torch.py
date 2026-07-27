@@ -5,8 +5,8 @@ from typing import Literal
 
 from torch import nn
 
-from body_models.mhr.model import MHRModel
-from body_models.runtime import TorchRuntime
+from body_models._runtime import TorchRuntime
+from body_models.mhr._model import MHRModel
 
 
 class MHR(MHRModel, nn.Module):

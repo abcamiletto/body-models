@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from body_models.g1 import core
-from body_models.g1.model import G1Model
-from body_models.runtime import NumpyRuntime
+from body_models._runtime import NumpyRuntime
+from body_models.g1 import _core as core
+from body_models.g1._model import G1Model
 
 
 class G1(G1Model):

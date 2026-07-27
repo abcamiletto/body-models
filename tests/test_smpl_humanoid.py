@@ -4,10 +4,10 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from body_models.base import RigidBodyModel
-from body_models.registry import create_model, list_models
-from body_models.smpl_humanoid.constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
-from body_models.smpl_humanoid.io import SMPL_HUMANOID_SOURCES, get_model_path
+from body_models._base import RigidBodyModel
+from body_models._registry import create_model, list_models
+from body_models.smpl_humanoid._constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
+from body_models.smpl_humanoid._io import SMPL_HUMANOID_SOURCES, get_model_path
 from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
@@ -60,7 +60,7 @@ def test_smpl_humanoid_custom_xml_loads() -> None:
 
 
 def test_smpl_humanoid_source_uses_config_path(smpl_humanoid_xml, monkeypatch) -> None:
-    from body_models import config
+    from body_models import _config as config
 
     monkeypatch.setattr(
         config, "get_model_path", lambda model: smpl_humanoid_xml if model == "smpl-humanoid-phc" else None

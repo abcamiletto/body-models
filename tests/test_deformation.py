@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from body_models.common import deformation
+from body_models._common import deformation
 
 pytestmark = pytest.mark.fast
 

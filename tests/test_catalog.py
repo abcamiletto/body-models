@@ -6,8 +6,8 @@ from types import ModuleType
 import pytest
 
 import body_models
-from body_models.catalog import ASSET_SPECS, DOWNLOAD_SPECS, MODEL_SPECS
-from body_models.registry import BACKENDS, get_model_spec
+from body_models._catalog import ASSET_SPECS, DOWNLOAD_SPECS, MODEL_SPECS
+from body_models._registry import BACKENDS, get_model_spec
 
 MODEL_TARGETS = sorted({(spec.module, spec.class_name) for spec in MODEL_SPECS.values()})
 

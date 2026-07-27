@@ -6,7 +6,7 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models.runtime import NumpyRuntime, TorchRuntime
+from body_models._runtime import NumpyRuntime, TorchRuntime
 
 
 @pytest.mark.fast

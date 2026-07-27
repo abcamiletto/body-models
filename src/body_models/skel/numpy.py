@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import Literal
 
-from body_models.runtime import NumpyRuntime
-from body_models.skel.model import SKELModel
+from body_models._runtime import NumpyRuntime
+from body_models.skel._model import SKELModel
 
 
 class SKEL(SKELModel):

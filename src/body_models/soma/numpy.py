@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from body_models.rotations import RotationType
-from body_models.runtime import NumpyRuntime
-from body_models.soma.model import SOMAModel
+from body_models._rotations import RotationType
+from body_models._runtime import NumpyRuntime
+from body_models.soma._model import SOMAModel
 
 
 class SOMA(SOMAModel):

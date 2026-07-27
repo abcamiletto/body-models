@@ -5,9 +5,9 @@ from typing import Literal
 
 from torch import nn
 
-from body_models.flame.model import FLAMEModel
-from body_models.rotations import RotationType
-from body_models.runtime import TorchRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import TorchRuntime
+from body_models.flame._model import FLAMEModel
 
 
 class FLAME(FLAMEModel, nn.Module):

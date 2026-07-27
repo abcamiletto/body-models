@@ -5,9 +5,9 @@ from typing import Literal
 
 from torch import nn
 
-from body_models.mano.model import MANOModel
-from body_models.rotations import RotationType
-from body_models.runtime import TorchRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import TorchRuntime
+from body_models.mano._model import MANOModel
 
 
 class MANO(MANOModel, nn.Module):

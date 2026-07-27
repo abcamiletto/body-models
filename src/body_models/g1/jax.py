@@ -4,9 +4,9 @@ from pathlib import Path
 
 import jax
 
-from body_models.g1 import core
-from body_models.g1.model import G1Model
-from body_models.runtime import JaxModel, JaxRuntime
+from body_models._runtime import JaxModel, JaxRuntime
+from body_models.g1 import _core as core
+from body_models.g1._model import G1Model
 
 
 @jax.tree_util.register_pytree_node_class

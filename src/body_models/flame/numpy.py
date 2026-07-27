@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from body_models.flame.model import FLAMEModel
-from body_models.rotations import RotationType
-from body_models.runtime import NumpyRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import NumpyRuntime
+from body_models.flame._model import FLAMEModel
 
 
 class FLAME(FLAMEModel):

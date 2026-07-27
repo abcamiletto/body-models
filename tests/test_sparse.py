@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from body_models import state
-from body_models.common import sparse
+from body_models import _state as state
+from body_models._common import sparse
 
 
 def _weights() -> tuple[sparse.SparseMatrix, np.ndarray]:

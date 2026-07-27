@@ -27,8 +27,8 @@ import numpy as np
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
+from body_models._base import RigidBodyModel
 from body_models.anny.numpy import ANNY
-from body_models.base import RigidBodyModel
 from body_models.flame.numpy import FLAME
 from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements

@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from body_models.anny.model import ANNYModel
-from body_models.rotations import RotationType
-from body_models.runtime import NumpyRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import NumpyRuntime
+from body_models.anny._model import ANNYModel
 
 
 class ANNY(ANNYModel):

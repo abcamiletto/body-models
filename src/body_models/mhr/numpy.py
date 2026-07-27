@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from body_models.mhr.model import MHRModel
-from body_models.runtime import NumpyRuntime
+from body_models._runtime import NumpyRuntime
+from body_models.mhr._model import MHRModel
 
 
 class MHR(MHRModel):

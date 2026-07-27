@@ -4,9 +4,9 @@ from pathlib import Path
 
 from torch import nn
 
-from body_models.g1 import core
-from body_models.g1.model import G1Model
-from body_models.runtime import TorchRuntime
+from body_models._runtime import TorchRuntime
+from body_models.g1 import _core as core
+from body_models.g1._model import G1Model
 
 
 class G1(G1Model, nn.Module):

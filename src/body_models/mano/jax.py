@@ -5,9 +5,9 @@ from typing import Literal
 
 import jax
 
-from body_models.mano.model import MANOModel
-from body_models.rotations import RotationType
-from body_models.runtime import JaxModel, JaxRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import JaxModel, JaxRuntime
+from body_models.mano._model import MANOModel
 
 
 @jax.tree_util.register_pytree_node_class

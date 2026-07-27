@@ -5,8 +5,8 @@ from typing import Literal
 
 from torch import nn
 
-from body_models.runtime import TorchRuntime
-from body_models.skel.model import SKELModel
+from body_models._runtime import TorchRuntime
+from body_models.skel._model import SKELModel
 
 
 class SKEL(SKELModel, nn.Module):

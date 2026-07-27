@@ -4,9 +4,9 @@ from pathlib import Path
 
 import jax
 
-from body_models.brainco.io import Side
-from body_models.brainco.model import BrainCoHandModel
-from body_models.runtime import JaxModel, JaxRuntime
+from body_models._runtime import JaxModel, JaxRuntime
+from body_models.brainco._io import Side
+from body_models.brainco._model import BrainCoHandModel
 
 
 @jax.tree_util.register_pytree_node_class
