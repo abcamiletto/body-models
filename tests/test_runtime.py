@@ -42,6 +42,29 @@ def test_runtime_zeros_have_independent_mutable_storage() -> None:
 
 
 @pytest.mark.fast
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_runtime_rejects_unknown_state(backend) -> None:
+    if backend != "numpy":
+        pytest.importorskip(backend)
+
+    from body_models import create_model
+
+    runtime = {"numpy": NumpyRuntime, "torch": TorchRuntime, "jax": JaxRuntime}[backend]()
+    model = create_model("g1")
+
+    with pytest.raises(TypeError, match="Unsupported model state leaf"):
+        runtime.materialize(model)
+
+
+@pytest.mark.fast
+def test_jax_materialization_preserves_jax_arrays() -> None:
+    jax = pytest.importorskip("jax")
+    value = jax.numpy.ones(2)
+
+    assert JaxRuntime().materialize(value) is value
+
+
+@pytest.mark.fast
 def test_runtime_stop_gradient() -> None:
     numpy_value = np.ones(2, dtype=np.float32)
     assert NumpyRuntime().stop_gradient(numpy_value) is numpy_value
@@ -184,17 +207,23 @@ def test_soma_is_a_jax_pytree(model_type) -> None:
 @pytest.mark.fast
 def test_soma_torch_module_owns_external_identity_model() -> None:
     torch = pytest.importorskip("torch")
+    from body_models.smpl import SMPL
     from body_models.soma import SOMA
 
     model = SOMA(model_type="smpl", runtime="torch")
     module = model.as_module()
-    identity_model = model._identity_source.model.model
+    identity_model = model._identity_model
 
-    assert model._identity_source.model is identity_model.as_module()
-    assert any(name.startswith("_identity_source.model._weights.") for name in module.state_dict())
+    assert isinstance(identity_model, SMPL)
+    assert module._identity_model is identity_model.as_module()
+    assert any(name.startswith("_identity_model._weights.") for name in module.state_dict())
 
     module.double()
     assert identity_model.rest_vertices.dtype == torch.float64
+
+    restored = pickle.loads(pickle.dumps(model))
+    assert isinstance(restored._identity_model, SMPL)
+    assert restored.as_module()._identity_model is restored._identity_model.as_module()
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)

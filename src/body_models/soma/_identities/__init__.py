@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from jaxtyping import Float, Int
 
 from body_models import _common as common
 from body_models._runtime import ArrayRuntime
 
-from ...anny import _core as anny_core
 from ...mhr import _pose as mhr_pose
 from .. import _core as core
+
+if TYPE_CHECKING:
+    from body_models.anny import ANNY
+    from body_models.mhr import MHR
+    from body_models.smpl import SMPL
+    from body_models.smplx import SMPLX
 
 
 @dataclass(frozen=True)
@@ -30,14 +35,6 @@ class IdentityTransfer:
     source_to_soma_rotation: Float[Any, "3 3"]
     source_scale: float
     output_scale: float
-
-
-@dataclass(frozen=True)
-class IdentitySource:
-    """Source model and transfer state for one external identity family."""
-
-    model: Any
-    transfer: IdentityTransfer
 
 
 def identity_transfer(transfer_data: Any) -> IdentityTransfer:
@@ -61,7 +58,7 @@ def identity_transfer(transfer_data: Any) -> IdentityTransfer:
 def prepare_transfer(
     model_type: str,
     transfer_data: Any,
-    model: Any,
+    model: ANNY | MHR | SMPL | SMPLX,
     runtime: ArrayRuntime,
 ) -> IdentityTransfer:
     """Materialize transfer state, fitting ANNY's asset-specific alignment."""
@@ -69,7 +66,7 @@ def prepare_transfer(
     if model_type != "anny":
         return transfer
 
-    template = model._weights.template_vertices
+    template = model.rest_vertices
     source = runtime.asarray(transfer_data.source_vertices, like=template)
     rotation, translation = core.fit_rigid_transform(template, source, xp=runtime.xp)
     source_to_soma = runtime.asarray(
@@ -87,7 +84,7 @@ def prepare_transfer(
 
 def source_shape(
     model_type: str,
-    model: Any,
+    model: ANNY | MHR | SMPL | SMPLX,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
     *,
@@ -95,19 +92,19 @@ def source_shape(
 ) -> Float[Any, "B V 3"]:
     """Evaluate the source model's identity surface."""
     if model_type == "mhr":
-        return mhr_identity_shape(model, identity, scale_params, num_scale_params=68, xp=xp)
-    if model_type == "anny":
-        return anny_identity_shape(
-            template_vertices=model._weights.template_vertices,
-            blendshapes=model._weights.blendshapes,
-            phenotype_mask=model._weights.phenotype_mask,
-            anchors=model._weights.anchors,
-            shape=identity,
+        return mhr_identity_shape(
+            cast("MHR", model),
+            identity,
+            scale_params,
+            num_scale_params=68,
             xp=xp,
         )
+    if model_type == "anny":
+        return cast("ANNY", model).prepare_identity(identity)["rest_vertices"]
+    linear_model = cast("SMPL | SMPLX", model)
     return linear_identity_shape(
-        mean=model.rest_vertices,
-        shapedirs=model.shapedirs,
+        mean=linear_model.rest_vertices,
+        shapedirs=linear_model.shapedirs,
         identity=identity,
         xp=xp,
     )
@@ -125,7 +122,7 @@ def linear_identity_shape(
 
 
 def mhr_identity_shape(
-    model: Any,
+    model: MHR,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
     num_scale_params: int,
@@ -145,25 +142,6 @@ def mhr_identity_shape(
         head_pose=head_pose,
         hand_pose=hand_pose,
         expression=expression,
-    )
-
-
-def anny_identity_shape(
-    template_vertices: Float[Any, "V 3"],
-    blendshapes: Float[Any, "S V 3"],
-    phenotype_mask: Float[Any, "S P"],
-    anchors: Any,
-    shape: Float[Any, "*batch 6"],
-    *,
-    xp: Any,
-) -> Float[Any, "*batch V 3"]:
-    return anny_core.shape_vertices(
-        template_vertices=template_vertices,
-        blendshapes=blendshapes,
-        phenotype_mask=phenotype_mask,
-        anchors=anchors,
-        shape=shape,
-        xp=xp,
     )
 
 
@@ -244,12 +222,13 @@ def rest_shapes(
     *,
     data: Any,
     model_type: str,
-    identity_source: IdentitySource | None,
+    identity_model: ANNY | MHR | SMPL | SMPLX | None,
+    identity_transfer: IdentityTransfer | None,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
     xp: Any,
 ) -> tuple[Float[Any, "B Vf 3"], Float[Any, "B Va 3"]]:
-    if identity_source is None:
+    if identity_model is None:
         rest_shape_full = core.identity_to_rest_vertices(
             xp,
             data.mean_full,
@@ -266,16 +245,18 @@ def rest_shapes(
         )
         return rest_shape_full, rest_shape_active
 
+    if identity_transfer is None:
+        raise RuntimeError("External SOMA identity model is missing its transfer state.")
     source_vertices = source_shape(
         model_type,
-        identity_source.model,
+        identity_model,
         identity,
         scale_params,
         xp=xp,
     )
     return transfer_shape(
         source_vertices,
-        transfer=identity_source.transfer,
+        transfer=identity_transfer,
         vertex_map=data.vertex_map,
         xp=xp,
     )
