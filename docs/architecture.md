@@ -35,6 +35,14 @@ Public identity and pose preparation always returns complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
 
+SMPL, SMPL-H, SMPL-X, MANO, and FLAME share one private family engine. Their
+`_core.py` modules describe the ordered pose blocks and apply model-specific
+means, while the engine owns rotation conversion, root insertion, batch
+validation, forward kinematics, bind-relative transforms, and pose correctives.
+The public methods remain explicit per model. The engine accepts arrays and
+pose blocks only; it has no model names, optional-feature flags, or knowledge of
+hands and faces.
+
 Each instance exposes `parameter_spec`, an ordered mapping from public parameter
 names to `ParameterSpec`. A specification records the unbatched array shape,
 semantic role (`identity`, `pose`, or `transform`), canonical default, and
@@ -80,15 +88,16 @@ the same model class implement the pytree protocol. Everything needed to
 reconstruct a model is either a pytree child or static config; reconstruction
 has no subclass hooks.
 
-Linear identity preparation is shared by the SMPL family, MANO, and FLAME
-because those models apply the same coefficients to vertex and joint bases.
-Each model still assembles its own coefficient vector and bases; model-specific
-pose construction remains local.
+Linear identity preparation is shared by the SMPL family because those models
+apply the same coefficients to vertex and joint bases. Shape-only and
+shape-plus-expression paths are separate functions so their signatures state
+their requirements without mode flags.
 
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative
 transforms, global point transforms, and skeleton transforms. Model-specific
-pose assembly and bind construction remain beside their model.
+pose layouts remain beside their model; the family engine composes those layouts
+with the generic kinematics and skinning operations.
 
 The same rule applies below the runtime boundary. `_common.deformation` owns
 linear blend shapes and rotation-deviation correctives; `_common.kinematics`
