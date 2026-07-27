@@ -1,6 +1,6 @@
 """Public API for multi-runtime parametric and articulated body models."""
 
-from body_models._base import RigidBodyModel, SkinnedModel
+from body_models._base import ParameterRole, ParameterSpec, RigidBodyModel, SkinnedModel
 from body_models._constants import Joint
 from body_models._registry import create_model, list_models
 from body_models._rotations import RotationType
@@ -18,6 +18,7 @@ for _public in (
     JaxRuntime,
     Joint,
     NumpyRuntime,
+    ParameterSpec,
     RigidBodyModel,
     SkinnedModel,
     TorchRuntime,
@@ -33,6 +34,8 @@ __all__ = [
     "JaxRuntime",
     "Joint",
     "NumpyRuntime",
+    "ParameterRole",
+    "ParameterSpec",
     "RigidBodyModel",
     "RotationType",
     "RuntimeLike",

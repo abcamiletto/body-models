@@ -9,7 +9,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import SkinnedModel
+from body_models._base import ParameterSpec, SkinnedModel
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -70,6 +70,17 @@ class MANO(SkinnedModel):
     @property
     def num_rot_dims(self) -> int:
         return rotation_ndim(self.rotation_type)
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        rotation = self.rotation_type
+        return {
+            "shape": ParameterSpec((10,), "identity"),
+            "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
+            "wrist_rotation": ParameterSpec.rotation(rotation),
+            "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -250,38 +261,10 @@ class MANO(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        runtime = self._runtime
-        hand_ref = runtime.zeros(
-            (*batch_dims, self.NUM_HAND_JOINTS, 3),
-            like=self.weights.v_template,
-            dtype=dtype,
-        )
-        wrist_ref = runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype)
-        hand_pose = SO3.identity_as(
-            hand_ref,
-            batch_dims=(*batch_dims, self.NUM_HAND_JOINTS),
-            rotation_type=self.rotation_type,
-            xp=runtime.xp,
-        )
+        params = super().get_rest_pose(batch_dims, dtype)
         if hands != "default":
-            hand_pose = self._hand_preset(batch_dims, hand_pose, hands)
-        return {
-            "shape": runtime.zeros((*batch_dims, 10), like=self.weights.v_template, dtype=dtype),
-            "hand_pose": hand_pose,
-            "wrist_rotation": SO3.identity_as(
-                wrist_ref,
-                batch_dims=batch_dims,
-                rotation_type=self.rotation_type,
-                xp=runtime.xp,
-            ),
-            "global_rotation": SO3.identity_as(
-                wrist_ref,
-                batch_dims=batch_dims,
-                rotation_type=self.rotation_type,
-                xp=runtime.xp,
-            ),
-            "global_translation": runtime.zeros((*batch_dims, 3), like=self.weights.v_template, dtype=dtype),
-        }
+            params["hand_pose"] = self._hand_preset(batch_dims, params["hand_pose"], hands)
+        return params
 
     def _hand_preset(
         self,

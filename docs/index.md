@@ -89,4 +89,7 @@ Call `model.as_module()` when PyTorch module lifecycle behavior such as
 `.to()`, `.cuda()`, or `state_dict()` is needed. Pass a configured runtime
 object for runtime-specific behavior such as Warp skinning.
 
-Skinned models share `faces`, `num_vertices`, `num_joints`, `joint_names`, `skin_weights`, `rest_vertices`, `forward_vertices`, `forward_skeleton`, and `get_rest_pose`. Rigid articulated models expose link metadata and `forward_links` instead of skinning weights.
+All models expose `parameter_spec`, `get_rest_pose`, `faces`, `num_vertices`,
+`num_joints`, `joint_names`, and `forward_skeleton`. Skinned models additionally
+share `skin_weights`, `rest_vertices`, and `forward_vertices`. Rigid articulated
+models expose link metadata and `forward_links` instead of skinning weights.

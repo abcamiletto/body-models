@@ -35,6 +35,14 @@ Public identity and pose preparation always returns complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
 
+Each instance exposes `parameter_spec`, an ordered mapping from public parameter
+names to `ParameterSpec`. A specification records the unbatched array shape,
+semantic role (`identity`, `pose`, or `transform`), canonical default, and
+rotation representation where applicable. Dimensions derived from assets or
+configuration are therefore represented accurately. The shared base constructs
+`get_rest_pose()` from this mapping; model-local overrides only apply named
+presets such as flat or relaxed hands.
+
 ## Runtime boundary
 
 `ArrayRuntime` owns the array namespace, device- and dtype-aware construction,

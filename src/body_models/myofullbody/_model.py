@@ -9,7 +9,7 @@ from typing import Any
 from jaxtyping import Float
 from trimesh import Trimesh
 
-from body_models._base import RigidBodyModel
+from body_models._base import ParameterSpec, RigidBodyModel
 from body_models._runtime import RuntimeLike
 from body_models.myofullbody import _core as core
 from body_models.myofullbody._constants import MYOFULLBODY_BODY_PRESETS, MYOFULLBODY_JOINTS
@@ -42,6 +42,14 @@ class MyoFullBody(RigidBodyModel):
     @property
     def actuated_joint_types(self) -> list[str]:
         return self.weights.actuated_joint_types
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        return {
+            "body_pose": ParameterSpec((self.num_actuated,), "pose"),
+            "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
 
     @property
     def site_names(self) -> list[str]:
@@ -116,14 +124,6 @@ class MyoFullBody(RigidBodyModel):
             self.weights.site_body_indices,
             xp=self._runtime.xp,
         )
-
-    def get_rest_pose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
-        """Return zero musculoskeletal controls."""
-        return self._zero_pose("body_pose", batch_dims, dtype)
 
     def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the MyoFullBody T-pose."""

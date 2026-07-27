@@ -9,7 +9,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import SkinnedModel, SkinningPayload
+from body_models._base import ParameterSpec, SkinnedModel, SkinningPayload
 from body_models._common import deformation, skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -83,6 +83,18 @@ class ANNY(SkinnedModel):
     @property
     def num_rot_dims(self) -> int:
         return rotation_ndim(self.rotation_type)
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        rotation = self.rotation_type
+        return {
+            "shape": ParameterSpec((6,), "identity", default=0.5),
+            "body_pose": ParameterSpec.rotation(rotation, 64),
+            "head_pose": ParameterSpec.rotation(rotation, 60),
+            "hand_pose": ParameterSpec.rotation(rotation, 38),
+            "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
 
     @property
     def phenotype_labels(self) -> list[str]:
@@ -303,37 +315,18 @@ class ANNY(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        runtime = self._runtime
-        pose_ref = runtime.zeros(batch_dims, like=self.weights.template_vertices, dtype=dtype)
-        pose = SO3.identity_as(
-            pose_ref,
-            batch_dims=(*batch_dims, self.num_joints),
-            rotation_type=self.rotation_type,
-            xp=runtime.xp,
-        )
-        global_rotation, body_pose, head_pose, hand_pose = pose_utils.unpack_pose(runtime.xp, pose)
+        params = super().get_rest_pose(batch_dims, dtype)
         if hands != "default":
-            axis_angle = runtime.asarray(ANNY_HAND_PRESETS[hands], like=hand_pose).reshape(-1, 3)
+            runtime = self.runtime
+            axis_angle = runtime.asarray(ANNY_HAND_PRESETS[hands], like=params["hand_pose"]).reshape(-1, 3)
             axis_angle = runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
-            hand_pose = SO3.convert(
+            params["hand_pose"] = SO3.convert(
                 axis_angle,
                 src="axis_angle",
                 dst=self.rotation_type,
                 xp=runtime.xp,
             )
-        shape = runtime.zeros((*batch_dims, 6), like=self.weights.template_vertices, dtype=dtype) + 0.5
-        return {
-            "shape": shape,
-            "body_pose": body_pose,
-            "head_pose": head_pose,
-            "hand_pose": hand_pose,
-            "global_rotation": global_rotation,
-            "global_translation": runtime.zeros(
-                (*batch_dims, 3),
-                like=self.weights.template_vertices,
-                dtype=dtype,
-            ),
-        }
+        return params
 
     def get_tpose(
         self,

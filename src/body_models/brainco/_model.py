@@ -9,7 +9,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from trimesh import Trimesh
 
-from body_models._base import RigidBodyModel
+from body_models._base import ParameterSpec, RigidBodyModel
 from body_models._runtime import RuntimeLike
 from body_models.brainco import _core as core
 from body_models.brainco._constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
@@ -53,6 +53,14 @@ class BrainCoHand(RigidBodyModel):
     @property
     def actuated_joint_types(self) -> list[str]:
         return ["hinge"] * self.num_actuated
+
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        return {
+            "hand_pose": ParameterSpec((self.num_actuated,), "pose"),
+            "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
 
     def forward_skeleton(
         self,
@@ -120,7 +128,7 @@ class BrainCoHand(RigidBodyModel):
         """Return the configured default or canonical hand pose."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
-        params = self._zero_pose("hand_pose", batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims, dtype)
         if hands != "default":
             hand_pose = self._runtime.asarray(BRAINCO_HAND_PRESETS[self.side][hands], like=params["hand_pose"])
             params["hand_pose"] = self._runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))

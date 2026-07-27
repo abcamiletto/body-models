@@ -10,7 +10,7 @@ from jaxtyping import Float
 from nanomanifold import SO3
 from trimesh import Trimesh
 
-from body_models._base import RigidBodyModel
+from body_models._base import ParameterSpec, RigidBodyModel
 from body_models._runtime import RuntimeLike
 from body_models.g1 import _core as core
 from body_models.g1._constants import G1_BODY_PRESETS, G1_JOINTS
@@ -56,6 +56,14 @@ class G1(RigidBodyModel):
     def actuated_joint_types(self) -> list[str]:
         return ["hinge"] * self.num_actuated
 
+    @property
+    def parameter_spec(self) -> dict[str, ParameterSpec]:
+        return {
+            "body_pose": ParameterSpec((self.num_actuated,), "pose"),
+            "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
+            "global_translation": ParameterSpec((3,), "transform"),
+        }
+
     def forward_skeleton(
         self,
         body_pose: Float[Array, "*batch Q"],
@@ -100,14 +108,6 @@ class G1(RigidBodyModel):
         """Build one posed render mesh per batch element."""
         links = self.forward_links(body_pose, global_translation, global_rotation=global_rotation)
         return self._meshes_from_links(links)
-
-    def get_rest_pose(
-        self,
-        batch_dims: tuple[int, ...] = (),
-        dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
-        """Return zero G1 pose controls."""
-        return self._zero_pose("body_pose", batch_dims, dtype)
 
     def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the G1 T-pose."""
