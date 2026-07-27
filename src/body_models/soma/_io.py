@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
@@ -197,6 +197,7 @@ class _ModelTypeSpec:
     identity_dim: int
     num_scale_params: int | None = None
     default_identity_value: float = 0.0
+    identity_model_kwargs: dict[str, Any] = field(default_factory=dict)
     source_scale: float = 1.0
     output_scale: float = 1.0
     config_key: str | None = None
@@ -225,6 +226,7 @@ MODEL_TYPE_SPECS = {
         output_scale=100.0,
         config_key="anny",
         asset_dir="Anny",
+        identity_model_kwargs={"all_phenotypes": False},
         source_mesh_name="base_body.obj",
         target_mesh_name="SOMA_wrap.obj",
         use_laplacian=False,
@@ -234,6 +236,7 @@ MODEL_TYPE_SPECS = {
         output_scale=100.0,
         config_key="smpl-neutral",
         asset_dir="SMPL",
+        identity_model_kwargs={"gender": None},
         source_mesh_name="base_body.obj",
         target_mesh_name="SOMA_wrap.obj",
         requires_direct_file=True,
@@ -244,6 +247,7 @@ MODEL_TYPE_SPECS = {
         output_scale=100.0,
         config_key="smplx-neutral",
         asset_dir="SMPLX",
+        identity_model_kwargs={"gender": None},
         source_mesh_name="base_body.obj",
         target_mesh_name="SOMA_wrap.obj",
         requires_direct_file=True,
