@@ -1,4 +1,9 @@
-"""Array runtimes for backend-independent model programs."""
+"""Array runtimes for backend-independent model programs.
+
+Runtime methods lower stateless operations whose inputs arrive per call. An
+operation with model-lifetime prepared state belongs in a backend-materialized
+state object instead; see :mod:`body_models._state`.
+"""
 
 from __future__ import annotations
 

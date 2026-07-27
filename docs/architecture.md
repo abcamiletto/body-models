@@ -63,6 +63,12 @@ from body_models.smpl import SMPL
 model = SMPL(runtime=TorchRuntime(skinning_backend="warp"))
 ```
 
+Kernel dispatch follows the lifetime of its inputs. Stateless operations whose
+inputs arrive with each call, such as skinning, are runtime methods. Operations
+that own model-lifetime prepared data, such as sparse corrective multiplication,
+are backend-materialized state objects. This keeps `ArrayRuntime` independent of
+model state and prevents it from accumulating every accelerated operation.
+
 Torch lifecycle behavior is orthogonal to model identity. `model.as_module()`
 wraps Torch-backed state in `torch.nn.Module` semantics for `.to()`,
 `state_dict()`, and buffer registration. JAX-backed instances of the same model
