@@ -24,7 +24,6 @@ class SOMA(SOMAModel, JaxModel):
         lod: str = "mid",
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        match_warp: bool = True,
     ) -> None:
         super().__init__(
             model_path,
@@ -32,7 +31,6 @@ class SOMA(SOMAModel, JaxModel):
             lod=lod,
             simplify=simplify,
             rotation_type=rotation_type,
-            match_warp=match_warp,
             runtime=JaxRuntime(),
         )
 

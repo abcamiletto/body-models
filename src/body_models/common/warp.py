@@ -60,7 +60,7 @@ def compact_linear_blend_skinning(
     num_joints = transforms.shape[-3]
     flat_vertices = vertices.reshape(-1, num_vertices, 3)
     flat_transforms = transforms.reshape(-1, num_joints, 4, 4)
-    output = _WarpAffineBlendSkinning.apply(
+    output = _WarpCompactLinearBlendSkinning.apply(
         flat_vertices,
         flat_transforms,
         joint_indices,
@@ -69,11 +69,11 @@ def compact_linear_blend_skinning(
     return output.reshape(*batch_shape, num_vertices, 3)
 
 
-class _WarpAffineBlendSkinning(torch.autograd.Function):
+class _WarpCompactLinearBlendSkinning(torch.autograd.Function):
     @staticmethod
     def forward(ctx, vertices, transforms, joint_indices, joint_weights):
         output = torch.empty_like(vertices)
-        _launch_affine_blend_skinning(vertices, transforms, joint_indices, joint_weights, output)
+        _launch_compact_linear_blend_skinning(vertices, transforms, joint_indices, joint_weights, output)
         ctx.save_for_backward(vertices, transforms, joint_indices, joint_weights)
         return output
 
@@ -88,7 +88,7 @@ class _WarpAffineBlendSkinning(torch.autograd.Function):
             grad_vertices = torch.empty_like(vertices)
             with _torch_stream(vertices):
                 wp.launch(
-                    _skin_affine_vertices_backward_vertices_kernel,
+                    _compact_linear_blend_skinning_backward_vertices_kernel,
                     dim=vertices.shape[:2],
                     inputs=[
                         _from_torch(grad_output.reshape(-1)),
@@ -129,7 +129,7 @@ def _transform_gradients(
 
     with _torch_stream(vertices):
         wp.launch(
-            _skin_affine_vertices_backward_transforms_kernel,
+            _compact_linear_blend_skinning_backward_transforms_kernel,
             dim=(vertices.shape[0], plan.chunk_starts.shape[0], 12),
             inputs=[
                 _from_torch(vertices.reshape(-1)),
@@ -199,7 +199,7 @@ def _build_transform_gradient_plan(joint_indices: Int[Tensor, "V K"]) -> _Transf
     )
 
 
-def _launch_affine_blend_skinning(
+def _launch_compact_linear_blend_skinning(
     vertices: Float[Tensor, "B V 3"],
     transforms: Float[Tensor, "B J 4 4"],
     joint_indices: Int[Tensor, "V K"],
@@ -218,7 +218,7 @@ def _launch_affine_blend_skinning(
     device = _from_torch(flat_vertices).device
     with _torch_stream(vertices):
         wp.launch(
-            _skin_affine_vertices_kernel,
+            _compact_linear_blend_skinning_kernel,
             dim=(batch_size, num_vertices),
             inputs=[
                 _from_torch(flat_vertices),
@@ -253,7 +253,7 @@ def _init_warp() -> None:
 
 
 @wp.kernel
-def _skin_affine_vertices_kernel(
+def _compact_linear_blend_skinning_kernel(
     vertices: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
     transforms: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
     joint_indices: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
@@ -306,7 +306,7 @@ def _skin_affine_vertices_kernel(
 
 
 @wp.kernel
-def _skin_affine_vertices_backward_vertices_kernel(
+def _compact_linear_blend_skinning_backward_vertices_kernel(
     grad_output: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
     transforms: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
     joint_indices: wp.array(dtype=wp.int32),  # ty: ignore[invalid-type-form]
@@ -353,7 +353,7 @@ def _skin_affine_vertices_backward_vertices_kernel(
 
 
 @wp.kernel
-def _skin_affine_vertices_backward_transforms_kernel(
+def _compact_linear_blend_skinning_backward_transforms_kernel(
     vertices: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
     grad_output: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
     joint_weights: wp.array(dtype=wp.float32),  # ty: ignore[invalid-type-form]
