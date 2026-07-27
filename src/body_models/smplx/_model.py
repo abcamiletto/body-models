@@ -9,10 +9,10 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel
-from body_models._common import skinning
-from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
+from body_models._base import ParameterSpec
+from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
+from body_models._smpl_family import SmplFamilyModel
 from body_models.smplx import _core as core
 from body_models.smplx._constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
 from body_models.smplx._io import get_model_path, load_model_data
@@ -29,7 +29,7 @@ class SmplxConfig:
     rotation_type: RotationType
 
 
-class SMPLX(SkinnedModel):
+class SMPLX(SmplFamilyModel):
     """Backend-independent SMPL-X interface and orchestration."""
 
     has_hands = True
@@ -72,10 +72,6 @@ class SMPLX(SkinnedModel):
         return self._config.rotation_type
 
     @property
-    def num_rot_dims(self) -> int:
-        return rotation_ndim(self.rotation_type)
-
-    @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
@@ -90,40 +86,12 @@ class SMPLX(SkinnedModel):
         }
 
     @property
-    def faces(self) -> Int[Array, "F 3"]:
-        return self._weights.faces
-
-    @property
-    def num_joints(self) -> int:
-        return self.NUM_JOINTS
-
-    @property
     def joint_names(self) -> list[str]:
         return self._weights.joint_names
 
     @property
-    def num_vertices(self) -> int:
-        return self._weights.v_template.shape[0]
-
-    @property
-    def skin_weights(self) -> Float[Array, "V 55"]:
-        return self._weights.lbs_weights
-
-    @property
-    def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self._weights.v_template
-
-    @property
-    def shapedirs(self) -> Float[Array, "V 3 S"]:
-        return self._weights.shapedirs
-
-    @property
     def exprdirs(self) -> Float[Array, "V 3 E"]:
         return self._weights.exprdirs
-
-    @property
-    def posedirs(self) -> Float[Array, "P V*3"]:
-        return self._weights.posedirs
 
     @property
     def lbs_weights(self) -> Float[Array, "V 55"]:
@@ -159,19 +127,12 @@ class SMPLX(SkinnedModel):
             identity = self.prepare_identity(shape, expression)
 
         pose = self.prepare_pose(body_pose, hand_pose, head_pose, pelvis_rotation, identity=identity)
-        vertices = self._runtime.compact_linear_blend_skinning(
-            identity["rest_vertices"] + pose["pose_offsets"],
-            pose["skinning_transforms"],
-            joint_indices=self._weights.lbs_joint_indices,
-            joint_weights=self._weights.lbs_joint_weights,
-            vertex_indices=vertex_indices,
-        )
-        return skinning.apply_global_transform(
-            vertices,
+        return self._deform_vertices(
+            identity,
+            pose,
             global_rotation,
             global_translation,
-            self.rotation_type,
-            xp=xp,
+            vertex_indices,
         )
 
     def forward_skeleton(
@@ -212,13 +173,11 @@ class SMPLX(SkinnedModel):
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
             xp=xp,
         )
-        return skinning.transform_skeleton(
+        return self._transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
-            self.rotation_type,
             joint_indices,
-            xp=xp,
         )
 
     def prepare_identity(
