@@ -47,7 +47,7 @@ class StateMapping(nn.Module, Mapping[str, Any]):
         return len(self._keys)
 
 
-class StateSequence(nn.Module):
+class StateSequence(nn.Module, Sequence[Any]):
     """Sequence whose array values participate in the module lifecycle."""
 
     def __init__(self, values: Sequence[Any]) -> None:
@@ -57,7 +57,9 @@ class StateSequence(nn.Module):
         for index, value in enumerate(values):
             _store(self, self._static, str(index), value)
 
-    def __getitem__(self, index: int) -> Any:
+    def __getitem__(self, index: int | slice) -> Any:
+        if isinstance(index, slice):
+            return [self[position] for position in range(*index.indices(self._length))]
         if not -self._length <= index < self._length:
             raise IndexError(index)
         index %= self._length
