@@ -306,7 +306,7 @@ class SOMA(SkinnedModel):
             data=self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            xp=self._runtime.xp,
+            runtime=self._runtime,
             repose=repose,
             bind_pose=bind_pose,
         )
@@ -349,7 +349,7 @@ class SOMA(SkinnedModel):
             self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            xp=self._runtime.xp,
+            runtime=self._runtime,
         )
 
     def _rest_shapes(

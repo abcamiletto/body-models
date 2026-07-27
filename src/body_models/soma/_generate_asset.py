@@ -165,8 +165,8 @@ def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
         if "/" in path:
             parent_ids[index] = parent_lookup[path.rsplit("/", 1)[0]]
 
-    bind_pose_world = np.asarray(bind_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).swapaxes(-2, -1)
-    t_pose_local = np.asarray(rest_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).swapaxes(-2, -1)
+    bind_pose_world = np.asarray(bind_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).mT
+    t_pose_local = np.asarray(rest_xforms, dtype=np.float32).reshape(len(joint_paths), 4, 4).mT
     bind_pose_local = _joint_world_to_local(bind_pose_world, parent_ids)
     t_pose_world = _forward_kinematics(t_pose_local, parent_ids)
 

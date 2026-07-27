@@ -39,7 +39,7 @@ def invert_rigid_transforms(
     """Invert homogeneous transforms whose linear part is a rotation."""
     rotations = transforms[..., :3, :3]
     translations = transforms[..., :3, 3]
-    inverse_rotations = xp.swapaxes(rotations, -2, -1)
+    inverse_rotations = rotations.mT
     inverse_translations = -xp.squeeze(inverse_rotations @ translations[..., None], axis=-1)
     return affine_transforms(inverse_rotations, inverse_translations, xp=xp)
 

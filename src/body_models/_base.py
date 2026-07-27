@@ -408,7 +408,7 @@ class RigidBodyModel(_ArticulatedModel):
             root_rot = SO3.convert(global_rotation, src="axis_angle", dst="rotmat", xp=xp)
 
         coord = xp.asarray(self.mujoco_to_model, dtype=body_pose.dtype)
-        model_to_mujoco = coord.mT if hasattr(coord, "mT") else xp.swapaxes(coord, -1, -2)
+        model_to_mujoco = coord.mT
         root_t = xp.squeeze(model_to_mujoco @ global_translation[..., None], axis=-1)
         root_rot_mujoco = model_to_mujoco @ root_rot @ coord
         root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
@@ -452,6 +452,7 @@ class RigidBodyModel(_ArticulatedModel):
             self._weights.link_vertex_counts,
             self._weights.link_face_starts,
             self._weights.link_face_counts,
+            to_numpy=self._runtime.to_numpy,
             xp=self._runtime.xp,
         )
 
