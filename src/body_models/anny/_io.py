@@ -13,6 +13,7 @@ from nanomanifold import SO3
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
 from body_models._common import Front, compute_kinematic_fronts
+from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
 Array = Any
@@ -96,8 +97,7 @@ class AnnyWeights:
     bone_rolls_rotmat: Float[Array, "J 3 3"]
     phenotype_mask: Float[Array, "S P"]
     lbs_weights: Float[Array, "V J"]
-    lbs_joint_indices: Int[Array, "V K"]
-    lbs_joint_weights: Float[Array, "V K"]
+    compact_skinning: CompactSkinning
     faces: Int[Array, "F _"]
     bone_labels: list[str]
     parents: list[int]
@@ -190,8 +190,10 @@ def load_model_data_numpy(
         bone_rolls_rotmat=data["bone_rolls_rotmat"].astype(dtype),
         phenotype_mask=data["phenotype_mask"].astype(dtype),
         lbs_weights=lbs_weights.astype(dtype),
-        lbs_joint_indices=data["vertex_bone_indices"].astype(np.int32),
-        lbs_joint_weights=data["vertex_bone_weights"].astype(dtype),
+        compact_skinning=CompactSkinning(
+            data["vertex_bone_indices"].astype(np.int32),
+            data["vertex_bone_weights"].astype(dtype),
+        ),
         faces=data["faces"],
         bone_labels=data["bone_labels"],
         parents=data["parents"],

@@ -1,5 +1,6 @@
 """Backend-agnostic linear blend skinning operations."""
 
+from dataclasses import dataclass
 from typing import Any
 
 from jaxtyping import Float, Int
@@ -10,6 +11,14 @@ from body_models._common.kinematics import affine_transforms
 from body_models._rotations import RotationType
 
 Array = Any
+
+
+@dataclass(frozen=True)
+class CompactSkinning:
+    """Compact per-vertex skinning weights."""
+
+    joint_indices: Int[Array, "V K"]
+    joint_weights: Float[Array, "V K"]
 
 
 def linear_blend_skinning(

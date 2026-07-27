@@ -12,6 +12,7 @@ from jaxtyping import Float, Int
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
 from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights
+from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
 Array = Any
@@ -30,8 +31,7 @@ class GarmentMeasurementsWeights:
     kinematic_fronts: list[Front]
     bind_quats: Float[Array, "J 4"]
     skin_weights: Float[Array, "V J"]
-    skin_joint_indices: Int[Array, "V K"]
-    skin_joint_weights: Float[Array, "V K"]
+    compact_skinning: CompactSkinning
     mvc_weights: Float[Array, "V J"]
 
 
@@ -154,8 +154,7 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
         kinematic_fronts=compute_kinematic_fronts(parents),
         bind_quats=bind_quats,
         skin_weights=skin_weights,
-        skin_joint_indices=skin_joint_indices,
-        skin_joint_weights=skin_joint_weights,
+        compact_skinning=CompactSkinning(skin_joint_indices, skin_joint_weights),
         mvc_weights=mvc_weights,
     )
 

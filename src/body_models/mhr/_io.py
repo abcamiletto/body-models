@@ -14,6 +14,7 @@ from nanomanifold import SO3
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
 from body_models._common import Front, compute_kinematic_fronts, simplify_mesh, sparse
+from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
 SUPPORTED_LODS = tuple(range(7))
@@ -45,8 +46,7 @@ class MhrCorrectives:
 class MhrWeights:
     base_vertices: Float[np.ndarray, "V 3"]
     blendshape_dirs: Float[np.ndarray, "117 V 3"]
-    skin_weights: Float[np.ndarray, "V K"]
-    skin_indices: Int[np.ndarray, "V K"]
+    compact_skinning: CompactSkinning
     dense_skin_weights: Float[np.ndarray, "V J"]
     faces: Int[np.ndarray, "F 3"]
     joint_offsets: Float[np.ndarray, "J 3"]
@@ -127,8 +127,10 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
     return MhrWeights(
         base_vertices=np.array(base_vertices, copy=True),
         blendshape_dirs=np.array(blendshape_dirs, copy=True),
-        skin_weights=np.array(skin_weights, copy=True),
-        skin_indices=np.array(skin_indices, copy=True),
+        compact_skinning=CompactSkinning(
+            np.array(skin_indices, copy=True),
+            np.array(skin_weights, copy=True),
+        ),
         dense_skin_weights=dense_skin_weights,
         faces=np.array(faces, copy=True),
         joint_offsets=np.array(data["joint_offsets"], copy=True),

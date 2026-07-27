@@ -8,6 +8,7 @@ import model_cases
 import numpy as np
 import pytest
 
+from body_models._common import skinning
 from body_models._runtime import JaxRuntime, NumpyRuntime, TorchRuntime
 
 
@@ -68,8 +69,7 @@ def test_compact_skinning_ignores_padding_slots() -> None:
     actual = runtime.compact_linear_blend_skinning(
         vertices,
         transforms,
-        joint_indices=indices,
-        joint_weights=weights,
+        skinning=skinning.CompactSkinning(indices, weights),
     )
 
     np.testing.assert_array_equal(actual, vertices[None])

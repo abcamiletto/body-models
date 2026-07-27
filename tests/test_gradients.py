@@ -89,7 +89,6 @@ def test_compact_and_warp_skinning_gradients_match_dense_on_cpu() -> None:
     pytest.importorskip("warp")
 
     from body_models._common import skinning
-    from body_models._common import warp as warp_backend
 
     torch.manual_seed(42)
     num_batches, num_vertices, num_joints, num_slots = 2, 257, 31, 6
@@ -117,11 +116,12 @@ def test_compact_and_warp_skinning_gradients_match_dense_on_cpu() -> None:
         xp=torch,
     )
     compact_grads = torch.autograd.grad(compact, (vertices, transforms), grad_output)
-    warp = warp_backend.compact_linear_blend_skinning(
+    warp_runtime = TorchRuntime(skinning_backend="warp")
+    warp_skinning = warp_runtime.materialize(skinning.CompactSkinning(joint_indices, joint_weights))
+    warp = warp_runtime.compact_linear_blend_skinning(
         vertices,
         transforms,
-        joint_indices=joint_indices,
-        joint_weights=joint_weights,
+        skinning=warp_skinning,
     )
     warp_grads = torch.autograd.grad(warp, (vertices, transforms), grad_output)
 
