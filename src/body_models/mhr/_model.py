@@ -30,7 +30,6 @@ class MHR(SkinnedModel):
     """Expressive full-body model with neural pose correctives."""
 
     has_hands = True
-    has_head = True
     SHAPE_DIM = 45
     EXPR_DIM = 72
     JOINTS = MHR_JOINTS
@@ -102,7 +101,7 @@ class MHR(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return self._weights.parents
+        return list(self._weights.parents)
 
     def forward_vertices(
         self,

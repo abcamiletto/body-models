@@ -57,7 +57,7 @@ class SmplFamilyModel(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return self._weights.parents
+        return list(self._weights.parents)
 
     def _deform_vertices(
         self,

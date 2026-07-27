@@ -78,12 +78,14 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
     return download_model()
 
 
-def download_model() -> Path:
-    cache_dir = get_cache_dir() / "anny"
-    print(f"Downloading ANNY model to {cache_dir}...")
-    download_hf_archive("anny/assets.zip", cache_dir)
+def download_model(output_dir: PathLike | None = None) -> Path:
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "anny"
+    if (output_dir / "data" / "mpfb2").is_dir():
+        return validate_path(output_dir)
+    print(f"Downloading ANNY model to {output_dir}...")
+    download_hf_archive("anny/assets.zip", output_dir)
     print("Done")
-    return cache_dir
+    return validate_path(output_dir)
 
 
 @dataclass(frozen=True)

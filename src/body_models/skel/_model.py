@@ -38,7 +38,6 @@ class SKEL(SkinnedModel):
     NUM_BETAS = 10
     NUM_JOINTS = 24
     JOINTS = SKEL_JOINTS
-    has_head = True
 
     def __init__(
         self,
@@ -100,7 +99,7 @@ class SKEL(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return self._weights.parents
+        return list(self._weights.parents)
 
     @property
     def pose_dim(self) -> int:

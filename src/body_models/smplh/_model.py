@@ -83,15 +83,11 @@ class SMPLH(SmplFamilyModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._weights.joint_names
+        return list(self._weights.joint_names)
 
     @property
     def lbs_weights(self) -> Float[Array, "V 52"]:
         return self._weights.lbs_weights
-
-    @property
-    def parents(self) -> list[int]:
-        return self._weights.parents
 
     def forward_vertices(
         self,

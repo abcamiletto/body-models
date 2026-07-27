@@ -80,19 +80,16 @@ class MANO(SmplFamilyModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._weights.joint_names
+        return list(self._weights.joint_names)
 
     @property
     def common_joints(self):
-        return LEFT_MANO_JOINTS if self.side == "left" else RIGHT_MANO_JOINTS
+        joints = LEFT_MANO_JOINTS if self.side == "left" else RIGHT_MANO_JOINTS
+        return dict(joints)
 
     @property
     def lbs_weights(self) -> Float[Array, "V 16"]:
         return self._weights.lbs_weights
-
-    @property
-    def parents(self) -> list[int]:
-        return self._weights.parents
 
     def forward_vertices(
         self,

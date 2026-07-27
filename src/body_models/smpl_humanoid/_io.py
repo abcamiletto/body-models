@@ -121,21 +121,23 @@ def get_model_path(source: PathLike = "humenv") -> Path:
     return Path(source)
 
 
-def download_model(source: str = "humenv") -> Path:
+def download_model(source: str = "humenv", output_dir: PathLike | None = None) -> Path:
     name = source.strip().lower().replace("-", "_")
     if name not in SMPL_HUMANOID_SOURCES:
         variants = ", ".join(SMPL_HUMANOID_VARIANTS)
         raise ValueError(f"Unknown SMPL humanoid source {source!r}. Available sources: {variants}")
-    cache_dir = get_cache_dir() / "smpl_humanoid"
-    path = cache_dir / SMPL_HUMANOID_SOURCES[name]
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "smpl_humanoid"
+    path = output_dir / SMPL_HUMANOID_SOURCES[name]
     if not path.is_file():
-        download_hf_archive("smpl_humanoid/assets.zip", cache_dir)
-    return path
+        download_hf_archive("smpl_humanoid/assets.zip", output_dir)
+    return validate_path(path)
 
 
-def download_assets() -> dict[str, Path]:
+def download_assets(output_dir: PathLike | None = None) -> dict[str, Path]:
     """Download every configured SMPL humanoid variant."""
-    return {f"smpl-humanoid-{source}": download_model(source) for source in SMPL_HUMANOID_VARIANTS}
+    return {
+        f"smpl-humanoid-{source}": download_model(source, output_dir=output_dir) for source in SMPL_HUMANOID_VARIANTS
+    }
 
 
 def validate_path(path: PathLike) -> Path:

@@ -38,7 +38,6 @@ class GarmentMeasurements(SkinnedModel):
     """PCA body model for garment measurement workflows."""
 
     has_hands = True
-    has_head = True
     JOINTS = GARMENT_JOINTS
 
     def __init__(

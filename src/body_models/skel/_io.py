@@ -67,8 +67,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["male", "female"
 
     if model_path is None:
         raise FileNotFoundError(
-            "SKEL model not found. Download from https://skel.is.tue.mpg.de/ "
-            f"and run: body-models set skel-{gender.lower()} /path/to/model.pkl"
+            "SKEL model not found. Run `body-models download skel` or configure an existing file with "
+            f"`body-models set skel-{gender.lower()} /path/to/model.pkl`."
         )
 
     return validate_path(model_path)

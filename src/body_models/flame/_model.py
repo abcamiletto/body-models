@@ -29,7 +29,6 @@ class FlameConfig:
 class FLAME(SmplFamilyModel):
     """Skinned head model with shape and expression controls."""
 
-    has_head = True
     NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
 
@@ -79,10 +78,6 @@ class FLAME(SmplFamilyModel):
     @property
     def lbs_weights(self) -> Float[Array, "V 5"]:
         return self._weights.lbs_weights
-
-    @property
-    def parents(self) -> list[int]:
-        return self._weights.parents
 
     def forward_vertices(
         self,

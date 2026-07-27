@@ -23,6 +23,8 @@ def numpy_state(value: Any) -> Any:
 
         return sparse_numpy.SparseLinear(value)
 
+    if isinstance(value, np.ndarray):
+        return value.copy()
     if is_dataclass(value):
         cls = type(value)
         return cls(**{field.name: numpy_state(getattr(value, field.name)) for field in fields(value)})
@@ -40,8 +42,12 @@ def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
     import torch
     from torch import nn
 
+    from body_models._base import _ArticulatedModel
     from body_models._common import skinning, sparse
     from body_models._torch_state import StateMapping, StateSequence
+
+    if isinstance(value, _ArticulatedModel):
+        return value.as_module()
 
     if isinstance(value, skinning.CompactSkinning) and skinning_backend == "warp":
         try:
@@ -84,7 +90,8 @@ def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
         return converted
 
     if isinstance(value, np.ndarray | torch.Tensor):
-        return nn.Buffer(torch.as_tensor(value), persistent=True)
+        tensor = torch.tensor(value) if isinstance(value, np.ndarray) else value
+        return nn.Buffer(tensor, persistent=True)
 
     return value
 

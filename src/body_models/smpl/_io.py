@@ -6,11 +6,9 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._cache import get_cached_path
 from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 from body_models._common.chumpy_fix import load_model_dict
 from body_models._common.skinning import CompactSkinning
-from body_models._download import SMPL_FILES
 
 PathLike = Path | str
 Array = Any
@@ -54,13 +52,11 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
     config_key = f"smpl-{gender}"
     resolved_path = config.get_model_path(config_key)
-    if resolved_path is None:
-        resolved_path = get_cached_path(SMPL_FILES[config_key])
 
     if resolved_path is None:
         raise FileNotFoundError(
-            f"SMPL model not found. Download from https://smpl.is.tue.mpg.de/ "
-            f"and run: body-models set smpl-{gender} /path/to/SMPL_{gender.upper()}.pkl"
+            f"SMPL model not found. Run `body-models download smpl` or configure an existing file with "
+            f"`body-models set smpl-{gender} /path/to/SMPL_{gender.upper()}.pkl`."
         )
 
     return validate_path(resolved_path)

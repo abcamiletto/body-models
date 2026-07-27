@@ -35,7 +35,6 @@ class ANNY(SkinnedModel):
     """Phenotype-driven skinned body model."""
 
     has_hands = True
-    has_head = True
     JOINTS = ANNY_JOINTS
 
     def __init__(
@@ -128,7 +127,7 @@ class ANNY(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return self._weights.parents
+        return list(self._weights.parents)
 
     def prepare_skinning(
         self,

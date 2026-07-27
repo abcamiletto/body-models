@@ -60,8 +60,8 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
 
     if resolved_path is None:
         raise FileNotFoundError(
-            "SMPLH model not found. Download from https://mano.is.tue.mpg.de/ "
-            f"and run: body-models set smplh-{gender} /path/to/smplh/{gender}/model.npz"
+            "SMPL-H model not found. Run `body-models download smplh` or configure an existing file with "
+            f"`body-models set smplh-{gender} /path/to/smplh/{gender}/model.npz`."
         )
 
     return validate_path(resolved_path)

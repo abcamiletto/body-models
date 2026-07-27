@@ -23,7 +23,6 @@ from body_models.soma import _identities as identities
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
 from body_models.soma._io import (
     MODEL_TYPE_SPECS,
-    get_identity_model_path,
     load_identity_transfer_data,
     load_model_data_for_lod,
     public_joint_metadata,
@@ -59,7 +58,6 @@ class SOMA(SkinnedModel):
 
     _state_fields = ("_weights", "_identity_source")
     has_hands = True
-    has_head = True
     SHAPE_DIM = 128
     NUM_JOINTS = 77
     VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
@@ -427,7 +425,6 @@ def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> SkinnedMod
     spec = MODEL_TYPE_SPECS[model_type]
     model_class = _IDENTITY_MODEL_CLASSES[model_type]
     return model_class(
-        model_path=get_identity_model_path(model_type),
         simplify=1.0,
         runtime=runtime,
         **spec.identity_model_kwargs,

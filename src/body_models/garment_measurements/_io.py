@@ -59,13 +59,15 @@ def validate_path(model_path: PathLike) -> Path:
     )
 
 
-def download_model() -> Path:
+def download_model(output_dir: PathLike | None = None) -> Path:
     """Download preprocessed GarmentMeasurements data assets."""
-    cache_dir = get_cache_dir() / "garment_measurements"
-    print(f"Downloading GarmentMeasurements model to {cache_dir}...")
-    download_hf_archive("garment_measurements/assets.zip", cache_dir)
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "garment_measurements"
+    if _find_preprocessed_file(output_dir) is not None:
+        return validate_path(output_dir)
+    print(f"Downloading GarmentMeasurements model to {output_dir}...")
+    download_hf_archive("garment_measurements/assets.zip", output_dir)
     print("Done")
-    return cache_dir
+    return validate_path(output_dir)
 
 
 def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32) -> GarmentMeasurementsWeights:

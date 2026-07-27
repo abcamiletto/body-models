@@ -39,3 +39,32 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
       - run: uv run --group dev --extra torch --extra warp pytest -q -m fast
+
+  contract-tests:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Download test assets
+        run: |
+          uvx --from huggingface-hub hf download \
+            abcamiletto/body-models-assets \
+            --repo-type dataset \
+            --local-dir tests/assets \
+            --token "$HF_TOKEN"
+      - run: uv sync --group dev --all-extras --frozen
+      - name: Run cross-runtime contracts
+        run: |
+          uv run pytest -q \
+            tests/test_parameters.py \
+            tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
+            tests/test_backend_consistency.py::test_rigid_body_meshes_match_numpy \
+            tests/test_backend_consistency.py::test_skinning_backends_match_default \
+            tests/test_runtime.py::test_jax_model_pytree_round_trip

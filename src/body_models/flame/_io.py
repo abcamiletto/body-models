@@ -49,8 +49,8 @@ def get_model_path(model_path: PathLike | None) -> Path:
 
     if model_path is None:
         raise FileNotFoundError(
-            "FLAME model not found. Download from https://flame.is.tue.mpg.de/ "
-            "and run: body-models set flame /path/to/FLAME_NEUTRAL.pkl"
+            "FLAME model not found. Run `body-models download flame` or configure an existing file with "
+            "`body-models set flame /path/to/FLAME_NEUTRAL.pkl`."
         )
 
     return validate_path(model_path)

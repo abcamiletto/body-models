@@ -5,9 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Literal
-
-ModelKind = Literal["skinned", "rigid"]
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,7 +14,6 @@ class ModelSpec:
 
     module: str
     class_name: str
-    kind: ModelKind
     defaults: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -45,33 +42,32 @@ class DownloadSpec:
     credentials: CredentialSpec | None = None
 
 
-def _model(module: str, class_name: str, kind: ModelKind, **defaults: Any) -> ModelSpec:
-    return ModelSpec(module, class_name, kind, MappingProxyType(defaults))
+def _model(module: str, class_name: str, **defaults: Any) -> ModelSpec:
+    return ModelSpec(module, class_name, MappingProxyType(defaults))
 
 
 MODEL_SPECS: Mapping[str, ModelSpec] = MappingProxyType(
     {
-        "anny": _model("body_models.anny", "ANNY", "skinned"),
-        "brainco": _model("body_models.brainco", "BrainCoHand", "rigid"),
-        "flame": _model("body_models.flame", "FLAME", "skinned"),
-        "g1": _model("body_models.g1", "G1", "rigid"),
+        "anny": _model("body_models.anny", "ANNY"),
+        "brainco": _model("body_models.brainco", "BrainCoHand"),
+        "flame": _model("body_models.flame", "FLAME"),
+        "g1": _model("body_models.g1", "G1"),
         "garment-measurements": _model(
             "body_models.garment_measurements",
             "GarmentMeasurements",
-            "skinned",
         ),
-        "humenv": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid", source="humenv"),
-        "mano": _model("body_models.mano", "MANO", "skinned", side="right"),
-        "mhr": _model("body_models.mhr", "MHR", "skinned"),
-        "myofullbody": _model("body_models.myofullbody", "MyoFullBody", "rigid"),
-        "phc": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid", source="phc"),
-        "skel": _model("body_models.skel", "SKEL", "skinned", gender="male"),
-        "smpl": _model("body_models.smpl", "SMPL", "skinned", gender="neutral"),
-        "smpl-humanoid": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid"),
-        "smplh": _model("body_models.smplh", "SMPLH", "skinned", gender="neutral"),
-        "smplsim": _model("body_models.smpl_humanoid", "SmplHumanoid", "rigid", source="smplsim"),
-        "smplx": _model("body_models.smplx", "SMPLX", "skinned", gender="neutral"),
-        "soma": _model("body_models.soma", "SOMA", "skinned"),
+        "humenv": _model("body_models.smpl_humanoid", "SmplHumanoid", source="humenv"),
+        "mano": _model("body_models.mano", "MANO", side="right"),
+        "mhr": _model("body_models.mhr", "MHR"),
+        "myofullbody": _model("body_models.myofullbody", "MyoFullBody"),
+        "phc": _model("body_models.smpl_humanoid", "SmplHumanoid", source="phc"),
+        "skel": _model("body_models.skel", "SKEL", gender="male"),
+        "smpl": _model("body_models.smpl", "SMPL", gender="neutral"),
+        "smpl-humanoid": _model("body_models.smpl_humanoid", "SmplHumanoid"),
+        "smplh": _model("body_models.smplh", "SMPLH", gender="neutral"),
+        "smplsim": _model("body_models.smpl_humanoid", "SmplHumanoid", source="smplsim"),
+        "smplx": _model("body_models.smplx", "SMPLX", gender="neutral"),
+        "soma": _model("body_models.soma", "SOMA"),
     }
 )
 
@@ -169,6 +165,5 @@ __all__ = [
     "AssetSpec",
     "CredentialSpec",
     "DownloadSpec",
-    "ModelKind",
     "ModelSpec",
 ]
