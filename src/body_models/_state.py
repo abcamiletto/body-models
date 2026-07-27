@@ -145,11 +145,12 @@ def _register_jax_dataclass(cls: type, jax: Any) -> None:
                 child_names.append(field.name)
             else:
                 static[field.name] = value
-        return tuple(children), (tuple(child_names), static)
+        static_leaves, static_tree = jax.tree_util.tree_flatten(static)
+        return tuple(children), (tuple(child_names), static_tree, tuple(static_leaves))
 
     def unflatten(aux_data, children):
-        child_names, static = aux_data
-        values = dict(static)
+        child_names, static_tree, static_leaves = aux_data
+        values = jax.tree_util.tree_unflatten(static_tree, static_leaves)
         values.update(zip(child_names, children, strict=True))
         return cls(**values)
 
