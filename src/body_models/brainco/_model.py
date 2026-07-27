@@ -40,7 +40,7 @@ class BrainCoHand(RigidBodyModel):
             raise ValueError(f"Invalid side: {side!r}")
         runtime = self._set_runtime(runtime)
         self._config = BrainCoConfig(side)
-        self.weights = runtime.materialize(load_model_data(model_path, side=side))
+        self._weights = runtime.materialize(load_model_data(model_path, side=side))
 
     @property
     def side(self) -> Side:
@@ -71,7 +71,7 @@ class BrainCoHand(RigidBodyModel):
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
-        weights = self.weights
+        weights = self._weights
         return core.forward_skeleton(
             local_offsets=weights.local_offsets,
             rest_local_rotations=weights.rest_local_rotations,

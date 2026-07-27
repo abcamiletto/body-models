@@ -56,7 +56,7 @@ class SKEL(SkinnedModel):
         weights = load_model_data(get_model_path(model_path, gender), simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = SkelConfig(gender=gender)
-        self.weights = runtime.materialize(weights)
+        self._weights = runtime.materialize(weights)
 
     @property
     def gender(self) -> Literal["male", "female"]:
@@ -64,11 +64,11 @@ class SKEL(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def skeleton_faces(self) -> Int[Array, "Fs 3"]:
-        return self.weights.skel_faces
+        return self._weights.skel_faces
 
     @property
     def num_joints(self) -> int:
@@ -76,31 +76,31 @@ class SKEL(SkinnedModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self.weights.joint_names)
+        return list(self._weights.joint_names)
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.v_template.shape[0]
+        return self._weights.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V 24"]:
-        return self.weights.skin_weights
+        return self._weights.skin_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.weights.v_template
+        return self._weights.v_template
 
     @property
     def shapedirs(self) -> Float[Array, "V 3 B"]:
-        return self.weights.shapedirs
+        return self._weights.shapedirs
 
     @property
     def posedirs(self) -> Float[Array, "P V*3"]:
-        return self.weights.posedirs
+        return self._weights.posedirs
 
     @property
     def parents(self) -> list[int]:
-        return self.weights.parents
+        return self._weights.parents
 
     @property
     def pose_dim(self) -> int:
@@ -149,8 +149,8 @@ class SKEL(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.skin_joint_indices,
-            joint_weights=self.weights.skin_joint_weights,
+            joint_indices=self._weights.skin_joint_indices,
+            joint_weights=self._weights.skin_joint_weights,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -185,17 +185,17 @@ class SKEL(SkinnedModel):
 
         packed_pose = pack_pose(xp, body_pose, head_pose)
         skeleton = core.prepare_skeleton(
-            all_axes=self.weights.all_axes,
-            rotation_indices=self.weights.rotation_indices,
-            apose_R=self.weights.apose_R,
-            apose_t=self.weights.apose_t,
-            per_joint_rot=self.weights.per_joint_rot,
-            child=self.weights.child,
-            fixed_orientation_joints=self.weights.fixed_orientation_joints,
-            scapula_r_axes=self.weights.scapula_r_axes,
-            scapula_l_axes=self.weights.scapula_l_axes,
-            spine_axes=self.weights.spine_axes,
-            parents=self.weights.parents,
+            all_axes=self._weights.all_axes,
+            rotation_indices=self._weights.rotation_indices,
+            apose_R=self._weights.apose_R,
+            apose_t=self._weights.apose_t,
+            per_joint_rot=self._weights.per_joint_rot,
+            child=self._weights.child,
+            fixed_orientation_joints=self._weights.fixed_orientation_joints,
+            scapula_r_axes=self._weights.scapula_r_axes,
+            scapula_l_axes=self._weights.scapula_l_axes,
+            spine_axes=self._weights.spine_axes,
+            parents=self._weights.parents,
             pose=packed_pose,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
             rest_joints=skeleton_identity["rest_joints"],
@@ -235,11 +235,11 @@ class SKEL(SkinnedModel):
     ) -> core.SkelIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
-            self.weights.v_template,
-            self.weights.shapedirs,
-            self.weights.j_template,
-            self.weights.j_shapedirs,
-            self.weights.parent,
+            self._weights.v_template,
+            self._weights.shapedirs,
+            self._weights.j_template,
+            self._weights.j_shapedirs,
+            self._weights.parent,
             shape,
             xp=self._runtime.xp,
         )
@@ -254,19 +254,19 @@ class SKEL(SkinnedModel):
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
         return core.prepare_pose(
-            all_axes=self.weights.all_axes,
-            rotation_indices=self.weights.rotation_indices,
-            apose_R=self.weights.apose_R,
-            apose_t=self.weights.apose_t,
-            per_joint_rot=self.weights.per_joint_rot,
-            child=self.weights.child,
-            fixed_orientation_joints=self.weights.fixed_orientation_joints,
-            scapula_r_axes=self.weights.scapula_r_axes,
-            scapula_l_axes=self.weights.scapula_l_axes,
-            spine_axes=self.weights.spine_axes,
-            parents=self.weights.parents,
-            num_joints_smpl=self.weights.num_joints_smpl,
-            posedirs=self.weights.posedirs,
+            all_axes=self._weights.all_axes,
+            rotation_indices=self._weights.rotation_indices,
+            apose_R=self._weights.apose_R,
+            apose_t=self._weights.apose_t,
+            per_joint_rot=self._weights.per_joint_rot,
+            child=self._weights.child,
+            fixed_orientation_joints=self._weights.fixed_orientation_joints,
+            scapula_r_axes=self._weights.scapula_r_axes,
+            scapula_l_axes=self._weights.scapula_l_axes,
+            spine_axes=self._weights.spine_axes,
+            parents=self._weights.parents,
+            num_joints_smpl=self._weights.num_joints_smpl,
+            posedirs=self._weights.posedirs,
             pose=packed_pose,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
@@ -278,9 +278,9 @@ class SKEL(SkinnedModel):
         shape: Float[Array, "*batch 10"],
     ) -> core.SkelSkeletonIdentity:
         return core.prepare_skeleton_identity(
-            self.weights.j_template,
-            self.weights.j_shapedirs,
-            self.weights.parent,
+            self._weights.j_template,
+            self._weights.j_shapedirs,
+            self._weights.parent,
             shape,
             xp=self._runtime.xp,
         )

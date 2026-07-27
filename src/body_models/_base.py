@@ -62,7 +62,7 @@ class SkinningPayload(TypedDict):
 class _ArticulatedModel(ABC):
     """Shared skeleton interface for skinned and rigid articulated models."""
 
-    _state_fields: ClassVar[tuple[str, ...]] = ("weights",)
+    _state_fields: ClassVar[tuple[str, ...]] = ("_weights",)
     _config: Any
     _runtime: ArrayRuntime
     parents: list[int]
@@ -103,11 +103,7 @@ class _ArticulatedModel(ABC):
         obj._config = config
         for name, value in zip(cls._state_fields, children, strict=True):
             setattr(obj, name, value)
-        obj._rebuild_jax_state()
         return obj
-
-    def _rebuild_jax_state(self) -> None:
-        """Restore state derived from pytree children after reconstruction."""
 
     @property
     @abstractmethod
@@ -281,7 +277,7 @@ class SkinnedModel(_ArticulatedModel):
 class RigidBodyModel(_ArticulatedModel):
     """Base class for rigid articulated models."""
 
-    weights: Any
+    _weights: Any
     mujoco_to_model: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]] = (
         (1.0, 0.0, 0.0),
         (0.0, 1.0, 0.0),
@@ -290,39 +286,39 @@ class RigidBodyModel(_ArticulatedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def joint_names(self) -> list[str]:
-        return self.weights.joint_names
+        return self._weights.joint_names
 
     @property
     def parents(self) -> list[int]:
-        return self.weights.parents
+        return self._weights.parents
 
     @property
     def actuated_joint_names(self) -> list[str]:
-        return self.weights.actuated_joint_names
+        return self._weights.actuated_joint_names
 
     @property
     def actuated_joint_limits(self) -> Float[Array, "Q 2"]:
-        return self.weights.actuated_joint_limits
+        return self._weights.actuated_joint_limits
 
     @property
     def link_names(self) -> list[str]:
-        return self.weights.link_names
+        return self._weights.link_names
 
     @property
     def link_joint_indices(self) -> list[int]:
-        return self.weights.link_joint_indices
+        return self._weights.link_joint_indices
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.vertices.shape[0]
+        return self._weights.vertices.shape[0]
 
     @property
     def _parameter_reference(self) -> Float[Array, "V 3"]:
-        return self.weights.vertices
+        return self._weights.vertices
 
     @property
     def num_actuated(self) -> int:
@@ -428,21 +424,21 @@ class RigidBodyModel(_ArticulatedModel):
     ) -> Float[Array, "*batch L 4 4"]:
         return rigid_ops.forward_link_transforms(
             skeleton,
-            self.weights.link_joint_indices,
-            self.weights.link_geom_positions,
-            self.weights.link_geom_rotations,
+            self._weights.link_joint_indices,
+            self._weights.link_geom_positions,
+            self._weights.link_geom_rotations,
             xp=self._runtime.xp,
         )
 
     def _meshes_from_links(self, links: Float[Array, "*batch L 4 4"]) -> list[Trimesh]:
         return rigid_ops.forward_meshes_from_links(
             links,
-            self.weights.vertices,
-            self.weights.faces,
-            self.weights.link_vertex_starts,
-            self.weights.link_vertex_counts,
-            self.weights.link_face_starts,
-            self.weights.link_face_counts,
+            self._weights.vertices,
+            self._weights.faces,
+            self._weights.link_vertex_starts,
+            self._weights.link_vertex_counts,
+            self._weights.link_face_starts,
+            self._weights.link_face_counts,
             xp=self._runtime.xp,
         )
 

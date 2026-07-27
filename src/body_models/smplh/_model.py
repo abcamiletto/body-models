@@ -59,7 +59,7 @@ class SMPLH(SkinnedModel):
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = SmplhConfig(gender=gender or "neutral", rotation_type=rotation_type)
-        self.weights = runtime.materialize(weights)
+        self._weights = runtime.materialize(weights)
 
     @property
     def gender(self) -> Literal["neutral", "male", "female"]:
@@ -87,7 +87,7 @@ class SMPLH(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -95,35 +95,35 @@ class SMPLH(SkinnedModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return self.weights.joint_names
+        return self._weights.joint_names
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.v_template.shape[0]
+        return self._weights.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V 52"]:
-        return self.weights.lbs_weights
+        return self._weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.weights.v_template
+        return self._weights.v_template
 
     @property
     def shapedirs(self) -> Float[Array, "V 3 S"]:
-        return self.weights.shapedirs
+        return self._weights.shapedirs
 
     @property
     def posedirs(self) -> Float[Array, "P V*3"]:
-        return self.weights.posedirs
+        return self._weights.posedirs
 
     @property
     def lbs_weights(self) -> Float[Array, "V 52"]:
-        return self.weights.lbs_weights
+        return self._weights.lbs_weights
 
     @property
     def parents(self) -> list[int]:
-        return self.weights.parents
+        return self._weights.parents
 
     def forward_vertices(
         self,
@@ -151,8 +151,8 @@ class SMPLH(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.lbs_joint_indices,
-            joint_weights=self.weights.lbs_joint_weights,
+            joint_indices=self._weights.lbs_joint_indices,
+            joint_weights=self._weights.lbs_joint_weights,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -188,8 +188,8 @@ class SMPLH(SkinnedModel):
             skeleton_identity = identity
 
         skeleton = core.prepare_skeleton(
-            self.weights.kinematic_fronts,
-            self.weights.hand_mean,
+            self._weights.kinematic_fronts,
+            self._weights.hand_mean,
             body_pose,
             hand_pose,
             pelvis_rotation,
@@ -213,11 +213,11 @@ class SMPLH(SkinnedModel):
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=self.weights.v_template,
-            shapedirs=self.weights.shapedirs,
-            j_template=self.weights.j_template,
-            j_shapedirs=self.weights.j_shapedirs,
-            parents=self.weights.parents,
+            v_template=self._weights.v_template,
+            shapedirs=self._weights.shapedirs,
+            j_template=self._weights.j_template,
+            j_shapedirs=self._weights.j_shapedirs,
+            parents=self._weights.parents,
             shape=shape,
         )
 
@@ -232,9 +232,9 @@ class SMPLH(SkinnedModel):
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,
-            posedirs=self.weights.posedirs,
-            kinematic_fronts=self.weights.kinematic_fronts,
-            hand_mean=self.weights.hand_mean,
+            posedirs=self._weights.posedirs,
+            kinematic_fronts=self._weights.kinematic_fronts,
+            hand_mean=self._weights.hand_mean,
             body_pose=body_pose,
             hand_pose=hand_pose,
             pelvis_rotation=pelvis_rotation,
@@ -249,9 +249,9 @@ class SMPLH(SkinnedModel):
     ) -> core.SmplhSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
-            j_template=self.weights.j_template,
-            j_shapedirs=self.weights.j_shapedirs,
-            parents=self.weights.parents,
+            j_template=self._weights.j_template,
+            j_shapedirs=self._weights.j_shapedirs,
+            parents=self._weights.parents,
             shape=shape,
         )
 

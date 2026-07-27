@@ -37,11 +37,11 @@ class MyoFullBody(RigidBodyModel):
     ) -> None:
         runtime = self._set_runtime(runtime)
         self._config = MyoFullBodyConfig()
-        self.weights = runtime.materialize(load_model_data(model_path))
+        self._weights = runtime.materialize(load_model_data(model_path))
 
     @property
     def actuated_joint_types(self) -> list[str]:
-        return self.weights.actuated_joint_types
+        return self._weights.actuated_joint_types
 
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
@@ -53,19 +53,19 @@ class MyoFullBody(RigidBodyModel):
 
     @property
     def site_names(self) -> list[str]:
-        return self.weights.site_names
+        return self._weights.site_names
 
     @property
     def site_positions(self) -> Float[Array, "S 3"]:
-        return self.weights.site_positions
+        return self._weights.site_positions
 
     @property
     def site_body_indices(self) -> list[int]:
-        return self.weights.site_body_indices
+        return self._weights.site_body_indices
 
     @property
     def tendons(self) -> list[dict]:
-        return self.weights.tendons
+        return self._weights.tendons
 
     def forward_skeleton(
         self,
@@ -76,7 +76,7 @@ class MyoFullBody(RigidBodyModel):
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed body transforms."""
-        weights = self.weights
+        weights = self._weights
         return core.forward_skeleton(
             local_offsets=weights.local_offsets,
             rest_local_rotations=weights.rest_local_rotations,
@@ -120,8 +120,8 @@ class MyoFullBody(RigidBodyModel):
         """Transform body-local muscle sites with a prepared skeleton."""
         return core.world_sites(
             skeleton,
-            self.weights.site_positions,
-            self.weights.site_body_indices,
+            self._weights.site_positions,
+            self._weights.site_body_indices,
             xp=self._runtime.xp,
         )
 

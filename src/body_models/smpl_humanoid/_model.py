@@ -38,11 +38,11 @@ class SmplHumanoid(RigidBodyModel):
     ) -> None:
         runtime = self._set_runtime(runtime)
         self._config = SmplHumanoidConfig(source)
-        self.weights = runtime.materialize(load_model_data(source))
+        self._weights = runtime.materialize(load_model_data(source))
 
     @property
     def actuated_joint_types(self) -> list[str]:
-        return self.weights.actuated_joint_types
+        return self._weights.actuated_joint_types
 
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
@@ -61,7 +61,7 @@ class SmplHumanoid(RigidBodyModel):
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed joint transforms."""
-        weights = self.weights
+        weights = self._weights
         return core.forward_skeleton(
             local_offsets=weights.local_offsets,
             rest_local_rotations=weights.rest_local_rotations,

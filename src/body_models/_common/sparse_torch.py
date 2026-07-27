@@ -25,7 +25,7 @@ class SparseLinear(nn.Module):
             values,
             (weights.shape[1], weights.shape[0]),
         ).coalesce()
-        self.register_buffer("transpose", transpose)
+        self.register_buffer("transpose", transpose, persistent=True)
 
     def forward(
         self,
