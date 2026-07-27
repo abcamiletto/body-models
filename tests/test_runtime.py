@@ -137,13 +137,20 @@ def test_torch_module_manages_model_state() -> None:
     from body_models.g1 import G1
 
     model = G1(runtime="torch")
-    module = model.as_module().double()
+    module = model.as_module()
+    module.double()
 
     assert isinstance(module, torch.nn.Module)
+    assert model.as_module() is module
     assert module.model is model
     assert module._weights is model._weights
     assert "_weights.vertices" in module.state_dict()
     assert model._weights.vertices.dtype == torch.float64
+
+    restored_model = pickle.loads(pickle.dumps(model))
+    restored_module = restored_model.as_module()
+    assert restored_model.as_module() is restored_module
+    assert restored_module.model is restored_model
 
 
 @pytest.mark.fast

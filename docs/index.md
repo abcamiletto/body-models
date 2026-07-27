@@ -80,8 +80,10 @@ skeleton = model.forward_skeleton(**params)
 ```
 
 Call `model.as_module()` when PyTorch module lifecycle behavior such as
-`.to()`, `.cuda()`, or `state_dict()` is needed. Pass a configured runtime
-object for runtime-specific behavior such as Warp skinning.
+`.to()`, `.cuda()`, or `state_dict()` is needed. Each model returns the same
+cached module view on every call, and lifecycle mutations affect the model's
+shared numeric state. Pass a configured runtime object for runtime-specific
+behavior such as Warp skinning.
 
 All models expose `parameter_spec`, `get_rest_pose`, `faces`, `num_vertices`,
 `num_joints`, `joint_names`, and `forward_skeleton`. Skinned models additionally
