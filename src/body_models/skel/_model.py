@@ -1,4 +1,4 @@
-"""Single-source SKEL model program."""
+"""SKEL model implementation."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ class SkelConfig:
 
 
 class SKEL(SkinnedModel):
-    """Backend-independent SKEL interface and orchestration."""
+    """Skinned body model with anatomical articulation."""
 
     NUM_BETAS = 10
     NUM_JOINTS = 24

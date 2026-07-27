@@ -46,7 +46,7 @@ dev = [
     "mujoco>=3.3.7",
     "ruff>=0.16.0",
     "ty>=0.0.1a13",
-    # Include optional backends for type checking
+    # Include optional runtimes for type checking
     "torch>=2.3.0",
     "jax>=0.4.33",
     "flax>=0.10.0",

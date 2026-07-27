@@ -8,6 +8,7 @@ state object instead; see :mod:`body_models._state`.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, TypeAlias
 
 from jaxtyping import Float, Int, Num
@@ -28,7 +29,7 @@ class ArrayRuntime(ABC):
     @property
     @abstractmethod
     def xp(self) -> Any:
-        """Array namespace, imported lazily so runtime objects remain serializable."""
+        """Array namespace for this runtime."""
 
     def asarray(
         self,
@@ -100,6 +101,7 @@ class ArrayRuntime(ABC):
         )
 
 
+@dataclass(frozen=True)
 class NumpyRuntime(ArrayRuntime):
     """NumPy model runtime."""
 
@@ -115,16 +117,17 @@ class NumpyRuntime(ArrayRuntime):
         return state.numpy_state(value)
 
 
+@dataclass(frozen=True)
 class TorchRuntime(ArrayRuntime):
     """Torch model runtime with optional Warp operation lowerings."""
 
     backend = "torch"
     SKINNING_BACKENDS = ("torch", "warp")
+    skinning_backend: Literal["torch", "warp"] = "torch"
 
-    def __init__(self, skinning_backend: Literal["torch", "warp"] = "torch") -> None:
-        if skinning_backend not in self.SKINNING_BACKENDS:
-            raise ValueError(f"Invalid Torch skinning backend: {skinning_backend!r}")
-        self.skinning_backend = skinning_backend
+    def __post_init__(self) -> None:
+        if self.skinning_backend not in self.SKINNING_BACKENDS:
+            raise ValueError(f"Invalid Torch skinning backend: {self.skinning_backend!r}")
 
     @property
     def xp(self) -> Any:
@@ -174,6 +177,7 @@ class TorchRuntime(ArrayRuntime):
         )
 
 
+@dataclass(frozen=True)
 class JaxRuntime(ArrayRuntime):
     """JAX model runtime."""
 

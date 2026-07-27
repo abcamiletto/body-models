@@ -1,15 +1,16 @@
 # GarmentMeasurements
 
-GarmentMeasurements is a PCA body model with an FBX-derived skeleton and skinning, intended for garment measurement workflows.
+GarmentMeasurements is a PCA body model with an FBX-derived skeleton and
+skinning for garment measurement workflows.
 
 ## Setup
 
 GarmentMeasurements downloads its preprocessed assets from
-`https://huggingface.co/abcamiletto/body-models` on first use. The Hugging Face repo records
-the original SOMA-X Apache 2.0 provenance for the source asset. To prefetch and save the path:
+the [`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models)
+Hugging Face repository on first use. The repository records the original
+SOMA-X Apache 2.0 provenance for the source asset. To prefetch the assets:
 
 ```bash
-# Download the preprocessed GarmentMeasurements body-model asset.
 body-models download garment-measurements
 ```
 

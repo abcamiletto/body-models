@@ -1,4 +1,4 @@
-"""Single-source SOMA model program."""
+"""SOMA model implementation."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ class SomaConfig:
 
 
 class SOMA(SkinnedModel):
-    """Backend-independent SOMA interface and orchestration."""
+    """Native SOMA-X model with identity, pose, and corrective controls."""
 
     _state_fields = ("_weights", "_identity_source")
     has_hands = True

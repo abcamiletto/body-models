@@ -13,8 +13,7 @@ The stable public API is intentionally small:
 All underscore-prefixed modules are private implementation details. This
 includes model programs and loaders such as `smpl._model` and `smpl._io`, and
 shared infrastructure such as `_runtime`, `_state`, and `_common`. They may
-change without a major release. There are deliberately no compatibility aliases
-for their pre-1.0 names.
+change without a major release.
 
 ## Model programs
 
@@ -28,10 +27,8 @@ Each model family follows the same file roles:
 | `__init__.py` | Export the model class and give it its stable public identity. |
 
 Every model is self-contained in `body_models/<name>/`; descriptive categories
-do not create a second package tree. There is one class per model, independent
-of its runtime, so `isinstance`, error messages, and pickles all use the stable
-package identity and signatures cannot drift across frameworks.
-Public identity and pose preparation always returns complete mesh-ready state.
+do not create a second package tree. One public class and signature serve every
+runtime. Public identity and pose preparation return complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
 
@@ -42,6 +39,11 @@ validation, forward kinematics, bind-relative transforms, and pose correctives.
 The public methods remain explicit per model. The engine accepts arrays and
 pose blocks only; it has no model names, optional-feature flags, or knowledge of
 hands and faces.
+
+Linear identity preparation is shared within the family because each model
+applies coefficients to vertex and joint bases in the same way. Shape-only and
+shape-plus-expression paths remain separate so their signatures state their
+requirements without mode flags.
 
 Each instance exposes `parameter_spec`, an ordered mapping from public parameter
 names to `ParameterSpec`. A specification records the unbatched array shape,
@@ -58,14 +60,14 @@ state materialization, and lowerings of stable shared operations such as
 compact linear blend skinning. Materialization delegates to the recursive
 converters in `_state.py`; callers therefore cannot pair a runtime with the
 wrong framework state. Materialized weights are private because their container
-types are backend-specific; stable model properties provide public access to
+types are runtime-specific; stable model properties provide public access to
 meshes, skeletons, and deformation bases. The runtime does not own model
 semantics.
 
 Models accept either a runtime name or an `ArrayRuntime` instance. Runtime
 options are configured once on that object, so adding an execution option does
-not change every model constructor. Warp is a Torch operation lowering, not a
-fourth model backend:
+not change every model constructor. Warp is a Torch operation lowering, not
+another runtime:
 
 ```python
 from body_models import TorchRuntime
@@ -77,21 +79,15 @@ model = SMPL(runtime=TorchRuntime(skinning_backend="warp"))
 Kernel dispatch follows the lifetime of its inputs. Stateless operations whose
 inputs arrive with each call, such as skinning, are runtime methods. Operations
 that own model-lifetime prepared data, such as sparse corrective multiplication,
-are backend-materialized state objects. This keeps `ArrayRuntime` independent of
+are runtime-materialized state objects. This keeps `ArrayRuntime` independent of
 model state and prevents it from accumulating every accelerated operation.
 
 Torch lifecycle behavior is orthogonal to model identity. `model.as_module()`
 wraps Torch-backed state in `torch.nn.Module` semantics for `.to()`,
 `state_dict()`, and buffer registration. All numeric model state is a persistent
 buffer, so checkpoints are complete but may be large. JAX-backed instances of
-the same model class implement the pytree protocol. Everything needed to
-reconstruct a model is either a pytree child or static config; reconstruction
-has no subclass hooks.
-
-Linear identity preparation is shared by the SMPL family because those models
-apply the same coefficients to vertex and joint bases. Shape-only and
-shape-plus-expression paths are separate functions so their signatures state
-their requirements without mode flags.
+the same model class implement the pytree protocol. Pytree reconstruction
+preserves both model configuration and runtime configuration.
 
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative

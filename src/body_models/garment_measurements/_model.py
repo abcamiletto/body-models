@@ -1,4 +1,4 @@
-"""Single-source GarmentMeasurements model program."""
+"""GarmentMeasurements model implementation."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ class GarmentMeasurementsConfig:
 
 
 class GarmentMeasurements(SkinnedModel):
-    """Backend-independent GarmentMeasurements interface and orchestration."""
+    """PCA body model for garment measurement workflows."""
 
     has_hands = True
     has_head = True

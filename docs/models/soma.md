@@ -1,14 +1,16 @@
 # SOMA
 
-SOMA provides a native implementation for SOMA-X assets with identity, pose, and corrective controls.
+SOMA provides a native implementation for SOMA-X assets with identity, pose,
+and corrective controls.
 
 ## Setup
 
-SOMA downloads automatically on first use from `https://huggingface.co/abcamiletto/body-models`.
-The Hugging Face repo records the original SOMA-X Apache 2.0 provenance. To prefetch and save the path:
+SOMA downloads automatically on first use from the
+[`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models)
+Hugging Face repository, which records the original SOMA-X Apache 2.0
+provenance. To prefetch the assets:
 
 ```bash
-# Download the SOMA-X assets used by the native SOMA implementation.
 body-models download soma
 ```
 
@@ -16,12 +18,17 @@ body-models download soma
 
 The native implementation does not require installing `py-soma-x`.
 
-`body-models` supports both the legacy SOMA-X NPZ rig asset layout and the SOMA-X 0.2 asset split, where rig data lives in `SOMA_template_rig.usda` and public-rig derivation metadata lives in `SOMA_procedural_transforms.json`. With 0.2 assets, the native backend keeps the expanded internal twist-joint rig for skinning while preserving the existing 77-joint public pose API.
+`body-models` supports both the original SOMA-X NPZ rig layout and the SOMA-X
+0.2 split assets. With 0.2 assets, the implementation retains the internal
+twist-joint rig for skinning while exposing the 77-joint public pose API.
 
-The constructor accepts `lod="mid"`, `lod="low"`, or `lod="xlo"`. The hosted assets are preprocessed to keep runtime loading NPZ-only: `mid` has 18,056 vertices, `low` has 4,505 vertices, and `xlo` has 612 vertices.
+The constructor accepts `lod="mid"`, `lod="low"`, or `lod="xlo"`. The hosted
+assets contain 18,056, 4,505, and 612 vertices respectively.
 
-`prepare_identity(..., repose=True)` matches the default SOMA-X bind-pose behavior. Pass `repose=False` to keep the fitted identity rest shape and fitted skeleton before reposing it to the bind pose.
-Use `prepare_identity(..., bind_pose="fit")` for the default identity-dependent bind pose. Pass `bind_pose="fit_detached"` to fit from the current shape without gradients through the fit, or `bind_pose="canonical"` to use the model bind pose directly.
+`prepare_identity()` uses `repose=True` and `bind_pose="fit"` by default,
+matching SOMA-X bind-pose behavior. Set `repose=False` to keep the fitted rest
+shape and skeleton, `bind_pose="fit_detached"` to stop gradients through the
+fit, or `bind_pose="canonical"` to use the canonical bind pose.
 
 ## API
 

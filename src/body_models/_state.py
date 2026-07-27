@@ -109,6 +109,26 @@ def jax_state(value: Any) -> Any:
     return value
 
 
+def register_jax_state(value: Any) -> None:
+    """Restore pytree registrations for already-materialized JAX state."""
+    import jax
+
+    _register_jax_state(value, jax)
+
+
+def _register_jax_state(value: Any, jax: Any) -> None:
+    if is_dataclass(value):
+        _register_jax_dataclass(type(value), jax)
+        for field in fields(value):
+            _register_jax_state(getattr(value, field.name), jax)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            _register_jax_state(item, jax)
+    elif isinstance(value, dict):
+        for item in value.values():
+            _register_jax_state(item, jax)
+
+
 def _register_jax_dataclass(cls: type, jax: Any) -> None:
     if cls in _JAX_DATACLASSES:
         return
@@ -137,4 +157,4 @@ def _register_jax_dataclass(cls: type, jax: Any) -> None:
     _JAX_DATACLASSES.add(cls)
 
 
-__all__ = ["jax_state", "numpy_state", "torch_state"]
+__all__ = ["jax_state", "numpy_state", "register_jax_state", "torch_state"]

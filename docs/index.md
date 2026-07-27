@@ -1,21 +1,20 @@
 # body-models
 
 `body-models` provides a shared interface for parametric and rigid articulated
-models across PyTorch, NumPy, JAX, and optional Warp skinning kernels.
+models with NumPy, PyTorch, and JAX runtimes plus optional Warp acceleration.
 
 ## Install
 
 ```bash
-# Install the core package with the NumPy backend.
 uv add body-models
 ```
 
-Install optional differentiable backends when needed:
+Install optional framework runtimes when needed:
 
 ```bash
-# Add PyTorch or JAX support only when your project needs it.
 uv add "body-models[torch]"
 uv add "body-models[jax]"
+uv add "body-models[torch,warp]"
 ```
 
 ## Supported Models
@@ -51,7 +50,7 @@ uv add "body-models[jax]"
 | --- | --- | --- |
 | [MANO](models/mano.md) | hand | registration required |
 
-### Robots
+### Robots and Humanoids
 
 | Model | Scope | Setup |
 | --- | --- | --- |
@@ -61,9 +60,9 @@ uv add "body-models[jax]"
 
 ## Common Usage
 
-Each model package exports one class. Select NumPy, Torch, or JAX with the
-`runtime` argument; the class identity and model API stay the same. NumPy is the
-default and does not require an optional framework dependency.
+Each model has one public class shared by its NumPy, Torch, and JAX runtimes.
+Select the runtime with the `runtime` argument. NumPy is the default and does
+not require an optional framework dependency.
 
 Names exported from `body_models` and model packages are the stable public API.
 Underscore-prefixed modules are private implementation details and are not
@@ -74,13 +73,8 @@ rules.
 ```python
 from body_models.smpl import SMPL
 
-# Load the neutral SMPL model from the configured model path.
 model = SMPL(gender="neutral", runtime="torch")
-
-# Start from a batched rest pose.
 params = model.get_rest_pose(batch_dims=(1,))
-
-# Evaluate the mesh vertices and skeleton transforms with the same parameters.
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
@@ -92,4 +86,5 @@ object for runtime-specific behavior such as Warp skinning.
 All models expose `parameter_spec`, `get_rest_pose`, `faces`, `num_vertices`,
 `num_joints`, `joint_names`, and `forward_skeleton`. Skinned models additionally
 share `skin_weights`, `rest_vertices`, and `forward_vertices`. Rigid articulated
-models expose link metadata and `forward_links` instead of skinning weights.
+models expose link metadata, `forward_links`, and `forward_meshes` instead of
+skinning weights.

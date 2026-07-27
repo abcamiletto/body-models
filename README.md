@@ -3,15 +3,14 @@
 # body-models
 
 `body-models` provides a shared interface for parametric human body, head, hand,
-anatomical, measurement, and robot models across NumPy, PyTorch, and JAX.
+anatomical, measurement, and robot models with NumPy, PyTorch, and JAX runtimes.
 
 Documentation: https://abcamiletto.github.io/body-models/
 
 ## Features
 
-- Shared API across human, anatomical, hand, head, measurement, and robot models
-- NumPy, PyTorch, and JAX backends
-- Optional Warp skinning kernels for Torch models
+- NumPy, PyTorch, and JAX runtimes
+- Optional Warp acceleration for Torch skinning
 - Separate mesh and skeleton forwards with `forward_vertices()` and `forward_skeleton()`
 - Prepared identities for repeated poses with fixed shape/expression parameters
 - Mesh simplification and vertex-subset forwards for supported mesh models
@@ -28,6 +27,7 @@ Install optional extras when needed:
 ```bash
 uv add "body-models[torch]"
 uv add "body-models[jax]"
+uv add "body-models[torch,warp]"
 ```
 
 ## Quick Start
@@ -101,12 +101,12 @@ use separate lightweight internal preparation and never return partial state.
 - Anatomicals: SKEL, MyoFullBody
 - Heads: FLAME
 - Hands: MANO
-- Robots: BrainCo, G1, SmplHumanoid
+- Robots and humanoids: BrainCo, G1, SmplHumanoid
 
 See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)
-for setup, supported backends, inputs, and model-specific behavior.
+for setup, supported runtimes, inputs, and model-specific behavior.
 The [architecture guide](https://abcamiletto.github.io/body-models/architecture/)
-describes the single-source model programs and the boundary for shared code.
+describes the model, runtime, and shared-operation boundaries.
 
 ## Development
 

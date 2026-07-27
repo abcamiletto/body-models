@@ -1,4 +1,4 @@
-"""Single-source SMPL-X model program."""
+"""SMPL-X model implementation."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class SmplxConfig:
 
 
 class SMPLX(SmplFamilyModel):
-    """Backend-independent SMPL-X interface and orchestration."""
+    """Skinned body model with articulated hands and facial controls."""
 
     has_hands = True
     has_head = True
