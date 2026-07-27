@@ -14,6 +14,8 @@ def test_parameter_spec_describes_rest_parameters(_name, model_class, kwargs) ->
     parameters = model.get_rest_pose(batch_dims=batch_shape, dtype=np.float32)
 
     assert parameters.keys() == model.parameter_spec.keys()
+    roles = [spec.role for spec in model.parameter_spec.values()]
+    assert roles == sorted(roles, key=("identity", "pose", "transform").index)
     for name, spec in model.parameter_spec.items():
         assert isinstance(spec, ParameterSpec)
         assert parameters[name].shape == (*batch_shape, *spec.shape)

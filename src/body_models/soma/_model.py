@@ -133,11 +133,6 @@ class SOMA(SkinnedModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         parameters = {
-            "body_pose": ParameterSpec.rotation(rotation, 23),
-            "head_pose": ParameterSpec.rotation(rotation, 5),
-            "hand_pose": ParameterSpec.rotation(rotation, 48),
-            "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
-            "global_translation": ParameterSpec((3,), "transform"),
             "shape": ParameterSpec(
                 (self.identity_dim,),
                 "identity",
@@ -146,6 +141,15 @@ class SOMA(SkinnedModel):
         }
         if self.num_scale_params is not None:
             parameters["scale_params"] = ParameterSpec((self.num_scale_params,), "identity")
+        parameters.update(
+            {
+                "body_pose": ParameterSpec.rotation(rotation, 23),
+                "head_pose": ParameterSpec.rotation(rotation, 5),
+                "hand_pose": ParameterSpec.rotation(rotation, 48),
+                "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
+                "global_translation": ParameterSpec((3,), "transform"),
+            }
+        )
         return parameters
 
     @property

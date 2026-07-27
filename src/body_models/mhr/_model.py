@@ -84,10 +84,10 @@ class MHR(SkinnedModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
             "shape": ParameterSpec((self.SHAPE_DIM,), "identity"),
+            "expression": ParameterSpec((self.EXPR_DIM,), "identity"),
             "body_pose": ParameterSpec((self.body_pose_dim,), "pose"),
             "head_pose": ParameterSpec((self.head_pose_dim,), "pose"),
             "hand_pose": ParameterSpec((self.hand_pose_dim,), "pose"),
-            "expression": ParameterSpec((self.EXPR_DIM,), "identity"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }
