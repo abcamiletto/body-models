@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from body_models.garment_measurements.model import GarmentMeasurementsModel
-from body_models.rotations import RotationType
-from body_models.runtime import NumpyRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import NumpyRuntime
+from body_models.garment_measurements._model import GarmentMeasurementsModel
 
 
 class GarmentMeasurements(GarmentMeasurementsModel):

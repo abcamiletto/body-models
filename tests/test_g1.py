@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from body_models.g1.io import get_model_path
+from body_models.g1._io import get_model_path
 from body_models.g1.numpy import G1
 
 

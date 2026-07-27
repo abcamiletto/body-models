@@ -1,1 +1,1 @@
-"""Public G1 backends."""
+"""Public G1 package; models are exposed by the backend modules."""

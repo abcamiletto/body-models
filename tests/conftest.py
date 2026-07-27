@@ -3,7 +3,7 @@
 import model_assets
 import pytest
 
-from body_models import config
+from body_models import _config as config
 
 
 @pytest.fixture(autouse=True)

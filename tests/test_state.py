@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from body_models.state import torch_state
+from body_models._state import torch_state
 
 
 @dataclass(frozen=True)

@@ -15,14 +15,11 @@ import traceback
 
 
 def tier1_imports() -> bool:
-    """Tier 1: All core module imports succeed."""
+    """Tier 1: Public API and required dependency imports succeed."""
     modules = [
         "body_models",
         "body_models.anny.numpy",
         "body_models.mhr.numpy",
-        "body_models.common",
-        "body_models.config",
-        "body_models.base",
         "jaxtyping",
         "nanomanifold",
         "numpy",

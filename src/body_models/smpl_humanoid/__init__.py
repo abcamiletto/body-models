@@ -1,7 +1,7 @@
 """Public SmplHumanoid API."""
 
-from body_models.smpl_humanoid.constants import SMPL_HUMANOID_VARIANTS
-from body_models.smpl_humanoid.io import (
+from body_models.smpl_humanoid._constants import SMPL_HUMANOID_VARIANTS
+from body_models.smpl_humanoid._io import (
     SMPL_HUMANOID_SOURCES,
     SmplHumanoidWeights,
     download_model,

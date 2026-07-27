@@ -4,10 +4,10 @@ from pathlib import Path
 
 import jax
 
-from body_models.rotations import RotationType
-from body_models.runtime import JaxModel, JaxRuntime
-from body_models.soma.io import public_joint_metadata
-from body_models.soma.model import SOMAModel
+from body_models._rotations import RotationType
+from body_models._runtime import JaxModel, JaxRuntime
+from body_models.soma._io import public_joint_metadata
+from body_models.soma._model import SOMAModel
 
 
 @jax.tree_util.register_pytree_node_class

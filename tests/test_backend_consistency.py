@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from trimesh import Trimesh
 
-from body_models.runtime import TorchRuntime
+from body_models._runtime import TorchRuntime
 
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
@@ -128,7 +128,7 @@ def test_skinning_backends_match_default(_name, _numpy_model, torch_model, _jax_
     [case for case in model_cases.SKINNED_MODELS if case[0] == "soma"],
 )
 def test_prepare_skinning_payload_is_compatible(name, numpy_model, torch_model, jax_model, kwargs) -> None:
-    from body_models.common import skinning
+    from body_models._common import skinning
 
     def assert_compatible(model, params, xp):
         identity = model.prepare_identity(shape=params["shape"])

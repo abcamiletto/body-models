@@ -1,4 +1,4 @@
-"""Multi-runtime parametric and articulated body models."""
+"""Public API for multi-runtime parametric and articulated body models."""
 
 from body_models import (
     anny,
@@ -16,13 +16,15 @@ from body_models import (
     smplx,
     soma,
 )
-from body_models.base import RigidBodyModel, SkinnedModel
-from body_models.constants import Joint
-from body_models.registry import create_model, list_models
+from body_models._base import RigidBodyModel, SkinnedModel
+from body_models._constants import Joint
+from body_models._registry import create_model, list_models
+from body_models._rotations import RotationType
 
 __all__ = [
     "Joint",
     "RigidBodyModel",
+    "RotationType",
     "SkinnedModel",
     "anny",
     "brainco",

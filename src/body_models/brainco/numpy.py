@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from body_models.brainco.io import Side
-from body_models.brainco.model import BrainCoHandModel
-from body_models.runtime import NumpyRuntime
+from body_models._runtime import NumpyRuntime
+from body_models.brainco._io import Side
+from body_models.brainco._model import BrainCoHandModel
 
 
 class BrainCoHand(BrainCoHandModel):

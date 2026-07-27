@@ -3,10 +3,10 @@
 from inspect import signature
 from pathlib import Path
 
+from body_models._base import RigidBodyModel, SkinnedModel
 from body_models.anny import jax as anny_jax
 from body_models.anny import numpy as anny_numpy
 from body_models.anny import torch as anny_torch
-from body_models.base import RigidBodyModel, SkinnedModel
 from body_models.brainco import jax as brainco_jax
 from body_models.brainco import numpy as brainco_numpy
 from body_models.brainco import torch as brainco_torch

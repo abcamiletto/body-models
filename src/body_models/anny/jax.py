@@ -4,9 +4,9 @@ from pathlib import Path
 
 import jax
 
-from body_models.anny.model import ANNYModel
-from body_models.rotations import RotationType
-from body_models.runtime import JaxModel, JaxRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import JaxModel, JaxRuntime
+from body_models.anny._model import ANNYModel
 
 
 @jax.tree_util.register_pytree_node_class

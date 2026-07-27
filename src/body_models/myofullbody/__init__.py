@@ -5,7 +5,7 @@ from typing import Any
 from array_api_compat import get_namespace
 from jaxtyping import Float
 
-from body_models.myofullbody import core
+from body_models.myofullbody import _core as core
 
 Array = Any
 

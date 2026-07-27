@@ -4,8 +4,8 @@ from pathlib import Path
 
 from torch import nn
 
-from body_models.myofullbody.model import MyoFullBodyModel
-from body_models.runtime import TorchRuntime
+from body_models._runtime import TorchRuntime
+from body_models.myofullbody._model import MyoFullBodyModel
 
 
 class MyoFullBody(MyoFullBodyModel, nn.Module):

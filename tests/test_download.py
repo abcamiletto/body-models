@@ -1,6 +1,6 @@
 import pytest
 
-from body_models import download
+from body_models import _download as download
 
 FUNCS = [
     (download.download_smpl, "smpl"),

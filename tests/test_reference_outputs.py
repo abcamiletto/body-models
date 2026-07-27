@@ -6,13 +6,13 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from body_models.anny import pose as anny_pose
-from body_models.base import RigidBodyModel
-from body_models.common import skinning
-from body_models.mhr import pose as mhr_pose
-from body_models.skel import pose as skel_pose
-from body_models.soma import pose as soma_pose
-from body_models.soma.generate_asset import generate_asset as generate_soma_asset
+from body_models._base import RigidBodyModel
+from body_models._common import skinning
+from body_models.anny import _pose as anny_pose
+from body_models.mhr import _pose as mhr_pose
+from body_models.skel import _pose as skel_pose
+from body_models.soma import _pose as soma_pose
+from body_models.soma._generate_asset import generate_asset as generate_soma_asset
 from body_models.soma.numpy import SOMA
 
 

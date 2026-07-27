@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-body-models = "body_models.cli:main"
+body-models = "body_models._cli:main"
 
 [project.optional-dependencies]
 torch = [
@@ -95,7 +95,7 @@ ignore = [
 "bench/test_min_versions.py" = [
     "BLE001",  # the compatibility harness reports every dependency failure before exiting
 ]
-"src/body_models/common/warp.py" = [
+"src/body_models/_common/warp.py" = [
     "UP018",  # Warp uses float(...) to distinguish mutable kernel variables from constants
 ]
 

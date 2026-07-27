@@ -2,8 +2,8 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models.base import RigidBodyModel
-from body_models.runtime import TorchRuntime
+from body_models._base import RigidBodyModel
+from body_models._runtime import TorchRuntime
 
 
 def surface_loss(model, params):
@@ -87,8 +87,8 @@ def test_compact_and_warp_skinning_gradients_match_dense_on_cpu() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
 
-    from body_models.common import skinning
-    from body_models.common import warp as warp_backend
+    from body_models._common import skinning
+    from body_models._common import warp as warp_backend
 
     torch.manual_seed(42)
     num_batches, num_vertices, num_joints, num_slots = 2, 257, 31, 6

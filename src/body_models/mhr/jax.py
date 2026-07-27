@@ -4,8 +4,8 @@ from pathlib import Path
 
 import jax
 
-from body_models.mhr.model import MHRModel
-from body_models.runtime import JaxModel, JaxRuntime
+from body_models._runtime import JaxModel, JaxRuntime
+from body_models.mhr._model import MHRModel
 
 
 @jax.tree_util.register_pytree_node_class

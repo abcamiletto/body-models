@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import Literal
 
-from body_models.mano.model import MANOModel
-from body_models.rotations import RotationType
-from body_models.runtime import NumpyRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import NumpyRuntime
+from body_models.mano._model import MANOModel
 
 
 class MANO(MANOModel):

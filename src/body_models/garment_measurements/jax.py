@@ -4,9 +4,9 @@ from pathlib import Path
 
 import jax
 
-from body_models.garment_measurements.model import GarmentMeasurementsModel
-from body_models.rotations import RotationType
-from body_models.runtime import JaxModel, JaxRuntime
+from body_models._rotations import RotationType
+from body_models._runtime import JaxModel, JaxRuntime
+from body_models.garment_measurements._model import GarmentMeasurementsModel
 
 
 @jax.tree_util.register_pytree_node_class

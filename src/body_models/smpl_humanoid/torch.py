@@ -4,8 +4,8 @@ from pathlib import Path
 
 from torch import nn
 
-from body_models.runtime import TorchRuntime
-from body_models.smpl_humanoid.model import SmplHumanoidModel
+from body_models._runtime import TorchRuntime
+from body_models.smpl_humanoid._model import SmplHumanoidModel
 
 
 class SmplHumanoid(SmplHumanoidModel, nn.Module):

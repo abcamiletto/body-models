@@ -49,6 +49,14 @@ API and all model-specific preparation remain unchanged.
 Discover available model names with `body_models.list_models()`. Model options
 such as `gender="male"` or `side="left"` are passed as constructor kwargs.
 
+## Public API
+
+The stable API consists of names exported from `body_models`, names exported
+from each model package, and the NumPy, Torch, and JAX backend modules. For
+example, `body_models.smpl.torch.SMPL` is public; underscore-prefixed modules
+such as `body_models.smpl._model` and `body_models._runtime` are implementation
+details and are not covered by semantic-versioning compatibility guarantees.
+
 When shape-dependent identity parameters stay fixed across many poses, prepare
 them once and pass the returned dictionary back through `identity`. This avoids
 recomputing rest joints, local offsets, and rest vertices on every forward pass.

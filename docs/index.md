@@ -67,6 +67,10 @@ Each framework module is a thin constructor around one model program. See the
 [architecture guide](architecture.md) for the runtime boundary and extension
 rules.
 
+Names exported from `body_models`, names exported from model packages, and the
+backend modules are the stable public API. Underscore-prefixed modules are
+private implementation details and are not covered by compatibility guarantees.
+
 ```python
 from body_models.smpl.torch import SMPL
 

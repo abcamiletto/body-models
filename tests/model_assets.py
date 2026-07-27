@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from body_models import config
+from body_models import _config as config
 
 ASSET_DIR = Path(__file__).parent / "assets" / "models_hub"
 

@@ -23,8 +23,9 @@ from typing import Any
 import numpy as np
 import torch
 
-from body_models import catalog, registry
-from body_models.runtime import TorchRuntime
+from body_models import _catalog as catalog
+from body_models import _registry as registry
+from body_models._runtime import TorchRuntime
 
 DEFAULT_SKELETON_BATCH_SIZES = [256, 512, 1024, 2048, 4096]
 DEFAULT_VERTICES_BATCH_SIZES = [64, 128, 256, 512]
