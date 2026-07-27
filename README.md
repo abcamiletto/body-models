@@ -65,8 +65,9 @@ model = body_models.create_model("smpl", runtime=runtime)
 module = model.as_module().cuda()
 ```
 
-`as_module()` adds PyTorch's device, state-dict, and buffer lifecycle without
-changing the underlying model class.
+`as_module()` returns one cached `torch.nn.Module` view per model. The view
+shares numeric state with the model, so device and dtype changes apply to both,
+without changing the underlying model class.
 
 Discover available model names with `body_models.list_models()`. Model options
 such as `gender="male"` or `side="left"` are passed as constructor kwargs.

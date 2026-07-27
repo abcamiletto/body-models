@@ -77,10 +77,19 @@ class _ArticulatedModel(ABC):
         return self._runtime
 
     def as_module(self) -> nn.Module:
-        """Wrap a Torch-backed model in ``torch.nn.Module`` lifecycle semantics."""
+        """
+        Return this Torch-backed model's cached ``torch.nn.Module`` view.
+
+        The view shares all numeric state with the model. Device and dtype
+        changes made through the view therefore apply to the model as well.
+        """
         from body_models._torch_module import TorchModule
 
-        return TorchModule(self)
+        module = self.__dict__.get("_torch_module")
+        if module is None:
+            module = TorchModule(self)
+            self._torch_module = module
+        return module
 
     def _set_runtime(self, runtime: RuntimeLike) -> ArrayRuntime:
         resolved = resolve_runtime(runtime)

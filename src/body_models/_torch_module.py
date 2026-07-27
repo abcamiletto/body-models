@@ -6,7 +6,7 @@ from torch import nn
 
 
 class TorchModule(nn.Module):
-    """Expose a Torch-backed model through ``nn.Module`` state management."""
+    """Cached ``nn.Module`` view over a Torch-backed model's shared state."""
 
     def __init__(self, model: Any) -> None:
         if model.runtime.backend != "torch":

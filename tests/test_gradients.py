@@ -18,7 +18,8 @@ def surface_loss(model, params):
 def test_torch_and_jax_gradients_match_finite_difference(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
     torch_instance = model_class(**kwargs, runtime="torch")
-    torch_instance.as_module().double()
+    torch_module = torch_instance.as_module()
+    torch_module.double()
     torch_rest = torch_instance.get_rest_pose(batch_dims=(), dtype=torch.float64)
     torch_rest = {key: value + 0.03 for key, value in torch_rest.items()}
 

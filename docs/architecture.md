@@ -83,11 +83,12 @@ are runtime-materialized state objects. This keeps `ArrayRuntime` independent of
 model state and prevents it from accumulating every accelerated operation.
 
 Torch lifecycle behavior is orthogonal to model identity. `model.as_module()`
-wraps Torch-backed state in `torch.nn.Module` semantics for `.to()`,
-`state_dict()`, and buffer registration. All numeric model state is a persistent
-buffer, so checkpoints are complete but may be large. JAX-backed instances of
-the same model class implement the pytree protocol. Pytree reconstruction
-preserves both model configuration and runtime configuration.
+returns a cached `torch.nn.Module` view for `.to()`, `state_dict()`, and buffer
+registration. The view and model share numeric state, so lifecycle mutations
+apply to both. All numeric model state is a persistent buffer, so checkpoints
+are complete but may be large. JAX-backed instances of the same model class
+implement the pytree protocol. Pytree reconstruction preserves both model
+configuration and runtime configuration.
 
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative
