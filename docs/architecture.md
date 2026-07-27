@@ -77,19 +77,24 @@ from body_models.smpl import SMPL
 model = SMPL(runtime=TorchRuntime(skinning_backend="warp"))
 ```
 
-Kernel dispatch follows the lifetime of its inputs. Stateless operations whose
-inputs arrive with each call, such as skinning, are runtime methods. Operations
-that own model-lifetime prepared data, such as sparse corrective multiplication,
-are runtime-materialized state objects. This keeps `ArrayRuntime` independent of
-model state and prevents it from accumulating every accelerated operation.
+Kernel dispatch follows the lifetime of the work. Operation execution is
+lowered by the runtime; reusable derived inputs are created during state
+materialization. Compact skinning illustrates the boundary: every runtime
+executes the same call contract, while Torch/Warp materialization augments the
+compact weights with a transform-gradient plan. A vertex subset chosen during a
+call gets a short-lived subset plan instead. Sparse corrective multiplication
+similarly owns its prepared sparse representation as materialized state. This
+keeps `ArrayRuntime` independent of model semantics without hiding persistent
+work in global caches.
 
 Torch lifecycle behavior is orthogonal to model identity. `model.as_module()`
 returns a cached `torch.nn.Module` view for `.to()`, `state_dict()`, and buffer
 registration. The view and model share numeric state, so lifecycle mutations
-apply to both. All numeric model state is a persistent buffer, so checkpoints
-are complete but may be large. JAX-backed instances of the same model class
-implement the pytree protocol. Pytree reconstruction preserves both model
-configuration and runtime configuration.
+apply to both. Source numeric model state is persistent, so checkpoints are
+complete but may be large. Derived backend plans move with their owning module
+but are rebuilt rather than serialized. JAX-backed instances of the same model
+class implement the pytree protocol. Pytree reconstruction preserves both
+model configuration and runtime configuration.
 
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative

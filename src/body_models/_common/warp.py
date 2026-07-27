@@ -1,18 +1,21 @@
 """Differentiable Warp kernels shared by skinned models."""
 
+from __future__ import annotations
+
 import contextlib
 import functools
 import io
-import weakref
 from dataclasses import dataclass
 
 import torch
 import warp as wp
 from jaxtyping import Float, Int
-from torch import Tensor
+from torch import Tensor, nn
 from torch.compiler import disable as disable_compile
 
-__all__ = ["compact_linear_blend_skinning"]
+from body_models._common.skinning import CompactSkinning
+
+__all__ = ["compact_linear_blend_skinning", "prepare_compact_skinning"]
 
 _TRANSFORM_GRADIENT_CHUNK_SIZE = 32
 
@@ -25,10 +28,51 @@ class _TransformGradientPlan:
     chunk_joints: Int[Tensor, "C"]
 
 
-_TRANSFORM_GRADIENT_PLANS: dict[
-    int,
-    tuple[weakref.ReferenceType[Tensor], _TransformGradientPlan],
-] = {}
+class _WarpCompactSkinning(nn.Module):
+    """Torch state for Warp compact skinning."""
+
+    joint_indices: Int[Tensor, "V K"]
+    joint_weights: Float[Tensor, "V K"]
+    _plan_permutation: Int[Tensor, "N"]
+    _plan_chunk_starts: Int[Tensor, "C"]
+    _plan_chunk_ends: Int[Tensor, "C"]
+    _plan_chunk_joints: Int[Tensor, "C"]
+
+    def __init__(
+        self,
+        joint_indices: Int[Tensor, "V K"],
+        joint_weights: Float[Tensor, "V K"],
+        plan: _TransformGradientPlan,
+    ) -> None:
+        super().__init__()
+        self.register_buffer("joint_indices", joint_indices, persistent=True)
+        self.register_buffer("joint_weights", joint_weights, persistent=True)
+        self.register_buffer("_plan_permutation", plan.permutation, persistent=False)
+        self.register_buffer("_plan_chunk_starts", plan.chunk_starts, persistent=False)
+        self.register_buffer("_plan_chunk_ends", plan.chunk_ends, persistent=False)
+        self.register_buffer("_plan_chunk_joints", plan.chunk_joints, persistent=False)
+
+    @property
+    def transform_gradient_plan(self) -> _TransformGradientPlan:
+        return _TransformGradientPlan(
+            permutation=self._plan_permutation,
+            chunk_starts=self._plan_chunk_starts,
+            chunk_ends=self._plan_chunk_ends,
+            chunk_joints=self._plan_chunk_joints,
+        )
+
+
+def prepare_compact_skinning(
+    skinning: CompactSkinning | _WarpCompactSkinning,
+) -> _WarpCompactSkinning:
+    """Materialize compact skinning weights and their Warp gradient plan."""
+    if isinstance(skinning, _WarpCompactSkinning):
+        return skinning
+
+    joint_indices = torch.as_tensor(skinning.joint_indices, dtype=torch.int32).contiguous()
+    joint_weights = torch.as_tensor(skinning.joint_weights, dtype=torch.float32).contiguous()
+    plan = _build_transform_gradient_plan(joint_indices)
+    return _WarpCompactSkinning(joint_indices, joint_weights, plan)
 
 
 def _require_float32(**tensors: Float[Tensor, "..."]) -> None:
@@ -43,19 +87,24 @@ def compact_linear_blend_skinning(
     vertices: Float[Tensor, "*batch V 3"],
     transforms: Float[Tensor, "*batch J 4 4"],
     *,
-    joint_indices: Int[Tensor, "V K"],
-    joint_weights: Float[Tensor, "V K"],
+    skinning: CompactSkinning | _WarpCompactSkinning,
 ) -> Float[Tensor, "*batch V 3"]:
     """Apply sparse float32 linear blend skinning with Warp autograd."""
-    _require_float32(vertices=vertices, transforms=transforms)
+    skinning = prepare_compact_skinning(skinning)
+    _require_float32(
+        vertices=vertices,
+        transforms=transforms,
+        joint_weights=skinning.joint_weights,
+    )
     _init_warp()
     batch_shape = torch.broadcast_shapes(vertices.shape[:-2], transforms.shape[:-3])
     vertices = vertices.expand(*batch_shape, *vertices.shape[-2:])
     transforms = transforms.expand(*batch_shape, *transforms.shape[-3:])
     vertices = vertices.contiguous()
     transforms = transforms.contiguous()
-    joint_indices = joint_indices.to(device=vertices.device, dtype=torch.int32).contiguous()
-    joint_weights = joint_weights.to(device=vertices.device, dtype=vertices.dtype).contiguous()
+    joint_indices = skinning.joint_indices
+    joint_weights = skinning.joint_weights
+    plan = skinning.transform_gradient_plan
     num_vertices = vertices.shape[-2]
     num_joints = transforms.shape[-3]
     flat_vertices = vertices.reshape(-1, num_vertices, 3)
@@ -65,22 +114,54 @@ def compact_linear_blend_skinning(
         flat_transforms,
         joint_indices,
         joint_weights,
+        plan.permutation,
+        plan.chunk_starts,
+        plan.chunk_ends,
+        plan.chunk_joints,
     )
     return output.reshape(*batch_shape, num_vertices, 3)
 
 
 class _WarpCompactLinearBlendSkinning(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, vertices, transforms, joint_indices, joint_weights):
+    def forward(
+        ctx,
+        vertices,
+        transforms,
+        joint_indices,
+        joint_weights,
+        permutation,
+        chunk_starts,
+        chunk_ends,
+        chunk_joints,
+    ):
         output = torch.empty_like(vertices)
         _launch_compact_linear_blend_skinning(vertices, transforms, joint_indices, joint_weights, output)
-        ctx.save_for_backward(vertices, transforms, joint_indices, joint_weights)
+        ctx.save_for_backward(
+            vertices,
+            transforms,
+            joint_indices,
+            joint_weights,
+            permutation,
+            chunk_starts,
+            chunk_ends,
+            chunk_joints,
+        )
         return output
 
     @staticmethod
     def backward(ctx, *grad_outputs):
         grad_output = grad_outputs[0]
-        vertices, transforms, joint_indices, joint_weights = ctx.saved_tensors
+        (
+            vertices,
+            transforms,
+            joint_indices,
+            joint_weights,
+            permutation,
+            chunk_starts,
+            chunk_ends,
+            chunk_joints,
+        ) = ctx.saved_tensors
         grad_output = grad_output.contiguous()
         grad_vertices = grad_transforms = None
 
@@ -110,9 +191,15 @@ class _WarpCompactLinearBlendSkinning(torch.autograd.Function):
                 grad_output,
                 joint_indices,
                 joint_weights,
+                plan=_TransformGradientPlan(
+                    permutation=permutation,
+                    chunk_starts=chunk_starts,
+                    chunk_ends=chunk_ends,
+                    chunk_joints=chunk_joints,
+                ),
             )
 
-        return grad_vertices, grad_transforms, None, None
+        return grad_vertices, grad_transforms, None, None, None, None, None, None
 
 
 def _transform_gradients(
@@ -121,8 +208,9 @@ def _transform_gradients(
     grad_output: Float[Tensor, "B V 3"],
     joint_indices: Int[Tensor, "V K"],
     joint_weights: Float[Tensor, "V K"],
+    *,
+    plan: _TransformGradientPlan,
 ) -> Float[Tensor, "B J 4 4"]:
-    plan = _transform_gradient_plan(joint_indices)
     grad_transforms = torch.zeros_like(transforms)
     if plan.permutation.numel() == 0:
         return grad_transforms
@@ -147,24 +235,6 @@ def _transform_gradients(
             device=_from_torch(vertices).device,
         )
     return grad_transforms
-
-
-def _transform_gradient_plan(joint_indices: Int[Tensor, "V K"]) -> _TransformGradientPlan:
-    key = id(joint_indices)
-    cached = _TRANSFORM_GRADIENT_PLANS.get(key)
-    if cached is not None and cached[0]() is joint_indices:
-        return cached[1]
-
-    plan = _build_transform_gradient_plan(joint_indices)
-
-    def remove(reference: weakref.ReferenceType[Tensor]) -> None:
-        current = _TRANSFORM_GRADIENT_PLANS.get(key)
-        if current is not None and current[0] is reference:
-            del _TRANSFORM_GRADIENT_PLANS[key]
-
-    reference = weakref.ref(joint_indices, remove)
-    _TRANSFORM_GRADIENT_PLANS[key] = reference, plan
-    return plan
 
 
 def _build_transform_gradient_plan(joint_indices: Int[Tensor, "V K"]) -> _TransformGradientPlan:

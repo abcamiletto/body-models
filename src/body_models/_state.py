@@ -1,8 +1,7 @@
 """Materialize immutable model data for an array backend.
 
-Backend-specific operations live on materialized state objects when they own
-model-lifetime prepared data, as ``SparseLinear`` does. Stateless operations
-whose inputs arrive per call are lowered by ``ArrayRuntime`` instead.
+Reusable backend-specific data lives on materialized state objects. Operation
+execution is lowered by ``ArrayRuntime`` instead.
 """
 
 from __future__ import annotations
@@ -36,13 +35,20 @@ def numpy_state(value: Any) -> Any:
     return value
 
 
-def torch_state(value: Any) -> Any:
+def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
     """Recursively register model arrays as PyTorch buffers."""
     import torch
     from torch import nn
 
-    from body_models._common import sparse
+    from body_models._common import skinning, sparse
     from body_models._torch_state import StateMapping, StateSequence
+
+    if isinstance(value, skinning.CompactSkinning) and skinning_backend == "warp":
+        try:
+            from body_models._common import warp
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError("Install body-models[warp] to use skinning_backend='warp'.") from exc
+        return warp.prepare_compact_skinning(value)
 
     if isinstance(value, sparse.SparseMatrix):
         from body_models._common import sparse_torch
@@ -52,23 +58,27 @@ def torch_state(value: Any) -> Any:
     if is_dataclass(value):
         module = nn.Module()
         for field in fields(value):
-            setattr(module, field.name, torch_state(getattr(value, field.name)))
+            converted = torch_state(
+                getattr(value, field.name),
+                skinning_backend=skinning_backend,
+            )
+            setattr(module, field.name, converted)
         return module
 
     if isinstance(value, dict):
-        converted = {key: torch_state(item) for key, item in value.items()}
+        converted = {key: torch_state(item, skinning_backend=skinning_backend) for key, item in value.items()}
         if any(isinstance(item, torch.Tensor | nn.Module) for item in converted.values()):
             return StateMapping(converted)
         return converted
 
     if isinstance(value, list):
-        converted = [torch_state(item) for item in value]
+        converted = [torch_state(item, skinning_backend=skinning_backend) for item in value]
         if any(isinstance(item, torch.Tensor | nn.Module) for item in converted):
             return StateSequence(converted)
         return converted
 
     if isinstance(value, tuple):
-        converted = tuple(torch_state(item) for item in value)
+        converted = tuple(torch_state(item, skinning_backend=skinning_backend) for item in value)
         if any(isinstance(item, torch.Tensor | nn.Module) for item in converted):
             return StateSequence(converted)
         return converted

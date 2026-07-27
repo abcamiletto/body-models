@@ -1,8 +1,8 @@
 """Array runtimes for backend-independent model programs.
 
-Runtime methods lower stateless operations whose inputs arrive per call. An
-operation with model-lifetime prepared state belongs in a backend-materialized
-state object instead; see :mod:`body_models._state`.
+Runtime methods lower backend-independent operations at call time. Reusable
+derived inputs belong to backend-materialized state instead; see
+:mod:`body_models._state`.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from jaxtyping import Float, Int, Num
 
 from body_models import _common as common
 from body_models import _state as state
-from body_models._common import skinning
+from body_models._common import skinning as skinning_ops
 
 Array = Any
 Backend = Literal["numpy", "torch", "jax"]
@@ -71,25 +71,25 @@ class ArrayRuntime(ABC):
         vertices: Float[Array, "*batch V 3"],
         transforms: Float[Array, "*batch J 4 4"],
         *,
-        joint_indices: Int[Array, "V K"],
-        joint_weights: Float[Array, "V K"],
+        skinning: skinning_ops.CompactSkinning,
         vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch selected 3"]:
         """Select optional vertices and apply compact linear blend skinning."""
         if vertex_indices is not None:
             indices = self.asarray(
                 vertex_indices,
-                like=joint_indices,
-                dtype=joint_indices.dtype,
+                like=skinning.joint_indices,
+                dtype=skinning.joint_indices.dtype,
             )
             vertices = vertices[..., indices, :]
-            joint_indices = joint_indices[indices]
-            joint_weights = joint_weights[indices]
+            skinning = skinning_ops.CompactSkinning(
+                joint_indices=skinning.joint_indices[indices],
+                joint_weights=skinning.joint_weights[indices],
+            )
         return self._compact_linear_blend_skinning(
             vertices,
             transforms,
-            joint_indices=joint_indices,
-            joint_weights=joint_weights,
+            skinning=skinning,
         )
 
     def _compact_linear_blend_skinning(
@@ -97,15 +97,14 @@ class ArrayRuntime(ABC):
         vertices: Float[Array, "*batch V 3"],
         transforms: Float[Array, "*batch J 4 4"],
         *,
-        joint_indices: Int[Array, "V K"],
-        joint_weights: Float[Array, "V K"],
+        skinning: skinning_ops.CompactSkinning,
     ) -> Float[Array, "*batch V 3"]:
         """Lower compact linear blend skinning to one backend implementation."""
-        return skinning.compact_linear_blend_skinning(
+        return skinning_ops.compact_linear_blend_skinning(
             vertices,
             transforms,
-            joint_indices=joint_indices,
-            joint_weights=joint_weights,
+            joint_indices=skinning.joint_indices,
+            joint_weights=skinning.joint_weights,
             xp=self.xp,
         )
 
@@ -160,7 +159,7 @@ class TorchRuntime(ArrayRuntime):
         return self.xp.as_tensor(value, device=like.device, dtype=dtype)
 
     def materialize(self, value: Any) -> Any:
-        return state.torch_state(value)
+        return state.torch_state(value, skinning_backend=self.skinning_backend)
 
     def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
         return value.detach()
@@ -173,15 +172,13 @@ class TorchRuntime(ArrayRuntime):
         vertices: Float[Array, "*batch V 3"],
         transforms: Float[Array, "*batch J 4 4"],
         *,
-        joint_indices: Int[Array, "V K"],
-        joint_weights: Float[Array, "V K"],
+        skinning: skinning_ops.CompactSkinning,
     ) -> Float[Array, "*batch V 3"]:
         if self.skinning_backend == "torch":
             return super()._compact_linear_blend_skinning(
                 vertices,
                 transforms,
-                joint_indices=joint_indices,
-                joint_weights=joint_weights,
+                skinning=skinning,
             )
 
         try:
@@ -191,8 +188,7 @@ class TorchRuntime(ArrayRuntime):
         return warp.compact_linear_blend_skinning(
             vertices,
             transforms,
-            joint_indices=joint_indices,
-            joint_weights=joint_weights,
+            skinning=skinning,
         )
 
 

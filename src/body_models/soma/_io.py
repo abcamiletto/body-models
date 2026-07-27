@@ -19,6 +19,7 @@ from scipy.sparse import csc_matrix
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
 from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh, sparse
+from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
 
@@ -162,8 +163,7 @@ class SomaWeights:
     joint_regressor: Float[np.ndarray, "Jf Vf"]
     skin_weights_full: Float[np.ndarray, "Vf Jf"]
     skin_weights_active: Float[np.ndarray, "Va Jf"]
-    skin_joint_indices_active: Int[np.ndarray, "Va K"]
-    skin_joint_weights_active: Float[np.ndarray, "Va K"]
+    compact_skinning: CompactSkinning
     faces: Int[np.ndarray, "F 3"]
     vertex_map: Int[np.ndarray, "Va"] | None
     facial_inner_vertices: Int[np.ndarray, "Va"]
@@ -424,8 +424,10 @@ def with_active_mesh(
         mean_active=np.asarray(mean_active, dtype=np.float32),
         shapedirs_active=np.asarray(shapedirs_active, dtype=np.float32),
         skin_weights_active=np.asarray(skin_weights_active, dtype=np.float32),
-        skin_joint_indices_active=skin_joint_indices_active,
-        skin_joint_weights_active=skin_joint_weights_active,
+        compact_skinning=CompactSkinning(
+            skin_joint_indices_active,
+            skin_joint_weights_active,
+        ),
         faces=np.asarray(faces, dtype=np.int64),
         vertex_map=vertex_map,
         public=public,
@@ -1098,8 +1100,10 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         joint_regressor=joint_regressor,
         skin_weights_full=skin_weights,
         skin_weights_active=skin_weights,
-        skin_joint_indices_active=skin_joint_indices,
-        skin_joint_weights_active=skin_joint_weights,
+        compact_skinning=CompactSkinning(
+            skin_joint_indices,
+            skin_joint_weights,
+        ),
         faces=faces,
         vertex_map=None,
         facial_inner_vertices=facial_inner,

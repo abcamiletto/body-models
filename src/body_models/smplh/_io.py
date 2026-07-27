@@ -10,6 +10,7 @@ from jaxtyping import Float, Int
 from body_models import _config as config
 from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
 from body_models._common.chumpy_fix import load_model_dict
+from body_models._common.skinning import CompactSkinning
 from body_models.smplh._constants import SMPLH_JOINT_NAMES
 
 PathLike = Path | str
@@ -23,8 +24,7 @@ class SmplhWeights:
     v_template: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     lbs_weights: Float[Array, "V 52"]
-    lbs_joint_indices: Int[Array, "V K"]
-    lbs_joint_weights: Float[Array, "V K"]
+    compact_skinning: CompactSkinning
     shapedirs: Float[Array, "V 3 S"]
     posedirs: Float[Array, "P V*3"]
     j_template: Float[Array, "52 3"]
@@ -111,8 +111,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
         v_template=v_template,
         faces=faces,
         lbs_weights=lbs_weights,
-        lbs_joint_indices=lbs_joint_indices,
-        lbs_joint_weights=lbs_joint_weights,
+        compact_skinning=CompactSkinning(lbs_joint_indices, lbs_joint_weights),
         shapedirs=shapedirs,
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
         j_template=joint_regressor @ model_template,
