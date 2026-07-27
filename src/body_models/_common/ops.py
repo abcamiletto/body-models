@@ -66,7 +66,6 @@ def eye_as(
 ) -> Float[Array, "*batch N N"]:
     """Create batched identity matrices using ref's backend/device/dtype."""
     n = ref.shape[-1]
-    eye = zeros_as(ref, shape=(*batch_dims, n, n), xp=xp)
-    for i in range(n):
-        eye = at_set(eye, (..., i, i), 1.0, xp=xp)
-    return eye
+    device = getattr(ref, "device", None)
+    eye = xp.eye(n, dtype=ref.dtype) if device is None else xp.eye(n, dtype=ref.dtype, device=device)
+    return xp.broadcast_to(eye, (*batch_dims, n, n))
