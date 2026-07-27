@@ -1,17 +1,22 @@
 # SmplHumanoid
 
-SmplHumanoid is a rigid articulated humanoid model loaded from SMPL-compatible MJCF XML variants.
+SmplHumanoid is a rigid articulated humanoid model loaded from SMPL-compatible
+MJCF variants.
 
 ## Setup
 
-SmplHumanoid downloads its XML assets from the public [`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models) Hugging Face repository. To prefetch and save the hosted path:
+SmplHumanoid downloads its XML assets from the public
+[`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models)
+Hugging Face repository. To prefetch all variants:
 
 ```bash
-# Download the SmplHumanoid MJCF XML assets.
 body-models download smpl-humanoid
 ```
 
 The hosted folder includes license/provenance notes for the XML variants.
+
+Select the `humenv`, `phc`, or `smplsim` variant with `source`; `humenv` is the
+default.
 
 ## API
 

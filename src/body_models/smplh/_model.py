@@ -1,4 +1,4 @@
-"""Single-source SMPL-H model program."""
+"""SMPL-H model implementation."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class SmplhConfig:
 
 
 class SMPLH(SmplFamilyModel):
-    """Backend-independent SMPL-H interface and orchestration."""
+    """Skinned human body model with articulated hands."""
 
     has_hands = True
     NUM_BODY_JOINTS = 21

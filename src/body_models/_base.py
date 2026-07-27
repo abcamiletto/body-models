@@ -9,6 +9,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 from trimesh import Trimesh
 
+from body_models import _state as state
 from body_models._common import deformation, eye_as, zeros_as
 from body_models._common import rigid as rigid_ops
 from body_models._constants import Joint
@@ -89,21 +90,25 @@ class _ArticulatedModel(ABC):
         return resolved
 
     def tree_flatten(self):
-        if self.runtime.backend != "jax":
-            raise TypeError("Only JAX-backed models can be used as JAX pytrees.")
         children = tuple(getattr(self, name) for name in self._state_fields)
-        return children, self._config
+        return children, (self._config, self._runtime)
 
     @classmethod
-    def tree_unflatten(cls, config, children):
-        from body_models._runtime import JaxRuntime
-
+    def tree_unflatten(cls, auxiliary, children):
+        config, runtime = auxiliary
         obj = cls.__new__(cls)
-        obj._runtime = JaxRuntime()
+        obj._runtime = runtime
         obj._config = config
         for name, value in zip(cls._state_fields, children, strict=True):
             setattr(obj, name, value)
         return obj
+
+    def __setstate__(self, values: dict[str, Any]) -> None:
+        self.__dict__.update(values)
+        if self.runtime.backend != "jax":
+            return
+        _register_jax_model(type(self))
+        state.register_jax_state(tuple(getattr(self, name) for name in self._state_fields))
 
     @property
     @abstractmethod
@@ -155,8 +160,8 @@ class _ArticulatedModel(ABC):
         """
         Compute skeleton joint transforms.
 
-        Signature varies by model. Outputs use the model's native coordinate system.
-        in meters.
+        Signatures vary by model. Outputs use the model's native coordinate
+        system and meters.
 
         Returns:
             World-space 4x4 transformation matrices [B, J, 4, 4] in meters.
@@ -206,7 +211,7 @@ class _ArticulatedModel(ABC):
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
-        """Get parameters for the SMPL-style T-pose."""
+        """Construct parameters for the canonical T-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
     def get_apose(
@@ -214,7 +219,7 @@ class _ArticulatedModel(ABC):
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
-        """Get parameters for the MHR-style A-pose."""
+        """Construct parameters for the canonical A-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
 
@@ -240,8 +245,8 @@ class SkinnedModel(_ArticulatedModel):
         """
         Compute mesh vertices.
 
-        Signature varies by model. Outputs use the model's native coordinate system.
-        in meters.
+        Signatures vary by model. Outputs use the model's native coordinate
+        system and meters.
 
         Returns:
             Mesh vertices [B, V, 3] in meters.

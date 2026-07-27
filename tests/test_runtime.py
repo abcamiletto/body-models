@@ -1,6 +1,8 @@
 """Contracts shared by model runtimes."""
 
 import pickle
+import subprocess
+import sys
 
 import model_cases
 import numpy as np
@@ -89,6 +91,47 @@ def test_model_pickle_uses_public_class_identity() -> None:
 
 
 @pytest.mark.fast
+def test_pickled_jax_model_jits_in_a_fresh_process() -> None:
+    pytest.importorskip("jax")
+    from body_models.g1 import G1
+
+    model = G1(runtime="jax")
+    program = """
+import pickle
+import sys
+
+import jax
+
+model = pickle.loads(sys.stdin.buffer.read())
+print(jax.jit(lambda value: value.num_vertices)(model))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        input=pickle.dumps(model),
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr.decode()
+    assert result.stdout.decode().strip() == str(model.num_vertices)
+
+
+@pytest.mark.fast
+def test_registered_model_pytree_preserves_non_jax_runtime() -> None:
+    jax = pytest.importorskip("jax")
+    pytest.importorskip("torch")
+    from body_models.g1 import G1
+
+    model = G1(runtime=TorchRuntime("warp"))
+    G1(runtime="jax")
+    restored = jax.tree_util.tree_map(lambda value: value, model)
+
+    assert type(restored) is G1
+    assert restored.runtime == TorchRuntime("warp")
+    assert restored._weights is model._weights
+
+
+@pytest.mark.fast
 def test_torch_module_manages_model_state() -> None:
     torch = pytest.importorskip("torch")
     from body_models.g1 import G1
@@ -124,6 +167,7 @@ def test_jax_model_pytree_round_trip(name, model_class, kwargs) -> None:
     restored = jax.tree_util.tree_unflatten(tree, leaves)
 
     assert type(restored) is type(model), name
+    assert restored.runtime == model.runtime
     assert restored.num_vertices == model.num_vertices
     assert restored.joint_names == model.joint_names
     parameters = jax.jit(lambda value: value.get_rest_pose())(restored)

@@ -1,4 +1,4 @@
-"""Single-source MANO model program."""
+"""MANO model implementation."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class ManoConfig:
 
 
 class MANO(SmplFamilyModel):
-    """Backend-independent MANO interface and orchestration."""
+    """Skinned hand model with shape and finger-pose controls."""
 
     has_hands = True
     NUM_HAND_JOINTS = 15

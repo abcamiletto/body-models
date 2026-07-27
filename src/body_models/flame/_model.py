@@ -1,4 +1,4 @@
-"""Single-source FLAME model program."""
+"""FLAME model implementation."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class FlameConfig:
 
 
 class FLAME(SmplFamilyModel):
-    """Backend-independent FLAME interface and orchestration."""
+    """Skinned head model with shape and expression controls."""
 
     has_head = True
     NUM_HEAD_JOINTS = 4

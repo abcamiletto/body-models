@@ -1,4 +1,4 @@
-"""Single-source MHR model program."""
+"""MHR model implementation."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ Array = Any
 
 
 class MHR(SkinnedModel):
-    """Backend-independent MHR interface and orchestration."""
+    """Expressive full-body model with neural pose correctives."""
 
     has_hands = True
     has_head = True

@@ -1,4 +1,4 @@
-"""Single-source SMPL humanoid model program."""
+"""SMPL humanoid model implementation."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class SmplHumanoidConfig:
 
 
 class SmplHumanoid(RigidBodyModel):
-    """Backend-independent SMPL humanoid interface and orchestration."""
+    """Rigid SMPL-compatible humanoid loaded from MJCF."""
 
     JOINTS = SMPL_HUMANOID_JOINTS
 

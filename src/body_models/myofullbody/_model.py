@@ -1,4 +1,4 @@
-"""Single-source MyoFullBody model program."""
+"""MyoFullBody model implementation."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class MyoFullBodyConfig:
 
 
 class MyoFullBody(RigidBodyModel):
-    """Backend-independent MyoFullBody interface and orchestration."""
+    """Rigid articulated musculoskeletal full-body model."""
 
     JOINTS = MYOFULLBODY_JOINTS
     mujoco_to_model = core.MUJOCO_TO_KIMODO

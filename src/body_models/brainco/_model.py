@@ -1,4 +1,4 @@
-"""Single-source BrainCo Revo 2 model program."""
+"""BrainCo Revo 2 model implementation."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class BrainCoConfig:
 
 
 class BrainCoHand(RigidBodyModel):
-    """Backend-independent BrainCo interface and orchestration."""
+    """Rigid articulated BrainCo Revo 2 hand."""
 
     has_hands = True
     mujoco_to_model = core.MUJOCO_TO_KIMODO

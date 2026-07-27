@@ -1,4 +1,4 @@
-"""Single-source Unitree G1 model program."""
+"""Unitree G1 model implementation."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class G1Config:
 
 
 class G1(RigidBodyModel):
-    """Backend-independent Unitree G1 interface and orchestration."""
+    """Rigid articulated Unitree G1 model."""
 
     JOINTS = G1_JOINTS
 

@@ -1,4 +1,4 @@
-"""Single-source ANNY model program."""
+"""ANNY model implementation."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class AnnyConfig:
 
 
 class ANNY(SkinnedModel):
-    """Backend-independent ANNY interface and orchestration."""
+    """Phenotype-driven skinned body model."""
 
     has_hands = True
     has_head = True
