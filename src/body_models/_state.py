@@ -74,7 +74,7 @@ def torch_state(value: Any) -> Any:
         return converted
 
     if isinstance(value, np.ndarray | torch.Tensor):
-        return nn.Buffer(torch.as_tensor(value))
+        return nn.Buffer(torch.as_tensor(value), persistent=True)
 
     return value
 

@@ -50,7 +50,7 @@ class FLAME(SkinnedModel):
         weights = load_model_data(resolved_path, simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = FlameConfig(rotation_type=rotation_type)
-        self.weights = runtime.materialize(weights)
+        self._weights = runtime.materialize(weights)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -74,7 +74,7 @@ class FLAME(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def num_joints(self) -> int:
@@ -86,35 +86,35 @@ class FLAME(SkinnedModel):
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.v_template.shape[0]
+        return self._weights.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V 5"]:
-        return self.weights.lbs_weights
+        return self._weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.weights.v_template
+        return self._weights.v_template
 
     @property
     def shapedirs(self) -> Float[Array, "V 3 S"]:
-        return self.weights.shapedirs
+        return self._weights.shapedirs
 
     @property
     def exprdirs(self) -> Float[Array, "V 3 E"]:
-        return self.weights.exprdirs
+        return self._weights.exprdirs
 
     @property
     def posedirs(self) -> Float[Array, "P V*3"]:
-        return self.weights.posedirs
+        return self._weights.posedirs
 
     @property
     def lbs_weights(self) -> Float[Array, "V 5"]:
-        return self.weights.lbs_weights
+        return self._weights.lbs_weights
 
     @property
     def parents(self) -> list[int]:
-        return self.weights.parents
+        return self._weights.parents
 
     def forward_vertices(
         self,
@@ -143,8 +143,8 @@ class FLAME(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.lbs_joint_indices,
-            joint_weights=self.weights.lbs_joint_weights,
+            joint_indices=self._weights.lbs_joint_indices,
+            joint_weights=self._weights.lbs_joint_weights,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -181,7 +181,7 @@ class FLAME(SkinnedModel):
             skeleton_identity = identity
 
         skeleton = core.prepare_skeleton(
-            self.weights.kinematic_fronts,
+            self._weights.kinematic_fronts,
             head_pose,
             head_rotation,
             self.rotation_type,
@@ -205,13 +205,13 @@ class FLAME(SkinnedModel):
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=self.weights.v_template,
-            shapedirs=self.weights.shapedirs,
-            exprdirs=self.weights.exprdirs,
-            j_template=self.weights.j_template,
-            j_shapedirs=self.weights.j_shapedirs,
-            j_exprdirs=self.weights.j_exprdirs,
-            parents=self.weights.parents,
+            v_template=self._weights.v_template,
+            shapedirs=self._weights.shapedirs,
+            exprdirs=self._weights.exprdirs,
+            j_template=self._weights.j_template,
+            j_shapedirs=self._weights.j_shapedirs,
+            j_exprdirs=self._weights.j_exprdirs,
+            parents=self._weights.parents,
             shape=shape,
             expression=expression,
         )
@@ -226,8 +226,8 @@ class FLAME(SkinnedModel):
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,
-            posedirs=self.weights.posedirs,
-            kinematic_fronts=self.weights.kinematic_fronts,
+            posedirs=self._weights.posedirs,
+            kinematic_fronts=self._weights.kinematic_fronts,
             head_pose=head_pose,
             head_rotation=head_rotation,
             rotation_type=self.rotation_type,
@@ -242,10 +242,10 @@ class FLAME(SkinnedModel):
     ) -> core.FlameSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
-            j_template=self.weights.j_template,
-            j_shapedirs=self.weights.j_shapedirs,
-            j_exprdirs=self.weights.j_exprdirs,
-            parents=self.weights.parents,
+            j_template=self._weights.j_template,
+            j_shapedirs=self._weights.j_shapedirs,
+            j_exprdirs=self._weights.j_exprdirs,
+            parents=self._weights.parents,
             shape=shape,
             expression=expression,
         )

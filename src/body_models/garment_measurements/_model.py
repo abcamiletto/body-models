@@ -54,7 +54,7 @@ class GarmentMeasurements(SkinnedModel):
         weights = load_model_data(get_model_path(model_path), dtype=np.float32)
         runtime = self._set_runtime(runtime)
         self._config = GarmentMeasurementsConfig(rotation_type=rotation_type)
-        self.weights = runtime.materialize(weights)
+        self._weights = runtime.materialize(weights)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -79,35 +79,35 @@ class GarmentMeasurements(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def num_joints(self) -> int:
-        return len(self.weights.joint_names)
+        return len(self._weights.joint_names)
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self.weights.joint_names)
+        return list(self._weights.joint_names)
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.mean_vertices.shape[0]
+        return self._weights.mean_vertices.shape[0]
 
     @property
     def num_shape_components(self) -> int:
-        return self.weights.eigenvalues.shape[0]
+        return self._weights.eigenvalues.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        return self.weights.skin_weights
+        return self._weights.skin_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.weights.mean_vertices
+        return self._weights.mean_vertices
 
     @property
     def parents(self) -> list[int]:
-        return [int(parent) for parent in self.weights.parents.tolist()]
+        return [int(parent) for parent in self._weights.parents.tolist()]
 
     def forward_vertices(
         self,
@@ -136,8 +136,8 @@ class GarmentMeasurements(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.skin_joint_indices,
-            joint_weights=self.weights.skin_joint_weights,
+            joint_indices=self._weights.skin_joint_indices,
+            joint_weights=self._weights.skin_joint_weights,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -179,8 +179,8 @@ class GarmentMeasurements(SkinnedModel):
             hand_pose,
         )
         skeleton = core.prepare_skeleton(
-            self.weights.bind_quats,
-            self.weights.kinematic_fronts,
+            self._weights.bind_quats,
+            self._weights.kinematic_fronts,
             packed_pose,
             self.rotation_type,
             local_bind_translations=identity["local_bind_translations"],
@@ -202,12 +202,12 @@ class GarmentMeasurements(SkinnedModel):
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            mean_vertices=self.weights.mean_vertices,
-            components=self.weights.components,
-            eigenvalues=self.weights.eigenvalues,
-            bind_quats=self.weights.bind_quats,
-            mvc_weights=self.weights.mvc_weights,
-            kinematic_fronts=self.weights.kinematic_fronts,
+            mean_vertices=self._weights.mean_vertices,
+            components=self._weights.components,
+            eigenvalues=self._weights.eigenvalues,
+            bind_quats=self._weights.bind_quats,
+            mvc_weights=self._weights.mvc_weights,
+            kinematic_fronts=self._weights.kinematic_fronts,
             shape=shape,
         )
 
@@ -229,8 +229,8 @@ class GarmentMeasurements(SkinnedModel):
             hand_pose,
         )
         return core.prepare_pose(
-            self.weights.bind_quats,
-            self.weights.kinematic_fronts,
+            self._weights.bind_quats,
+            self._weights.kinematic_fronts,
             packed_pose,
             self.rotation_type,
             bind_skeleton=identity["bind_skeleton"],

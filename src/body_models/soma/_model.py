@@ -40,12 +40,14 @@ class SomaConfig:
     identity_dim: int
     num_scale_params: int | None
     default_identity_value: float
+    parents: tuple[int, ...]
+    joint_names: tuple[str, ...]
 
 
 class SOMA(SkinnedModel):
     """Backend-independent SOMA interface and orchestration."""
 
-    _state_fields = ("weights", "_identity_source")
+    _state_fields = ("_weights", "_identity_source")
     has_hands = True
     has_head = True
     SHAPE_DIM = 128
@@ -73,6 +75,7 @@ class SOMA(SkinnedModel):
         normalized_lod = lod.lower()
         resolved_path, weights = load_model_data_for_lod(model_path, normalized_lod, simplify=simplify)
         spec = MODEL_TYPE_SPECS[normalized_model_type]
+        parents, joint_names = public_joint_metadata(weights)
         runtime = self._set_runtime(runtime)
         self._config = SomaConfig(
             model_type=normalized_model_type,
@@ -81,9 +84,10 @@ class SOMA(SkinnedModel):
             identity_dim=spec.identity_dim,
             num_scale_params=spec.num_scale_params,
             default_identity_value=spec.default_identity_value,
+            parents=tuple(parents),
+            joint_names=tuple(joint_names),
         )
-        self.parents, self._joint_names = public_joint_metadata(weights)
-        self.weights = runtime.materialize(weights)
+        self._weights = runtime.materialize(weights)
         self._identity_source = None
         if spec.asset_dir is not None:
             transfer_data = load_identity_transfer_data(resolved_path, normalized_model_type)
@@ -136,11 +140,11 @@ class SOMA(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def mean_active(self) -> Float[Array, "Va 3"]:
-        return self.weights.mean_active
+        return self._weights.mean_active
 
     @property
     def num_joints(self) -> int:
@@ -148,25 +152,29 @@ class SOMA(SkinnedModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return self._joint_names
+        return list(self._config.joint_names)
+
+    @property
+    def parents(self) -> list[int]:
+        return list(self._config.parents)
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.mean_active.shape[0]
+        return self._weights.mean_active.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        if self.weights.public is not None:
-            return self.weights.public.skin_weights_active[:, 1:]
+        if self._weights.public is not None:
+            return self._weights.public.skin_weights_active[:, 1:]
         return self._skinning_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.weights.mean_active * 0.01
+        return self._weights.mean_active * 0.01
 
     @property
     def _skinning_weights(self) -> Float[Array, "V J"]:
-        return self.weights.skin_weights_active[:, 1:]
+        return self._weights.skin_weights_active[:, 1:]
 
     def prepare_skinning(
         self,
@@ -211,8 +219,8 @@ class SOMA(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.skin_joint_indices_active,
-            joint_weights=self.weights.skin_joint_weights_active,
+            joint_indices=self._weights.skin_joint_indices_active,
+            joint_weights=self._weights.skin_joint_weights_active,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -259,7 +267,7 @@ class SOMA(SkinnedModel):
         )
         pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
-            self.weights,
+            self._weights,
             pose,
             self.rotation_type,
             local_joint_translations=skeleton_identity["local_joint_translations"],
@@ -285,7 +293,7 @@ class SOMA(SkinnedModel):
         """Precompute identity-dependent state for repeated forward passes."""
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_identity_from_rest_shape(
-            data=self.weights,
+            data=self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             xp=self._runtime.xp,
@@ -312,7 +320,7 @@ class SOMA(SkinnedModel):
         )
         pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
-            self.weights,
+            self._weights,
             pose,
             rotation_type=self.rotation_type,
             local_joint_translations=identity["local_joint_translations"],
@@ -328,7 +336,7 @@ class SOMA(SkinnedModel):
     ) -> core.SomaSkeletonIdentity:
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_skeleton_identity_from_rest_shape(
-            self.weights,
+            self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             xp=self._runtime.xp,
@@ -347,7 +355,7 @@ class SOMA(SkinnedModel):
                 like=shape,
             )
         return identities.rest_shapes(
-            data=self.weights,
+            data=self._weights,
             model_type=self.model_type,
             identity_source=self._identity_source,
             identity=shape,
@@ -400,9 +408,6 @@ class SOMA(SkinnedModel):
         axis_angle = xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=xp)
         return params
-
-    def _rebuild_jax_state(self) -> None:
-        self.parents, self._joint_names = public_joint_metadata(self.weights)
 
 
 def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> Any:

@@ -98,9 +98,9 @@ def test_torch_module_manages_model_state() -> None:
 
     assert isinstance(module, torch.nn.Module)
     assert module.model is model
-    assert module.weights is model.weights
-    assert module.state_dict()
-    assert model.weights.vertices.dtype == torch.float64
+    assert module._weights is model._weights
+    assert "_weights.vertices" in module.state_dict()
+    assert model._weights.vertices.dtype == torch.float64
 
 
 @pytest.mark.fast
@@ -126,4 +126,5 @@ def test_jax_model_pytree_round_trip(name, model_class, kwargs) -> None:
     assert type(restored) is type(model), name
     assert restored.num_vertices == model.num_vertices
     assert restored.joint_names == model.joint_names
-    assert restored.get_rest_pose().keys() == model.get_rest_pose().keys()
+    parameters = jax.jit(lambda value: value.get_rest_pose())(restored)
+    assert parameters.keys() == model.parameter_spec.keys()

@@ -40,7 +40,7 @@ class G1(RigidBodyModel):
             raise ValueError(f"Invalid G1 convention: {convention!r}")
         runtime = self._set_runtime(runtime)
         self._config = G1Config(convention)
-        self.weights = runtime.materialize(load_model_data(model_path, convention=convention))
+        self._weights = runtime.materialize(load_model_data(model_path, convention=convention))
 
     @property
     def convention(self) -> core.Convention:
@@ -73,7 +73,7 @@ class G1(RigidBodyModel):
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
-        weights = self.weights
+        weights = self._weights
         return core.forward_skeleton(
             local_offsets=weights.local_offsets,
             rest_local_rotations=weights.rest_local_rotations,
@@ -131,7 +131,7 @@ class G1(RigidBodyModel):
             axis_angle,
             src="axis_angle",
             dst="hinge",
-            dst_kwargs={"axes": self.weights.actuated_joint_axes},
+            dst_kwargs={"axes": self._weights.actuated_joint_axes},
             xp=runtime.xp,
         )[..., 0]
         return params

@@ -11,7 +11,7 @@ from torch import nn
 
 def _store(module: nn.Module, static: dict[str, Any], name: str, value: Any) -> None:
     if isinstance(value, torch.Tensor):
-        module.register_buffer(name, value)
+        module.register_buffer(name, value, persistent=True)
     elif isinstance(value, nn.Module):
         module.add_module(name, value)
     else:

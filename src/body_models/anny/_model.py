@@ -66,7 +66,7 @@ class ANNY(SkinnedModel):
             extrapolate_phenotypes=extrapolate_phenotypes,
             rotation_type=rotation_type,
         )
-        self.weights = runtime.materialize(weights)
+        self._weights = runtime.materialize(weights)
 
     @property
     def all_phenotypes(self) -> bool:
@@ -104,31 +104,31 @@ class ANNY(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F _"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def num_joints(self) -> int:
-        return len(self.weights.bone_labels)
+        return len(self._weights.bone_labels)
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self.weights.bone_labels)
+        return list(self._weights.bone_labels)
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.template_vertices.shape[0]
+        return self._weights.template_vertices.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        return self.weights.lbs_weights
+        return self._weights.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.weights.template_vertices
+        return self._weights.template_vertices
 
     @property
     def parents(self) -> list[int]:
-        return self.weights.parents
+        return self._weights.parents
 
     def prepare_skinning(
         self,
@@ -166,8 +166,8 @@ class ANNY(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.lbs_joint_indices,
-            joint_weights=self.weights.lbs_joint_weights,
+            joint_indices=self._weights.lbs_joint_indices,
+            joint_weights=self._weights.lbs_joint_weights,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -211,7 +211,7 @@ class ANNY(SkinnedModel):
         )
         packed_pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
-            self.weights.kinematic_fronts,
+            self._weights.kinematic_fronts,
             packed_pose,
             self.rotation_type,
             rest_skeleton_transforms=skeleton_identity["rest_skeleton_transforms"],
@@ -233,17 +233,17 @@ class ANNY(SkinnedModel):
         """Precompute phenotype-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            template_vertices=self.weights.template_vertices,
-            blendshapes=self.weights.blendshapes,
-            template_bone_heads=self.weights.template_bone_heads,
-            template_bone_tails=self.weights.template_bone_tails,
-            bone_heads_blendshapes=self.weights.bone_heads_blendshapes,
-            bone_tails_blendshapes=self.weights.bone_tails_blendshapes,
-            bone_rolls_rotmat=self.weights.bone_rolls_rotmat,
-            phenotype_mask=self.weights.phenotype_mask,
-            anchors=self.weights.anchors,
-            y_axis=self.weights.y_axis,
-            degenerate_rotation=self.weights.degenerate_rotation,
+            template_vertices=self._weights.template_vertices,
+            blendshapes=self._weights.blendshapes,
+            template_bone_heads=self._weights.template_bone_heads,
+            template_bone_tails=self._weights.template_bone_tails,
+            bone_heads_blendshapes=self._weights.bone_heads_blendshapes,
+            bone_tails_blendshapes=self._weights.bone_tails_blendshapes,
+            bone_rolls_rotmat=self._weights.bone_rolls_rotmat,
+            phenotype_mask=self._weights.phenotype_mask,
+            anchors=self._weights.anchors,
+            y_axis=self._weights.y_axis,
+            degenerate_rotation=self._weights.degenerate_rotation,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
             shape=shape,
         )
@@ -279,7 +279,7 @@ class ANNY(SkinnedModel):
         )
         packed_pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
-            self.weights.kinematic_fronts,
+            self._weights.kinematic_fronts,
             packed_pose,
             self.rotation_type,
             rest_skeleton_transforms=identity["rest_skeleton_transforms"],
@@ -292,15 +292,15 @@ class ANNY(SkinnedModel):
     ) -> core.AnnySkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
-            template_bone_heads=self.weights.template_bone_heads,
-            template_bone_tails=self.weights.template_bone_tails,
-            bone_heads_blendshapes=self.weights.bone_heads_blendshapes,
-            bone_tails_blendshapes=self.weights.bone_tails_blendshapes,
-            bone_rolls_rotmat=self.weights.bone_rolls_rotmat,
-            phenotype_mask=self.weights.phenotype_mask,
-            anchors=self.weights.anchors,
-            y_axis=self.weights.y_axis,
-            degenerate_rotation=self.weights.degenerate_rotation,
+            template_bone_heads=self._weights.template_bone_heads,
+            template_bone_tails=self._weights.template_bone_tails,
+            bone_heads_blendshapes=self._weights.bone_heads_blendshapes,
+            bone_tails_blendshapes=self._weights.bone_tails_blendshapes,
+            bone_rolls_rotmat=self._weights.bone_rolls_rotmat,
+            phenotype_mask=self._weights.phenotype_mask,
+            anchors=self._weights.anchors,
+            y_axis=self._weights.y_axis,
+            degenerate_rotation=self._weights.degenerate_rotation,
             extrapolate_phenotypes=self.extrapolate_phenotypes,
             shape=shape,
         )

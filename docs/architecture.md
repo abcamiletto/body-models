@@ -49,7 +49,10 @@ presets such as flat or relaxed hands.
 state materialization, and lowerings of stable shared operations such as
 compact linear blend skinning. Materialization delegates to the recursive
 converters in `_state.py`; callers therefore cannot pair a runtime with the
-wrong framework state. The runtime does not own model semantics.
+wrong framework state. Materialized weights are private because their container
+types are backend-specific; stable model properties provide public access to
+meshes, skeletons, and deformation bases. The runtime does not own model
+semantics.
 
 Models accept either a runtime name or an `ArrayRuntime` instance. Runtime
 options are configured once on that object, so adding an execution option does
@@ -71,8 +74,11 @@ model state and prevents it from accumulating every accelerated operation.
 
 Torch lifecycle behavior is orthogonal to model identity. `model.as_module()`
 wraps Torch-backed state in `torch.nn.Module` semantics for `.to()`,
-`state_dict()`, and buffer registration. JAX-backed instances of the same model
-class implement the pytree protocol.
+`state_dict()`, and buffer registration. All numeric model state is a persistent
+buffer, so checkpoints are complete but may be large. JAX-backed instances of
+the same model class implement the pytree protocol. Everything needed to
+reconstruct a model is either a pytree child or static config; reconstruction
+has no subclass hooks.
 
 Linear identity preparation is shared by the SMPL family, MANO, and FLAME
 because those models apply the same coefficients to vertex and joint bases.

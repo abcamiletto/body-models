@@ -46,27 +46,27 @@ class MHR(SkinnedModel):
         weights = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = None
-        self.weights = runtime.materialize(weights)
+        self._weights = runtime.materialize(weights)
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self.weights.faces
+        return self._weights.faces
 
     @property
     def num_joints(self) -> int:
-        return len(self.weights.parents)
+        return len(self._weights.parents)
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self.weights.joint_names)
+        return list(self._weights.joint_names)
 
     @property
     def num_vertices(self) -> int:
-        return self.weights.base_vertices.shape[0]
+        return self._weights.base_vertices.shape[0]
 
     @property
     def pose_dim(self) -> int:
-        return self.weights.parameter_transform.shape[1] - self.SHAPE_DIM
+        return self._weights.parameter_transform.shape[1] - self.SHAPE_DIM
 
     @property
     def body_pose_dim(self) -> int:
@@ -94,15 +94,15 @@ class MHR(SkinnedModel):
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self.weights.base_vertices * 0.01
+        return self._weights.base_vertices * 0.01
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        return self.weights.dense_skin_weights
+        return self._weights.dense_skin_weights
 
     @property
     def parents(self) -> list[int]:
-        return self.weights.parents
+        return self._weights.parents
 
     def forward_vertices(
         self,
@@ -132,8 +132,8 @@ class MHR(SkinnedModel):
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
-            joint_indices=self.weights.skin_indices,
-            joint_weights=self.weights.skin_weights,
+            joint_indices=self._weights.skin_indices,
+            joint_weights=self._weights.skin_weights,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -156,10 +156,10 @@ class MHR(SkinnedModel):
         xp = self._runtime.xp
         pose = pack_pose(xp, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
-            joint_offsets=self.weights.joint_offsets,
-            joint_pre_rotations=self.weights.joint_pre_rotations,
-            parameter_transform=self.weights.parameter_transform,
-            kinematic_fronts=self.weights.kinematic_fronts,
+            joint_offsets=self._weights.joint_offsets,
+            joint_pre_rotations=self._weights.joint_pre_rotations,
+            parameter_transform=self._weights.parameter_transform,
+            kinematic_fronts=self._weights.kinematic_fronts,
             num_joints=self.num_joints,
             shape_dim=self.SHAPE_DIM,
             pose=pose,
@@ -182,8 +182,8 @@ class MHR(SkinnedModel):
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            base_vertices=self.weights.base_vertices,
-            blendshape_dirs=self.weights.blendshape_dirs,
+            base_vertices=self._weights.base_vertices,
+            blendshape_dirs=self._weights.blendshape_dirs,
             shape=shape,
             expression=expression,
         )
@@ -197,16 +197,16 @@ class MHR(SkinnedModel):
         """Precompute pose-dependent MHR state."""
         pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
-            joint_offsets=self.weights.joint_offsets,
-            joint_pre_rotations=self.weights.joint_pre_rotations,
-            parameter_transform=self.weights.parameter_transform,
-            kinematic_fronts=self.weights.kinematic_fronts,
+            joint_offsets=self._weights.joint_offsets,
+            joint_pre_rotations=self._weights.joint_pre_rotations,
+            parameter_transform=self._weights.parameter_transform,
+            kinematic_fronts=self._weights.kinematic_fronts,
             num_joints=self.num_joints,
             shape_dim=self.SHAPE_DIM,
-            bind_inv_linear=self.weights.bind_inv_linear,
-            bind_inv_translation=self.weights.bind_inv_translation,
-            corrective_hidden_weights=self.weights.correctives.hidden_weights,
-            corrective_output_weights=self.weights.correctives.output_weights,
+            bind_inv_linear=self._weights.bind_inv_linear,
+            bind_inv_translation=self._weights.bind_inv_translation,
+            corrective_hidden_weights=self._weights.correctives.hidden_weights,
+            corrective_output_weights=self._weights.correctives.output_weights,
             pose=pose,
             xp=self._runtime.xp,
         )

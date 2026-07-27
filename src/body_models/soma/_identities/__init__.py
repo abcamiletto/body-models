@@ -69,7 +69,7 @@ def prepare_transfer(
     if model_type != "anny":
         return transfer
 
-    template = model.weights.template_vertices
+    template = model._weights.template_vertices
     source = runtime.asarray(transfer_data.source_vertices, like=template)
     rotation, translation = core.fit_rigid_transform(template, source, xp=runtime.xp)
     source_to_soma = runtime.asarray(
@@ -98,10 +98,10 @@ def source_shape(
         return mhr_identity_shape(model, identity, scale_params, num_scale_params=68, xp=xp)
     if model_type == "anny":
         return anny_identity_shape(
-            template_vertices=model.weights.template_vertices,
-            blendshapes=model.weights.blendshapes,
-            phenotype_mask=model.weights.phenotype_mask,
-            anchors=model.weights.anchors,
+            template_vertices=model._weights.template_vertices,
+            blendshapes=model._weights.blendshapes,
+            phenotype_mask=model._weights.phenotype_mask,
+            anchors=model._weights.anchors,
             shape=identity,
             xp=xp,
         )
