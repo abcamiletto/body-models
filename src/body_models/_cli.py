@@ -25,14 +25,14 @@ def show_config(ctx: typer.Context) -> None:
         return
     typer.echo(f"Config file: {config.CONFIG_FILE}\n")
     typer.echo("Current settings:")
-    for model in config.MODELS:
+    for model in config.ASSET_KEYS:
         typer.echo(f"  {model}: {config.get_model_path(model) or '(not set)'}")
 
 
 @app.command()
 def set(model: Annotated[str, typer.Argument()], path: Path) -> None:
     """Validate and save a model asset path."""
-    _require_choice(model, config.MODELS, "model asset")
+    _require_choice(model, config.ASSET_KEYS, "model asset")
     config.set_model_path(model, path)
     typer.echo(f"Set {model} = {config.get_model_path(model)}")
 
@@ -40,7 +40,7 @@ def set(model: Annotated[str, typer.Argument()], path: Path) -> None:
 @app.command()
 def unset(model: Annotated[str, typer.Argument()]) -> None:
     """Remove a model asset path from the config."""
-    _require_choice(model, config.MODELS, "model asset")
+    _require_choice(model, config.ASSET_KEYS, "model asset")
     config.unset_model_path(model)
     typer.echo(f"Removed {model} from config")
 
