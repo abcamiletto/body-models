@@ -17,7 +17,7 @@ from scipy import sparse as scipy_sparse
 from scipy.sparse import csc_matrix
 
 from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir
+from body_models._cache import download_hf_archive, get_cache_dir, write_npz_atomic
 from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 
@@ -661,7 +661,7 @@ def load_identity_transfer_data(asset_dir: Path, model_type: str) -> SomaIdentit
             unknown_ids=facial_inner_vertices,
         )
 
-    np.savez_compressed(
+    write_npz_atomic(
         cache_file,
         source_vertices=source_vertices,
         source_tetrahedra=source_tetrahedra,
@@ -804,7 +804,7 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     W2 = _sparse_matrix(W2_rows, W2_cols, W2_values, W2_sparse.size)
     hidden_weights = np.zeros(W1_sparse.size, dtype=np.float32)
     hidden_weights[W1_rows, W1_cols] = W1_values
-    np.savez_compressed(
+    write_npz_atomic(
         cache_file,
         bindpose=bindpose,
         W1=hidden_weights,
@@ -952,7 +952,7 @@ def _load_or_build_joint_position_regressor(
         joint_parents=joint_parents,
         vertex_ids_to_exclude=vertex_ids_to_exclude,
     )
-    np.savez(cache_file, joint_regressor=joint_regressor)
+    write_npz_atomic(cache_file, compressed=False, joint_regressor=joint_regressor)
     return joint_regressor
 
 

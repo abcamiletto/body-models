@@ -1,5 +1,6 @@
 import zipfile
 
+import numpy as np
 import pytest
 
 from body_models import _cache
@@ -152,3 +153,22 @@ def test_archive_replaces_destination_only_after_extraction(tmp_path) -> None:
 
     assert (output_dir / "new" / "model.npz").read_text() == "model"
     assert not (output_dir / "old.npz").exists()
+
+
+@pytest.mark.fast
+def test_failed_npz_write_preserves_existing_cache(tmp_path, monkeypatch) -> None:
+    cache_file = tmp_path / "cache.npz"
+    _cache.write_npz_atomic(cache_file, values=np.array([1]))
+    original = cache_file.read_bytes()
+
+    def fail(path, **arrays):
+        path.write_bytes(b"partial")
+        raise RuntimeError("write failed")
+
+    monkeypatch.setattr(_cache.np, "savez_compressed", fail)
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        _cache.write_npz_atomic(cache_file, values=np.array([2]))
+
+    assert cache_file.read_bytes() == original
+    assert list(tmp_path.iterdir()) == [cache_file]

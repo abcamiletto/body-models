@@ -88,3 +88,26 @@ def test_mhr_has_model_requires_all_hosted_lods(tmp_path) -> None:
     (tmp_path / mhr_io.MHR_ASSETS[-1]).touch()
 
     assert mhr_io._has_model(tmp_path)
+
+
+@pytest.mark.fast
+def test_mhr_validation_reports_missing_default_assets(tmp_path) -> None:
+    (tmp_path / "mhr_model.pt").touch()
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=r"corrective_activation\.npz, corrective_blendshapes_lod1\.npz",
+    ):
+        mhr_io.validate_path(tmp_path)
+
+
+@pytest.mark.fast
+def test_mhr_loading_reports_missing_selected_lod_assets(tmp_path) -> None:
+    for name in mhr_io._MHR_DEFAULT_ASSETS:
+        (tmp_path / name).touch()
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=r"corrective_blendshapes_lod2\.npz, mhr_lod2\.npz",
+    ):
+        mhr_io.load_model_data(tmp_path, lod=2)
