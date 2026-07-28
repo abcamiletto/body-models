@@ -1,12 +1,12 @@
-"""PyTorch ANNY backend."""
+"""Warp-accelerated ANNY Torch backend."""
 
 import torch
 from torch import Tensor
 from jaxtyping import Float
 
+from body_models.common import warp as warp_backend
 from body_models.bodies.anny.backends.core import AnnyIdentity, AnnyPreparedPose
 from body_models.bodies.anny.backends.core import forward_skeleton as _forward_skeleton
-from body_models.bodies.anny.backends.core import forward_vertices as _forward_vertices
 from body_models.bodies.anny.backends.core import prepare_identity as _prepare_identity
 from body_models.bodies.anny.backends.core import prepare_pose as _prepare_pose
 from body_models.bodies.anny.io import AnnyWeights
@@ -63,17 +63,25 @@ def forward_vertices(
     weights: AnnyWeights,
     rest_vertices: Float[Tensor, "*batch V 3"],
     skinning_transforms: Float[Tensor, "*batch J 4 4"],
-    global_translation: Float[Tensor, "B 3"] | None = None,
+    global_translation: Float[Tensor, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
 ):
-    return _forward_vertices(
-        lbs_weights=weights.lbs_weights,
-        global_translation=global_translation,
-        vertex_indices=vertex_indices,
-        rest_vertices=rest_vertices,
-        skinning_transforms=skinning_transforms,
-        xp=torch,
+    joint_indices = weights.lbs_joint_indices
+    joint_weights = weights.lbs_joint_weights
+    if vertex_indices is not None:
+        rest_vertices = rest_vertices[..., vertex_indices, :]
+        joint_indices = joint_indices[vertex_indices]
+        joint_weights = joint_weights[vertex_indices]
+
+    vertices = warp_backend.compact_linear_blend_skinning(
+        rest_vertices,
+        skinning_transforms,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
     )
+    if global_translation is not None:
+        vertices = vertices + global_translation[..., None, :]
+    return vertices
 
 
 def forward_skeleton(

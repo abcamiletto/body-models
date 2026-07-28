@@ -7,7 +7,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import common
-from body_models.common import get_namespace
+from body_models.common import get_namespace, skinning
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -58,8 +58,8 @@ def apply_pose_correctives(
 
 
 def forward_vertices(
-    skin_weights: Float[Array, "V K"],
-    skin_indices: Int[Array, "V K"],
+    joint_weights: Float[Array, "V K"],
+    joint_indices: Int[Array, "V K"],
     rest_vertices: Float[Array, "*batch V 3"],
     skinning_transforms: Float[Array, "*batch J 4 4"],
     pose_offsets: Float[Array, "*batch V 3"],
@@ -78,28 +78,23 @@ def forward_vertices(
     if vertex_indices is not None:
         vertex_indices = xp.asarray(vertex_indices)
         rest_vertices = rest_vertices[..., vertex_indices, :]
-        skin_weights = skin_weights[vertex_indices]
-        skin_indices = skin_indices[vertex_indices]
+        joint_weights = joint_weights[vertex_indices]
+        joint_indices = joint_indices[vertex_indices]
         pose_offsets = pose_offsets[..., vertex_indices, :]
 
-    v_t = rest_vertices + pose_offsets
-
-    lin = skinning_transforms[..., :3, :3]
-    t = skinning_transforms[..., :3, 3]
-
-    lin = _gather_joint_matrices(lin, skin_indices)
-    t = _gather_joint_vectors(t, skin_indices)
-
-    v_transformed = xp.einsum("...vkij,...vj->...vki", lin, v_t) + t
-    verts = xp.sum(v_transformed * skin_weights[:, :, None], axis=-2)
-
-    if global_rotation is not None:
-        R = SO3.conversions.from_axis_angle_to_rotmat(global_rotation, xp=xp)
-        verts = xp.einsum("...ij,...vj->...vi", R, verts)
-    if global_translation is not None:
-        verts = verts + global_translation[..., None, :]
-
-    return verts
+    vertices = skinning.compact_linear_blend_skinning(
+        rest_vertices + pose_offsets,
+        skinning_transforms,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
+        xp=xp,
+    )
+    return skinning.apply_global_transform(
+        vertices,
+        global_rotation,
+        global_translation,
+        xp=xp,
+    )
 
 
 def prepare_pose(
@@ -347,19 +342,3 @@ def _transforms_from_linear_translation(
     T = common.set(T, (..., slice(None, 3), slice(None, 3)), linear, xp=xp)
     T = common.set(T, (..., slice(None, 3), 3), translation, xp=xp)
     return common.set(T, (..., 3, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
-
-
-def _gather_joint_matrices(arr: Array, indices: Int[Array, "V K"]) -> Array:
-    V, K = indices.shape
-    flat_indices = indices.reshape(-1)
-    gathered = arr[..., flat_indices, :, :]
-    new_shape = (*arr.shape[:-3], V, K, *arr.shape[-2:])
-    return gathered.reshape(new_shape)
-
-
-def _gather_joint_vectors(arr: Array, indices: Int[Array, "V K"]) -> Array:
-    V, K = indices.shape
-    flat_indices = indices.reshape(-1)
-    gathered = arr[..., flat_indices, :]
-    new_shape = (*arr.shape[:-2], V, K, arr.shape[-1])
-    return gathered.reshape(new_shape)

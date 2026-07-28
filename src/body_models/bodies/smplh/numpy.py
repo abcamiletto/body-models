@@ -12,7 +12,6 @@ from nanomanifold import SO3
 from body_models.rotations import VALID_ROTATION_TYPES, RotationType
 from body_models.bodies.smplh.backends.core import SmplhIdentity, SmplhPreparedPose
 from body_models.bodies.smplh.backends import numpy as numpy_backend
-from body_models.bodies.smplh.backends import scipy as scipy_backend
 from body_models.bodies.smplh.io import get_model_path, load_model_data
 from body_models.bodies.smplh.constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
 
@@ -28,7 +27,6 @@ class SMPLH(SkinnedModel):
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_JOINTS = 52
-    kernels = ("numpy", "scipy", "numba")
     JOINTS = SMPLH_JOINTS
 
     def __init__(
@@ -38,7 +36,6 @@ class SMPLH(SkinnedModel):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
         """Initialize the SMPLH model.
 
@@ -48,7 +45,6 @@ class SMPLH(SkinnedModel):
             flat_hand_mean: Whether to use a flat hand as the pose mean.
             simplify: Mesh simplification factor to apply while loading.
             rotation_type: Rotation representation expected by pose inputs.
-            kernel: Backend kernel used for forward evaluation.
         """
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender}. Must be 'neutral', 'male', or 'female'.")
@@ -56,13 +52,10 @@ class SMPLH(SkinnedModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
-        if kernel not in self.kernels:
-            raise ValueError(f"Invalid kernel: {kernel}")
 
         self.gender = gender if gender is not None else "neutral"
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path, gender)
         self.weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
@@ -139,7 +132,7 @@ class SMPLH(SkinnedModel):
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
         pose = self.prepare_pose(body_pose, hand_pose, pelvis_rotation, identity=identity)
-        return self._kernel.forward_vertices(
+        return numpy_backend.forward_vertices(
             self.weights,
             identity["rest_vertices"],
             pose["skinning_transforms"],
@@ -182,7 +175,7 @@ class SMPLH(SkinnedModel):
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
         pose = self.prepare_pose(body_pose, hand_pose, pelvis_rotation, identity=identity, skip_vertices=True)
-        return self._kernel.forward_skeleton(
+        return numpy_backend.forward_skeleton(
             self.weights,
             pose["skeleton_transforms"],
             global_rotation=global_rotation,
@@ -197,7 +190,7 @@ class SMPLH(SkinnedModel):
         skip_vertices: bool = False,
     ) -> SmplhIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
-        return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+        return numpy_backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
 
     def prepare_pose(
         self,
@@ -209,7 +202,7 @@ class SMPLH(SkinnedModel):
         skip_vertices: bool = False,
     ) -> SmplhPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        return self._kernel.prepare_pose(
+        return numpy_backend.prepare_pose(
             self.weights,
             body_pose,
             hand_pose,
@@ -289,17 +282,3 @@ class SMPLH(SkinnedModel):
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         params["body_pose"] = SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np).copy()
         return params
-
-
-def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):
-    if kernel == "numpy":
-        return numpy_backend
-    if kernel == "scipy":
-        return scipy_backend
-
-    try:
-        from body_models.bodies.smplh.backends import numba as numba_backend
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use SMPLH kernel='numba'.") from exc
-
-    return numba_backend

@@ -1,6 +1,6 @@
 """Warp-accelerated SOMA Torch backend."""
 
-from body_models.bodies.smpl.backends import warp as smpl_warp
+from body_models.common import warp as warp_backend
 from body_models.bodies.soma.backends import core
 from body_models.bodies.soma.backends import torch as torch_backend
 
@@ -73,12 +73,9 @@ def linear_blend_skinning(
     joint_indices,
     joint_weights,
 ):
-    if bind_shape.device.type != "cuda":
-        return torch_backend.linear_blend_skinning(xp, bind_shape, skin_weights, skinning_transforms)
-    return smpl_warp.warp_affine_blend_skinning(
+    return warp_backend.compact_linear_blend_skinning(
         bind_shape,
         skinning_transforms,
-        skin_weights,
-        joint_indices,
-        joint_weights,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
     )

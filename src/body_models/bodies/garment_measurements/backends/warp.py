@@ -5,7 +5,7 @@ from jaxtyping import Float
 from nanomanifold import SE3, SO3
 from torch import Tensor
 
-from body_models.bodies.smpl.backends import warp as smpl_warp
+from body_models.common import warp as warp_backend
 from body_models.rotations import RotationType
 from . import core
 from ..io import GarmentMeasurementsWeights
@@ -39,7 +39,7 @@ def prepare_pose(
     local_quats = SO3.multiply(weights.bind_quats, pose_quats, xp=torch)
     local_rotations = SO3.convert(local_quats, src="quat", dst="rotmat", xp=torch)
 
-    skeleton = smpl_warp.warp_forward_kinematics(local_rotations, local_bind_translations, weights.parents)
+    skeleton = warp_backend.forward_kinematics(local_rotations, local_bind_translations, weights.parents)
 
     prepared_pose: core.GarmentMeasurementsPreparedPose = {"skeleton_transforms": skeleton}
     if not skip_vertices:
@@ -57,21 +57,18 @@ def forward_vertices(
     vertex_indices: list[int] | None = None,
     rotation_type: RotationType = "axis_angle",
 ):
-    skin_weights = weights.skin_weights
     joint_indices = weights.skin_joint_indices
     joint_weights = weights.skin_joint_weights
     if vertex_indices is not None:
         rest_vertices = rest_vertices[..., vertex_indices, :]
-        skin_weights = skin_weights[vertex_indices]
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
 
-    vertices = smpl_warp.warp_affine_blend_skinning(
+    vertices = warp_backend.compact_linear_blend_skinning(
         rest_vertices,
         skinning_transforms,
-        skin_weights,
-        joint_indices,
-        joint_weights,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
     )
     return core.apply_global_transform(
         values=vertices,

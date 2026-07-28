@@ -10,7 +10,7 @@ from torch import Tensor
 
 from body_models import common
 from body_models.base import SkinnedModel
-from body_models.bodies.mhr.backends import torch as backend
+from body_models.bodies.mhr.backends import torch as torch_backend
 from body_models.bodies.mhr.backends.core import MhrIdentity, MhrPreparedPose
 from body_models.bodies.mhr.constants import (
     MHR_BODY_POSE_DIM,
@@ -33,6 +33,7 @@ class MHR(SkinnedModel, nn.Module):
     pose_keys = ("body_pose", "head_pose", "hand_pose")
     has_hands = True
     has_head = True
+    kernels = ("torch", "warp")
     SHAPE_DIM = 45
     EXPR_DIM = 72
     JOINTS = MHR_JOINTS
@@ -43,6 +44,7 @@ class MHR(SkinnedModel, nn.Module):
         *,
         lod: int = 1,
         simplify: float = 1.0,
+        kernel: Literal["torch", "warp"] = "torch",
     ) -> None:
         """Initialize the MHR model.
 
@@ -50,9 +52,11 @@ class MHR(SkinnedModel, nn.Module):
             model_path: Path to model assets, or the default assets when omitted.
             lod: Level-of-detail variant to load.
             simplify: Mesh simplification factor to apply while loading.
+            kernel: Backend kernel used for forward evaluation.
         """
         super().__init__()
         self.weights = common.torchify(load_model_data(get_model_path(model_path), lod=lod, simplify=simplify))
+        self._kernel = _get_kernel(kernel)
 
     @property
     def faces(self) -> Int[Tensor, "F 3"]:
@@ -140,7 +144,7 @@ class MHR(SkinnedModel, nn.Module):
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose)
-        return backend.forward_vertices(
+        return self._kernel.forward_vertices(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -185,7 +189,7 @@ class MHR(SkinnedModel, nn.Module):
             expression = torch.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression=expression, skip_vertices=True)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, skip_vertices=True)
-        return backend.forward_skeleton(
+        return self._kernel.forward_skeleton(
             weights=self.weights,
             global_rotation=global_rotation,
             global_translation=global_translation,
@@ -200,7 +204,7 @@ class MHR(SkinnedModel, nn.Module):
         skip_vertices: bool = False,
     ) -> MhrIdentity:
         """Precompute shape- and expression-dependent state for repeated forward passes."""
-        return backend.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
+        return self._kernel.prepare_identity(self.weights, shape, expression=expression, skip_vertices=skip_vertices)
 
     def prepare_pose(
         self,
@@ -213,7 +217,7 @@ class MHR(SkinnedModel, nn.Module):
     ) -> MhrPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         pose = pack_pose(torch, body_pose, head_pose, hand_pose)
-        return backend.prepare_pose(self.weights, pose, skip_vertices=skip_vertices)
+        return self._kernel.prepare_pose(self.weights, pose, skip_vertices=skip_vertices)
 
     def get_rest_pose(
         self,
@@ -261,3 +265,15 @@ class MHR(SkinnedModel, nn.Module):
         **kwargs,
     ) -> dict[str, Tensor]:
         return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+
+
+def _get_kernel(kernel: Literal["torch", "warp"]):
+    if kernel == "torch":
+        return torch_backend
+
+    try:
+        from body_models.bodies.mhr.backends import warp as warp_backend
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[warp] to use MHR kernel='warp'.") from exc
+
+    return warp_backend
