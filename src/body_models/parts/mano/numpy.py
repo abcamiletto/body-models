@@ -10,7 +10,6 @@ from body_models.base import SkinnedModel
 from nanomanifold import SO3
 
 from body_models.parts.mano.backends import numpy as numpy_backend
-from body_models.parts.mano.backends import scipy as scipy_backend
 from body_models.parts.mano.backends.core import ManoIdentity, ManoPreparedPose
 from body_models.parts.mano.io import get_model_path, load_model_data
 from body_models.parts.mano.constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
@@ -27,7 +26,6 @@ class MANO(SkinnedModel):
     has_hands = True
     NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
-    kernels = ("numpy", "scipy", "numba")
 
     def __init__(
         self,
@@ -36,7 +34,6 @@ class MANO(SkinnedModel):
         flat_hand_mean: bool = False,
         simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        kernel: Literal["numpy", "scipy", "numba"] = "numpy",
     ):
         """Initialize the MANO model.
 
@@ -46,7 +43,6 @@ class MANO(SkinnedModel):
             flat_hand_mean: Whether to use a flat hand as the pose mean.
             simplify: Mesh simplification factor to apply while loading.
             rotation_type: Rotation representation expected by pose inputs.
-            kernel: Backend kernel used for forward evaluation.
         """
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side}. Must be 'right' or 'left'.")
@@ -54,13 +50,10 @@ class MANO(SkinnedModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
-        if kernel not in self.kernels:
-            raise ValueError(f"Invalid kernel: {kernel}")
 
         self.side = side if side is not None else "right"
         self.rotation_type = rotation_type
         self.num_rot_dims = 2 if rotation_type in ("matrix", "rotmat") else 1
-        self._kernel = _get_kernel(kernel)
 
         resolved_path = get_model_path(model_path, side)
         self.weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
@@ -139,7 +132,7 @@ class MANO(SkinnedModel):
             batch_shape = tuple(hand_pose.shape[: -(self.num_rot_dims + 1)])
             identity = self.prepare_identity(np.broadcast_to(shape, (*batch_shape, shape.shape[-1])))
         pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity)
-        return self._kernel.forward_vertices(
+        return numpy_backend.forward_vertices(
             self.weights,
             identity["rest_vertices"],
             pose["skinning_transforms"],
@@ -181,7 +174,7 @@ class MANO(SkinnedModel):
             shape = np.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape, skip_vertices=True)
         pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity, skip_vertices=True)
-        return self._kernel.forward_skeleton(
+        return numpy_backend.forward_skeleton(
             self.weights,
             pose["skeleton_transforms"],
             global_rotation=global_rotation,
@@ -196,7 +189,7 @@ class MANO(SkinnedModel):
         skip_vertices: bool = False,
     ) -> ManoIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
-        return self._kernel.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
+        return numpy_backend.prepare_identity(self.weights, shape, skip_vertices=skip_vertices)
 
     def prepare_pose(
         self,
@@ -207,7 +200,7 @@ class MANO(SkinnedModel):
         skip_vertices: bool = False,
     ) -> ManoPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        return self._kernel.prepare_pose(
+        return numpy_backend.prepare_pose(
             self.weights,
             hand_pose,
             wrist_rotation,
@@ -259,17 +252,3 @@ class MANO(SkinnedModel):
         axis_angle = np.asarray(preset, dtype=dtype).reshape(self.NUM_HAND_JOINTS, 3)
         axis_angle = np.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=np)
-
-
-def _get_kernel(kernel: Literal["numpy", "scipy", "numba"]):
-    if kernel == "numpy":
-        return numpy_backend
-    if kernel == "scipy":
-        return scipy_backend
-
-    try:
-        from body_models.parts.mano.backends import numba as numba_backend
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[numba] to use MANO kernel='numba'.") from exc
-
-    return numba_backend

@@ -1,4 +1,4 @@
-"""Warp-accelerated SMPL-X Torch backend."""
+"""Warp-accelerated MHR Torch backend."""
 
 import torch
 from jaxtyping import Float
@@ -6,9 +6,8 @@ from torch import Tensor
 
 from body_models.common import skinning
 from body_models.common import warp as warp_backend
-from body_models.rotations import RotationType
-from body_models.bodies.smplx.backends import torch as torch_backend
-from body_models.bodies.smplx.io import SmplxWeights
+from body_models.bodies.mhr.backends import torch as torch_backend
+from body_models.bodies.mhr.io import MhrWeights
 
 forward_skeleton = torch_backend.forward_skeleton
 prepare_identity = torch_backend.prepare_identity
@@ -18,34 +17,31 @@ __all__ = ["forward_vertices", "forward_skeleton", "prepare_identity", "prepare_
 
 
 def forward_vertices(
-    weights: SmplxWeights,
+    weights: MhrWeights,
     rest_vertices: Float[Tensor, "*batch V 3"],
     skinning_transforms: Float[Tensor, "*batch J 4 4"],
     pose_offsets: Float[Tensor, "*batch V 3"],
-    global_rotation: Float[Tensor, "*batch N"] | Float[Tensor, "*batch 3 3"] | None = None,
+    global_rotation: Float[Tensor, "*batch 3"] | None = None,
     global_translation: Float[Tensor, "*batch 3"] | None = None,
     vertex_indices: list[int] | None = None,
-    rotation_type: RotationType = "axis_angle",
-):
-    joint_indices = weights.lbs_joint_indices
-    joint_weights = weights.lbs_joint_weights
+) -> Float[Tensor, "*batch V 3"]:
+    joint_indices = weights.skin_indices
+    joint_weights = weights.skin_weights
     if vertex_indices is not None:
         rest_vertices = rest_vertices[..., vertex_indices, :]
         pose_offsets = pose_offsets[..., vertex_indices, :]
         joint_indices = joint_indices[vertex_indices]
         joint_weights = joint_weights[vertex_indices]
 
-    v_shaped = rest_vertices + pose_offsets
-    v_posed = warp_backend.compact_linear_blend_skinning(
-        v_shaped,
+    vertices = warp_backend.compact_linear_blend_skinning(
+        rest_vertices + pose_offsets,
         skinning_transforms,
         joint_indices=joint_indices,
         joint_weights=joint_weights,
     )
     return skinning.apply_global_transform(
-        v_posed,
+        vertices,
         global_rotation,
         global_translation,
-        rotation_type,
         xp=torch,
     )

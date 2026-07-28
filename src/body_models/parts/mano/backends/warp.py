@@ -4,11 +4,11 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
+from body_models.common import skinning
+from body_models.common import warp as warp_backend
 from body_models.parts.mano.backends import torch as torch_backend
 from body_models.parts.mano.io import ManoWeights
 from body_models.rotations import RotationType
-from body_models.bodies.smpl.backends import core as smpl_core
-from body_models.bodies.smpl.backends import warp as smpl_warp
 
 forward_skeleton = torch_backend.forward_skeleton
 prepare_identity = torch_backend.prepare_identity
@@ -36,5 +36,16 @@ def forward_vertices(
         joint_weights = joint_weights[vertex_indices]
 
     v_shaped = rest_vertices + pose_offsets
-    v_posed = smpl_warp.warp_affine_blend_skinning(v_shaped, skinning_transforms, joint_indices, joint_weights)
-    return smpl_core.apply_global_transform(torch, v_posed, global_rotation, global_translation, rotation_type)
+    v_posed = warp_backend.compact_linear_blend_skinning(
+        v_shaped,
+        skinning_transforms,
+        joint_indices=joint_indices,
+        joint_weights=joint_weights,
+    )
+    return skinning.apply_global_transform(
+        v_posed,
+        global_rotation,
+        global_translation,
+        rotation_type,
+        xp=torch,
+    )
