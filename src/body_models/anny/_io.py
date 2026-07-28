@@ -11,7 +11,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir
+from body_models._cache import download_hf_archive, get_cache_dir, write_npz_atomic
 from body_models._common import Front, compute_kinematic_fronts
 from body_models._common.skinning import CompactSkinning
 
@@ -305,7 +305,7 @@ def _save_npz_cache(cache_file: Path, data: dict) -> None:
     arrays = {k: v for k, v in data.items() if isinstance(v, np.ndarray)}
     arrays["bone_labels"] = np.asarray(data["bone_labels"], dtype=object)
     arrays["parents"] = np.asarray(data["parents"], dtype=np.int64)
-    np.savez_compressed(cache_file, **arrays)
+    write_npz_atomic(cache_file, **arrays)
 
 
 def _load_npz_cache(cache_file: Path) -> dict:

@@ -12,7 +12,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir
+from body_models._cache import download_hf_archive, get_cache_dir, write_npz_atomic
 from body_models._common import Front, compute_kinematic_fronts, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 
@@ -22,6 +22,12 @@ MHR_ASSETS = (
     "mhr_model.pt",
     "corrective_activation.npz",
     *(f"mhr_lod{lod}.npz" for lod in SUPPORTED_LODS),
+    *(f"corrective_blendshapes_lod{lod}.npz" for lod in SUPPORTED_LODS),
+)
+_MHR_DEFAULT_ASSETS = (
+    "mhr_model.pt",
+    "corrective_activation.npz",
+    "corrective_blendshapes_lod1.npz",
 )
 
 __all__ = [
@@ -66,9 +72,7 @@ def validate_path(model_path: PathLike) -> Path:
         raise ValueError(f"Expected an MHR model directory, got file: {model_path}")
     if not model_path.is_dir():
         raise FileNotFoundError(f"MHR model path {model_path} does not exist")
-    model_file = model_path / "mhr_model.pt"
-    if not model_file.is_file():
-        raise FileNotFoundError(f"MHR model directory is missing mhr_model.pt: {model_path}")
+    _require_assets(model_path, _MHR_DEFAULT_ASSETS)
     return model_path
 
 
@@ -103,6 +107,12 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
         raise ValueError("simplify must be >= 1.0")
     if lod not in SUPPORTED_LODS:
         raise ValueError(f"MHR lod must be one of {SUPPORTED_LODS}, got {lod}")
+
+    asset_dir = validate_path(asset_dir)
+    lod_assets = (f"corrective_blendshapes_lod{lod}.npz",)
+    if lod != 1:
+        lod_assets += (f"mhr_lod{lod}.npz",)
+    _require_assets(asset_dir, lod_assets)
 
     data = _load_raw_model_data(asset_dir)
     if lod != 1:
@@ -311,7 +321,7 @@ def _load_output_weights(asset_dir: Path, lod: int) -> sparse.SparseMatrix:
         blendshapes = np.asarray(data["corrective_blendshapes"], dtype=np.float32)
     num_components = blendshapes.shape[0]
     output_weights = sparse.from_dense(blendshapes.reshape(num_components, -1))
-    np.savez_compressed(
+    write_npz_atomic(
         cache_file,
         rows=output_weights.row_indices,
         columns=output_weights.column_indices,
@@ -328,6 +338,12 @@ def _output_weights_cache_file(asset_dir: Path, lod: int) -> Path:
     cache_dir = get_cache_dir() / "mhr" / "preprocessed"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"correctives_{key}.npz"
+
+
+def _require_assets(model_path: Path, names: tuple[str, ...]) -> None:
+    missing = [name for name in names if not (model_path / name).is_file()]
+    if missing:
+        raise FileNotFoundError(f"MHR model directory is missing required assets: {', '.join(missing)}")
 
 
 def _select_output_vertices(

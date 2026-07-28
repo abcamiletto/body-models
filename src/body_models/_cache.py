@@ -3,7 +3,9 @@ import tempfile
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 from huggingface_hub import hf_hub_download
 from platformdirs import user_cache_dir
 
@@ -12,6 +14,7 @@ __all__ = [
     "download_hf_archive",
     "extract_archive",
     "get_cache_dir",
+    "write_npz_atomic",
 ]
 
 HF_MODEL_REPO_ID = "abcamiletto/body-models"
@@ -32,6 +35,23 @@ def download_hf_archive(filename: str, dest: Path) -> None:
         )
     )
     extract_archive(archive_path, dest)
+
+
+def write_npz_atomic(
+    path: Path,
+    /,
+    *,
+    compressed: bool = True,
+    **arrays: Any,
+) -> None:
+    """Write an NPZ cache completely before replacing its destination."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    save = np.savez_compressed if compressed else np.savez
+    prefix = f".{path.name}-"
+    with tempfile.TemporaryDirectory(prefix=prefix, dir=path.parent) as temporary:
+        temporary_path = Path(temporary) / "data.npz"
+        save(temporary_path, **arrays)
+        temporary_path.replace(path)
 
 
 def extract_archive(archive_path: Path, dest: Path) -> None:
