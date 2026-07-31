@@ -112,10 +112,6 @@ jax = [
     { name = "flax" },
     { name = "jax" },
 ]
-lod = [
-    { name = "pymeshlab" },
-    { name = "rtree" },
-]
 torch = [
     { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.10.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -160,8 +156,6 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.6" },
     { name = "ptloader", specifier = "==0.3.0" },
     { name = "pyfqmr", specifier = ">=0.3.0" },
-    { name = "pymeshlab", marker = "extra == 'lod'", specifier = ">=2025.7.post1" },
-    { name = "rtree", marker = "extra == 'lod'", specifier = ">=1.4.1" },
     { name = "scipy", specifier = ">=1.13.0" },
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.3.0" },
@@ -170,7 +164,7 @@ requires-dist = [
     { name = "viser", marker = "extra == 'viewer'", specifier = ">=1.0.29" },
     { name = "warp-lang", marker = "extra == 'warp'", specifier = ">=1.12.0" },
 ]
-provides-extras = ["torch", "jax", "warp", "viewer", "lod"]
+provides-extras = ["torch", "jax", "warp", "viewer"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1709,36 +1703,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/08/f1c908c581fd11913da4711ea7ba32c0eee40b0190000996bb863b0c9349/pymdown_extensions-10.21.2.tar.gz", hash = "sha256:c3f55a5b8a1d0edf6699e35dcbea71d978d34ff3fa79f3d807b8a5b3fa90fbdc", size = 853922, upload-time = "2026-03-29T15:01:55.233Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/27/a2fc51a4a122dfd1015e921ae9d22fee3d20b0b8080d9a704578bf9deece/pymdown_extensions-10.21.2-py3-none-any.whl", hash = "sha256:5c0fd2a2bea14eb39af8ff284f1066d898ab2187d81b889b75d46d4348c01638", size = 268901, upload-time = "2026-03-29T15:01:53.244Z" },
-]
-
-[[package]]
-name = "pymeshlab"
-version = "2025.7.post1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/c4/0651d56e6af7680e76460f80ce2812e29b1bc5aefba3988423ea43095074/pymeshlab-2025.7.post1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:d4d2e9b9ef05b4205bb61b83326287a140ef87220bb0485c1caf42c446f41d37", size = 64996096, upload-time = "2026-01-30T08:40:36.331Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/d1/d6a0a4fc5f4858f3ddbdaf72a28709aa05fc46efb052f1b14d5ab54c6a61/pymeshlab-2025.7.post1-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:56628cf8603195f057884ffafd006391a6baca9ef90aa7f7032c50a276c77bfb", size = 54504910, upload-time = "2026-01-30T08:40:39.149Z" },
-    { url = "https://files.pythonhosted.org/packages/49/7b/caba5fba3e0cc57230b5600b4a4965e797d39aa59b3ef87e405f4fb9b5bc/pymeshlab-2025.7.post1-cp311-cp311-manylinux_2_35_aarch64.whl", hash = "sha256:244324df41dc168a0adb0818b0585a91d31d10d73b4415d59b15eaaba0eec900", size = 65089098, upload-time = "2026-01-30T08:40:41.988Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/20/5b18072334280015899fce0a514a8455619421dfb122d37c1fd7166507db/pymeshlab-2025.7.post1-cp311-cp311-manylinux_2_35_x86_64.whl", hash = "sha256:c3c1b01f101334b14469ace3b004382cd313b80a128f551a1da77e3053f09c30", size = 106242890, upload-time = "2026-01-30T08:40:46.793Z" },
-    { url = "https://files.pythonhosted.org/packages/e6/56/c4383522d9603cca76ad0c1c886014bf6ac4e79df96018e13025c669b068/pymeshlab-2025.7.post1-cp311-cp311-win_amd64.whl", hash = "sha256:3c1b87f3d6e6c8b129311b44f5c75a22df23c969b9d4300843286220a0d2a49c", size = 55210937, upload-time = "2026-01-30T08:40:51.288Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/c1/a8db8ba66b5c51e700ba0eccea2c81f68a3223b775b0afe7b30a3da9a2ec/pymeshlab-2025.7.post1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:693101c1ade7aadbad114878626307bf434fe607de873449fbe6b6b95a30cd01", size = 64995577, upload-time = "2026-01-30T08:40:55.627Z" },
-    { url = "https://files.pythonhosted.org/packages/f8/0d/6692ef6d96fa27763899665562c11ee6411eba55b2bddcda6799213dadac/pymeshlab-2025.7.post1-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:265503a06968420c8eb6934e3db78ff0767518000d8afd46ef3c976a506cfcf7", size = 54506925, upload-time = "2026-01-30T08:40:58.707Z" },
-    { url = "https://files.pythonhosted.org/packages/6b/8d/6082aa85f8c918901221d1a7e1e810cb5b56eecbed59a5e688feea92c148/pymeshlab-2025.7.post1-cp312-cp312-manylinux_2_35_aarch64.whl", hash = "sha256:d39fbaac1274adbbdf75cd999710d2ba48bd4d9087f34815afbdedb99dd3ded6", size = 65341068, upload-time = "2026-01-30T08:41:02.003Z" },
-    { url = "https://files.pythonhosted.org/packages/a3/4c/b0b1b5ad425acd80abcff4632f0241ca490c52ef9c48013d71f573680a2a/pymeshlab-2025.7.post1-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:bc453d89b114671affc747991a939b257d2320b71885b31213190c64081f5c35", size = 106530409, upload-time = "2026-01-30T08:41:05.155Z" },
-    { url = "https://files.pythonhosted.org/packages/4f/06/66b91d2d77fbb2bf729dfe58692957bad3cea706ecb3fe51fca4b07c0c95/pymeshlab-2025.7.post1-cp312-cp312-win_amd64.whl", hash = "sha256:fc04cb2206e8d0194b2c8f61ea6ef54505bbe3d217e7f1960ee9608464f9bfad", size = 55211790, upload-time = "2026-01-30T08:41:08.339Z" },
-    { url = "https://files.pythonhosted.org/packages/a7/06/ef68bf08d23f44118ab846b93dd30eaf87ad85cc44b4f3e5ac8764e9bc9f/pymeshlab-2025.7.post1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:841b1fa15fc76ab73e594f4bbfcbe339782b36be67d9387ff5aa5f4ca422e180", size = 64995970, upload-time = "2026-01-30T08:41:11.153Z" },
-    { url = "https://files.pythonhosted.org/packages/27/52/a11aa52eb3b250f78a891b9e4ffcdf4af4da13a462d079cc6cf3d17d34ac/pymeshlab-2025.7.post1-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:06c7171f70ff86753535d1c0d952ead34854923061af37197e9cc22dea515e9d", size = 54507011, upload-time = "2026-01-30T08:41:14.507Z" },
-    { url = "https://files.pythonhosted.org/packages/0a/4e/31b08dddba8c77676c9cf7ed90810b7dfcbd99cba845bb9b20b7bbaa4d7c/pymeshlab-2025.7.post1-cp313-cp313-manylinux_2_35_aarch64.whl", hash = "sha256:2432dffe99e58e1b5e77dbfeb7690502b6d0ebccb1ed75356fca4676ec56c9a2", size = 65242911, upload-time = "2026-01-30T08:41:17.622Z" },
-    { url = "https://files.pythonhosted.org/packages/7f/af/3f7597d43813e8918bc2798aeed9b3be123a62e8a5be7de032cce03db8ed/pymeshlab-2025.7.post1-cp313-cp313-manylinux_2_35_x86_64.whl", hash = "sha256:99bb0f83ad20c61bdc63beb8d7f0c9ed3af6912a4770da170ce8d4bd02a7ecb0", size = 106407568, upload-time = "2026-01-30T08:41:25.759Z" },
-    { url = "https://files.pythonhosted.org/packages/a2/69/1732c3222ce63758c32746841099ac82059907cc3ff6bd77499da78abcbc/pymeshlab-2025.7.post1-cp313-cp313-win_amd64.whl", hash = "sha256:25eb2578dd6c4d1b2e0253fb3b4f8f7895e8bb4f3f1236832db0ab58e6a44998", size = 55211755, upload-time = "2026-01-30T08:41:29.593Z" },
-    { url = "https://files.pythonhosted.org/packages/29/e6/68bb19ec11de2f60bc3319e0ce93aba4082ec82a6bbc03dd142f0d319585/pymeshlab-2025.7.post1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:c9990cd5e4620fc598795baf91f1b7b37ebb65a7b87eb01beb54d37339207d46", size = 64996542, upload-time = "2026-01-30T08:41:33.604Z" },
-    { url = "https://files.pythonhosted.org/packages/65/0d/58258e56400f3a5ff9df565b4ff48616568af25aa5d8a70eb2afee467709/pymeshlab-2025.7.post1-cp314-cp314-macosx_11_0_x86_64.whl", hash = "sha256:472b7247e4ae9b9937d9a13bfb78b9e6e777b805ae20a114101f9dcc15bea8fc", size = 54507346, upload-time = "2026-01-30T08:41:36.517Z" },
-    { url = "https://files.pythonhosted.org/packages/ac/01/b26a8c0d70a76fc333a620ce1ee7b11f8ab4b3791306350e28a578dcb47f/pymeshlab-2025.7.post1-cp314-cp314-manylinux_2_35_aarch64.whl", hash = "sha256:de6468bf43d5eeb23cdac78fe30286694ff5ad6d349a9bfa44584ac7e434e054", size = 65417867, upload-time = "2026-01-30T08:41:39.434Z" },
-    { url = "https://files.pythonhosted.org/packages/79/c0/9b769a1acd7ce4405059820793c2f14129d9faba99b595ea35c8c9d8c57d/pymeshlab-2025.7.post1-cp314-cp314-manylinux_2_35_x86_64.whl", hash = "sha256:951fe5aeb3e92632f3db3a1a6525279b41e5d7191c6b9011429dbb0b67f2f0d3", size = 106572030, upload-time = "2026-01-30T08:41:43.909Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/f0/65e3b96a14e9c80e05c085f8b32b923ccd5a70acf63eb66528e3fa94cf54/pymeshlab-2025.7.post1-cp314-cp314-win_amd64.whl", hash = "sha256:881389fb62ac832c81555fe22a3990a81624deb78e78ca3862836075d5c62c2b", size = 56595688, upload-time = "2026-01-30T08:41:47.145Z" },
 ]
 
 [[package]]

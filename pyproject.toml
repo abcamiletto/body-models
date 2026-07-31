@@ -38,10 +38,6 @@ warp = [
 viewer = [
     "viser>=1.0.29",
 ]
-lod = [
-    "pymeshlab>=2025.7.post1",
-    "rtree>=1.4.1",
-]
 
 [build-system]
 requires = ["uv_build>=0.11.11,<0.12.0"]
