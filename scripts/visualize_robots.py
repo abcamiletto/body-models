@@ -74,7 +74,7 @@ def main() -> None:
         choices=sorted(MODEL_SPECS),
         help="Robot model to load.",
     )
-    parser.add_argument("--smpl-humanoid-model-path", help="MJCF XML path for SmplHumanoid.")
+    parser.add_argument("--smpl-humanoid-model-path", help="MJCF XML path for SmplMannequin.")
     args = parser.parse_args()
     model_specs = specs(args.smpl_humanoid_model_path)
 

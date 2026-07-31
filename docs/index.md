@@ -76,7 +76,7 @@ prompts for those credentials and stores the resulting private-cache path.
 | --- | --- | --- |
 | [BrainCo](models/brainco.md) | BrainCo Revo 2 robotic hand | auto-download |
 | [G1](models/g1.md) | Unitree G1 rigid links | auto-download |
-| [SmplHumanoid](models/smpl-humanoid.md) | SMPL-compatible humanoid MJCF variants | auto-download |
+| [SmplMannequin](models/smpl-humanoid.md) | SMPL-compatible humanoid MJCF variants | auto-download |
 
 ## Common Usage
 

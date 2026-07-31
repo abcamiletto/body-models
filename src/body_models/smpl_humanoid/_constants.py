@@ -1,6 +1,13 @@
 from body_models._constants import Joint
 
-SMPL_HUMANOID_VARIANTS = ("humenv", "phc", "smplsim")
+SMPL_HUMANOID_VARIANTS = (
+    "mannequin",
+    "mannequin_lod1",
+    "mannequin_lod2",
+    "humenv",
+    "phc",
+    "smplsim",
+)
 
 
 SMPL_HUMANOID_JOINTS = {
@@ -78,6 +85,32 @@ PARENTS = [
     21,
 ]
 
+FINGER_CHAINS = (
+    ("L_Index1", "L_Index2", "L_Index3"),
+    ("L_Middle1", "L_Middle2", "L_Middle3"),
+    ("L_Pinky1", "L_Pinky2", "L_Pinky3"),
+    ("L_Ring1", "L_Ring2", "L_Ring3"),
+    ("L_Thumb1", "L_Thumb2", "L_Thumb3"),
+    ("R_Index1", "R_Index2", "R_Index3"),
+    ("R_Middle1", "R_Middle2", "R_Middle3"),
+    ("R_Pinky1", "R_Pinky2", "R_Pinky3"),
+    ("R_Ring1", "R_Ring2", "R_Ring3"),
+    ("R_Thumb1", "R_Thumb2", "R_Thumb3"),
+)
+FINGER_JOINT_NAMES = tuple(name for chain in FINGER_CHAINS for name in chain)
+ROBOT_JOINT_NAMES = [*JOINT_NAMES, *FINGER_JOINT_NAMES]
+_ROBOT_JOINT_INDEX = {name: index for index, name in enumerate(ROBOT_JOINT_NAMES)}
+ROBOT_PARENTS = PARENTS.copy()
+for chain in FINGER_CHAINS:
+    hand_parent = "L_Hand" if chain[0].startswith("L_") else "R_Hand"
+    ROBOT_PARENTS.extend(
+        [
+            _ROBOT_JOINT_INDEX[hand_parent],
+            _ROBOT_JOINT_INDEX[chain[0]],
+            _ROBOT_JOINT_INDEX[chain[1]],
+        ]
+    )
+
 # Each pair is the public body name and its index in the canonical SMPL body_pose array.
 BODY_JOINTS = (
     ("L_Hip", 0),
@@ -138,8 +171,13 @@ SMPL_BODY_PRESETS = {
 
 __all__ = [
     "BODY_JOINTS",
+    "FINGER_CHAINS",
+    "FINGER_JOINT_NAMES",
     "JOINT_NAMES",
     "PARENTS",
+    "ROBOT_JOINT_NAMES",
+    "ROBOT_PARENTS",
     "SMPL_BODY_PRESETS",
     "SMPL_HUMANOID_JOINTS",
+    "SMPL_HUMANOID_VARIANTS",
 ]

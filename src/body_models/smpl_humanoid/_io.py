@@ -15,11 +15,26 @@ from trimesh import Trimesh
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
 from body_models._common import mjcf
-from body_models.smpl_humanoid._constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
+from body_models.smpl_humanoid._constants import (
+    BODY_JOINTS,
+    FINGER_JOINT_NAMES,
+    JOINT_NAMES,
+    PARENTS,
+    ROBOT_JOINT_NAMES,
+    ROBOT_PARENTS,
+    SMPL_HUMANOID_VARIANTS,
+)
 
 Array = Any
 PathLike = Path | str
-SMPL_HUMANOID_SOURCES = {name: f"{name}.xml" for name in SMPL_HUMANOID_VARIANTS}
+SMPL_HUMANOID_SOURCES = {
+    "mannequin": "mannequin_lods/lod0_40k/neutral.xml",
+    "mannequin_lod1": "mannequin_lods/lod1_15k/neutral.xml",
+    "mannequin_lod2": "mannequin_lods/lod2_5k/neutral.xml",
+    "humenv": "humenv.xml",
+    "phc": "phc.xml",
+    "smplsim": "smplsim.xml",
+}
 
 
 @dataclass(frozen=True)
@@ -63,28 +78,44 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
     missing = sorted(set(JOINT_NAMES) - parsed_bodies.keys())
     if missing:
         raise ValueError(f"SMPL humanoid XML is missing body names: {', '.join(missing)}")
+    present_fingers = set(FINGER_JOINT_NAMES) & parsed_bodies.keys()
+    if present_fingers and present_fingers != set(FINGER_JOINT_NAMES):
+        missing_fingers = sorted(set(FINGER_JOINT_NAMES) - present_fingers)
+        raise ValueError(f"SMPL humanoid XML has an incomplete finger hierarchy: {', '.join(missing_fingers)}")
+    has_fingers = bool(present_fingers)
+    joint_names = ROBOT_JOINT_NAMES if has_fingers else JOINT_NAMES
+    expected_parents = ROBOT_PARENTS if has_fingers else PARENTS
 
-    local_offsets = np.zeros((len(JOINT_NAMES), 3), dtype=dtype)
-    rest_local_rotations = np.repeat(np.eye(3, dtype=dtype)[None], len(JOINT_NAMES), axis=0)
+    local_offsets = np.zeros((len(joint_names), 3), dtype=dtype)
+    rest_local_rotations = np.repeat(np.eye(3, dtype=dtype)[None], len(joint_names), axis=0)
     parsed_parent_indices = []
-    by_name = {name: i for i, name in enumerate(JOINT_NAMES)}
-    for joint_idx, name in enumerate(JOINT_NAMES):
+    by_name = {name: i for i, name in enumerate(joint_names)}
+    for joint_idx, name in enumerate(joint_names):
         body = parsed_bodies[name]
         parent_name = parsed_parents[name]
         parsed_parent_indices.append(-1 if parent_name is None else by_name[parent_name])
         local_offsets[joint_idx] = mjcf.parse_vec(body.get("pos"), size=3, default=np.zeros(3, dtype=dtype))
         rest_local_rotations[joint_idx] = mjcf.parse_orientation(body).astype(dtype)
-    if parsed_parent_indices != PARENTS:
+    if parsed_parent_indices != expected_parents:
         raise ValueError("SMPL humanoid XML body hierarchy does not match the canonical SMPL hierarchy.")
 
-    vertices, faces, link_data = _load_xml_geoms(parsed_bodies, dtype=dtype)
-    actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
-    actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
-    actuated_joint_limits = _actuated_joint_limits(parsed_bodies, root=root, dtype=dtype)
+    vertices, faces, link_data = _load_xml_geoms(
+        parsed_bodies,
+        joint_names=joint_names,
+        root=root,
+        base_dir=path.parent,
+        dtype=dtype,
+    )
+    actuated_names = [name for name, _ in BODY_JOINTS]
+    if has_fingers:
+        actuated_names.extend(FINGER_JOINT_NAMES)
+    actuated_joint_indices = [by_name[name] for name in actuated_names]
+    actuated_joint_names = [name for name in actuated_names for _ in range(3)]
+    actuated_joint_limits = _actuated_joint_limits(parsed_bodies, actuated_names=actuated_names, root=root, dtype=dtype)
     num_dofs = len(actuated_joint_names)
     return SmplHumanoidWeights(
-        joint_names=JOINT_NAMES.copy(),
-        parents=PARENTS.copy(),
+        joint_names=list(joint_names),
+        parents=list(expected_parents),
         local_offsets=local_offsets.astype(dtype),
         rest_local_rotations=rest_local_rotations.astype(dtype),
         vertices=vertices.astype(dtype),
@@ -109,7 +140,7 @@ def get_model_path(source: PathLike = "humenv") -> Path:
     if isinstance(source, str):
         name = source.strip().lower().replace("-", "_")
         if name in SMPL_HUMANOID_SOURCES:
-            model_path = config.get_model_path(f"smpl-humanoid-{name}")
+            model_path = config.get_model_path(f"smpl-humanoid-{name.replace('_', '-')}")
             return validate_path(model_path) if model_path is not None else download_model(name)
         path = Path(source)
         if path.is_file():
@@ -157,7 +188,7 @@ def _walk_xml_bodies(
     parents: dict[str, str | None],
 ) -> None:
     name = body.get("name")
-    if name in JOINT_NAMES:
+    if name in ROBOT_JOINT_NAMES:
         bodies[name] = body
         parents[name] = parent_name
         parent_name = name
@@ -169,13 +200,14 @@ def _walk_xml_bodies(
 def _actuated_joint_limits(
     bodies: dict[str, ET.Element],
     *,
+    actuated_names: list[str],
     root: ET.Element,
     dtype,
 ) -> Float[np.ndarray, "Q 2"]:
     compiler = root.find("compiler")
     angle_scale = 1.0 if compiler is not None and compiler.get("angle") == "radian" else np.pi / 180.0
     limits = []
-    for joint_name, _ in BODY_JOINTS:
+    for joint_name in actuated_names:
         joints = {joint.get("name"): joint for joint in bodies[joint_name].findall("joint")}
         for axis in ("x", "y", "z"):
             joint = joints.get(f"{joint_name}_{axis}")
@@ -190,8 +222,11 @@ def _actuated_joint_limits(
 def _load_xml_geoms(
     bodies: dict[str, ET.Element],
     *,
+    joint_names: list[str] | tuple[str, ...],
+    root: ET.Element,
+    base_dir: Path,
     dtype,
-) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"], dict[str, Any]]:
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     vertices_by_link = []
     faces_by_link = []
     joint_indices = []
@@ -205,9 +240,10 @@ def _load_xml_geoms(
     vertex_offset = 0
     face_offset = 0
 
-    for joint_idx, name in enumerate(JOINT_NAMES):
+    mesh_assets = _mesh_assets(root, base_dir=base_dir, dtype=dtype)
+    for joint_idx, name in enumerate(joint_names):
         for geom_idx, geom in enumerate(bodies[name].findall("geom")):
-            vertices, faces = _geom_mesh(geom, dtype=dtype)
+            vertices, faces = _geom_mesh(geom, mesh_assets=mesh_assets, dtype=dtype)
             geom_position, geom_rotation = _geom_transform(geom, dtype=dtype)
             vertices_by_link.append(vertices)
             faces_by_link.append(faces + vertex_offset)
@@ -238,17 +274,48 @@ def _load_xml_geoms(
     return np.concatenate(vertices_by_link), np.concatenate(faces_by_link), link_data
 
 
+def _mesh_assets(root: ET.Element, *, base_dir: Path, dtype) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    assets = {}
+    asset_element = root.find("asset")
+    if asset_element is None:
+        return assets
+    for mesh_element in asset_element.findall("mesh"):
+        name = mesh_element.get("name")
+        file = mesh_element.get("file")
+        if not name or not file:
+            raise ValueError("MJCF mesh assets require both name and file attributes.")
+        mesh = trimesh.load_mesh(base_dir / file, process=False)
+        if isinstance(mesh, trimesh.Scene):
+            mesh = mesh.to_geometry()
+        if not isinstance(mesh, Trimesh):
+            raise TypeError(f"MJCF mesh asset is not triangular: {file}")
+        vertices, faces = _mesh_arrays(mesh, dtype=dtype)
+        scale = mjcf.parse_vec(mesh_element.get("scale"), size=3, default=np.ones(3, dtype=dtype))
+        assets[name] = (vertices * scale, faces)
+    return assets
+
+
 def _geom_mesh(
     geom: ET.Element,
     *,
+    mesh_assets: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
     dtype,
-) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
+) -> tuple[np.ndarray, np.ndarray]:
     geom_type = geom.get("type", "sphere")
+    if geom_type == "mesh":
+        mesh_name = geom.get("mesh")
+        if not mesh_name or mesh_assets is None or mesh_name not in mesh_assets:
+            raise ValueError(f"Unknown MJCF mesh asset: {mesh_name!r}")
+        return mesh_assets[mesh_name]
     size = mjcf.parse_vec(geom.get("size"), size=None, default=np.ones(3, dtype=dtype))
     if geom_type == "box":
         return _mesh_arrays(trimesh.creation.box(extents=2.0 * size[:3]), dtype=dtype)
     if geom_type == "sphere":
         return _mesh_arrays(trimesh.creation.uv_sphere(radius=float(size[0]), count=(8, 16)), dtype=dtype)
+    if geom_type == "ellipsoid":
+        mesh = trimesh.creation.uv_sphere(radius=1.0, count=(12, 24))
+        mesh.vertices *= size[:3]
+        return _mesh_arrays(mesh, dtype=dtype)
     if geom_type == "capsule":
         fromto = geom.get("fromto")
         if fromto is not None:

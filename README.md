@@ -71,7 +71,7 @@ both identity controls to `prepare_identity(shape, expression)`.
 - Anatomicals: SKEL, MyoFullBody
 - Heads: FLAME
 - Hands: MANO
-- Robots and humanoids: BrainCo, G1, SmplHumanoid
+- Robots and humanoids: BrainCo, G1, SmplHumanoid, SmplMannequin, SmplxMannequin
 
 See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)
 for setup, supported runtimes, inputs, and model-specific behavior.

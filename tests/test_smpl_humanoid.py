@@ -40,7 +40,7 @@ def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
     model = create_model("smpl-humanoid", variant=model_name)
 
     assert isinstance(model, SmplHumanoid)
-    assert model.num_joints == 24
+    assert model.num_joints == (54 if model_name.startswith("mannequin") else 24)
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
 
 
