@@ -58,6 +58,7 @@ class SOMA(SkinnedModel):
     """Native SOMA-X model with identity, pose, and corrective controls."""
 
     _state_fields = ("_weights", "_identity_model", "_identity_transfer")
+    has_face = True
     has_hands = True
     NUM_JOINTS = 77
     NUM_BODY_JOINTS = 23

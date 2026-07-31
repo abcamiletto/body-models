@@ -29,6 +29,7 @@ Array = Any
 class MHR(SkinnedModel):
     """Expressive full-body model with neural pose correctives."""
 
+    has_face = True
     has_hands = True
     NUM_SHAPE_COEFFS = 45
     NUM_EXPR_COEFFS = 72
