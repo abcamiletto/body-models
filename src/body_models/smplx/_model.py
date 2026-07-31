@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from nanomanifold import SO3
 
 from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
@@ -64,7 +64,7 @@ class SMPLX(SmplFamilyModel):
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = SmplxConfig(gender=gender or "neutral", rotation_type=rotation_type)
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
 
     @property
     def gender(self) -> Literal["neutral", "male", "female"]:
@@ -81,8 +81,8 @@ class SMPLX(SmplFamilyModel):
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
             "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
             "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -92,15 +92,11 @@ class SMPLX(SmplFamilyModel):
     def joint_names(self) -> list[str]:
         return list(self._weights.joint_names)
 
-    @property
-    def exprdirs(self) -> Float[Array, "V 3 E"]:
-        return self._weights.exprdirs
-
     def forward_vertices(
         self,
         body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
+        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
@@ -108,7 +104,7 @@ class SMPLX(SmplFamilyModel):
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
@@ -123,8 +119,8 @@ class SMPLX(SmplFamilyModel):
 
         pose = self.prepare_pose(
             body_pose,
-            hand_pose,
             head_pose,
+            hand_pose,
             pelvis_rotation=pelvis_rotation,
             identity=identity,
         )
@@ -139,8 +135,8 @@ class SMPLX(SmplFamilyModel):
     def forward_skeleton(
         self,
         body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
+        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
@@ -167,8 +163,8 @@ class SMPLX(SmplFamilyModel):
             self._weights.kinematic_fronts,
             self._weights.hand_mean,
             body_pose,
-            hand_pose,
             head_pose,
+            hand_pose,
             pelvis_rotation,
             self.rotation_type,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
@@ -203,8 +199,8 @@ class SMPLX(SmplFamilyModel):
     def prepare_pose(
         self,
         body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
-        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
+        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         identity: LinearIdentity,

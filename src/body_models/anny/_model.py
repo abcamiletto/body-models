@@ -72,7 +72,7 @@ class ANNY(SkinnedModel):
             extrapolate_phenotypes=extrapolate_phenotypes,
             rotation_type=rotation_type,
         )
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
 
     @property
     def all_phenotypes(self) -> bool:
@@ -152,7 +152,7 @@ class ANNY(SkinnedModel):
         identity: AnnyIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed ANNY vertices."""
         xp = self._runtime.xp
@@ -165,7 +165,7 @@ class ANNY(SkinnedModel):
             identity = self.prepare_identity(shape)
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
-        vertices = self._runtime.compact_linear_blend_skinning(
+        vertices = self._runtime._skin_vertices(
             identity["rest_vertices"],
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,

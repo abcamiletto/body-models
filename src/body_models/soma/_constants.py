@@ -2,6 +2,9 @@ from body_models._common.pose_assets import load_npz
 from body_models._constants import Joint
 
 SOMA_JOINTS = {
+    Joint.PELVIS: "Hips",
+    Joint.NECK: "Neck1",
+    Joint.HEAD: "Head",
     Joint.LEFT_SHOULDER: "LeftArm",
     Joint.RIGHT_SHOULDER: "RightArm",
     Joint.LEFT_ELBOW: "LeftForeArm",

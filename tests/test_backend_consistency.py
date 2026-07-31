@@ -17,7 +17,7 @@ def mesh_vertices(meshes):
 def assert_pose_helpers_round_trip(model, pose) -> None:
     pose_by_joint = model.unpack_pose(pose)
     assert list(pose_by_joint) == list(dict.fromkeys(model.actuated_joint_names))
-    assert sum(value.shape[-1] for value in pose_by_joint.values()) == model.num_actuated
+    assert sum(value.shape[-1] for value in pose_by_joint.values()) == model.num_dofs
     for value in pose_by_joint.values():
         assert value.shape[:-1] == pose.shape[:-1]
     np.testing.assert_array_equal(np.asarray(model.pack_pose(pose_by_joint)), np.asarray(pose))
@@ -30,7 +30,7 @@ def assert_qpos_matches_pose(model, params) -> None:
         global_rotation=params["global_rotation"],
         global_translation=params["global_translation"],
     )
-    assert qpos.shape == (*params[pose_name].shape[:-1], 7 + model.num_actuated)
+    assert qpos.shape == (*params[pose_name].shape[:-1], 7 + model.num_dofs)
     np.testing.assert_allclose(np.asarray(qpos[..., 7:]), np.asarray(params[pose_name]))
 
 
@@ -126,10 +126,10 @@ def test_rigid_body_joint_name_spaces(name, model_class, kwargs) -> None:
 
     assert len(model.joint_names) == model.num_joints
     assert skeleton.shape[-3] == len(model.joint_names)
-    assert len(model.actuated_joint_names) == model.num_actuated
-    assert len(model.actuated_joint_types) == model.num_actuated
-    assert model.actuated_joint_limits.shape == (model.num_actuated, 2)
-    assert params[pose_name].shape == (2, model.num_actuated)
+    assert len(model.actuated_joint_names) == model.num_dofs
+    assert len(model.actuated_joint_types) == model.num_dofs
+    assert model.actuated_joint_limits.shape == (model.num_dofs, 2)
+    assert params[pose_name].shape == (2, model.num_dofs)
 
     assert_pose_helpers_round_trip(model, params[pose_name])
     assert_qpos_matches_pose(model, params)

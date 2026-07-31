@@ -11,7 +11,7 @@ class TorchModule(nn.Module):
     """Cached ``nn.Module`` view over a Torch-backed model's shared state."""
 
     def __init__(self, model: Any) -> None:
-        if model.runtime.backend != "torch":
+        if model.runtime.name != "torch":
             raise TypeError("as_module() requires a Torch-backed model.")
         super().__init__()
         for name in model._state_fields:

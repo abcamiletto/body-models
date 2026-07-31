@@ -116,8 +116,8 @@ def test_compact_and_warp_skinning_gradients_match_dense_on_cpu() -> None:
     )
     compact_grads = torch.autograd.grad(compact, (vertices, transforms), grad_output)
     warp_runtime = TorchRuntime(skinning_backend="warp")
-    warp_skinning = warp_runtime.materialize(skinning.CompactSkinning(joint_indices, joint_weights))
-    warp = warp_runtime.compact_linear_blend_skinning(
+    warp_skinning = warp_runtime._materialize(skinning.CompactSkinning(joint_indices, joint_weights))
+    warp = warp_runtime._skin_vertices(
         vertices,
         transforms,
         skinning=warp_skinning,

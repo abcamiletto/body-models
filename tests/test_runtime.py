@@ -50,7 +50,7 @@ def test_runtime_rejects_unknown_state(backend) -> None:
     runtime = {"numpy": NumpyRuntime, "torch": TorchRuntime, "jax": JaxRuntime}[backend]()
 
     with pytest.raises(TypeError, match="Unsupported model state leaf"):
-        runtime.materialize(object())
+        runtime._materialize(object())
 
 
 @pytest.mark.fast
@@ -58,7 +58,7 @@ def test_jax_materialization_preserves_jax_arrays() -> None:
     jax = pytest.importorskip("jax")
     value = jax.numpy.ones(2)
 
-    assert JaxRuntime().materialize(value) is value
+    assert JaxRuntime()._materialize(value) is value
 
 
 @pytest.mark.fast
@@ -86,7 +86,7 @@ def test_compact_skinning_ignores_padding_slots() -> None:
     indices = np.array([[0, -1]], dtype=np.int64)
     weights = np.array([[1.0, 7.0]], dtype=np.float32)
 
-    actual = runtime.compact_linear_blend_skinning(
+    actual = runtime._skin_vertices(
         vertices,
         transforms,
         skinning=skinning.CompactSkinning(indices, weights),
@@ -112,7 +112,7 @@ def test_model_class_identity_is_backend_independent() -> None:
     models = [G1(), create_model("g1", runtime="torch"), create_model("g1", runtime="jax")]
 
     assert all(type(model) is G1 for model in models)
-    assert [model.runtime.backend for model in models] == ["numpy", "torch", "jax"]
+    assert [model.runtime.name for model in models] == ["numpy", "torch", "jax"]
 
 
 def test_model_pickle_uses_public_class_identity() -> None:

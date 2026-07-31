@@ -61,7 +61,7 @@ class GarmentMeasurements(SkinnedModel):
         weights = load_model_data(get_model_path(model_path), dtype=np.float32)
         runtime = self._set_runtime(runtime)
         self._config = GarmentMeasurementsConfig(rotation_type=rotation_type)
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -119,7 +119,7 @@ class GarmentMeasurements(SkinnedModel):
         identity: GarmentMeasurementsIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed GarmentMeasurements vertices."""
         xp = self._runtime.xp
@@ -138,7 +138,7 @@ class GarmentMeasurements(SkinnedModel):
             identity=identity,
             pelvis_rotation=pelvis_rotation,
         )
-        vertices = self._runtime.compact_linear_blend_skinning(
+        vertices = self._runtime._skin_vertices(
             identity["rest_vertices"],
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
