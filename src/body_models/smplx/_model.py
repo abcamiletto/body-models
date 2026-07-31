@@ -32,6 +32,7 @@ class SmplxConfig:
 class SMPLX(SmplFamilyModel):
     """Skinned body model with articulated hands and facial controls."""
 
+    has_face = True
     has_hands = True
     NUM_JOINTS = 55
     NUM_BODY_JOINTS = 21

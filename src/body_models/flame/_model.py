@@ -29,6 +29,7 @@ class FlameConfig:
 class FLAME(SmplFamilyModel):
     """Skinned head model with shape and expression controls."""
 
+    has_face = True
     NUM_JOINTS = 5
     NUM_HEAD_JOINTS = 4
     NUM_SHAPE_COEFFS = 300

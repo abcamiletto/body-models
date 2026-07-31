@@ -34,6 +34,7 @@ class AnnyConfig:
 class ANNY(SkinnedModel):
     """Phenotype-driven skinned body model."""
 
+    has_face = True
     has_hands = True
     NUM_BODY_JOINTS = 64
     NUM_HAND_JOINTS = 38

@@ -71,7 +71,8 @@ class _ArticulatedModel(ABC):
     _config: Any
     _runtime: ArrayRuntime
     parents: list[int]
-    has_hands: bool = False
+    has_face: ClassVar[bool] = False
+    has_hands: ClassVar[bool] = False
     JOINTS: ClassVar[Mapping[Joint, str]] = {}
 
     @property
