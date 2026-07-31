@@ -22,7 +22,6 @@ def test_parameter_spec_describes_rest_parameters(_name, model_class, kwargs) ->
         assert parameters[name].dtype == np.float32
 
 
-@pytest.mark.fast
 def test_parameter_spec_exposes_rotation_representation() -> None:
     from body_models.smpl import SMPL
 

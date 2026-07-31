@@ -171,7 +171,6 @@ def test_prepare_skinning_payload_is_compatible(name, model_class, kwargs) -> No
     assert_compatible(jax_instance, jax_params, jnp)
 
 
-@pytest.mark.fast
 def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
     from body_models.smpl import SMPL
 

@@ -47,13 +47,10 @@ def test_runtime_rejects_unknown_state(backend) -> None:
     if backend != "numpy":
         pytest.importorskip(backend)
 
-    from body_models import create_model
-
     runtime = {"numpy": NumpyRuntime, "torch": TorchRuntime, "jax": JaxRuntime}[backend]()
-    model = create_model("g1")
 
     with pytest.raises(TypeError, match="Unsupported model state leaf"):
-        runtime.materialize(model)
+        runtime.materialize(object())
 
 
 @pytest.mark.fast
@@ -106,7 +103,6 @@ def test_runtime_is_serializable() -> None:
     assert runtime.xp.__name__ == "torch"
 
 
-@pytest.mark.fast
 def test_model_class_identity_is_backend_independent() -> None:
     pytest.importorskip("torch")
     pytest.importorskip("jax")
@@ -119,7 +115,6 @@ def test_model_class_identity_is_backend_independent() -> None:
     assert [model.runtime.backend for model in models] == ["numpy", "torch", "jax"]
 
 
-@pytest.mark.fast
 def test_model_pickle_uses_public_class_identity() -> None:
     from body_models.g1 import G1
 
@@ -129,7 +124,6 @@ def test_model_pickle_uses_public_class_identity() -> None:
     assert type(model).__module__ == "body_models.g1"
 
 
-@pytest.mark.fast
 def test_pickled_jax_model_jits_in_a_fresh_process() -> None:
     pytest.importorskip("jax")
     from body_models.g1 import G1
@@ -155,7 +149,6 @@ print(jax.jit(lambda value: value.num_vertices)(model))
     assert result.stdout.decode().strip() == str(model.num_vertices)
 
 
-@pytest.mark.fast
 def test_registered_model_pytree_preserves_non_jax_runtime() -> None:
     jax = pytest.importorskip("jax")
     pytest.importorskip("torch")
@@ -170,7 +163,6 @@ def test_registered_model_pytree_preserves_non_jax_runtime() -> None:
     assert restored._weights is model._weights
 
 
-@pytest.mark.fast
 def test_torch_module_manages_model_state() -> None:
     torch = pytest.importorskip("torch")
     from body_models.g1 import G1
@@ -192,7 +184,6 @@ def test_torch_module_manages_model_state() -> None:
     assert restored_module.model is restored_model
 
 
-@pytest.mark.fast
 @pytest.mark.parametrize("model_type", ["soma", "smpl"])
 def test_soma_is_a_jax_pytree(model_type) -> None:
     jax = pytest.importorskip("jax")
@@ -204,7 +195,6 @@ def test_soma_is_a_jax_pytree(model_type) -> None:
     assert jax.jit(lambda value: value.num_vertices)(model) == model.num_vertices
 
 
-@pytest.mark.fast
 def test_soma_torch_module_owns_external_identity_model() -> None:
     torch = pytest.importorskip("torch")
     from body_models.smpl import SMPL
