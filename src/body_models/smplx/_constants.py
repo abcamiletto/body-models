@@ -2,6 +2,9 @@ from body_models._common.pose_assets import load_npz
 from body_models._constants import Joint
 
 SMPLX_JOINTS = {
+    Joint.PELVIS: "Pelvis",
+    Joint.NECK: "Neck",
+    Joint.HEAD: "Head",
     Joint.LEFT_SHOULDER: "L_Shoulder",
     Joint.RIGHT_SHOULDER: "R_Shoulder",
     Joint.LEFT_ELBOW: "L_Elbow",

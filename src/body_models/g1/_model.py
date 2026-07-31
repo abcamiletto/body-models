@@ -42,7 +42,7 @@ class G1(RigidBodyModel):
             raise ValueError(f"Invalid G1 convention: {convention!r}")
         runtime = self._set_runtime(runtime)
         self._config = G1Config(convention)
-        self._weights = runtime.materialize(load_model_data(model_path, convention=convention))
+        self._weights = runtime._materialize(load_model_data(model_path, convention=convention))
 
     @property
     def convention(self) -> core.Convention:
@@ -55,12 +55,12 @@ class G1(RigidBodyModel):
 
     @property
     def actuated_joint_types(self) -> list[str]:
-        return ["hinge"] * self.num_actuated
+        return ["hinge"] * self.num_dofs
 
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
-            "body_pose": ParameterSpec((self.num_actuated,), "pose"),
+            "body_pose": ParameterSpec((self.num_dofs,), "pose"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }

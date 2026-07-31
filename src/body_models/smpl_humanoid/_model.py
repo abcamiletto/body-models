@@ -42,7 +42,7 @@ class SmplHumanoid(RigidBodyModel):
         runtime = self._set_runtime(runtime)
         self._config = SmplHumanoidConfig(model_path, variant)
         source = variant if model_path is None else model_path
-        self._weights = runtime.materialize(load_model_data(source))
+        self._weights = runtime._materialize(load_model_data(source))
 
     @property
     def actuated_joint_types(self) -> list[str]:
@@ -51,7 +51,7 @@ class SmplHumanoid(RigidBodyModel):
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
-            "body_pose": ParameterSpec((self.num_actuated,), "pose"),
+            "body_pose": ParameterSpec((self.num_dofs,), "pose"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }
@@ -142,7 +142,7 @@ class SmplHumanoid(RigidBodyModel):
                 ordered,
                 convention="XYZ",
                 xp=xp,
-            ).reshape(*smpl_body_pose.shape[:-2], self.num_actuated)
+            ).reshape(*smpl_body_pose.shape[:-2], self.num_dofs)
         }
         if global_translation is not None:
             motion["global_translation"] = global_translation

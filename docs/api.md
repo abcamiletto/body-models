@@ -16,6 +16,9 @@ Model-specific classes and helpers are documented on their
 
 ## Model contracts
 
+Every model provides `get_rest_pose()`. Models expose `get_tpose()` and
+`get_apose()` only when those whole-body presets are meaningful.
+
 ::: body_models.ArticulatedModel
     options:
       show_source: false
@@ -45,7 +48,7 @@ SO(3) rotation.
 
 ## Runtimes
 
-`Backend` is the runtime-name literal (`"numpy"`, `"torch"`, or `"jax"`), and
+`RuntimeName` is the runtime-name literal (`"numpy"`, `"torch"`, or `"jax"`), and
 `RuntimeLike` accepts either one of those names or an `ArrayRuntime` instance.
 
 ::: body_models.ArrayRuntime

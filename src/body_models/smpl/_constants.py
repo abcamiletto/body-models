@@ -29,6 +29,9 @@ SMPL_JOINT_NAMES = [
 ]
 
 SMPL_JOINTS = {
+    Joint.PELVIS: "pelvis",
+    Joint.NECK: "neck",
+    Joint.HEAD: "head",
     Joint.LEFT_SHOULDER: "left_shoulder",
     Joint.RIGHT_SHOULDER: "right_shoulder",
     Joint.LEFT_ELBOW: "left_elbow",

@@ -101,7 +101,7 @@ class SOMA(SkinnedModel):
             parents=tuple(parents),
             joint_names=tuple(joint_names),
         )
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
         self._identity_model = None
         self._identity_transfer = None
         if spec.asset_dir is not None:
@@ -113,7 +113,7 @@ class SOMA(SkinnedModel):
                 self._identity_model,
                 runtime,
             )
-            self._identity_transfer = runtime.materialize(transfer)
+            self._identity_transfer = runtime._materialize(transfer)
 
     @property
     def model_type(self) -> Literal["soma", "anny", "mhr", "smpl", "smplx"]:
@@ -198,6 +198,7 @@ class SOMA(SkinnedModel):
         identity: SkinningIdentity,
         pose: SkinningPose,
     ) -> SkinningPayload:
+        """Pack the full render rig rather than the smaller public skeleton."""
         return {
             "rest_vertices": identity["rest_vertices"],
             "skinning_transforms": pose["skinning_transforms"],
@@ -217,7 +218,7 @@ class SOMA(SkinnedModel):
         identity: SomaIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices in meters."""
         xp = self._runtime.xp
@@ -232,7 +233,7 @@ class SOMA(SkinnedModel):
             identity = self.prepare_identity(shape, scale_params=scale_params)
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
-        vertices = self._runtime.compact_linear_blend_skinning(
+        vertices = self._runtime._skin_vertices(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,

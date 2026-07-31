@@ -81,7 +81,7 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
     actuated_joint_indices = [by_name[name] for name, _ in BODY_JOINTS]
     actuated_joint_names = [name for name, _ in BODY_JOINTS for _ in range(3)]
     actuated_joint_limits = _actuated_joint_limits(parsed_bodies, root=root, dtype=dtype)
-    num_actuated = len(actuated_joint_names)
+    num_dofs = len(actuated_joint_names)
     return SmplHumanoidWeights(
         joint_names=JOINT_NAMES.copy(),
         parents=PARENTS.copy(),
@@ -100,7 +100,7 @@ def load_model_data(source: PathLike = "humenv", *, dtype=np.float32) -> SmplHum
         actuated_joint_indices=actuated_joint_indices,
         actuated_joint_limits=actuated_joint_limits,
         actuated_joint_names=actuated_joint_names,
-        actuated_joint_types=["hinge"] * num_actuated,
+        actuated_joint_types=["hinge"] * num_dofs,
     )
 
 

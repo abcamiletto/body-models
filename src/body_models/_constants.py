@@ -4,6 +4,9 @@ from enum import StrEnum
 class Joint(StrEnum):
     """Anatomical joint identifiers shared across model-native skeletons."""
 
+    PELVIS = "pelvis"
+    NECK = "neck"
+    HEAD = "head"
     LEFT_SHOULDER = "left_shoulder"
     RIGHT_SHOULDER = "right_shoulder"
     LEFT_ELBOW = "left_elbow"

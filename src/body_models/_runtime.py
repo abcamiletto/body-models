@@ -8,24 +8,25 @@ derived inputs belong to backend-materialized state instead; see
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, TypeAlias
 
 import numpy as np
-from jaxtyping import Float, Int, Num
+from jaxtyping import Float, Num
 
 from body_models import _common as common
 from body_models import _state as state
 from body_models._common import skinning as skinning_ops
 
 Array = Any
-Backend = Literal["numpy", "torch", "jax"]
+RuntimeName = Literal["numpy", "torch", "jax"]
 
 
 class ArrayRuntime(ABC):
     """Shared numerical operations for one array backend."""
 
-    backend: ClassVar[Backend]
+    name: ClassVar[RuntimeName]
 
     @property
     @abstractmethod
@@ -55,7 +56,7 @@ class ArrayRuntime(ABC):
         return common.zeros_as(like, shape=shape, dtype=dtype, xp=self.xp)
 
     @abstractmethod
-    def materialize(self, value: Any) -> Any:
+    def _materialize(self, value: Any) -> Any:
         """Convert loaded model data into backend-managed state."""
 
     @abstractmethod
@@ -66,13 +67,13 @@ class ArrayRuntime(ABC):
     def to_numpy(self, value: Num[Array, "..."]) -> Num[np.ndarray, "..."]:
         """Convert an array to NumPy host memory."""
 
-    def compact_linear_blend_skinning(
+    def _skin_vertices(
         self,
         vertices: Float[Array, "*batch V 3"],
         transforms: Float[Array, "*batch J 4 4"],
         *,
         skinning: skinning_ops.CompactSkinningState,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch selected 3"]:
         """Select optional vertices and apply compact linear blend skinning."""
         if vertex_indices is not None:
@@ -113,13 +114,13 @@ class ArrayRuntime(ABC):
 class NumpyRuntime(ArrayRuntime):
     """NumPy model runtime."""
 
-    backend = "numpy"
+    name = "numpy"
 
     @property
     def xp(self) -> Any:
         return np
 
-    def materialize(self, value: Any) -> Any:
+    def _materialize(self, value: Any) -> Any:
         return state.numpy_state(value)
 
     def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
@@ -133,7 +134,7 @@ class NumpyRuntime(ArrayRuntime):
 class TorchRuntime(ArrayRuntime):
     """Torch model runtime with optional Warp operation lowerings."""
 
-    backend = "torch"
+    name = "torch"
     SKINNING_BACKENDS = ("torch", "warp")
     skinning_backend: Literal["torch", "warp"] = "torch"
 
@@ -158,7 +159,7 @@ class TorchRuntime(ArrayRuntime):
             dtype = like.dtype
         return self.xp.as_tensor(value, device=like.device, dtype=dtype)
 
-    def materialize(self, value: Any) -> Any:
+    def _materialize(self, value: Any) -> Any:
         return state.torch_state(value, skinning_backend=self.skinning_backend)
 
     def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
@@ -196,7 +197,7 @@ class TorchRuntime(ArrayRuntime):
 class JaxRuntime(ArrayRuntime):
     """JAX model runtime."""
 
-    backend = "jax"
+    name = "jax"
 
     @property
     def xp(self) -> Any:
@@ -219,7 +220,7 @@ class JaxRuntime(ArrayRuntime):
         device = getattr(like, "device", None)
         return array if device is None else jax.device_put(array, device)
 
-    def materialize(self, value: Any) -> Any:
+    def _materialize(self, value: Any) -> Any:
         return state.jax_state(value)
 
     def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
@@ -233,7 +234,7 @@ class JaxRuntime(ArrayRuntime):
         return np.asarray(jax.device_get(value))
 
 
-RuntimeLike: TypeAlias = Backend | ArrayRuntime
+RuntimeLike: TypeAlias = RuntimeName | ArrayRuntime
 
 
 def resolve_runtime(runtime: RuntimeLike) -> ArrayRuntime:
@@ -251,10 +252,10 @@ def resolve_runtime(runtime: RuntimeLike) -> ArrayRuntime:
 
 __all__ = [
     "ArrayRuntime",
-    "Backend",
     "JaxRuntime",
     "NumpyRuntime",
     "RuntimeLike",
+    "RuntimeName",
     "TorchRuntime",
     "resolve_runtime",
 ]
