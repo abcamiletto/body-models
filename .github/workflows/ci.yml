@@ -64,7 +64,8 @@ jobs:
         run: |
           uv run pytest -q \
             tests/test_parameters.py \
+            tests/test_runtime.py \
             tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
             tests/test_backend_consistency.py::test_rigid_body_meshes_match_numpy \
             tests/test_backend_consistency.py::test_skinning_backends_match_default \
-            tests/test_runtime.py::test_jax_model_pytree_round_trip
+            tests/test_backend_consistency.py::test_raw_and_prepared_identity_are_mutually_exclusive
