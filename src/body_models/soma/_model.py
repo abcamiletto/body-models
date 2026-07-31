@@ -10,8 +10,8 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningPayload
-from body_models._common import deformation, skinning
+from body_models._base import ParameterSpec, SkinnedModel, SkinningIdentity, SkinningPayload, SkinningPose
+from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime, RuntimeLike
 from body_models.anny import ANNY
@@ -31,6 +31,8 @@ from body_models.soma._pose import pack_pose
 
 Array = Any
 PathLike = Path | str
+SomaIdentity = core.SomaIdentity
+SomaPreparedPose = core.SomaPreparedPose
 _IdentityModel = ANNY | MHR | SMPL | SMPLX
 _IDENTITY_MODEL_CLASSES: dict[str, Callable[..., _IdentityModel]] = {
     "anny": ANNY,
@@ -195,8 +197,8 @@ class SOMA(SkinnedModel):
     def prepare_skinning(
         self,
         *,
-        identity: deformation.SkinningIdentity,
-        pose: deformation.SkinningPose,
+        identity: SkinningIdentity,
+        pose: SkinningPose,
     ) -> SkinningPayload:
         return {
             "rest_vertices": identity["rest_vertices"],
@@ -215,7 +217,7 @@ class SOMA(SkinnedModel):
         *,
         shape: Float[Array, "*batch I"] | None = None,
         scale_params: Float[Array, "*batch K"] | None = None,
-        identity: core.SomaIdentity | None = None,
+        identity: SomaIdentity | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
@@ -255,7 +257,7 @@ class SOMA(SkinnedModel):
         *,
         shape: Float[Array, "*batch I"] | None = None,
         scale_params: Float[Array, "*batch K"] | None = None,
-        identity: core.SomaIdentity | None = None,
+        identity: SomaIdentity | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch 77 4 4"]:
@@ -304,7 +306,7 @@ class SOMA(SkinnedModel):
         scale_params: Float[Array, "*batch K"] | None = None,
         repose: bool = True,
         bind_pose: core.BindPoseMode = "fit",
-    ) -> core.SomaIdentity:
+    ) -> SomaIdentity:
         """Precompute identity-dependent state for repeated forward passes."""
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_identity_from_rest_shape(
@@ -322,8 +324,8 @@ class SOMA(SkinnedModel):
         head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"],
         hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
         *,
-        identity: core.SomaIdentity,
-    ) -> core.SomaPreparedPose:
+        identity: SomaIdentity,
+    ) -> SomaPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
         batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]

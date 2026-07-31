@@ -114,3 +114,7 @@ articulated hand controls. Neither describes mesh geometry. Skinned models
 additionally share `skin_weights`, `rest_vertices`, and `forward_vertices`.
 Rigid articulated models expose link metadata, `forward_links`, and
 `forward_meshes` instead of skinning weights.
+
+Each skinned model package exports its exact prepared identity and pose types.
+Shared renderer-facing contracts are available as `SkinningIdentity`,
+`SkinningPose`, and `SkinningPayload` from `body_models`.

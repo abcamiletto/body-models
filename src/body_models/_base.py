@@ -64,6 +64,10 @@ class SkinningPayload(TypedDict):
     faces: Int[Array, "F C"]
 
 
+SkinningIdentity = deformation.SkinningIdentity
+SkinningPose = deformation.SkinningPose
+
+
 class ArticulatedModel(ABC):
     """Base class for all articulated models."""
 
@@ -268,8 +272,8 @@ class SkinnedModel(ArticulatedModel):
     def prepare_skinning(
         self,
         *,
-        identity: deformation.SkinningIdentity,
-        pose: deformation.SkinningPose,
+        identity: SkinningIdentity,
+        pose: SkinningPose,
     ) -> SkinningPayload:
         """Pack prepared model state into renderer-ready skinning inputs."""
         skinning: SkinningPayload = {
