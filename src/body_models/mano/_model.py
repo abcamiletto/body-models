@@ -88,10 +88,6 @@ class MANO(SmplFamilyModel):
         joints = LEFT_MANO_JOINTS if self.side == "left" else RIGHT_MANO_JOINTS
         return dict(joints)
 
-    @property
-    def lbs_weights(self) -> Float[Array, "V 16"]:
-        return self._weights.lbs_weights
-
     def forward_vertices(
         self,
         hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
@@ -109,7 +105,7 @@ class MANO(SmplFamilyModel):
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
-            batch_shape = hand_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = hand_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
 
@@ -139,7 +135,7 @@ class MANO(SmplFamilyModel):
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
-            batch_shape = hand_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = hand_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             skeleton_identity = self._prepare_skeleton_identity(shape)
         else:

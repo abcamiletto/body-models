@@ -84,7 +84,7 @@ class ANNY(SkinnedModel):
         return self._config.rotation_type
 
     @property
-    def num_rot_dims(self) -> int:
+    def _num_rot_dims(self) -> int:
         return rotation_ndim(self.rotation_type)
 
     @property
@@ -161,7 +161,7 @@ class ANNY(SkinnedModel):
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
 
@@ -198,13 +198,13 @@ class ANNY(SkinnedModel):
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             skeleton_identity = self._prepare_skeleton_identity(shape)
         else:
             skeleton_identity = identity
 
-        batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
+        batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
@@ -272,7 +272,7 @@ class ANNY(SkinnedModel):
     ) -> core.AnnyPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
-        batch_shape = tuple(body_pose.shape[: -(self.num_rot_dims + 1)])
+        batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
