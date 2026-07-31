@@ -8,7 +8,7 @@ from typing import Any, TypeAlias
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import SkinnedModel
+from body_models._base import DenseCorrectiveBasis, SkinnedModel, SkinningSpec
 from body_models._common import deformation, kinematics, skinning
 from body_models._rotations import RotationType, rotation_ndim
 
@@ -47,6 +47,14 @@ class SmplFamilyModel(SkinnedModel):
     def parents(self) -> list[int]:
         return list(self._weights.parents)
 
+    @property
+    def skinning_spec(self) -> SkinningSpec:
+        return SkinningSpec(
+            faces=self.faces,
+            skin_weights=self.skin_weights,
+            corrective_basis=DenseCorrectiveBasis(self._weights.posedirs),
+        )
+
     def _deform_vertices(
         self,
         identity: deformation.LinearIdentity,
@@ -56,7 +64,7 @@ class SmplFamilyModel(SkinnedModel):
         vertex_indices: Sequence[int] | None,
     ) -> Float[Array, "*batch V 3"]:
         vertices = self._runtime._skin_vertices(
-            identity["rest_vertices"] + pose["pose_offsets"],
+            self._posed_vertices(identity, pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,
@@ -155,7 +163,6 @@ def forward_skeleton(
 
 def prepare_pose(
     pose_matrices: Float[Array, "*batch J 3 3"],
-    posedirs: Float[Array, "P V*3"],
     kinematic_fronts: list[Front],
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
@@ -174,7 +181,7 @@ def prepare_pose(
     return {
         "skeleton_transforms": world_transforms,
         "skinning_transforms": skinning.bind_relative_transforms(world_transforms, rest_joints, xp=xp),
-        "pose_offsets": deformation.pose_blend_shapes(pose_matrices, posedirs, xp=xp),
+        "pose_coefficients": deformation.pose_coefficients(pose_matrices, xp=xp),
     }
 
 

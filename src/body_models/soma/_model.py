@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningIdentity, SkinningPayload, SkinningPose
+from body_models._base import ParameterSpec, SkinnedModel, SkinningPose, SkinningSpec, SparseCorrectiveBasis
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime, RuntimeLike
@@ -33,7 +33,6 @@ from body_models.soma._pose import pack_pose
 Array = Any
 PathLike = Path | str
 SomaIdentity = core.SomaIdentity
-SomaPose = core.SomaPose
 _IdentityModel = ANNY | MHR | SMPL | SMPLX
 _IDENTITY_MODEL_CLASSES: dict[str, Callable[..., _IdentityModel]] = {
     "anny": ANNY,
@@ -192,20 +191,13 @@ class SOMA(SkinnedModel):
     def _skinning_weights(self) -> Float[Array, "V J"]:
         return self._weights.skin_weights_active[:, 1:]
 
-    def prepare_skinning(
-        self,
-        *,
-        identity: SkinningIdentity,
-        pose: SkinningPose,
-    ) -> SkinningPayload:
-        """Pack the full render rig rather than the smaller public skeleton."""
-        return {
-            "rest_vertices": identity["rest_vertices"],
-            "skinning_transforms": pose["skinning_transforms"],
-            "pose_offsets": pose["pose_offsets"],
-            "skin_weights": self._skinning_weights,
-            "faces": self.faces,
-        }
+    @property
+    def skinning_spec(self) -> SkinningSpec:
+        return SkinningSpec(
+            faces=self.faces,
+            skin_weights=self._skinning_weights,
+            corrective_basis=SparseCorrectiveBasis(self._weights.correctives.basis),
+        )
 
     def forward_vertices(
         self,
@@ -234,7 +226,7 @@ class SOMA(SkinnedModel):
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
-            identity["rest_vertices"] + pose["pose_offsets"],
+            self._posed_vertices(identity, pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,
@@ -324,7 +316,7 @@ class SOMA(SkinnedModel):
         hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
         *,
         identity: SomaIdentity,
-    ) -> SomaPose:
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
         batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]

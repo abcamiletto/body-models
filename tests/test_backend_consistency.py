@@ -151,27 +151,21 @@ def test_skinning_backends_match_default(_name, model_class, kwargs) -> None:
 
 @pytest.mark.parametrize(
     ("name", "model_class", "kwargs"),
-    [case for case in model_cases.SKINNED_MODELS if case[0] == "soma"],
+    model_cases.SKINNED_MODELS,
 )
-def test_prepare_skinning_payload_is_compatible(name, model_class, kwargs) -> None:
+def test_prepared_deformation_matches_forward(name, model_class, kwargs) -> None:
     from body_models._common import skinning
 
     def assert_compatible(model, params, xp):
-        identity = model.prepare_identity(shape=params["shape"])
-        pose = model.prepare_pose(
-            params["body_pose"],
-            params.get("head_pose"),
-            params.get("hand_pose"),
-            identity=identity,
-        )
-        payload = model.prepare_skinning(identity=identity, pose=pose)
-        assert model.skin_weights.shape[-1] != payload["skinning_transforms"].shape[-3]
-        assert not hasattr(payload["skin_weights"], "toarray")
-        assert payload["skin_weights"].shape[-1] == payload["skinning_transforms"].shape[-3]
+        identity, pose = model_cases.prepare_states(model, params)
+        spec = model.skinning_spec
+        posed_vertices = identity["rest_vertices"]
+        if "pose_coefficients" in pose:
+            posed_vertices = posed_vertices + spec.corrective_basis.apply(pose["pose_coefficients"])
         vertices = skinning.linear_blend_skinning(
-            payload["rest_vertices"] + payload["pose_offsets"],
-            payload["skinning_transforms"],
-            payload["skin_weights"],
+            posed_vertices,
+            pose["skinning_transforms"],
+            spec.skin_weights,
             xp=xp,
         )
         prepared_params = model_cases.with_prepared_identity(model, params, identity)
@@ -195,6 +189,27 @@ def test_prepare_skinning_payload_is_compatible(name, model_class, kwargs) -> No
     jax_instance = model_class(**kwargs, runtime="jax")
     jax_params = jax_instance.get_rest_pose(dtype=jnp.float32)
     assert_compatible(jax_instance, jax_params, jnp)
+
+
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.RIGID_BODY_MODELS)
+def test_link_meshes_reconstruct_forward_mesh(name, model_class, kwargs) -> None:
+    model = model_class(**kwargs)
+    params = model.get_rest_pose()
+    transforms = np.asarray(model.forward_links(**params))
+
+    vertices = []
+    faces = []
+    vertex_offset = 0
+    for mesh, transform in zip(model.link_meshes, transforms):
+        rotation = transform[:3, :3]
+        translation = transform[:3, 3]
+        vertices.append(np.asarray(mesh.vertices) @ rotation.T + translation)
+        faces.append(np.asarray(mesh.faces) + vertex_offset)
+        vertex_offset += len(mesh.vertices)
+
+    expected = model.forward_meshes(**params)[0]
+    np.testing.assert_allclose(np.concatenate(vertices), expected.vertices, rtol=1e-6, atol=1e-6)
+    np.testing.assert_array_equal(np.concatenate(faces), expected.faces)
 
 
 def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:

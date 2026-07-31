@@ -22,13 +22,6 @@ class GarmentMeasurementsIdentity(TypedDict):
     local_bind_translations: Float[Array, "*batch J 3"]
 
 
-class GarmentMeasurementsPose(TypedDict):
-    """Pose-dependent GarmentMeasurements state."""
-
-    skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-
-
 def prepare_pose(
     bind_quats: Float[Array, "J 4"],
     kinematic_fronts: list[Front],
@@ -38,7 +31,7 @@ def prepare_pose(
     bind_skeleton: Float[Array, "*batch J 7"],
     local_bind_translations: Float[Array, "*batch J 3"],
     xp: Any,
-) -> GarmentMeasurementsPose:
+) -> common.deformation.SkinningPose:
     """Prepare posed skeleton and bind-relative skinning transforms."""
     num_rot_dims = rotation_ndim(rotation_type)
     batch_shape = tuple(pose.shape[: -(num_rot_dims + 1)])
@@ -216,7 +209,6 @@ def _propagate_se3(
 
 __all__ = [
     "GarmentMeasurementsIdentity",
-    "GarmentMeasurementsPose",
     "prepare_identity",
     "prepare_pose",
 ]

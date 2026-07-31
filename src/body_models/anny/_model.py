@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningIdentity, SkinningPayload, SkinningPose
+from body_models._base import ParameterSpec, SkinnedModel, SkinningPose, SkinningSpec
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -22,7 +22,6 @@ from body_models.anny._io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_mod
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
 AnnyIdentity = core.AnnyIdentity
-AnnyPose = core.AnnyPose
 
 
 @dataclass(frozen=True)
@@ -132,15 +131,12 @@ class ANNY(SkinnedModel):
     def parents(self) -> list[int]:
         return list(self._weights.parents)
 
-    def prepare_skinning(
-        self,
-        *,
-        identity: SkinningIdentity,
-        pose: SkinningPose,
-    ) -> SkinningPayload:
-        payload = super().prepare_skinning(identity=identity, pose=pose)
-        payload["faces"] = _triangulate_faces(self.faces, self._runtime.xp)
-        return payload
+    @property
+    def skinning_spec(self) -> SkinningSpec:
+        return SkinningSpec(
+            faces=_triangulate_faces(self.faces, self._runtime.xp),
+            skin_weights=self.skin_weights,
+        )
 
     def forward_vertices(
         self,
@@ -268,7 +264,7 @@ class ANNY(SkinnedModel):
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
         *,
         identity: AnnyIdentity,
-    ) -> AnnyPose:
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
         batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])
