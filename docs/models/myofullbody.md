@@ -21,7 +21,7 @@ the referenced mesh assets from the upstream `musclemimic_models/model/` tree.
 ## Usage
 
 ```python
-from body_models.myofullbody import MyoFullBody
+from body_models.myofullbody import MyoFullBody, from_mujoco_qpos
 
 model = MyoFullBody()
 params = model.get_apose(batch_dims=(1,))
@@ -31,6 +31,10 @@ links = model.forward_links(**params)
 meshes = model.forward_meshes(**params)
 
 sites = model.world_sites(skeleton)
+
+# Convert an existing MuJoCo state into forward parameters.
+params = from_mujoco_qpos(qpos)
+links = model.forward_links(**params)
 ```
 
 ## Notes
@@ -41,3 +45,5 @@ transforms and `forward_meshes()` for renderable meshes.
 ## API
 
 ::: body_models.myofullbody.MyoFullBody
+
+::: body_models.myofullbody.from_mujoco_qpos

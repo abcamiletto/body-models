@@ -21,6 +21,11 @@ The native implementation does not require installing `py-soma-x`.
 `body-models` supports both the original SOMA-X NPZ rig layout and the SOMA-X
 0.2 split assets. With 0.2 assets, the implementation retains the internal
 twist-joint rig for skinning while exposing the 77-joint public pose API.
+Normalize an upstream 0.2.1 asset tree and save the resulting path with:
+
+```bash
+body-models preprocess-soma /path/to/upstream /path/to/processed
+```
 
 The constructor accepts `lod="mid"`, `lod="low"`, or `lod="xlo"`. The hosted
 assets contain 18,056, 4,505, and 612 vertices respectively.

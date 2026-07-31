@@ -185,7 +185,7 @@ class ArticulatedModel(ABC):
         system and meters.
 
         Returns:
-            World-space 4x4 transformation matrices [B, J, 4, 4] in meters.
+            World-space transforms with shape ``[*batch, J, 4, 4]`` in meters.
         """
 
     def get_rest_pose(
@@ -273,7 +273,7 @@ class SkinnedModel(ArticulatedModel):
         system and meters.
 
         Returns:
-            Mesh vertices [B, V, 3] in meters.
+            Mesh vertices with shape ``[*batch, V, 3]`` in meters.
         """
 
     def prepare_skinning(

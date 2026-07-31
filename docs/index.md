@@ -86,9 +86,9 @@ not require an optional framework dependency.
 
 Names exported from `body_models` and model packages are the stable public API.
 Underscore-prefixed modules are private implementation details and are not
-covered by compatibility guarantees. See the
-[architecture guide](architecture.md) for the runtime boundary and extension
-rules.
+covered by compatibility guarantees. See the [API reference](api.md) for the
+shared contracts and the [architecture guide](architecture.md) for the runtime
+boundary and extension rules.
 
 ```python
 from body_models.smpl import SMPL
@@ -106,9 +106,10 @@ shared numeric state. Pass a configured runtime object for runtime-specific
 behavior such as Warp skinning.
 
 All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
-define its two public specializations. They expose `has_face`, `has_hands`,
-`parameter_spec`, `get_rest_pose`, `faces`, `num_vertices`, `num_joints`,
-`joint_names`, `parents`, and `forward_skeleton`.
+define its two public specializations. The shared contract includes `runtime`,
+`has_face`, `has_hands`, `parameter_spec`, `get_rest_pose`, `faces`,
+`num_vertices`, `num_joints`, `joint_names`, `parents`, `common_joints`,
+`joint_index`, and `forward_skeleton`.
 `has_face` indicates facial-expression controls; `has_hands` indicates
 articulated hand controls. Neither describes mesh geometry. Skinned models
 additionally share `skin_weights`, `rest_vertices`, and `forward_vertices`.
@@ -119,6 +120,16 @@ Rigid articulated models expose link metadata, `forward_links`, and
 index order. The `Joint` enum names anatomical joints shared across models;
 `common_joints` maps those names to the native skeleton, and
 `joint_index(Joint.LEFT_WRIST)` resolves the corresponding native index.
+
+Fixed public parameter dimensions use `NUM_*` class constants:
+`NUM_JOINTS`, `NUM_BODY_JOINTS`, `NUM_HAND_JOINTS`, `NUM_HEAD_JOINTS`,
+`NUM_SHAPE_COEFFS`, and `NUM_EXPR_COEFFS`. A class defines only the constants
+that apply to that model; asset- or configuration-dependent dimensions remain
+instance properties.
+
+Array shapes use arbitrary leading batch dimensions throughout. For example,
+an annotated `*batch J 4 4` skeleton can be unbatched, singly batched, or have
+several leading batch axes.
 
 Each skinned model package exports its exact prepared identity and pose types.
 Shared renderer-facing contracts are available as `SkinningIdentity`,
