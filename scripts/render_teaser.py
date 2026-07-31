@@ -6,7 +6,7 @@
 #   "bpy>=5.1.0",
 # ]
 # [tool.uv.sources]
-# body-models = { path = ".." }
+# body-models = { path = "..", editable = true }
 # ///
 """Render the README body-model lineup directly from the body-models API.
 
@@ -27,77 +27,55 @@ import numpy as np
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-from body_models import RigidBodyModel
-from body_models.anny import ANNY
-from body_models.flame import FLAME
-from body_models.g1 import G1
-from body_models.garment_measurements import GarmentMeasurements
-from body_models.mano import MANO
-from body_models.mhr import MHR
-from body_models.myofullbody import MyoFullBody
-from body_models.skel import SKEL
-from body_models.smpl import SMPL
-from body_models.smplh import SMPLH
-from body_models.smplx import SMPLX
-from body_models.soma import SOMA
+from body_models import RigidBodyModel, create_model
 
-# ── Lineup configuration ─────────────────────────────────────────────────────
 MODEL_HEIGHT = 1.75
 MODEL_GAP = 0.30
 
-# Insertion order doubles as the canonical lineup ordering.
 PASTELS = {
-    "smpl": (0.95, 0.63, 0.72, 1.0),  # rose
-    "smplh": (0.80, 0.70, 0.95, 1.0),  # lilac
-    "mano": (0.95, 0.80, 0.56, 1.0),  # apricot
-    "smplx": (0.62, 0.78, 0.98, 1.0),  # sky
-    "skel": (0.62, 0.93, 0.74, 1.0),  # mint
-    "mhr": (0.99, 0.73, 0.54, 1.0),  # peach
-    "anny": (0.76, 0.68, 0.98, 1.0),  # lavender
-    "flame": (0.99, 0.93, 0.62, 1.0),  # butter
-    "garment_measurements": (0.69, 0.86, 0.93, 1.0),  # powder
-    "soma": (0.97, 0.78, 0.78, 1.0),  # coral
-    "g1": (0.78, 0.78, 0.86, 1.0),  # steel
-    "myofullbody": (0.94, 0.78, 0.78, 1.0),  # blush
+    "smpl": (0.95, 0.63, 0.72, 1.0),
+    "smplh": (0.80, 0.70, 0.95, 1.0),
+    "smplx": (0.62, 0.78, 0.98, 1.0),
+    "anny": (0.76, 0.68, 0.98, 1.0),
+    "mhr": (0.99, 0.73, 0.54, 1.0),
+    "soma": (0.97, 0.78, 0.78, 1.0),
+    "garment_measurements": (0.69, 0.86, 0.93, 1.0),
+    "skel": (0.62, 0.93, 0.74, 1.0),
+    "myofullbody": (0.94, 0.78, 0.78, 1.0),
+    "flame": (0.99, 0.93, 0.62, 1.0),
+    "mano": (0.95, 0.80, 0.56, 1.0),
+    "brainco": (0.80, 0.88, 0.98, 1.0),
+    "g1": (0.78, 0.78, 0.86, 1.0),
+    "smpl_humanoid": (0.70, 0.82, 0.90, 1.0),
 }
-LABELS = {f: f.upper() for f in PASTELS} | {
+LABELS = {name: name.upper() for name in PASTELS} | {
+    "smplh": "SMPL-H",
+    "smplx": "SMPL-X",
     "garment_measurements": "GARMENT\nMEASUREMENTS",
     "myofullbody": "MYO\nFULLBODY",
+    "smpl_humanoid": "SMPL\nHUMANOID",
 }
-# FLAME is head-only: half-size keeps it in scale with the row.
-SCALES = {"flame": 0.5, "mano": 2.0}
-TPOSE_FAMILIES = {
-    "smpl",
-    "smplh",
-    "smplx",
-    "skel",
-    "mhr",
-    "anny",
-    "garment_measurements",
-    "soma",
-    "g1",
-    "myofullbody",
+SCALES = {
+    "flame": 0.5,
+    "mano": 0.55,
+    "brainco": 0.55,
 }
-
-LOADERS = {
-    "smpl": lambda: SMPL(gender="neutral"),  # path via body-models config
-    "smplh": lambda: SMPLH(gender="neutral"),  # path via body-models config
-    "mano": lambda: MANO(side="right"),  # path via body-models config
-    "smplx": lambda: SMPLX(gender="neutral"),  # path via body-models config
-    "skel": lambda: SKEL(gender="male"),
-    "mhr": MHR,
-    "anny": ANNY,
-    "flame": FLAME,
-    "garment_measurements": GarmentMeasurements,
-    "soma": lambda: SOMA(),
-    "g1": G1,
-    "myofullbody": MyoFullBody,
+MODEL_OPTIONS = {
+    "smpl": {"gender": "neutral"},
+    "smplh": {"gender": "neutral"},
+    "smplx": {"gender": "neutral"},
+    "skel": {"gender": "male"},
+    "mano": {"side": "right"},
+}
+REST_OPTIONS = {
+    "flame": {},
+    "mano": {"hands": "flat"},
+    "brainco": {"hands": "flat"},
 }
 
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2 + 0.08
 
 
-# ── Top-level pipeline ───────────────────────────────────────────────────────
 def main() -> None:
     args = parse_args()
     args.output = args.output.expanduser().resolve()
@@ -126,36 +104,40 @@ def main() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Render the README body-model lineup")
-    p.add_argument("--output", type=Path, default=Path("README_render.png"))
-    p.add_argument("--samples", type=int, default=512)
-    p.add_argument("--width", type=int, default=2200)
-    p.add_argument("--height", type=int, default=1200)
-    p.add_argument("--denoise", action="store_true")
-    return p.parse_args()
+    parser = argparse.ArgumentParser(description="Render the README body-model lineup")
+    parser.add_argument("--output", type=Path, default=Path("README_render.png"))
+    parser.add_argument("--samples", type=int, default=512)
+    parser.add_argument("--width", type=int, default=3200)
+    parser.add_argument("--height", type=int, default=1200)
+    parser.add_argument("--denoise", action="store_true")
+    return parser.parse_args()
 
 
-# ── Per-family canonical mesh ────────────────────────────────────────────────
 def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
-    model = LOADERS[family]()
+    model_name = family.replace("_", "-")
+    model = create_model(model_name, **MODEL_OPTIONS.get(family, {}))
+    params = model.get_rest_pose(**REST_OPTIONS[family]) if family in REST_OPTIONS else model.get_tpose()
+    if family == "anny":
+        params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
+
     if isinstance(model, RigidBodyModel):
-        params = model.get_tpose() if family in TPOSE_FAMILIES else model.get_rest_pose()
         mesh = model.forward_meshes(**params)[0]
-        verts = np.asarray(mesh.vertices, dtype=np.float32)
-        face_array = np.asarray(mesh.faces, dtype=np.int32)
-    elif family in TPOSE_FAMILIES:
-        params = model.get_tpose()
-        if family == "anny":
-            params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
-        verts = np.asarray(model.forward_vertices(**params), dtype=np.float32)
-        face_array = np.asarray(model.faces, dtype=np.int32)
+        vertices = np.asarray(mesh.vertices, dtype=np.float32)
+        faces = np.asarray(mesh.faces, dtype=np.int32)
     else:
-        verts = np.asarray(model.rest_vertices, dtype=np.float32)
-        face_array = np.asarray(model.faces, dtype=np.int32)
-    return verts, face_array
+        vertices = np.asarray(model.forward_vertices(**params), dtype=np.float32)
+        faces = np.asarray(model.faces, dtype=np.int32)
+    return orient_for_display(family, vertices), faces
 
 
-# ── Scene construction ──────────────────────────────────────────────────────
+def orient_for_display(family: str, vertices: np.ndarray) -> np.ndarray:
+    if family == "myofullbody":
+        return np.stack((vertices[:, 2], vertices[:, 0], vertices[:, 1]), axis=1)
+    if family == "mano":
+        return np.stack((vertices[:, 1], vertices[:, 0], vertices[:, 2]), axis=1)
+    return vertices
+
+
 def clear_scene() -> None:
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
@@ -193,16 +175,11 @@ def normalize_mesh(vertices: np.ndarray, target_height: float) -> np.ndarray:
     norm = vertices.copy().astype(np.float32)
     norm[:, 0] -= 0.5 * (float(norm[:, 0].min()) + float(norm[:, 0].max()))
     norm[:, 1] -= float(norm[:, 1].min())
-    height = float(norm[:, 1].max() - norm[:, 1].min())
-    if height > 1e-6:
-        norm *= target_height / height
+    norm *= target_height / np.ptp(norm[:, 1])
     return norm
 
 
 def create_mesh_object(name, vertices, faces):
-    vertices = vertices.copy()
-    vertices[:, 1] -= float(vertices[:, 1].min())
-    # Display meshes are Y-up, Blender is Z-up.
     verts_blender = [(float(x), float(z), float(y)) for x, y, z in vertices]
 
     mesh = bpy.data.meshes.new(f"{name}Mesh")
@@ -220,7 +197,6 @@ def create_mesh_object(name, vertices, faces):
 
 def build_material(name, color):
     mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Metallic"].default_value = 0.0
@@ -247,7 +223,6 @@ def add_sun(name, *, location, rotation_deg, energy, color=(1.0, 1.0, 1.0)):
 def set_world_background() -> None:
     world = bpy.data.worlds[0] if bpy.data.worlds else bpy.data.worlds.new("World")
     bpy.context.scene.world = world
-    world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
     bg.inputs["Color"].default_value = (0.02, 0.02, 0.06, 1.0)
     bg.inputs["Strength"].default_value = 0.25
@@ -266,7 +241,7 @@ def set_camera(model_objects):
     mins, maxs = bounds.min(axis=0), bounds.max(axis=0)
     center = 0.5 * (mins + maxs)
     height = float(maxs[2] - mins[2])
-    distance = max(5.0, max(float(maxs[0] - mins[0]), height) * 1.05 + 0.9)
+    distance = max(5.0, max(float(maxs[0] - mins[0]), height) * 1.10 + 1.2)
     cam.location = (float(center[0]), float(center[1]) - distance, float(mins[2] + 0.70 * height))
 
     target = bpy.data.objects.new("CameraTarget", None)
@@ -290,7 +265,7 @@ def add_family_labels(names, model_objects, camera):
         curve.align_y = "CENTER"
         curve.extrude = 0.01
         curve.bevel_depth = 0.002
-        curve.size = 0.22
+        curve.size = 0.18
 
         label = bpy.data.objects.new(f"{name}_Label", curve)
         bpy.context.scene.collection.objects.link(label)
