@@ -42,7 +42,7 @@ class SKEL(SkinnedModel):
     def __init__(
         self,
         model_path: Path | str | None = None,
-        gender: Literal["male", "female"] | None = None,
+        gender: Literal["male", "female"] = "male",
         simplify: float = 1.0,
         *,
         runtime: RuntimeLike = "numpy",

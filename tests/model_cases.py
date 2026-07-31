@@ -30,7 +30,7 @@ MODELS = [
     ("mano", MANO, {"side": "right"}),
     ("mhr", MHR, {}),
     ("myofullbody", MyoFullBody, {}),
-    ("skel", SKEL, {"gender": "male"}),
+    ("skel", SKEL, {}),
     ("smpl", SMPL, {"gender": "neutral"}),
     ("smpl_humanoid", SmplHumanoid, {}),
     ("smplh", SMPLH, {"gender": "neutral"}),
