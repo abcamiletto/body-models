@@ -2,6 +2,8 @@ from body_models._common.pose_assets import load_npz
 from body_models._constants import Joint
 
 SKEL_JOINTS = {
+    Joint.PELVIS: "pelvis",
+    Joint.HEAD: "head",
     Joint.LEFT_SHOULDER: "humerus_l",
     Joint.RIGHT_SHOULDER: "humerus_r",
     Joint.LEFT_ELBOW: "ulna_l",

@@ -54,7 +54,7 @@ class MHR(SkinnedModel):
         weights = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = None
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -103,7 +103,7 @@ class MHR(SkinnedModel):
         identity: MhrIdentity | None = None,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
@@ -117,7 +117,7 @@ class MHR(SkinnedModel):
             identity = self.prepare_identity(shape, expression)
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose)
-        vertices = self._runtime.compact_linear_blend_skinning(
+        vertices = self._runtime._skin_vertices(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,

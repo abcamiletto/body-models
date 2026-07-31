@@ -44,14 +44,6 @@ class SmplFamilyModel(SkinnedModel):
         return self._weights.v_template
 
     @property
-    def shapedirs(self) -> Float[Array, "V 3 S"]:
-        return self._weights.shapedirs
-
-    @property
-    def posedirs(self) -> Float[Array, "P V*3"]:
-        return self._weights.posedirs
-
-    @property
     def parents(self) -> list[int]:
         return list(self._weights.parents)
 
@@ -61,9 +53,9 @@ class SmplFamilyModel(SkinnedModel):
         pose: deformation.SkinningPose,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
         global_translation: Float[Array, "*batch 3"] | None,
-        vertex_indices: Int[Array, "S"] | None,
+        vertex_indices: Sequence[int] | None,
     ) -> Float[Array, "*batch V 3"]:
-        vertices = self._runtime.compact_linear_blend_skinning(
+        vertices = self._runtime._skin_vertices(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,

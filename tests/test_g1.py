@@ -11,7 +11,7 @@ def test_g1_to_qpos_accepts_rest_pose_motion_dict() -> None:
 
     qpos = model.to_qpos(**motion)
 
-    assert qpos.shape == (2, 7 + model.num_actuated)
+    assert qpos.shape == (2, 7 + model.num_dofs)
     np.testing.assert_array_equal(qpos[:, 7:], motion["body_pose"])
 
 
@@ -20,7 +20,7 @@ def test_g1_forward_skeleton_matches_mujoco_fk() -> None:
     model = G1()
     mj_model = mujoco.MjModel.from_xml_path(str(get_model_path()))
     data = mujoco.MjData(mj_model)
-    body_pose = np.linspace(-0.1, 0.1, model.num_actuated, dtype=np.float32)[None]
+    body_pose = np.linspace(-0.1, 0.1, model.num_dofs, dtype=np.float32)[None]
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
     global_rotation = np.array([[0.05, -0.1, 0.08]], dtype=np.float32)
 

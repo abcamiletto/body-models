@@ -4,6 +4,9 @@ SMPL_HUMANOID_VARIANTS = ("humenv", "phc", "smplsim")
 
 
 SMPL_HUMANOID_JOINTS = {
+    Joint.PELVIS: "Pelvis",
+    Joint.NECK: "Neck",
+    Joint.HEAD: "Head",
     Joint.LEFT_HIP: "L_Hip",
     Joint.RIGHT_HIP: "R_Hip",
     Joint.LEFT_KNEE: "L_Knee",

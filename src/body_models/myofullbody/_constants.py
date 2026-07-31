@@ -10,6 +10,9 @@ MUJOCO_TO_MYOFULLBODY = (
 )
 
 MYOFULLBODY_JOINTS = {
+    Joint.PELVIS: "pelvis",
+    Joint.NECK: "neck",
+    Joint.HEAD: "head",
     Joint.LEFT_SHOULDER: "humerus_l",
     Joint.RIGHT_SHOULDER: "humerus_r",
     Joint.LEFT_ELBOW: "ulna_l",

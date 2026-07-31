@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from body_models import RigidBodyModel, create_model, list_models
+from body_models import RigidBodyModel, create_model
 from body_models.smpl_humanoid import SmplHumanoid
 from body_models.smpl_humanoid._constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 from body_models.smpl_humanoid._io import SMPL_HUMANOID_SOURCES, get_model_path
@@ -37,9 +37,8 @@ def test_smpl_humanoid_xml_uses_xyz_hinge_order(source: str) -> None:
 
 @pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_VARIANTS))
 def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
-    model = create_model(model_name)
+    model = create_model("smpl-humanoid", variant=model_name)
 
-    assert model_name in list_models()
     assert isinstance(model, SmplHumanoid)
     assert model.num_joints == 24
     assert len(model.forward_meshes(**model.get_rest_pose())) == 1
@@ -88,7 +87,7 @@ def assert_smpl_humanoid_is_y_up(model: SmplHumanoid) -> None:
 
 def test_smpl_humanoid_to_qpos_uses_mujoco_joint_coordinates(smpl_humanoid_xml) -> None:
     model = SmplHumanoid(model_path=smpl_humanoid_xml)
-    body_pose = np.arange(model.num_actuated, dtype=np.float32)
+    body_pose = np.arange(model.num_dofs, dtype=np.float32)
 
     qpos = model.to_qpos(body_pose)
 
@@ -112,7 +111,7 @@ def test_smpl_humanoid_parameters_from_smpl_returns_mujoco_joint_coordinates(smp
 
     ordered = np.stack([smpl_body_pose[:, smpl_index] for _, smpl_index in BODY_JOINTS], axis=1)
     expected_body_pose = SO3.conversions.from_axis_angle_to_euler(ordered, convention="XYZ", xp=np).reshape(
-        2, model.num_actuated
+        2, model.num_dofs
     )
     expected_global_rotation = SO3.convert(
         SO3.multiply(
@@ -170,7 +169,7 @@ def test_smpl_humanoid_smpl_parameters_from_qpos_backends_match_numpy(smpl_human
     import jax.numpy as jnp
 
     model = SmplHumanoid(model_path=smpl_humanoid_xml)
-    body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
+    body_pose = np.linspace(-0.2, 0.2, model.num_dofs, dtype=np.float32)[None]
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
     global_rotation = np.array([[0.1, -0.2, 0.05]], dtype=np.float32)
     qpos = model.to_qpos(
@@ -199,7 +198,7 @@ def test_smpl_humanoid_forward_skeleton_matches_mujoco_qpos() -> None:
     model = SmplHumanoid(variant="humenv")
     mj_model = mujoco.MjModel.from_xml_path(str(get_model_path("humenv")))
     data = mujoco.MjData(mj_model)
-    body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
+    body_pose = np.linspace(-0.2, 0.2, model.num_dofs, dtype=np.float32)[None]
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
     global_rotation = np.array([[0.1, -0.2, 0.05]], dtype=np.float32)
 

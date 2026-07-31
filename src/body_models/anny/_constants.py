@@ -2,6 +2,9 @@ from body_models._common.pose_assets import load_npz
 from body_models._constants import Joint
 
 ANNY_JOINTS = {
+    Joint.PELVIS: "root",
+    Joint.NECK: "neck01",
+    Joint.HEAD: "head",
     Joint.LEFT_SHOULDER: "shoulder01.L",
     Joint.RIGHT_SHOULDER: "shoulder01.R",
     Joint.LEFT_ELBOW: "lowerarm01.L",
