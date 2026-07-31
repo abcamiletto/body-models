@@ -29,7 +29,7 @@ def test_parameter_spec_exposes_rotation_representation() -> None:
     model = SMPL(gender="neutral", rotation_type="rotmat")
 
     assert model.parameter_spec["shape"] == ParameterSpec((10,), "identity")
-    assert model.parameter_spec["body_pose"] == ParameterSpec.rotation("rotmat", 23)
+    assert model.parameter_spec["body_pose"] == ParameterSpec.rotation("rotmat", count=23)
     assert model.parameter_spec["global_rotation"] == ParameterSpec.rotation(
         "rotmat",
         role="transform",

@@ -118,7 +118,7 @@ def test_skinning_backends_match_default(_name, model_class, kwargs) -> None:
         vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():
             expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
-            model = model_class(**kwargs, runtime=TorchRuntime(skinning_backend))
+            model = model_class(**kwargs, runtime=TorchRuntime(skinning_backend=skinning_backend))
             actual = model.forward_vertices(**params, vertex_indices=vertex_indices)
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 

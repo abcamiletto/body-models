@@ -45,14 +45,14 @@ class ANNY(SkinnedModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
         *,
+        model_path: Path | str | None = None,
         rig: str = "default",
         topology: str = "default",
         all_phenotypes: bool = False,
         extrapolate_phenotypes: bool = False,
-        simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
@@ -94,9 +94,9 @@ class ANNY(SkinnedModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity", default=0.5),
-            "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
-            "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }
@@ -150,12 +150,12 @@ class ANNY(SkinnedModel):
         body_pose: Float[Array, "*batch 64 N"] | Float[Array, "*batch 64 3 3"],
         head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 6"] | None = None,
         identity: AnnyIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed ANNY vertices."""
         xp = self._runtime.xp
@@ -187,12 +187,12 @@ class ANNY(SkinnedModel):
         body_pose: Float[Array, "*batch 64 N"] | Float[Array, "*batch 64 3 3"],
         head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 6"] | None = None,
         identity: AnnyIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed ANNY joint transforms."""
         xp = self._runtime.xp
@@ -311,6 +311,7 @@ class ANNY(SkinnedModel):
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
@@ -319,7 +320,7 @@ class ANNY(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        params = super().get_rest_pose(batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             runtime = self.runtime
             axis_angle = runtime.asarray(ANNY_HAND_PRESETS[hands], like=params["hand_pose"]).reshape(-1, 3)
@@ -334,6 +335,7 @@ class ANNY(SkinnedModel):
 
     def get_tpose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
@@ -352,6 +354,7 @@ class ANNY(SkinnedModel):
 
     def get_apose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,

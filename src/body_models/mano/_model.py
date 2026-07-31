@@ -41,12 +41,12 @@ class MANO(SmplFamilyModel):
 
     def __init__(
         self,
+        *,
         model_path: Path | str | None = None,
         side: Literal["right", "left"] | None = None,
         flat_hand_mean: bool = False,
-        simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        *,
+        simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         if side is not None and side not in ("right", "left"):
@@ -75,7 +75,7 @@ class MANO(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
             "wrist_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -93,13 +93,13 @@ class MANO(SmplFamilyModel):
     def forward_vertices(
         self,
         hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
+        *,
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: ManoIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
-        *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: ManoIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed hand vertices."""
         xp = self._runtime.xp
@@ -111,7 +111,7 @@ class MANO(SmplFamilyModel):
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
 
-        pose = self.prepare_pose(hand_pose, wrist_rotation, identity=identity)
+        pose = self.prepare_pose(hand_pose, wrist_rotation=wrist_rotation, identity=identity)
         return self._deform_vertices(
             identity,
             pose,
@@ -123,13 +123,13 @@ class MANO(SmplFamilyModel):
     def forward_skeleton(
         self,
         hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
+        *,
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: ManoIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
-        *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: ManoIdentity | None = None,
     ) -> Float[Array, "*batch 16 4 4"]:
         """Compute posed hand joint transforms."""
         xp = self._runtime.xp
@@ -177,8 +177,8 @@ class MANO(SmplFamilyModel):
     def prepare_pose(
         self,
         hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
-        wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
+        wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         identity: ManoIdentity,
     ) -> ManoPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
@@ -208,6 +208,7 @@ class MANO(SmplFamilyModel):
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
@@ -216,7 +217,7 @@ class MANO(SmplFamilyModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        params = super().get_rest_pose(batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             params["hand_pose"] = self._hand_preset(batch_dims, params["hand_pose"], hands)
         return params

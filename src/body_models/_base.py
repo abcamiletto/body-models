@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
@@ -34,15 +34,15 @@ class ParameterSpec:
 
     shape: tuple[int, ...]
     role: ParameterRole
-    default: float = 0.0
-    rotation_type: RotationType | None = None
+    default: float = field(default=0.0, kw_only=True)
+    rotation_type: RotationType | None = field(default=None, kw_only=True)
 
     @classmethod
     def rotation(
         cls,
         rotation_type: RotationType,
-        count: int | None = None,
         *,
+        count: int | None = None,
         role: ParameterRole = "pose",
     ) -> ParameterSpec:
         """Describe one rotation or a vector of rotations."""
@@ -186,6 +186,7 @@ class ArticulatedModel(ABC):
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
     ) -> dict[str, Float[Array, "..."]]:
@@ -225,6 +226,7 @@ class ArticulatedModel(ABC):
 
     def get_tpose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
@@ -233,6 +235,7 @@ class ArticulatedModel(ABC):
 
     def get_apose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
@@ -387,9 +390,9 @@ class RigidBodyModel(ArticulatedModel):
     def to_qpos(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         clamp_to_limits: bool = False,
     ) -> Float[Array, "*batch qpos"]:
         """Build full MuJoCo ``qpos`` as ``[root_xyz, root_wxyz, body_pose]``.

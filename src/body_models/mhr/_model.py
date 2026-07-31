@@ -39,8 +39,8 @@ class MHR(SkinnedModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
         *,
+        model_path: Path | str | None = None,
         lod: int = 1,
         simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
@@ -111,13 +111,13 @@ class MHR(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 45"] | None = None,
         expression: Float[Array, "*batch 72"] | None = None,
         identity: MhrIdentity | None = None,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
@@ -149,6 +149,7 @@ class MHR(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
+        *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
@@ -214,6 +215,7 @@ class MHR(SkinnedModel):
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
@@ -222,7 +224,7 @@ class MHR(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        params = super().get_rest_pose(batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             runtime = self.runtime
             hand_pose = runtime.asarray(MHR_HAND_PRESETS[hands], like=params["hand_pose"], dtype=dtype)
@@ -231,6 +233,7 @@ class MHR(SkinnedModel):
 
     def get_tpose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
@@ -253,6 +256,7 @@ class MHR(SkinnedModel):
 
     def get_apose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,

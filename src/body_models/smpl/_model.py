@@ -40,11 +40,11 @@ class SMPL(SmplFamilyModel):
 
     def __init__(
         self,
+        *,
         model_path: Path | str | None = None,
         gender: Literal["neutral", "male", "female"] | None = None,
-        simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        *,
+        simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         if gender is not None and gender not in ("neutral", "male", "female"):
@@ -76,7 +76,7 @@ class SMPL(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -89,13 +89,13 @@ class SMPL(SmplFamilyModel):
     def forward_vertices(
         self,
         body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
+        *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: SmplIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
-        *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: SmplIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
@@ -107,7 +107,7 @@ class SMPL(SmplFamilyModel):
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
 
-        pose = self.prepare_pose(body_pose, pelvis_rotation, identity=identity)
+        pose = self.prepare_pose(body_pose, pelvis_rotation=pelvis_rotation, identity=identity)
         return self._deform_vertices(
             identity,
             pose,
@@ -119,13 +119,13 @@ class SMPL(SmplFamilyModel):
     def forward_skeleton(
         self,
         body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
+        *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: SmplIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
-        *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: SmplIdentity | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
@@ -172,8 +172,8 @@ class SMPL(SmplFamilyModel):
     def prepare_pose(
         self,
         body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         identity: SmplIdentity,
     ) -> SmplPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
@@ -200,11 +200,11 @@ class SMPL(SmplFamilyModel):
             shape=shape,
         )
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         axis_angle = self._runtime.asarray(

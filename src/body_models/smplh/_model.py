@@ -43,12 +43,12 @@ class SMPLH(SmplFamilyModel):
 
     def __init__(
         self,
+        *,
         model_path: Path | str | None = None,
         gender: Literal["neutral", "male", "female"] | None = None,
         flat_hand_mean: bool = False,
-        simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
-        *,
+        simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         if gender is not None and gender not in ("neutral", "male", "female"):
@@ -77,8 +77,8 @@ class SMPLH(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -92,13 +92,13 @@ class SMPLH(SmplFamilyModel):
         self,
         body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+        *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: SmplhIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
-        *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: SmplhIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
@@ -110,7 +110,7 @@ class SMPLH(SmplFamilyModel):
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
 
-        pose = self.prepare_pose(body_pose, hand_pose, pelvis_rotation, identity=identity)
+        pose = self.prepare_pose(body_pose, hand_pose, pelvis_rotation=pelvis_rotation, identity=identity)
         return self._deform_vertices(
             identity,
             pose,
@@ -123,13 +123,13 @@ class SMPLH(SmplFamilyModel):
         self,
         body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+        *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: SmplhIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Int[Array, "S"] | None = None,
-        *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: SmplhIdentity | None = None,
     ) -> Float[Array, "*batch 52 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
@@ -179,8 +179,8 @@ class SMPLH(SmplFamilyModel):
         self,
         body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         identity: SmplhIdentity,
     ) -> SmplhPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
@@ -211,6 +211,7 @@ class SMPLH(SmplFamilyModel):
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
@@ -219,7 +220,7 @@ class SMPLH(SmplFamilyModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        params = super().get_rest_pose(batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             params["hand_pose"] = self._hand_preset(batch_dims, params["hand_pose"], hands)
         return params
@@ -236,6 +237,7 @@ class SMPLH(SmplFamilyModel):
 
     def get_tpose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
@@ -245,6 +247,7 @@ class SMPLH(SmplFamilyModel):
 
     def get_apose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,

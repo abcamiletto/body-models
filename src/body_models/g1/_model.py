@@ -31,8 +31,8 @@ class G1(RigidBodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
         *,
+        model_path: Path | str | None = None,
         convention: core.Convention = "soma",
         runtime: RuntimeLike = "numpy",
     ) -> None:
@@ -66,9 +66,9 @@ class G1(RigidBodyModel):
     def forward_skeleton(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
@@ -89,30 +89,38 @@ class G1(RigidBodyModel):
     def forward_links(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
-        skeleton = self.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+        skeleton = self.forward_skeleton(
+            body_pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
+        )
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
-        links = self.forward_links(body_pose, global_translation, global_rotation=global_rotation)
+        links = self.forward_links(
+            body_pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
+        )
         return self._meshes_from_links(links)
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the G1 T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the G1 A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 

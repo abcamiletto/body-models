@@ -88,6 +88,8 @@ not covered by semantic-versioning compatibility guarantees. Every model
 derives from `body_models.ArticulatedModel`. Model packages also export the
 types returned by `prepare_identity()` and `prepare_pose()`, such as
 `body_models.smpl.SmplIdentity` and `SmplPreparedPose`.
+Required numerical inputs may be positional; optional model and runtime
+arguments are keyword-only.
 
 When shape-dependent identity parameters stay fixed across many poses, prepare
 them once and pass the returned dictionary back through `identity`. This avoids

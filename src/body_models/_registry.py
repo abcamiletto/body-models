@@ -38,7 +38,7 @@ def get_model_spec(model_name: str) -> ModelSpec:
         raise ValueError(f"Unknown model {model_name!r}") from exc
 
 
-def list_models(filter: str = "") -> list[str]:
+def list_models(*, filter: str = "") -> list[str]:
     """List catalog names, optionally filtered with a shell-style pattern."""
     names = sorted(MODEL_SPECS)
     if not filter:
