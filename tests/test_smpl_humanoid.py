@@ -47,18 +47,18 @@ def test_smpl_humanoid_variant_factories_load(model_name: str) -> None:
 
 @pytest.mark.parametrize("model_name", sorted(SMPL_HUMANOID_SOURCES))
 def test_smpl_humanoid_variants_are_y_up(model_name: str) -> None:
-    model = SmplHumanoid(source=model_name)
+    model = SmplHumanoid(variant=model_name)
     assert_smpl_humanoid_is_y_up(model)
 
 
 def test_smpl_humanoid_custom_xml_loads() -> None:
     xml_path = get_model_path("phc")
-    model = SmplHumanoid(source=xml_path)
+    model = SmplHumanoid(model_path=xml_path)
 
     assert_smpl_humanoid_is_y_up(model)
 
 
-def test_smpl_humanoid_source_uses_config_path(smpl_humanoid_xml, monkeypatch) -> None:
+def test_smpl_humanoid_variant_uses_config_path(smpl_humanoid_xml, monkeypatch) -> None:
     from body_models import _config as config
 
     monkeypatch.setattr(
@@ -71,7 +71,7 @@ def test_smpl_humanoid_source_uses_config_path(smpl_humanoid_xml, monkeypatch) -
 def test_smpl_humanoid_custom_bare_xml_filename_loads(smpl_humanoid_xml, monkeypatch) -> None:
     monkeypatch.chdir(smpl_humanoid_xml.parent)
 
-    model = SmplHumanoid(source=smpl_humanoid_xml.name)
+    model = SmplHumanoid(model_path=smpl_humanoid_xml.name)
 
     assert model.num_joints == 24
 
@@ -87,7 +87,7 @@ def assert_smpl_humanoid_is_y_up(model: SmplHumanoid) -> None:
 
 
 def test_smpl_humanoid_to_qpos_uses_mujoco_joint_coordinates(smpl_humanoid_xml) -> None:
-    model = SmplHumanoid(source=smpl_humanoid_xml)
+    model = SmplHumanoid(model_path=smpl_humanoid_xml)
     body_pose = np.arange(model.num_actuated, dtype=np.float32)
 
     qpos = model.to_qpos(body_pose)
@@ -96,14 +96,14 @@ def test_smpl_humanoid_to_qpos_uses_mujoco_joint_coordinates(smpl_humanoid_xml) 
     np.testing.assert_array_equal(qpos[7:], body_pose)
 
 
-def test_smpl_humanoid_from_smpl_motion_returns_mujoco_joint_coordinates(smpl_humanoid_xml) -> None:
-    model = SmplHumanoid(source=smpl_humanoid_xml)
+def test_smpl_humanoid_parameters_from_smpl_returns_mujoco_joint_coordinates(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(model_path=smpl_humanoid_xml)
     smpl_body_pose = np.arange(2 * 23 * 3, dtype=np.float32).reshape(2, 23, 3) / 100
     global_translation = np.arange(6, dtype=np.float32).reshape(2, 3) / 10
     global_rotation = np.array([[0.1, -0.2, 0.3], [0.2, 0.1, -0.1]], dtype=np.float32)
     pelvis_rotation = np.array([[0.05, 0.02, -0.03], [-0.04, 0.01, 0.02]], dtype=np.float32)
 
-    motion = model.from_smpl_motion(
+    motion = model.parameters_from_smpl(
         smpl_body_pose,
         pelvis_rotation=pelvis_rotation,
         global_rotation=global_rotation,
@@ -132,31 +132,31 @@ def test_smpl_humanoid_from_smpl_motion_returns_mujoco_joint_coordinates(smpl_hu
     np.testing.assert_allclose(qpos[..., 7:], motion["body_pose"])
 
 
-def test_smpl_humanoid_from_smpl_motion_matches_forward_euler_convention(smpl_humanoid_xml) -> None:
-    model = SmplHumanoid(source=smpl_humanoid_xml)
+def test_smpl_humanoid_parameters_from_smpl_matches_forward_euler_convention(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(model_path=smpl_humanoid_xml)
     smpl_body_pose = np.zeros((1, 23, 3), dtype=np.float32)
     smpl_body_pose[:, 0] = np.array([0.3, -0.2, 0.4], dtype=np.float32)
 
-    motion = model.from_smpl_motion(smpl_body_pose)
+    motion = model.parameters_from_smpl(smpl_body_pose)
 
     expected = SO3.conversions.from_axis_angle_to_rotmat(smpl_body_pose[:, 0], xp=np)
     actual = SO3.conversions.from_euler_to_rotmat(motion["body_pose"][:, :3], convention="XYZ", xp=np)
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
-def test_smpl_humanoid_to_smpl_motion_inverts_qpos(smpl_humanoid_xml) -> None:
-    model = SmplHumanoid(source=smpl_humanoid_xml)
+def test_smpl_humanoid_smpl_parameters_from_qpos_inverts_qpos(smpl_humanoid_xml) -> None:
+    model = SmplHumanoid(model_path=smpl_humanoid_xml)
     smpl_body_pose = np.arange(2 * 23 * 3, dtype=np.float32).reshape(2, 23, 3) / 200
     global_translation = np.array([[0.1, 0.2, 0.3], [-0.1, 0.4, -0.2]], dtype=np.float32)
     global_rotation = np.array([[0.1, -0.2, 0.3], [0.2, 0.1, -0.1]], dtype=np.float32)
-    robot_motion = model.from_smpl_motion(
+    robot_motion = model.parameters_from_smpl(
         smpl_body_pose,
         global_rotation=global_rotation,
         global_translation=global_translation,
     )
 
-    smpl_motion = model.to_smpl_motion(model.to_qpos(**robot_motion))
-    round_trip_qpos = model.to_qpos(**model.from_smpl_motion(**smpl_motion))
+    smpl_motion = model.smpl_parameters_from_qpos(model.to_qpos(**robot_motion))
+    round_trip_qpos = model.to_qpos(**model.parameters_from_smpl(**smpl_motion))
 
     np.testing.assert_allclose(smpl_motion["smpl_body_pose"], smpl_body_pose, rtol=1e-5, atol=1e-5)
     np.testing.assert_allclose(smpl_motion["global_translation"], global_translation, rtol=1e-6, atol=1e-6)
@@ -164,12 +164,12 @@ def test_smpl_humanoid_to_smpl_motion_inverts_qpos(smpl_humanoid_xml) -> None:
     np.testing.assert_allclose(round_trip_qpos, model.to_qpos(**robot_motion), rtol=1e-6, atol=1e-6)
 
 
-def test_smpl_humanoid_to_smpl_motion_backends_match_numpy(smpl_humanoid_xml) -> None:
+def test_smpl_humanoid_smpl_parameters_from_qpos_backends_match_numpy(smpl_humanoid_xml) -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("jax")
     import jax.numpy as jnp
 
-    model = SmplHumanoid(source=smpl_humanoid_xml)
+    model = SmplHumanoid(model_path=smpl_humanoid_xml)
     body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
     global_rotation = np.array([[0.1, -0.2, 0.05]], dtype=np.float32)
@@ -178,10 +178,16 @@ def test_smpl_humanoid_to_smpl_motion_backends_match_numpy(smpl_humanoid_xml) ->
         global_rotation=global_rotation,
         global_translation=global_translation,
     )
-    expected = model.to_smpl_motion(qpos)
+    expected = model.smpl_parameters_from_qpos(qpos)
 
-    torch_motion = SmplHumanoid(source=smpl_humanoid_xml, runtime="torch").to_smpl_motion(torch.as_tensor(qpos))
-    jax_motion = SmplHumanoid(source=smpl_humanoid_xml, runtime="jax").to_smpl_motion(jnp.asarray(qpos))
+    torch_motion = SmplHumanoid(
+        model_path=smpl_humanoid_xml,
+        runtime="torch",
+    ).smpl_parameters_from_qpos(torch.as_tensor(qpos))
+    jax_motion = SmplHumanoid(
+        model_path=smpl_humanoid_xml,
+        runtime="jax",
+    ).smpl_parameters_from_qpos(jnp.asarray(qpos))
 
     for key, value in expected.items():
         np.testing.assert_allclose(torch_motion[key].detach().numpy(), value, rtol=1e-5, atol=1e-5)
@@ -190,7 +196,7 @@ def test_smpl_humanoid_to_smpl_motion_backends_match_numpy(smpl_humanoid_xml) ->
 
 def test_smpl_humanoid_forward_skeleton_matches_mujoco_qpos() -> None:
     mujoco = pytest.importorskip("mujoco")
-    model = SmplHumanoid(source="humenv")
+    model = SmplHumanoid(variant="humenv")
     mj_model = mujoco.MjModel.from_xml_path(str(get_model_path("humenv")))
     data = mujoco.MjData(mj_model)
     body_pose = np.linspace(-0.2, 0.2, model.num_actuated, dtype=np.float32)[None]
@@ -215,7 +221,7 @@ def test_smpl_humanoid_forward_skeleton_matches_mujoco_qpos() -> None:
 
 
 def test_smpl_humanoid_apose_is_canonical_smpl_order(smpl_humanoid_xml) -> None:
-    model = SmplHumanoid(source=smpl_humanoid_xml)
+    model = SmplHumanoid(model_path=smpl_humanoid_xml)
     body_pose = model.unpack_pose(model.get_apose()["body_pose"])
 
     np.testing.assert_allclose(body_pose["L_Thorax"], np.array([0.0, 0.0, 0.45], dtype=np.float32), atol=1e-7)
@@ -225,7 +231,7 @@ def test_smpl_humanoid_apose_is_canonical_smpl_order(smpl_humanoid_xml) -> None:
 
 
 def test_smpl_humanoid_loads_mjcf_primitive_xml(smpl_humanoid_xml) -> None:
-    model = SmplHumanoid(source=smpl_humanoid_xml)
+    model = SmplHumanoid(model_path=smpl_humanoid_xml)
     params = model.get_rest_pose()
 
     assert model.link_names == [f"{name}_geom" for name in JOINT_NAMES]
@@ -239,7 +245,7 @@ def test_smpl_humanoid_xml_requires_canonical_hierarchy(tmp_path) -> None:
     xml_path.write_text("<mujoco><worldbody><body name='Pelvis'/></worldbody></mujoco>", encoding="utf-8")
 
     with pytest.raises(ValueError, match="missing body names"):
-        SmplHumanoid(source=xml_path)
+        SmplHumanoid(model_path=xml_path)
 
 
 def _smpl_humanoid_xml() -> str:

@@ -7,7 +7,7 @@ from importlib import import_module
 from typing import Any
 
 from body_models._base import ArticulatedModel
-from body_models._catalog import MODEL_SPECS, ModelSpec
+from body_models._catalog import MODEL_SPECS
 from body_models._runtime import RuntimeLike
 
 
@@ -43,15 +43,6 @@ def create_model(
     return model_class(**(dict(spec.defaults) | kwargs), runtime=runtime)
 
 
-def get_model_spec(model_name: str) -> ModelSpec:
-    """Return immutable catalog metadata for a model name."""
-    name = _normalize_name(model_name)
-    try:
-        return MODEL_SPECS[name]
-    except KeyError as exc:
-        raise ValueError(f"Unknown model {model_name!r}") from exc
-
-
 def list_models(*, filter: str = "") -> list[str]:
     """
     List public model factory names.
@@ -72,4 +63,4 @@ def _normalize_name(name: str) -> str:
     return name.strip().lower().replace("_", "-")
 
 
-__all__ = ["create_model", "get_model_spec", "list_models"]
+__all__ = ["create_model", "list_models"]

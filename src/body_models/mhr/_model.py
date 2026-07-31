@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -25,7 +26,7 @@ from body_models.mhr._pose import pack_pose, unpack_pose
 
 Array = Any
 MhrIdentity = core.MhrIdentity
-MhrPreparedPose = core.MhrPreparedPose
+MhrPose = core.MhrPose
 
 
 class MHR(SkinnedModel):
@@ -41,7 +42,7 @@ class MHR(SkinnedModel):
         self,
         *,
         model_path: Path | str | None = None,
-        lod: int = 1,
+        lod: Literal[0, 1, 2, 3, 4, 5, 6] = 1,
         simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
@@ -146,11 +147,15 @@ class MHR(SkinnedModel):
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
         *,
+        shape: Float[Array, "*batch 45"] | None = None,
+        expression: Float[Array, "*batch 72"] | None = None,
+        identity: MhrIdentity | None = None,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
-        """Compute posed joint transforms."""
+        """Compute posed joint transforms, which are independent of identity."""
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
         xp = self._runtime.xp
         pose = pack_pose(xp, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
@@ -191,7 +196,7 @@ class MHR(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
-    ) -> MhrPreparedPose:
+    ) -> MhrPose:
         """Precompute pose-dependent MHR state."""
         pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
         return core.prepare_pose(

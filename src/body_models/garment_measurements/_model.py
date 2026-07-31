@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -26,7 +27,7 @@ from body_models.garment_measurements._pose import pack_pose
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
 GarmentMeasurementsIdentity = core.GarmentMeasurementsIdentity
-GarmentMeasurementsPreparedPose = core.GarmentMeasurementsPreparedPose
+GarmentMeasurementsPose = core.GarmentMeasurementsPose
 
 
 @dataclass(frozen=True)
@@ -114,8 +115,8 @@ class GarmentMeasurements(SkinnedModel):
         body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
         *,
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch C"] | None = None,
         identity: GarmentMeasurementsIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
@@ -132,7 +133,13 @@ class GarmentMeasurements(SkinnedModel):
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
 
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose, pelvis_rotation, identity=identity)
+        pose = self.prepare_pose(
+            body_pose,
+            head_pose,
+            hand_pose,
+            identity=identity,
+            pelvis_rotation=pelvis_rotation,
+        )
         vertices = self._runtime.compact_linear_blend_skinning(
             identity["rest_vertices"],
             pose["skinning_transforms"],
@@ -152,13 +159,13 @@ class GarmentMeasurements(SkinnedModel):
         body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
         *,
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch C"] | None = None,
         identity: GarmentMeasurementsIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed GarmentMeasurements joint transforms."""
         xp = self._runtime.xp
@@ -172,7 +179,7 @@ class GarmentMeasurements(SkinnedModel):
 
         packed_pose = pack_pose(
             xp,
-            pelvis_rotation,
+            self._resolve_pelvis_rotation(body_pose, pelvis_rotation),
             body_pose,
             head_pose,
             hand_pose,
@@ -215,14 +222,14 @@ class GarmentMeasurements(SkinnedModel):
         body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
-        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
         *,
         identity: GarmentMeasurementsIdentity,
-    ) -> GarmentMeasurementsPreparedPose:
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+    ) -> GarmentMeasurementsPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(
             self._runtime.xp,
-            pelvis_rotation,
+            self._resolve_pelvis_rotation(body_pose, pelvis_rotation),
             body_pose,
             head_pose,
             hand_pose,
@@ -234,6 +241,21 @@ class GarmentMeasurements(SkinnedModel):
             self.rotation_type,
             bind_skeleton=identity["bind_skeleton"],
             local_bind_translations=identity["local_bind_translations"],
+            xp=self._runtime.xp,
+        )
+
+    def _resolve_pelvis_rotation(
+        self,
+        body_pose: Float[Array, "*batch 25 N"] | Float[Array, "*batch 25 3 3"],
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+    ) -> Float[Array, "*batch N"] | Float[Array, "*batch 3 3"]:
+        if pelvis_rotation is not None:
+            return pelvis_rotation
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
+        return SO3.identity_as(
+            body_pose,
+            batch_dims=batch_shape,
+            rotation_type=self.rotation_type,
             xp=self._runtime.xp,
         )
 

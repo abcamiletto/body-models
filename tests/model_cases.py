@@ -46,10 +46,8 @@ REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" /
 
 
 def forward_skeleton(model, params, **kwargs):
-    """Call a model-specific skeleton signature with the parameters it accepts."""
-    arguments = dict(params) | kwargs
-    accepted = signature(model.forward_skeleton).parameters
-    return model.forward_skeleton(**{key: value for key, value in arguments.items() if key in accepted})
+    """Call a model skeleton with its complete public parameter mapping."""
+    return model.forward_skeleton(**params, **kwargs)
 
 
 def prepare_states(model, params):

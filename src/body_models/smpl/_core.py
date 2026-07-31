@@ -12,8 +12,6 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 SmplSkeletonIdentity = deformation.SkeletonIdentity
-SmplIdentity = deformation.LinearIdentity
-SmplPreparedPose = deformation.SkinningPose
 
 prepare_identity = family.prepare_shape_identity
 prepare_skeleton_identity = family.prepare_shape_skeleton_identity
@@ -29,7 +27,7 @@ def prepare_pose(
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
     rest_joints: Float[Array, "*identity_batch J 3"],
     xp: Any,
-) -> SmplPreparedPose:
+) -> deformation.SkinningPose:
     """Prepare SMPL transforms and pose-dependent vertex offsets."""
     pose_matrices = family.assemble_pose_matrices(
         [(body_pose, rotation_type)],
@@ -71,9 +69,4 @@ def prepare_skeleton(
     )
 
 
-__all__ = [
-    "SmplIdentity",
-    "SmplPreparedPose",
-    "prepare_identity",
-    "prepare_pose",
-]
+__all__ = ["prepare_identity", "prepare_pose"]

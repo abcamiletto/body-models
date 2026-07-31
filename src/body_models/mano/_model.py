@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec
+from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
 from body_models._constants import Joint
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
@@ -21,8 +21,6 @@ from body_models.mano._io import get_model_path, load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
-ManoIdentity = core.ManoIdentity
-ManoPreparedPose = core.ManoPreparedPose
 
 
 @dataclass(frozen=True)
@@ -98,7 +96,7 @@ class MANO(SmplFamilyModel):
         *,
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: ManoIdentity | None = None,
+        identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
@@ -128,10 +126,10 @@ class MANO(SmplFamilyModel):
         *,
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: ManoIdentity | None = None,
+        identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 16 4 4"]:
         """Compute posed hand joint transforms."""
         xp = self._runtime.xp
@@ -164,7 +162,7 @@ class MANO(SmplFamilyModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-    ) -> ManoIdentity:
+    ) -> LinearIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -181,8 +179,8 @@ class MANO(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
         *,
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: ManoIdentity,
-    ) -> ManoPreparedPose:
+        identity: LinearIdentity,
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,

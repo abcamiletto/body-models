@@ -64,6 +64,7 @@ class SkinningPayload(TypedDict):
     faces: Int[Array, "F C"]
 
 
+LinearIdentity = deformation.LinearIdentity
 SkinningIdentity = deformation.SkinningIdentity
 SkinningPose = deformation.SkinningPose
 

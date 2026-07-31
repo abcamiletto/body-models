@@ -131,6 +131,6 @@ Array shapes use arbitrary leading batch dimensions throughout. For example,
 an annotated `*batch J 4 4` skeleton can be unbatched, singly batched, or have
 several leading batch axes.
 
-Each skinned model package exports its exact prepared identity and pose types.
-Shared renderer-facing contracts are available as `SkinningIdentity`,
-`SkinningPose`, and `SkinningPayload` from `body_models`.
+Skinned model packages export model-specific identity and pose types when their
+schemas are unique. Shared contracts are available as `LinearIdentity`,
+`SkinningIdentity`, `SkinningPose`, and `SkinningPayload` from `body_models`.

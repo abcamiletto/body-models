@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -72,7 +72,7 @@ class BrainCoHand(RigidBodyModel):
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: list[int] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
         weights = self._weights

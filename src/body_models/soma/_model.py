@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -23,6 +23,7 @@ from body_models.soma import _identities as identities
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
 from body_models.soma._io import (
     MODEL_TYPE_SPECS,
+    SOMA_LODS,
     load_identity_transfer_data,
     load_model_data_for_lod,
     public_joint_metadata,
@@ -32,7 +33,7 @@ from body_models.soma._pose import pack_pose
 Array = Any
 PathLike = Path | str
 SomaIdentity = core.SomaIdentity
-SomaPreparedPose = core.SomaPreparedPose
+SomaPose = core.SomaPose
 _IdentityModel = ANNY | MHR | SMPL | SMPLX
 _IDENTITY_MODEL_CLASSES: dict[str, Callable[..., _IdentityModel]] = {
     "anny": ANNY,
@@ -46,8 +47,8 @@ _IDENTITY_MODEL_CLASSES: dict[str, Callable[..., _IdentityModel]] = {
 class SomaConfig:
     """Static SOMA behavior kept outside array state."""
 
-    model_type: str
-    lod: str
+    model_type: Literal["soma", "anny", "mhr", "smpl", "smplx"]
+    lod: Literal["mid", "low", "xlo"]
     rotation_type: RotationType
     identity_dim: int
     num_scale_params: int | None
@@ -71,27 +72,28 @@ class SOMA(SkinnedModel):
         self,
         *,
         model_path: PathLike | None = None,
-        model_type: str = "soma",
-        lod: str = "mid",
+        model_type: Literal["soma", "anny", "mhr", "smpl", "smplx"] = "soma",
+        lod: Literal["mid", "low", "xlo"] = "mid",
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
-        normalized_model_type = model_type.lower()
-        if normalized_model_type not in MODEL_TYPE_SPECS:
+        if model_type not in MODEL_TYPE_SPECS:
             supported = ", ".join(MODEL_TYPE_SPECS)
             raise ValueError(f"Invalid model_type: {model_type!r}. Expected one of {supported}.")
+        if lod not in SOMA_LODS:
+            supported = ", ".join(SOMA_LODS)
+            raise ValueError(f"Invalid lod: {lod!r}. Expected one of {supported}.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
-        normalized_lod = lod.lower()
-        resolved_path, weights = load_model_data_for_lod(model_path, normalized_lod, simplify=simplify)
-        spec = MODEL_TYPE_SPECS[normalized_model_type]
+        resolved_path, weights = load_model_data_for_lod(model_path, lod, simplify=simplify)
+        spec = MODEL_TYPE_SPECS[model_type]
         parents, joint_names = public_joint_metadata(weights)
         runtime = self._set_runtime(runtime)
         self._config = SomaConfig(
-            model_type=normalized_model_type,
-            lod=normalized_lod,
+            model_type=model_type,
+            lod=lod,
             rotation_type=rotation_type,
             identity_dim=spec.identity_dim,
             num_scale_params=spec.num_scale_params,
@@ -103,10 +105,10 @@ class SOMA(SkinnedModel):
         self._identity_model = None
         self._identity_transfer = None
         if spec.asset_dir is not None:
-            transfer_data = load_identity_transfer_data(resolved_path, normalized_model_type)
-            self._identity_model = _create_identity_model(normalized_model_type, runtime)
+            transfer_data = load_identity_transfer_data(resolved_path, model_type)
+            self._identity_model = _create_identity_model(model_type, runtime)
             transfer = identities.prepare_transfer(
-                normalized_model_type,
+                model_type,
                 transfer_data,
                 self._identity_model,
                 runtime,
@@ -114,11 +116,11 @@ class SOMA(SkinnedModel):
             self._identity_transfer = runtime.materialize(transfer)
 
     @property
-    def model_type(self) -> str:
+    def model_type(self) -> Literal["soma", "anny", "mhr", "smpl", "smplx"]:
         return self._config.model_type
 
     @property
-    def lod(self) -> str:
+    def lod(self) -> Literal["mid", "low", "xlo"]:
         return self._config.lod
 
     @property
@@ -255,7 +257,7 @@ class SOMA(SkinnedModel):
         identity: SomaIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: list[int] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 77 4 4"]:
         """Compute posed public-joint transforms in meters."""
         xp = self._runtime.xp
@@ -321,7 +323,7 @@ class SOMA(SkinnedModel):
         hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
         *,
         identity: SomaIdentity,
-    ) -> SomaPreparedPose:
+    ) -> SomaPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
         batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]

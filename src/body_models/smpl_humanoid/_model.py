@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from jaxtyping import Float
 from nanomanifold import SO3
@@ -22,7 +23,8 @@ Array = Any
 
 @dataclass(frozen=True)
 class SmplHumanoidConfig:
-    source: Path | str
+    model_path: Path | str | None
+    variant: Literal["humenv", "phc", "smplsim"]
 
 
 class SmplHumanoid(RigidBodyModel):
@@ -33,11 +35,13 @@ class SmplHumanoid(RigidBodyModel):
     def __init__(
         self,
         *,
-        source: Path | str = "humenv",
+        model_path: Path | str | None = None,
+        variant: Literal["humenv", "phc", "smplsim"] = "humenv",
         runtime: RuntimeLike = "numpy",
     ) -> None:
         runtime = self._set_runtime(runtime)
-        self._config = SmplHumanoidConfig(source)
+        self._config = SmplHumanoidConfig(model_path, variant)
+        source = variant if model_path is None else model_path
         self._weights = runtime.materialize(load_model_data(source))
 
     @property
@@ -58,7 +62,7 @@ class SmplHumanoid(RigidBodyModel):
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: list[int] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed joint transforms."""
         weights = self._weights
@@ -112,7 +116,7 @@ class SmplHumanoid(RigidBodyModel):
         """Return the SMPL humanoid A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 
-    def from_smpl_motion(
+    def parameters_from_smpl(
         self,
         smpl_body_pose: Float[Array, "*batch 23 3"],
         *,
@@ -144,7 +148,10 @@ class SmplHumanoid(RigidBodyModel):
             motion["global_rotation"] = root_rotation
         return motion
 
-    def to_smpl_motion(self, qpos: Float[Array, "*batch Q"]) -> dict[str, Float[Array, "..."]]:
+    def smpl_parameters_from_qpos(
+        self,
+        qpos: Float[Array, "*batch Q"],
+    ) -> dict[str, Float[Array, "..."]]:
         """Convert MuJoCo qpos into canonical SMPL motion."""
         runtime = self._runtime
         xp = runtime.xp
