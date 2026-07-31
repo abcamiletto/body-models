@@ -107,7 +107,8 @@ behavior such as Warp skinning.
 
 All models expose `has_face`, `has_hands`, `parameter_spec`, `get_rest_pose`,
 `faces`, `num_vertices`, `num_joints`, `joint_names`, and `forward_skeleton`.
-The capability flags indicate articulated face and hand controls, not merely
-mesh geometry. Skinned models additionally share `skin_weights`, `rest_vertices`,
-and `forward_vertices`. Rigid articulated models expose link metadata,
-`forward_links`, and `forward_meshes` instead of skinning weights.
+`has_face` indicates facial-expression controls; `has_hands` indicates
+articulated hand controls. Neither describes mesh geometry. Skinned models
+additionally share `skin_weights`, `rest_vertices`, and `forward_vertices`.
+Rigid articulated models expose link metadata, `forward_links`, and
+`forward_meshes` instead of skinning weights.

@@ -37,7 +37,6 @@ class GarmentMeasurementsConfig:
 class GarmentMeasurements(SkinnedModel):
     """PCA body model for garment measurement workflows."""
 
-    has_face = True
     has_hands = True
     NUM_BODY_JOINTS = 25
     NUM_HAND_JOINTS = 30
