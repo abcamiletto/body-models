@@ -27,7 +27,6 @@ class BrainCoHand(RigidBodyModel):
     """Rigid articulated BrainCo Revo 2 hand."""
 
     has_hands = True
-    mujoco_to_model = core.MUJOCO_TO_KIMODO
 
     def __init__(
         self,
@@ -61,6 +60,9 @@ class BrainCoHand(RigidBodyModel):
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }
+
+    def _mujoco_to_model(self):
+        return core.MUJOCO_TO_KIMODO
 
     def forward_skeleton(
         self,

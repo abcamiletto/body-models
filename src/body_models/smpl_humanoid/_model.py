@@ -140,7 +140,7 @@ class SmplHumanoid(RigidBodyModel):
         """Convert MuJoCo qpos into canonical SMPL motion."""
         runtime = self._runtime
         xp = runtime.xp
-        coord = runtime.asarray(self.mujoco_to_model, like=qpos)
+        coord = runtime.asarray(self._mujoco_to_model(), like=qpos)
         model_to_mujoco = coord.mT
         root_rotation_mujoco = SO3.conversions.from_quat_to_rotmat(
             qpos[..., 3:7],
