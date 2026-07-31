@@ -17,7 +17,21 @@ def create_model(
     runtime: RuntimeLike = "numpy",
     **kwargs: Any,
 ) -> ArticulatedModel:
-    """Create a model by catalog name and array runtime."""
+    """
+    Create a model from its public catalog name.
+
+    Args:
+        model_name: Name returned by :func:`list_models`. Names are
+            case-insensitive, and underscores are treated as hyphens.
+        runtime: Runtime name or configured runtime instance.
+        **kwargs: Model-specific constructor options.
+
+    Returns:
+        The requested articulated model.
+
+    Raises:
+        ValueError: If ``model_name`` is unknown.
+    """
     name = _normalize_name(model_name)
     try:
         spec = MODEL_SPECS[name]
@@ -39,7 +53,15 @@ def get_model_spec(model_name: str) -> ModelSpec:
 
 
 def list_models(*, filter: str = "") -> list[str]:
-    """List catalog names, optionally filtered with a shell-style pattern."""
+    """
+    List public model factory names.
+
+    Args:
+        filter: Optional shell-style pattern such as ``"smpl*"``.
+
+    Returns:
+        Sorted matching model names.
+    """
     names = sorted(MODEL_SPECS)
     if not filter:
         return names

@@ -1,6 +1,7 @@
 # MHR
 
-MHR is an expressive full-body model with neural pose correctives.
+MHR is an expressive full-body model with facial expression controls and neural
+pose correctives.
 
 ## Setup
 

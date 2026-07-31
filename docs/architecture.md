@@ -29,12 +29,12 @@ Each model family follows the same file roles:
 Every model derives from the public `ArticulatedModel` base through either
 `SkinnedModel` or `RigidBodyModel`. Models are self-contained in
 `body_models/<name>/`; descriptive categories do not create a second package
-tree. One public class and signature serve every runtime. Public identity and
-pose preparation return complete mesh-ready state.
+tree. One public class and signature serve every runtime. On skinned models,
+public identity and pose preparation return complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
-Each model package exports the exact `TypedDict` contracts returned by its
-public preparation methods. Shared skinning contracts are exported from
+Each skinned model package exports the exact `TypedDict` contracts returned by
+its public preparation methods. Shared skinning contracts are exported from
 `body_models`; skeleton-only preparation types remain private.
 Required numerical inputs may be positional, while optional configuration,
 state, transforms, and output selection are keyword-only. Forward signatures

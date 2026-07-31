@@ -32,9 +32,9 @@ uv add "body-models[torch,warp]"
 
 Public model assets download on first use into the operating system's private
 user cache. Licensed assets use `body-models download MODEL`, which prompts for
-credentials. Pass `--output-dir` to either command when the assets should live
-in a specific directory; run `body-models` to inspect the cache and configured
-paths.
+credentials. Use `body-models download MODEL --output-dir PATH` when assets
+should live in a specific directory; run `body-models` to inspect the cache and
+configured paths.
 
 ## Quick Start
 
@@ -85,11 +85,17 @@ The stable API consists of names exported from `body_models` and each model
 package. For example, `body_models.smpl.SMPL` is public; underscore-prefixed
 modules such as `body_models.smpl._model` are implementation details and are
 not covered by semantic-versioning compatibility guarantees. Every model
-derives from `body_models.ArticulatedModel`. Model packages also export the
-types returned by `prepare_identity()` and `prepare_pose()`, such as
+derives from `body_models.ArticulatedModel`. Skinned model packages also export
+the types returned by `prepare_identity()` and `prepare_pose()`, such as
 `body_models.smpl.SmplIdentity` and `SmplPreparedPose`.
 Required numerical inputs may be positional; optional model and runtime
 arguments are keyword-only.
+
+The shared metadata API exposes `joint_names`, `parents`, `num_joints`,
+`common_joints`, `has_hands`, and `has_face`. Fixed model dimensions use
+`NUM_*` class constants such as `NUM_BODY_JOINTS`, `NUM_SHAPE_COEFFS`, and
+`NUM_EXPR_COEFFS`; a model defines only the dimensions that are meaningful for
+that model.
 
 When shape-dependent identity parameters stay fixed across many poses, prepare
 them once and pass the returned dictionary back through `identity`. This avoids
@@ -105,8 +111,9 @@ skeleton = model.forward_skeleton(**params, identity=identity)
 
 For models with expression-dependent rest state, such as SMPL-X and FLAME, pass
 both identity controls to `prepare_identity(shape, expression)`. Prepared
-identities and poses are always complete mesh-ready values; skeleton forwards
-use separate lightweight internal preparation and never return partial state.
+identities and poses on skinned models are always complete mesh-ready values;
+skeleton forwards use separate lightweight internal preparation and never
+return partial state.
 
 ## Supported Models
 
