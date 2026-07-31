@@ -94,8 +94,9 @@ arguments are keyword-only.
 The shared metadata API exposes `joint_names`, `parents`, `num_joints`,
 `common_joints`, `has_hands`, and `has_face`. Fixed model dimensions use
 `NUM_*` class constants such as `NUM_BODY_JOINTS`, `NUM_SHAPE_COEFFS`, and
-`NUM_EXPR_COEFFS`; a model defines only the dimensions that are meaningful for
-that model.
+`NUM_BODY_POSE_COEFFS`; a model defines only the dimensions that are meaningful
+for that model. Dimensions selected by a constructor option remain instance
+properties, such as SOMA's `num_shape_coeffs`.
 
 When shape-dependent identity parameters stay fixed across many poses, prepare
 them once and pass the returned dictionary back through `identity`. This avoids

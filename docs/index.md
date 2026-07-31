@@ -123,9 +123,12 @@ index order. The `Joint` enum names anatomical joints shared across models;
 
 Fixed public parameter dimensions use `NUM_*` class constants:
 `NUM_JOINTS`, `NUM_BODY_JOINTS`, `NUM_HAND_JOINTS`, `NUM_HEAD_JOINTS`,
-`NUM_SHAPE_COEFFS`, and `NUM_EXPR_COEFFS`. A class defines only the constants
-that apply to that model; asset- or configuration-dependent dimensions remain
-instance properties.
+`NUM_SHAPE_COEFFS`, `NUM_EXPR_COEFFS`, and, for compact pose controls,
+`NUM_POSE_COEFFS` and `NUM_*_POSE_COEFFS`. A class defines only the constants
+that apply to that model. A dimension fixed by the supported checkpoint schema
+is a class constant even when the checkpoint is loaded from a custom path.
+Dimensions selected by a constructor option remain instance properties; for
+example, SOMA exposes `num_shape_coeffs` because it depends on `model_type`.
 
 Array shapes use arbitrary leading batch dimensions throughout. For example,
 an annotated `*batch J 4 4` skeleton can be unbatched, singly batched, or have

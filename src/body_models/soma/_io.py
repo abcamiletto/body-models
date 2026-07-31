@@ -195,8 +195,8 @@ class SomaIdentityTransfer:
 
 @dataclass(frozen=True)
 class _ModelTypeSpec:
-    identity_dim: int
-    num_scale_params: int | None = None
+    num_shape_coeffs: int
+    num_scale_coeffs: int | None = None
     default_identity_value: float = 0.0
     identity_model_kwargs: dict[str, Any] = field(default_factory=dict)
     source_scale: float = 1.0
@@ -208,17 +208,17 @@ class _ModelTypeSpec:
 
 
 MODEL_TYPE_SPECS = {
-    "soma": _ModelTypeSpec(identity_dim=128),
+    "soma": _ModelTypeSpec(num_shape_coeffs=128),
     "mhr": _ModelTypeSpec(
-        identity_dim=45,
-        num_scale_params=68,
+        num_shape_coeffs=45,
+        num_scale_coeffs=68,
         source_scale=100.0,
         asset_dir="MHR",
         source_mesh_name="base_body_lod1.obj",
         target_mesh_name="SOMA_wrap_lod1.obj",
     ),
     "anny": _ModelTypeSpec(
-        identity_dim=6,
+        num_shape_coeffs=6,
         default_identity_value=0.5,
         output_scale=100.0,
         asset_dir="Anny",
@@ -228,7 +228,7 @@ MODEL_TYPE_SPECS = {
         use_laplacian=False,
     ),
     "smpl": _ModelTypeSpec(
-        identity_dim=10,
+        num_shape_coeffs=10,
         output_scale=100.0,
         asset_dir="SMPL",
         identity_model_kwargs={"gender": "neutral"},
@@ -236,7 +236,7 @@ MODEL_TYPE_SPECS = {
         target_mesh_name="SOMA_wrap.obj",
     ),
     "smplx": _ModelTypeSpec(
-        identity_dim=10,
+        num_shape_coeffs=10,
         output_scale=100.0,
         asset_dir="SMPLX",
         identity_model_kwargs={"gender": "neutral"},

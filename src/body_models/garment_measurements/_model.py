@@ -41,9 +41,11 @@ class GarmentMeasurements(SkinnedModel):
     """PCA body model for garment measurement workflows."""
 
     has_hands = True
+    NUM_JOINTS = 59
     NUM_BODY_JOINTS = 25
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
+    NUM_SHAPE_COEFFS = 15
     _COMMON_JOINTS = GARMENT_JOINTS
 
     def __init__(
@@ -73,7 +75,7 @@ class GarmentMeasurements(SkinnedModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
-            "shape": ParameterSpec((self.num_shape_components,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
             "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
             "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
@@ -93,10 +95,6 @@ class GarmentMeasurements(SkinnedModel):
     @property
     def num_vertices(self) -> int:
         return self._weights.mean_vertices.shape[0]
-
-    @property
-    def num_shape_components(self) -> int:
-        return self._weights.eigenvalues.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
