@@ -11,8 +11,7 @@ import numpy as np
 import viser
 from nanomanifold import SO3
 
-from body_models._base import SkinnedModel
-from body_models._registry import create_model
+from body_models import SkinnedModel, create_model
 
 DISPLAY_GLOBAL_ROTATIONS = {
     "ANNY": (-np.pi / 2, 0.0, 0.0),

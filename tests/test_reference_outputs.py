@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from body_models._base import RigidBodyModel
+from body_models import RigidBodyModel
 from body_models._common import skinning
 from body_models.anny import _pose as anny_pose
 from body_models.mhr import _pose as mhr_pose

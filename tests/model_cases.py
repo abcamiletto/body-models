@@ -3,7 +3,7 @@
 from inspect import signature
 from pathlib import Path
 
-from body_models._base import RigidBodyModel, SkinnedModel
+from body_models import RigidBodyModel, SkinnedModel
 from body_models.anny import ANNY
 from body_models.brainco import BrainCoHand
 from body_models.flame import FLAME

@@ -64,8 +64,8 @@ class SkinningPayload(TypedDict):
     faces: Int[Array, "F C"]
 
 
-class _ArticulatedModel(ABC):
-    """Shared skeleton interface for skinned and rigid articulated models."""
+class ArticulatedModel(ABC):
+    """Base class for all articulated models."""
 
     _state_fields: ClassVar[tuple[str, ...]] = ("_weights",)
     _config: Any
@@ -236,7 +236,7 @@ class _ArticulatedModel(ABC):
         raise NotImplementedError("Canonical body poses are not defined for this model.")
 
 
-class SkinnedModel(_ArticulatedModel):
+class SkinnedModel(ArticulatedModel):
     """Base class for models that expose one skinned mesh."""
 
     @property
@@ -292,7 +292,7 @@ class SkinnedModel(_ArticulatedModel):
             raise ValueError(f"identity cannot be combined with raw identity parameters: {names}")
 
 
-class RigidBodyModel(_ArticulatedModel):
+class RigidBodyModel(ArticulatedModel):
     """Base class for rigid articulated models."""
 
     _weights: Any

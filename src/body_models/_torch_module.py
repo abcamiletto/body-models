@@ -16,7 +16,7 @@ class TorchModule(nn.Module):
         super().__init__()
         for name in model._state_fields:
             value = getattr(model, name)
-            if isinstance(value, _base._ArticulatedModel):
+            if isinstance(value, _base.ArticulatedModel):
                 value = value.as_module()
             if value is not None:
                 self.add_module(name, value)
