@@ -1,4 +1,4 @@
-"""Shared linear deformation contracts."""
+"""Shared linear deformation behavior."""
 
 import numpy as np
 import pytest

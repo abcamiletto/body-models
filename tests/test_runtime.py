@@ -1,4 +1,4 @@
-"""Contracts shared by model runtimes."""
+"""Model runtime behavior."""
 
 import pickle
 import subprocess

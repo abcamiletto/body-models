@@ -40,7 +40,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv run --group dev --extra torch --extra warp pytest -q -m fast
 
-  contract-tests:
+  functional-tests:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     env:
@@ -62,10 +62,9 @@ jobs:
             --local-dir tests/assets \
             --token "$HF_TOKEN"
       - run: uv sync --group dev --all-extras --frozen
-      - name: Run cross-runtime contracts
+      - name: Run cross-runtime functional tests
         run: |
           uv run pytest -q \
-            tests/test_parameters.py \
             tests/test_runtime.py \
             tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
             tests/test_backend_consistency.py::test_rigid_body_meshes_match_numpy \

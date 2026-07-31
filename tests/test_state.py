@@ -1,4 +1,4 @@
-"""Backend model-state materialization contracts."""
+"""Backend model-state materialization behavior."""
 
 from dataclasses import dataclass
 
