@@ -1,1 +1,0 @@
-"""SMPL backend implementations."""

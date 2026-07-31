@@ -1,0 +1,51 @@
+"""Pose packing helpers for SKEL."""
+
+from typing import Any
+
+from jaxtyping import Float
+
+Array = Any
+
+SKEL_BODY_POSE_COEFFS = 43
+SKEL_HEAD_POSE_COEFFS = 3
+_BODY_HEAD_SPLIT = 23
+
+
+def pack_pose(
+    xp: Any,
+    body_pose: Float[Array, "... 43"],
+    head_pose: Float[Array, "... 3"],
+) -> Float[Array, "... 46"]:
+    """Pack separated SKEL body/head controls into the canonical 46-vector."""
+    return xp.concat(
+        [
+            body_pose[..., :_BODY_HEAD_SPLIT],
+            head_pose,
+            body_pose[..., _BODY_HEAD_SPLIT:],
+        ],
+        axis=-1,
+    )
+
+
+def unpack_pose(
+    xp: Any,
+    pose: Float[Array, "... 46"],
+) -> tuple[Float[Array, "... 43"], Float[Array, "... 3"]]:
+    """Split the canonical SKEL pose into body and head controls."""
+    body_pose = xp.concat(
+        [
+            pose[..., :_BODY_HEAD_SPLIT],
+            pose[..., _BODY_HEAD_SPLIT + SKEL_HEAD_POSE_COEFFS :],
+        ],
+        axis=-1,
+    )
+    head_pose = pose[..., _BODY_HEAD_SPLIT : _BODY_HEAD_SPLIT + SKEL_HEAD_POSE_COEFFS]
+    return body_pose, head_pose
+
+
+__all__ = [
+    "SKEL_BODY_POSE_COEFFS",
+    "SKEL_HEAD_POSE_COEFFS",
+    "pack_pose",
+    "unpack_pose",
+]

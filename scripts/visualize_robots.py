@@ -9,10 +9,8 @@ from typing import Any, Literal
 import numpy as np
 import viser
 
-from body_models.base import RigidBodyModel
-from body_models.registry import create_model
-from body_models.robots.smpl_humanoid import SMPL_HUMANOID_VARIANTS
-
+from body_models import RigidBodyModel, create_model
+from body_models.smpl_humanoid import SMPL_HUMANOID_VARIANTS
 
 SMPL_HUMANOID_LABELS = {
     "humenv": "HumEnv",
@@ -94,16 +92,15 @@ def main() -> None:
         model_dropdown = server.gui.add_dropdown("Robot", options=tuple(states), initial_value=selected_model)
         controls = {name: add_robot_controls(server, name, state) for name, state in states.items()}
 
-    with tabs.add_tab("Presets"):
-        with server.gui.add_folder("Hands"):
-            for label, hands in (("Default hands", "default"), ("Flat hands", "flat"), ("Rest hands", "rest")):
-                button = server.gui.add_button(label)
+    with tabs.add_tab("Presets"), server.gui.add_folder("Hands"):
+        for label, hands in (("Default hands", "default"), ("Flat hands", "flat"), ("Rest hands", "rest")):
+            button = server.gui.add_button(label)
 
-                @button.on_click
-                def _(_, hands=hands) -> None:
-                    for name, state in states.items():
-                        if state.model.has_hands:
-                            apply_hands(state, controls[name].sliders, hands)
+            @button.on_click
+            def _(_, hands=hands) -> None:
+                for name, state in states.items():
+                    if state.model.has_hands:
+                        apply_hands(state, controls[name].sliders, hands)
 
     def show_robot_controls(name: str) -> None:
         for folder_name, robot_controls in controls.items():
@@ -138,7 +135,7 @@ def load_models(
     for name in names or list(model_specs):
         print(f"Loading {name}", flush=True)
         model_id, kwargs = model_specs[name]
-        model = create_model(model_id, backend="numpy", **kwargs)
+        model = create_model(model_id, runtime="numpy", **kwargs)
         if not isinstance(model, RigidBodyModel):
             raise TypeError(f"{name} is not a rigid body model")
         models[name] = model

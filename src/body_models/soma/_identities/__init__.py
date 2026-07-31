@@ -1,0 +1,262 @@
+"""Identity sources used by SOMA."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, cast
+
+from jaxtyping import Float, Int
+
+from body_models import _common as common
+from body_models._runtime import ArrayRuntime
+
+from ...mhr import _pose as mhr_pose
+from .. import _core as core
+
+if TYPE_CHECKING:
+    from body_models.anny import ANNY
+    from body_models.mhr import MHR
+    from body_models.smpl import SMPL
+    from body_models.smplx import SMPLX
+
+
+@dataclass(frozen=True)
+class IdentityTransfer:
+    source_tetrahedra: Int[Any, "Fs 4"]
+    face_ids: Int[Any, "Vt"]
+    bary_coords: Float[Any, "Vt 4"]
+    unknown_ids: Int[Any, "U"]
+    anchor_ids: Int[Any, "A"]
+    solve_matrix: Float[Any, "U U"]
+    anchor_matrix: Float[Any, "U A"]
+    rhs_base: Float[Any, "U 3"]
+    internal_to_source_rotation: Float[Any, "3 3"]
+    internal_to_source_translation: Float[Any, "3"]
+    source_to_soma_rotation: Float[Any, "3 3"]
+    source_scale: float
+    output_scale: float
+
+
+def identity_transfer(transfer_data: Any) -> IdentityTransfer:
+    return IdentityTransfer(
+        source_tetrahedra=transfer_data.source_tetrahedra,
+        face_ids=transfer_data.face_ids,
+        bary_coords=transfer_data.bary_coords,
+        unknown_ids=transfer_data.unknown_ids,
+        anchor_ids=transfer_data.anchor_ids,
+        solve_matrix=transfer_data.solve_matrix,
+        anchor_matrix=transfer_data.anchor_matrix,
+        rhs_base=transfer_data.rhs_base,
+        internal_to_source_rotation=transfer_data.internal_to_source_rotation,
+        internal_to_source_translation=transfer_data.internal_to_source_translation,
+        source_to_soma_rotation=transfer_data.source_to_soma_rotation,
+        source_scale=transfer_data.source_scale,
+        output_scale=transfer_data.output_scale,
+    )
+
+
+def prepare_transfer(
+    model_type: str,
+    transfer_data: Any,
+    model: ANNY | MHR | SMPL | SMPLX,
+    runtime: ArrayRuntime,
+) -> IdentityTransfer:
+    """Materialize transfer state, fitting ANNY's asset-specific alignment."""
+    transfer = identity_transfer(transfer_data)
+    if model_type != "anny":
+        return transfer
+
+    template = model.rest_vertices
+    source = runtime.asarray(transfer_data.source_vertices, like=template)
+    rotation, translation = core.fit_rigid_transform(template, source, xp=runtime.xp)
+    source_to_soma = runtime.asarray(
+        [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]],
+        like=template,
+    )
+    transfer = replace(
+        transfer,
+        internal_to_source_rotation=rotation,
+        internal_to_source_translation=translation,
+        source_to_soma_rotation=source_to_soma,
+    )
+    return transfer
+
+
+def source_shape(
+    model_type: str,
+    model: ANNY | MHR | SMPL | SMPLX,
+    identity: Float[Any, "B I"],
+    scale_params: Float[Any, "B K"] | None,
+    *,
+    xp: Any,
+) -> Float[Any, "B V 3"]:
+    """Evaluate the source model's identity surface."""
+    if model_type == "mhr":
+        return mhr_identity_shape(
+            cast("MHR", model),
+            identity,
+            scale_params,
+            num_scale_coeffs=68,
+            xp=xp,
+        )
+    if model_type == "anny":
+        return cast("ANNY", model).prepare_identity(identity)["rest_vertices"]
+    linear_model = cast("SMPL | SMPLX", model)
+    return linear_identity_shape(
+        mean=linear_model.rest_vertices,
+        shapedirs=linear_model.shapedirs,
+        identity=identity,
+        xp=xp,
+    )
+
+
+def linear_identity_shape(
+    mean: Float[Any, "V 3"],
+    shapedirs: Float[Any, "V 3 I"],
+    identity: Float[Any, "B I"],
+    *,
+    xp: Any,
+) -> Float[Any, "B V 3"]:
+    num_shape_coeffs = identity.shape[-1]
+    return mean + xp.einsum("...i,vci->...vc", identity, shapedirs[..., :num_shape_coeffs])
+
+
+def mhr_identity_shape(
+    model: MHR,
+    identity: Float[Any, "B I"],
+    scale_params: Float[Any, "B K"] | None,
+    num_scale_coeffs: int,
+    *,
+    xp: Any,
+) -> Float[Any, "B V 3"]:
+    batch_shape = identity.shape[:-1]
+    if scale_params is None:
+        scale_params = common.zeros_as(identity, shape=(*batch_shape, num_scale_coeffs), xp=xp)
+    zero_pose = common.zeros_as(identity, shape=(*batch_shape, model.NUM_POSE_COEFFS), xp=xp)
+    zero_pose = common.at_set(zero_pose, (..., slice(-num_scale_coeffs, None)), scale_params, xp=xp)
+    body_pose, head_pose, hand_pose = mhr_pose.unpack_pose(xp, zero_pose)
+    expression = common.zeros_as(identity, shape=(*batch_shape, model.NUM_EXPR_COEFFS), xp=xp)
+    return model.forward_vertices(
+        shape=identity,
+        body_pose=body_pose,
+        head_pose=head_pose,
+        hand_pose=hand_pose,
+        expression=expression,
+    )
+
+
+def transfer_identity_rest_shape(
+    source_shape: Float[Any, "B Vs 3"],
+    source_tetrahedra: Int[Any, "Fs 4"],
+    face_ids: Int[Any, "Vt"],
+    bary_coords: Float[Any, "Vt 4"],
+    unknown_ids: Int[Any, "U"],
+    anchor_ids: Int[Any, "A"],
+    solve_matrix: Float[Any, "U U"],
+    anchor_matrix: Float[Any, "U A"],
+    rhs_base: Float[Any, "U 3"],
+    *,
+    xp: Any,
+) -> Float[Any, "B Vt 3"]:
+    tetra_faces = source_tetrahedra[:, :3]
+    f0 = source_shape[..., tetra_faces[:, 0], :]
+    f1 = source_shape[..., tetra_faces[:, 1], :]
+    f2 = source_shape[..., tetra_faces[:, 2], :]
+    fabricated = f0 + xp.linalg.cross(f1 - f0, f2 - f0)
+    source_shape_tet = xp.concat([source_shape, fabricated], axis=-2)
+
+    tet_indices = source_tetrahedra[face_ids]
+    v0 = source_shape_tet[..., tet_indices[:, 0], :]
+    v1 = source_shape_tet[..., tet_indices[:, 1], :]
+    v2 = source_shape_tet[..., tet_indices[:, 2], :]
+    v3 = source_shape_tet[..., tet_indices[:, 3], :]
+    bc = bary_coords
+    target_shape = v0 * bc[..., 0:1] + v1 * bc[..., 1:2] + v2 * bc[..., 2:3] + v3 * bc[..., 3:4]
+
+    if unknown_ids.shape[0] == 0:
+        return target_shape
+
+    anchor_vertices = target_shape[..., anchor_ids, :]
+    rhs = rhs_base - xp.einsum("ua,...ac->...uc", anchor_matrix, anchor_vertices)
+    unknown_vertices = xp.linalg.solve(solve_matrix, rhs)
+    return common.at_set(target_shape, (..., unknown_ids, slice(None)), unknown_vertices, xp=xp)
+
+
+def transfer_shape(
+    source_shape: Float[Any, "B Vs 3"],
+    transfer: IdentityTransfer,
+    *,
+    vertex_map: Any,
+    xp: Any,
+) -> tuple[Float[Any, "B Vt 3"], Float[Any, "B Va 3"]]:
+    rest_shape = core.apply_rigid_transform(
+        source_shape,
+        rotation=transfer.internal_to_source_rotation,
+        translation=transfer.internal_to_source_translation,
+        xp=xp,
+    )
+    rest_shape = rest_shape * transfer.source_scale
+    rest_shape = transfer_identity_rest_shape(
+        source_shape=rest_shape,
+        source_tetrahedra=transfer.source_tetrahedra,
+        face_ids=transfer.face_ids,
+        bary_coords=transfer.bary_coords,
+        unknown_ids=transfer.unknown_ids,
+        anchor_ids=transfer.anchor_ids,
+        solve_matrix=transfer.solve_matrix,
+        anchor_matrix=transfer.anchor_matrix,
+        rhs_base=transfer.rhs_base,
+        xp=xp,
+    )
+    rest_shape = core.apply_rigid_transform(
+        rest_shape,
+        rotation=transfer.source_to_soma_rotation,
+        xp=xp,
+    )
+    rest_shape = rest_shape * transfer.output_scale
+    rest_shape_active = rest_shape if vertex_map is None else rest_shape[..., vertex_map, :]
+    return rest_shape, rest_shape_active
+
+
+def rest_shapes(
+    *,
+    data: Any,
+    model_type: str,
+    identity_model: ANNY | MHR | SMPL | SMPLX | None,
+    identity_transfer: IdentityTransfer | None,
+    identity: Float[Any, "B I"],
+    scale_params: Float[Any, "B K"] | None,
+    xp: Any,
+) -> tuple[Float[Any, "B Vf 3"], Float[Any, "B Va 3"]]:
+    if identity_model is None:
+        rest_shape_full = core.identity_to_rest_vertices(
+            xp,
+            data.mean_full,
+            data.shapedirs_full,
+            data.eigenvalues,
+            identity,
+        )
+        rest_shape_active = core.identity_to_rest_vertices(
+            xp,
+            data.mean_active,
+            data.shapedirs_active,
+            data.eigenvalues,
+            identity,
+        )
+        return rest_shape_full, rest_shape_active
+
+    if identity_transfer is None:
+        raise RuntimeError("External SOMA identity model is missing its transfer state.")
+    source_vertices = source_shape(
+        model_type,
+        identity_model,
+        identity,
+        scale_params,
+        xp=xp,
+    )
+    return transfer_shape(
+        source_vertices,
+        transfer=identity_transfer,
+        vertex_map=data.vertex_map,
+        xp=xp,
+    )

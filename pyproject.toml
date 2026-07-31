@@ -1,7 +1,7 @@
 [project]
 name = "body-models"
-version = "0.19.1"
-description = "Multi-backend parametric body models (SMPL, SMPLH, SMPLX, FLAME, SKEL, ANNY, MHR, SOMA, GarmentMeasurements, BrainCo, G1) for NumPy, PyTorch, and JAX"
+version = "0.20.0"
+description = "Parametric and articulated body models for NumPy, PyTorch, and JAX with optional Warp acceleration"
 readme = "README.md"
 authors = [
     { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-body-models = "body_models:main"
+body-models = "body_models._cli:main"
 
 [project.optional-dependencies]
 torch = [
@@ -37,16 +37,16 @@ warp = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.26,<0.10.0"]
+requires = ["uv_build>=0.11.11,<0.12.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
     "mujoco>=3.3.7",
-    "ruff>=0.9.0",
+    "ruff>=0.16.0",
     "ty>=0.0.1a13",
-    # Include optional backends for type checking
+    # Include optional runtimes for type checking
     "torch>=2.3.0",
     "jax>=0.4.33",
     "flax>=0.10.0",
@@ -87,11 +87,23 @@ line-length = 120
 ignore = [
     "F722",  # jaxtyping annotations use syntax ruff doesn't understand
     "F821",  # jaxtyping dimension names appear as undefined
+    "UP037",  # quoted jaxtyping dimensions are shape expressions, not forward references
     "E741",  # ambiguous variable names (I, l, O) are standard in math notation
+]
+
+[tool.ruff.lint.per-file-ignores]
+"bench/test_min_versions.py" = [
+    "BLE001",  # the compatibility harness reports every dependency failure before exiting
+]
+"src/body_models/_common/warp.py" = [
+    "UP018",  # Warp uses float(...) to distinguish mutable kernel variables from constants
 ]
 
 [tool.pytest.ini_options]
 markers = [
     "fast: tests included in pull request CI",
     "slow: exhaustive or compiler-heavy tests excluded from fast CI",
+]
+filterwarnings = [
+    "error:scatter inputs have incompatible types:FutureWarning",
 ]

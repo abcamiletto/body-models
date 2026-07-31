@@ -1,7 +1,7 @@
 site_name: body-models
 site_url: https://abcamiletto.github.io/body-models/
 site_author: Andrea Boscolo Camiletto
-site_description: Multi-backend parametric body models for NumPy, PyTorch, and JAX
+site_description: Parametric and articulated body models for NumPy, PyTorch, and JAX with optional Warp acceleration
 repo_name: body-models
 repo_url: https://github.com/abcamiletto/body-models
 
@@ -55,6 +55,8 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - API Reference: api.md
+  - Architecture: architecture.md
   - Models:
       - Full Bodies:
           - SMPL: models/smpl.md
@@ -71,7 +73,7 @@ nav:
           - FLAME: models/flame.md
       - Hands:
           - MANO: models/mano.md
-      - Robots:
+      - Robots and Humanoids:
           - BrainCo: models/brainco.md
           - G1: models/g1.md
           - SmplHumanoid: models/smpl-humanoid.md
