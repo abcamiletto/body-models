@@ -25,6 +25,8 @@ from body_models.garment_measurements._pose import pack_pose
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
+GarmentMeasurementsIdentity = core.GarmentMeasurementsIdentity
+GarmentMeasurementsPreparedPose = core.GarmentMeasurementsPreparedPose
 
 
 @dataclass(frozen=True)
@@ -122,7 +124,7 @@ class GarmentMeasurements(SkinnedModel):
         vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch C"] | None = None,
-        identity: core.GarmentMeasurementsIdentity | None = None,
+        identity: GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed GarmentMeasurements vertices."""
         xp = self._runtime.xp
@@ -160,7 +162,7 @@ class GarmentMeasurements(SkinnedModel):
         joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch C"] | None = None,
-        identity: core.GarmentMeasurementsIdentity | None = None,
+        identity: GarmentMeasurementsIdentity | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed GarmentMeasurements joint transforms."""
         xp = self._runtime.xp
@@ -199,7 +201,7 @@ class GarmentMeasurements(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch C"],
-    ) -> core.GarmentMeasurementsIdentity:
+    ) -> GarmentMeasurementsIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -219,8 +221,8 @@ class GarmentMeasurements(SkinnedModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
         *,
-        identity: core.GarmentMeasurementsIdentity,
-    ) -> core.GarmentMeasurementsPreparedPose:
+        identity: GarmentMeasurementsIdentity,
+    ) -> GarmentMeasurementsPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(
             self._runtime.xp,

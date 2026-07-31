@@ -23,6 +23,8 @@ from body_models.skel._pose import (
 )
 
 Array = Any
+SkelIdentity = core.SkelIdentity
+SkelPreparedPose = core.SkelPreparedPose
 
 
 @dataclass(frozen=True)
@@ -132,7 +134,7 @@ class SKEL(SkinnedModel):
         vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        identity: SkelIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed SKEL vertices."""
         xp = self._runtime.xp
@@ -167,7 +169,7 @@ class SKEL(SkinnedModel):
         joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        identity: SkelIdentity | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed SKEL joint transforms."""
         xp = self._runtime.xp
@@ -215,7 +217,7 @@ class SKEL(SkinnedModel):
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SkelIdentity | None = None,
+        identity: SkelIdentity | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Alias the SKEL joint transforms as anatomical link transforms."""
         return self.forward_skeleton(
@@ -230,7 +232,7 @@ class SKEL(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-    ) -> core.SkelIdentity:
+    ) -> SkelIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             self._weights.v_template,
@@ -247,8 +249,8 @@ class SKEL(SkinnedModel):
         body_pose: Float[Array, "*batch 43"],
         head_pose: Float[Array, "*batch 3"],
         *,
-        identity: core.SkelIdentity,
-    ) -> core.SkelPreparedPose:
+        identity: SkelIdentity,
+    ) -> SkelPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
         return core.prepare_pose(

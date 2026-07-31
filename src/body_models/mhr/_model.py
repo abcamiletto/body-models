@@ -24,6 +24,8 @@ from body_models.mhr._io import get_model_path, load_model_data
 from body_models.mhr._pose import pack_pose, unpack_pose
 
 Array = Any
+MhrIdentity = core.MhrIdentity
+MhrPreparedPose = core.MhrPreparedPose
 
 
 class MHR(SkinnedModel):
@@ -115,7 +117,7 @@ class MHR(SkinnedModel):
         *,
         shape: Float[Array, "*batch 45"] | None = None,
         expression: Float[Array, "*batch 72"] | None = None,
-        identity: core.MhrIdentity | None = None,
+        identity: MhrIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
@@ -177,7 +179,7 @@ class MHR(SkinnedModel):
         self,
         shape: Float[Array, "*batch 45"],
         expression: Float[Array, "*batch 72"],
-    ) -> core.MhrIdentity:
+    ) -> MhrIdentity:
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -192,7 +194,7 @@ class MHR(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
-    ) -> core.MhrPreparedPose:
+    ) -> MhrPreparedPose:
         """Precompute pose-dependent MHR state."""
         pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
         return core.prepare_pose(

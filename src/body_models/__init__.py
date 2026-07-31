@@ -1,6 +1,15 @@
 """Public API for multi-runtime parametric and articulated body models."""
 
-from body_models._base import ArticulatedModel, ParameterRole, ParameterSpec, RigidBodyModel, SkinnedModel
+from body_models._base import (
+    ArticulatedModel,
+    ParameterRole,
+    ParameterSpec,
+    RigidBodyModel,
+    SkinnedModel,
+    SkinningIdentity,
+    SkinningPayload,
+    SkinningPose,
+)
 from body_models._constants import Joint
 from body_models._registry import create_model, list_models
 from body_models._rotations import RotationType
@@ -22,6 +31,9 @@ for _public in (
     ParameterSpec,
     RigidBodyModel,
     SkinnedModel,
+    SkinningIdentity,
+    SkinningPayload,
+    SkinningPose,
     TorchRuntime,
     create_model,
     list_models,
@@ -42,6 +54,9 @@ __all__ = [
     "RotationType",
     "RuntimeLike",
     "SkinnedModel",
+    "SkinningIdentity",
+    "SkinningPayload",
+    "SkinningPose",
     "TorchRuntime",
     "create_model",
     "list_models",

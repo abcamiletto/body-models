@@ -33,6 +33,9 @@ tree. One public class and signature serve every runtime. Public identity and
 pose preparation return complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
+Each model package exports the exact `TypedDict` contracts returned by its
+public preparation methods. Shared skinning contracts are exported from
+`body_models`; skeleton-only preparation types remain private.
 
 SMPL, SMPL-H, SMPL-X, MANO, and FLAME share one private family engine. Their
 `_core.py` modules describe the ordered pose blocks and apply model-specific

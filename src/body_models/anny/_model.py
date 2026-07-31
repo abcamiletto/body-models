@@ -9,8 +9,8 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningPayload
-from body_models._common import deformation, skinning
+from body_models._base import ParameterSpec, SkinnedModel, SkinningIdentity, SkinningPayload, SkinningPose
+from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
 from body_models.anny import _core as core
@@ -20,6 +20,8 @@ from body_models.anny._io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_mod
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
+AnnyIdentity = core.AnnyIdentity
+AnnyPreparedPose = core.AnnyPreparedPose
 
 
 @dataclass(frozen=True)
@@ -136,8 +138,8 @@ class ANNY(SkinnedModel):
     def prepare_skinning(
         self,
         *,
-        identity: deformation.SkinningIdentity,
-        pose: deformation.SkinningPose,
+        identity: SkinningIdentity,
+        pose: SkinningPose,
     ) -> SkinningPayload:
         payload = super().prepare_skinning(identity=identity, pose=pose)
         payload["faces"] = _triangulate_faces(self.faces, self._runtime.xp)
@@ -153,7 +155,7 @@ class ANNY(SkinnedModel):
         vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 6"] | None = None,
-        identity: core.AnnyIdentity | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed ANNY vertices."""
         xp = self._runtime.xp
@@ -190,7 +192,7 @@ class ANNY(SkinnedModel):
         joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 6"] | None = None,
-        identity: core.AnnyIdentity | None = None,
+        identity: AnnyIdentity | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed ANNY joint transforms."""
         xp = self._runtime.xp
@@ -231,7 +233,7 @@ class ANNY(SkinnedModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 6"],
-    ) -> core.AnnyIdentity:
+    ) -> AnnyIdentity:
         """Precompute phenotype-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -268,8 +270,8 @@ class ANNY(SkinnedModel):
         head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
         *,
-        identity: core.AnnyIdentity,
-    ) -> core.AnnyPreparedPose:
+        identity: AnnyIdentity,
+    ) -> AnnyPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
         batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])

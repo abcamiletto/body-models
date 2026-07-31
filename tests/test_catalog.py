@@ -1,6 +1,7 @@
 """Public model and asset catalog contracts."""
 
 from importlib import import_module
+from typing import get_type_hints
 
 import pytest
 
@@ -16,6 +17,18 @@ MODEL_TARGETS = sorted({(spec.module, spec.class_name) for spec in MODEL_SPECS.v
 def test_catalog_models_are_exported_and_articulated(module_name, class_name) -> None:
     model_class = getattr(import_module(module_name), class_name)
     assert issubclass(model_class, ArticulatedModel)
+
+
+@pytest.mark.fast
+@pytest.mark.parametrize(("module_name", "class_name"), MODEL_TARGETS)
+def test_prepared_state_types_are_exported_from_model_packages(module_name, class_name) -> None:
+    module = import_module(module_name)
+    model_class = getattr(module, class_name)
+    public_values = tuple(getattr(module, name) for name in module.__all__)
+    for method_name in ("prepare_identity", "prepare_pose"):
+        if hasattr(model_class, method_name):
+            return_type = get_type_hints(getattr(model_class, method_name))["return"]
+            assert return_type in public_values
 
 
 @pytest.mark.fast

@@ -19,6 +19,8 @@ from body_models.smplh._io import get_model_path, load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
+SmplhIdentity = core.SmplhIdentity
+SmplhPreparedPose = core.SmplhPreparedPose
 
 
 @dataclass(frozen=True)
@@ -96,7 +98,7 @@ class SMPLH(SmplFamilyModel):
         vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SmplhIdentity | None = None,
+        identity: SmplhIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
@@ -127,7 +129,7 @@ class SMPLH(SmplFamilyModel):
         joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.SmplhIdentity | None = None,
+        identity: SmplhIdentity | None = None,
     ) -> Float[Array, "*batch 52 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
@@ -161,7 +163,7 @@ class SMPLH(SmplFamilyModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-    ) -> core.SmplhIdentity:
+    ) -> SmplhIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -179,8 +181,8 @@ class SMPLH(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
-        identity: core.SmplhIdentity,
-    ) -> core.SmplhPreparedPose:
+        identity: SmplhIdentity,
+    ) -> SmplhPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,

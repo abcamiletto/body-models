@@ -19,6 +19,8 @@ from body_models.mano._io import get_model_path, load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
+ManoIdentity = core.ManoIdentity
+ManoPreparedPose = core.ManoPreparedPose
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,7 @@ class MANO(SmplFamilyModel):
         vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.ManoIdentity | None = None,
+        identity: ManoIdentity | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed hand vertices."""
         xp = self._runtime.xp
@@ -127,7 +129,7 @@ class MANO(SmplFamilyModel):
         joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
-        identity: core.ManoIdentity | None = None,
+        identity: ManoIdentity | None = None,
     ) -> Float[Array, "*batch 16 4 4"]:
         """Compute posed hand joint transforms."""
         xp = self._runtime.xp
@@ -160,7 +162,7 @@ class MANO(SmplFamilyModel):
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
-    ) -> core.ManoIdentity:
+    ) -> ManoIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -177,8 +179,8 @@ class MANO(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
         wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
-        identity: core.ManoIdentity,
-    ) -> core.ManoPreparedPose:
+        identity: ManoIdentity,
+    ) -> ManoPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,
