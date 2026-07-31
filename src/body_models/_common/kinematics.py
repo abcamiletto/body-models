@@ -1,5 +1,6 @@
 """Shared skeleton utilities."""
 
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -66,7 +67,7 @@ def forward_kinematics(
     rotations: Float[Array, "*batch J 3 3"],
     translations: Float[Array, "*batch J 3"],
     fronts: list[Front],
-    joint_indices: list[int] | None = None,
+    joint_indices: Sequence[int] | None = None,
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
@@ -78,7 +79,7 @@ def forward_kinematics(
 def compose_local_transforms(
     local_transforms: Float[Array, "*batch J 4 4"],
     fronts: list[Front],
-    joint_indices: list[int] | None = None,
+    joint_indices: Sequence[int] | None = None,
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:

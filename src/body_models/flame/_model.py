@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from jaxtyping import Float, Int
 
-from body_models._base import ParameterSpec
+from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
 from body_models._smpl_family import SmplFamilyModel
@@ -17,8 +18,6 @@ from body_models.flame._constants import FLAME_JOINT_NAMES
 from body_models.flame._io import get_model_path, load_model_data
 
 Array = Any
-FlameIdentity = core.FlameIdentity
-FlamePreparedPose = core.FlamePreparedPose
 
 
 @dataclass(frozen=True)
@@ -87,7 +86,7 @@ class FLAME(SmplFamilyModel):
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
-        identity: FlameIdentity | None = None,
+        identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
@@ -119,10 +118,10 @@ class FLAME(SmplFamilyModel):
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
-        identity: FlameIdentity | None = None,
+        identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 5 4 4"]:
         """Compute posed head joint transforms."""
         xp = self._runtime.xp
@@ -156,7 +155,7 @@ class FLAME(SmplFamilyModel):
         self,
         shape: Float[Array, "*batch S"],
         expression: Float[Array, "*batch E"],
-    ) -> FlameIdentity:
+    ) -> LinearIdentity:
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -176,8 +175,8 @@ class FLAME(SmplFamilyModel):
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
         *,
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: FlameIdentity,
-    ) -> FlamePreparedPose:
+        identity: LinearIdentity,
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,

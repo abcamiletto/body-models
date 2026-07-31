@@ -21,7 +21,7 @@ class MhrIdentity(TypedDict):
     rest_vertices: Float[Array, "*batch V 3"]
 
 
-class MhrPreparedPose(TypedDict):
+class MhrPose(TypedDict):
     """Complete pose-dependent MHR mesh state."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
@@ -67,7 +67,7 @@ def prepare_pose(
     pose: Float[Array, "B 204"],
     *,
     xp: Any,
-) -> MhrPreparedPose:
+) -> MhrPose:
     """Precompute pose-dependent MHR state for repeated forward passes."""
     if pose.ndim < 1 or pose.shape[-1] != 204:
         raise ValueError(f"pose must have shape [..., 204], got {tuple(pose.shape)}")

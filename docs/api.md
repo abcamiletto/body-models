@@ -67,10 +67,15 @@ SO(3) rotation.
 ## Prepared skinning
 
 `SkinningIdentity` is a `TypedDict` containing identity-dependent
-`rest_vertices`. `SkinningPose` contains `skeleton_transforms`,
-`skinning_transforms`, and optional `pose_offsets`. Shapes retain arbitrary
-leading batch dimensions. Concrete model packages export more specific
-prepared-state types when they add fields to these shared contracts.
+`rest_vertices`. `LinearIdentity` adds rest joints and local joint offsets.
+`SkinningPose` contains `skeleton_transforms`, `skinning_transforms`, and
+optional `pose_offsets`. Shapes retain arbitrary leading batch dimensions.
+Model packages export `*Identity` and `*Pose` types only when they add fields
+to these shared contracts.
+
+::: body_models.LinearIdentity
+    options:
+      show_source: false
 
 ::: body_models.SkinningPayload
     options:

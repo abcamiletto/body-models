@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from jaxtyping import Float
@@ -39,7 +40,7 @@ def forward_skeleton(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    joint_indices: list[int] | None = None,
+    joint_indices: Sequence[int] | None = None,
     xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space G1 joint transforms from local rotations."""

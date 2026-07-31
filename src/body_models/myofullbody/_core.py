@@ -8,6 +8,7 @@ are composed in XML order to form the body's local transform.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -79,7 +80,7 @@ def forward_skeleton(
     global_translation: Float[Array, "B 3"] | None = None,
     *,
     global_rotation: Float[Array, "B 3"] | None = None,
-    joint_indices: list[int] | None = None,
+    joint_indices: Sequence[int] | None = None,
     xp: Any,
 ) -> Float[Array, "B J 4 4"]:
     """Compute world-space body transforms ``[B, J, 4, 4]`` in meters."""
@@ -179,7 +180,7 @@ def world_sites(
 # ----------------------------------------------------------------------------
 
 
-def from_mujoco_qpos(
+def parameters_from_qpos(
     qpos: Float[Array, "B 7+Q"],
     *,
     xp: Any,

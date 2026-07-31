@@ -4,6 +4,8 @@ import pytest
 from trimesh import Trimesh
 
 from body_models._runtime import TorchRuntime
+from body_models.garment_measurements import GarmentMeasurements
+from body_models.myofullbody import MyoFullBody
 
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
@@ -53,6 +55,30 @@ def test_torch_and_jax_match_numpy(name, model_class, kwargs) -> None:
     jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     jax_vertices = jax_instance.forward_vertices(**jax_params)
     np.testing.assert_allclose(np.asarray(jax_vertices), expected, rtol=1e-4, atol=1e-4)
+
+
+def test_garment_pelvis_rotation_defaults_to_identity() -> None:
+    model = GarmentMeasurements()
+    params = model.get_rest_pose(batch_dims=(2,), dtype=np.float32)
+    vertex_indices = np.arange(8)
+    expected_vertices = model.forward_vertices(**params, vertex_indices=vertex_indices)
+    expected_skeleton = model.forward_skeleton(**params, joint_indices=range(8))
+
+    params.pop("pelvis_rotation")
+    vertices = model.forward_vertices(**params, vertex_indices=vertex_indices)
+    skeleton = model.forward_skeleton(**params, joint_indices=range(8))
+
+    np.testing.assert_array_equal(vertices, expected_vertices)
+    np.testing.assert_array_equal(skeleton, expected_skeleton)
+
+
+def test_myofullbody_qpos_conversion_round_trip() -> None:
+    model = MyoFullBody()
+    params = model.get_apose(batch_dims=(2,), dtype=np.float32)
+    converted = model.parameters_from_qpos(model.to_qpos(**params))
+
+    for name, expected in params.items():
+        np.testing.assert_allclose(converted[name], expected, rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.RIGID_BODY_MODELS)

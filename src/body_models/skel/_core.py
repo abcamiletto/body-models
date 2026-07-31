@@ -33,7 +33,7 @@ class SkelIdentity(SkelSkeletonIdentity):
     rest_vertices: Float[Array, "*batch V 3"]
 
 
-class SkelPreparedPose(TypedDict):
+class SkelPose(TypedDict):
     """Complete pose-dependent SKEL mesh state."""
 
     skeleton_transforms: Float[Array, "*batch 24 4 4"]
@@ -60,7 +60,7 @@ def prepare_pose(
     local_joint_offsets: Float[Array, "*batch 24 3"],
     rest_joints: Float[Array, "*batch 24 3"],
     xp: Any,
-) -> SkelPreparedPose:
+) -> SkelPose:
     """Precompute pose-dependent SKEL state for repeated forward passes."""
     if pose.ndim < 1 or pose.shape[-1] != NUM_POSE_PARAMS:
         raise ValueError(f"pose must have shape [..., {NUM_POSE_PARAMS}]")
@@ -450,4 +450,4 @@ def _rotation_between_vectors(
     return I + K + (K @ K) * scale
 
 
-__all__ = ["SkelIdentity", "SkelPreparedPose", "prepare_identity", "prepare_pose"]
+__all__ = ["SkelIdentity", "SkelPose", "prepare_identity", "prepare_pose"]

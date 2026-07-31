@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -75,7 +76,7 @@ class MyoFullBody(RigidBodyModel):
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: list[int] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed body transforms."""
         weights = self._weights
@@ -134,6 +135,13 @@ class MyoFullBody(RigidBodyModel):
             self._weights.site_body_indices,
             xp=self._runtime.xp,
         )
+
+    def parameters_from_qpos(
+        self,
+        qpos: Float[Array, "*batch Q"],
+    ) -> dict[str, Float[Array, "..."]]:
+        """Convert MuJoCo qpos into model forward parameters."""
+        return core.parameters_from_qpos(qpos, xp=self._runtime.xp)
 
     def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the MyoFullBody T-pose."""

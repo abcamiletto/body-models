@@ -82,7 +82,7 @@ class SmplFamilyModel(SkinnedModel):
         skeleton: Float[Array, "*batch J 4 4"],
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
         global_translation: Float[Array, "*batch 3"] | None,
-        joint_indices: Int[Array, "S"] | None,
+        joint_indices: Sequence[int] | None,
     ) -> Float[Array, "*batch selected 4 4"]:
         return skinning.transform_skeleton(
             skeleton,

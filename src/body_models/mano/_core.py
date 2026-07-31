@@ -12,8 +12,6 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 ManoSkeletonIdentity = deformation.SkeletonIdentity
-ManoIdentity = deformation.LinearIdentity
-ManoPreparedPose = deformation.SkinningPose
 
 prepare_identity = family.prepare_shape_identity
 prepare_skeleton_identity = family.prepare_shape_skeleton_identity
@@ -52,7 +50,7 @@ def prepare_pose(
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
     rest_joints: Float[Array, "*identity_batch J 3"],
     xp: Any,
-) -> ManoPreparedPose:
+) -> deformation.SkinningPose:
     """Prepare MANO transforms and pose-dependent vertex offsets."""
     pose_matrices = _pose_matrices(
         hand_mean,
@@ -97,4 +95,4 @@ def prepare_skeleton(
     )
 
 
-__all__ = ["ManoIdentity", "ManoPreparedPose", "prepare_identity", "prepare_pose"]
+__all__ = ["prepare_identity", "prepare_pose"]

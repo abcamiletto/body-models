@@ -30,7 +30,7 @@ class SomaIdentity(SomaSkeletonIdentity):
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"]
 
 
-class SomaPreparedPose(TypedDict):
+class SomaPose(TypedDict):
     """Complete pose-dependent SOMA mesh state."""
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
@@ -291,7 +291,7 @@ def prepare_pose(
     local_joint_translations: Float[Array, "*batch Jf 3"],
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"],
     xp: Any,
-) -> SomaPreparedPose:
+) -> SomaPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     pose_rot_public, pose_rot_full, skeleton_transforms_full = _prepare_skeleton_state(
         data,

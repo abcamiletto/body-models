@@ -2,6 +2,7 @@
 
 from body_models._base import (
     ArticulatedModel,
+    LinearIdentity,
     ParameterRole,
     ParameterSpec,
     RigidBodyModel,
@@ -27,6 +28,7 @@ for _public in (
     ArrayRuntime,
     JaxRuntime,
     Joint,
+    LinearIdentity,
     NumpyRuntime,
     ParameterSpec,
     RigidBodyModel,
@@ -47,6 +49,7 @@ __all__ = [
     "Backend",
     "JaxRuntime",
     "Joint",
+    "LinearIdentity",
     "NumpyRuntime",
     "ParameterRole",
     "ParameterSpec",

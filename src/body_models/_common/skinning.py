@@ -1,5 +1,6 @@
 """Backend-agnostic linear blend skinning operations."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -114,7 +115,7 @@ def transform_skeleton(
     rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     translation: Float[Array, "*batch 3"] | None,
     rotation_type: RotationType = "axis_angle",
-    joint_indices: list[int] | None = None,
+    joint_indices: Sequence[int] | None = None,
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
@@ -122,11 +123,12 @@ def transform_skeleton(
     if translation is not None and (translation.ndim < 1 or translation.shape[-1] != 3):
         raise ValueError("translation must have shape [..., 3]")
     if joint_indices is not None:
-        joint_indices = [int(joint) for joint in joint_indices]
+        joint_indices = tuple(int(joint) for joint in joint_indices)
         num_joints = transforms.shape[-3]
         if any(joint < 0 or joint >= num_joints for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {num_joints})")
-        transforms = transforms[..., joint_indices, :, :]
+        indices = xp.asarray(joint_indices, dtype=xp.int32)
+        transforms = transforms[..., indices, :, :]
 
     if rotation is None:
         if translation is None:

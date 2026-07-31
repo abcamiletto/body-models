@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -24,7 +25,7 @@ from body_models.skel._pose import (
 
 Array = Any
 SkelIdentity = core.SkelIdentity
-SkelPreparedPose = core.SkelPreparedPose
+SkelPose = core.SkelPose
 
 
 @dataclass(frozen=True)
@@ -165,7 +166,7 @@ class SKEL(SkinnedModel):
         identity: SkelIdentity | None = None,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed SKEL joint transforms."""
         xp = self._runtime.xp
@@ -246,7 +247,7 @@ class SKEL(SkinnedModel):
         head_pose: Float[Array, "*batch 3"],
         *,
         identity: SkelIdentity,
-    ) -> SkelPreparedPose:
+    ) -> SkelPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
         return core.prepare_pose(

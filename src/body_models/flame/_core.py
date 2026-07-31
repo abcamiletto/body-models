@@ -12,8 +12,6 @@ Array = Any
 Front = tuple[list[int], list[int]]
 
 FlameSkeletonIdentity = deformation.SkeletonIdentity
-FlameIdentity = deformation.LinearIdentity
-FlamePreparedPose = deformation.SkinningPose
 
 prepare_identity = family.prepare_shape_expression_identity
 prepare_skeleton_identity = family.prepare_shape_expression_skeleton_identity
@@ -44,7 +42,7 @@ def prepare_pose(
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
     rest_joints: Float[Array, "*identity_batch J 3"],
     xp: Any,
-) -> FlamePreparedPose:
+) -> deformation.SkinningPose:
     """Prepare FLAME transforms and pose-dependent vertex offsets."""
     pose_matrices = _pose_matrices(
         head_pose,
@@ -86,4 +84,4 @@ def prepare_skeleton(
     )
 
 
-__all__ = ["FlameIdentity", "FlamePreparedPose", "prepare_identity", "prepare_pose"]
+__all__ = ["prepare_identity", "prepare_pose"]

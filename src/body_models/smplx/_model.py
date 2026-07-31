@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -9,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec
+from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
 from body_models._smpl_family import SmplFamilyModel
@@ -19,8 +20,6 @@ from body_models.smplx._io import get_model_path, load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
-SmplxIdentity = core.SmplxIdentity
-SmplxPreparedPose = core.SmplxPreparedPose
 
 
 @dataclass(frozen=True)
@@ -106,7 +105,7 @@ class SMPLX(SmplFamilyModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
         expression: Float[Array, "*batch 10"] | None = None,
-        identity: SmplxIdentity | None = None,
+        identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
@@ -146,10 +145,10 @@ class SMPLX(SmplFamilyModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
         expression: Float[Array, "*batch 10"] | None = None,
-        identity: SmplxIdentity | None = None,
+        identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 55 4 4"]:
         """Compute posed joint transforms."""
         xp = self._runtime.xp
@@ -186,7 +185,7 @@ class SMPLX(SmplFamilyModel):
         self,
         shape: Float[Array, "*batch 10"],
         expression: Float[Array, "*batch 10"],
-    ) -> SmplxIdentity:
+    ) -> LinearIdentity:
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -208,8 +207,8 @@ class SMPLX(SmplFamilyModel):
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: SmplxIdentity,
-    ) -> SmplxPreparedPose:
+        identity: LinearIdentity,
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,

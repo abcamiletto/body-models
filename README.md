@@ -86,8 +86,8 @@ package. For example, `body_models.smpl.SMPL` is public; underscore-prefixed
 modules such as `body_models.smpl._model` are implementation details and are
 not covered by semantic-versioning compatibility guarantees. Every model
 derives from `body_models.ArticulatedModel`. Skinned model packages also export
-the types returned by `prepare_identity()` and `prepare_pose()`, such as
-`body_models.smpl.SmplIdentity` and `SmplPreparedPose`.
+model-specific prepared-state types when their schema is unique. Shared linear
+models use `body_models.LinearIdentity` and `body_models.SkinningPose`.
 Required numerical inputs may be positional; optional model and runtime
 arguments are keyword-only.
 

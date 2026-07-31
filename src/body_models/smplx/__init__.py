@@ -1,7 +1,7 @@
 """Public SMPL-X API."""
 
-from body_models.smplx._model import SMPLX, SmplxIdentity, SmplxPreparedPose
+from body_models.smplx._model import SMPLX
 
 SMPLX.__module__ = __name__
 
-__all__ = ["SMPLX", "SmplxIdentity", "SmplxPreparedPose"]
+__all__ = ["SMPLX"]

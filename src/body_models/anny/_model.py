@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -21,7 +22,7 @@ from body_models.anny._io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_mod
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
 AnnyIdentity = core.AnnyIdentity
-AnnyPreparedPose = core.AnnyPreparedPose
+AnnyPose = core.AnnyPose
 
 
 @dataclass(frozen=True)
@@ -47,8 +48,8 @@ class ANNY(SkinnedModel):
         self,
         *,
         model_path: Path | str | None = None,
-        rig: str = "default",
-        topology: str = "default",
+        rig: Literal["default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"] = "default",
+        topology: Literal["default", "makehuman"] = "default",
         all_phenotypes: bool = False,
         extrapolate_phenotypes: bool = False,
         rotation_type: RotationType = "axis_angle",
@@ -188,7 +189,7 @@ class ANNY(SkinnedModel):
         identity: AnnyIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
+        joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed ANNY joint transforms."""
         xp = self._runtime.xp
@@ -267,7 +268,7 @@ class ANNY(SkinnedModel):
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
         *,
         identity: AnnyIdentity,
-    ) -> AnnyPreparedPose:
+    ) -> AnnyPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
         batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])

@@ -1,6 +1,6 @@
 """Shared rigid articulated mesh helpers."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
@@ -40,7 +40,7 @@ def forward_skeleton_from_local_rotations(
     parents: list[int],
     global_translation: Float[Array, "... 3"] | None = None,
     global_rotation: Float[Array, "... 3"] | None = None,
-    joint_indices: list[int] | None = None,
+    joint_indices: Sequence[int] | None = None,
     xp: Any,
 ) -> Float[Array, "... J 4 4"]:
     """Compute rigid hierarchy transforms from local actuated joint rotations."""
@@ -70,7 +70,7 @@ def forward_skeleton_from_local_transforms(
     parents: list[int],
     global_translation: Float[Array, "... 3"] | None = None,
     global_rotation: Float[Array, "... 3"] | None = None,
-    joint_indices: list[int] | None = None,
+    joint_indices: Sequence[int] | None = None,
     xp: Any,
 ) -> Float[Array, "... J 4 4"]:
     """Compute rigid hierarchy transforms from local joint transforms."""
@@ -106,8 +106,9 @@ def forward_skeleton_from_local_transforms(
     if joint_indices is not None:
         if any(joint < 0 or joint >= num_joints for joint in joint_indices):
             raise IndexError(f"joint_indices must be in [0, {num_joints})")
-        rot = rot[..., joint_indices, :, :]
-        trans = trans[..., joint_indices, :]
+        indices = xp.asarray(tuple(joint_indices), dtype=xp.int32)
+        rot = rot[..., indices, :, :]
+        trans = trans[..., indices, :]
 
     return affine_transforms(rot, trans, xp=xp)
 
