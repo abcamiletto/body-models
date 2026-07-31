@@ -135,7 +135,7 @@ def mhr_identity_shape(
     zero_pose = common.zeros_as(identity, shape=(*batch_shape, model.pose_dim), xp=xp)
     zero_pose = common.at_set(zero_pose, (..., slice(-num_scale_params, None)), scale_params, xp=xp)
     body_pose, head_pose, hand_pose = mhr_pose.unpack_pose(xp, zero_pose)
-    expression = common.zeros_as(identity, shape=(*batch_shape, model.EXPR_DIM), xp=xp)
+    expression = common.zeros_as(identity, shape=(*batch_shape, model.NUM_EXPR_COEFFS), xp=xp)
     return model.forward_vertices(
         shape=identity,
         body_pose=body_pose,

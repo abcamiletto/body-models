@@ -29,8 +29,10 @@ class FlameConfig:
 class FLAME(SmplFamilyModel):
     """Skinned head model with shape and expression controls."""
 
-    NUM_HEAD_JOINTS = 4
     NUM_JOINTS = 5
+    NUM_HEAD_JOINTS = 4
+    NUM_SHAPE_COEFFS = 300
+    NUM_EXPR_COEFFS = 100
 
     def __init__(
         self,
@@ -59,8 +61,8 @@ class FLAME(SmplFamilyModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
-            "shape": ParameterSpec((300,), "identity"),
-            "expression": ParameterSpec((100,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
+            "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
             "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
             "head_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),

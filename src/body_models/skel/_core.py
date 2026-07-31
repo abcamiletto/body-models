@@ -17,7 +17,7 @@ SMPL_JOINT_MAP = [0, 2, 5, 8, 8, 11, 1, 4, 7, 7, 10, 3, 6, 15, 14, 17, 19, 0, 21
 # Constants
 NUM_JOINTS = 24
 NUM_POSE_PARAMS = 46
-NUM_BETAS = 10
+NUM_SHAPE_COEFFS = 10
 
 
 class SkelSkeletonIdentity(TypedDict):
@@ -164,8 +164,8 @@ def prepare_skeleton_identity(
     xp: Any,
 ) -> SkelSkeletonIdentity:
     """Prepare only shape-dependent SKEL joint state."""
-    if shape.ndim < 1 or shape.shape[-1] != NUM_BETAS:
-        raise ValueError(f"shape must have shape [..., {NUM_BETAS}]")
+    if shape.ndim < 1 or shape.shape[-1] != NUM_SHAPE_COEFFS:
+        raise ValueError(f"shape must have shape [..., {NUM_SHAPE_COEFFS}]")
     joints = j_template + xp.einsum("jdi,...i->...jd", j_shapedirs, shape)
     return {
         "rest_joints": joints,

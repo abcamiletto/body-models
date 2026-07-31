@@ -35,6 +35,10 @@ class ANNY(SkinnedModel):
     """Phenotype-driven skinned body model."""
 
     has_hands = True
+    NUM_BODY_JOINTS = 64
+    NUM_HAND_JOINTS = 38
+    NUM_HEAD_JOINTS = 60
+    NUM_SHAPE_COEFFS = 6
     JOINTS = ANNY_JOINTS
 
     def __init__(
@@ -87,10 +91,10 @@ class ANNY(SkinnedModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
-            "shape": ParameterSpec((6,), "identity", default=0.5),
-            "body_pose": ParameterSpec.rotation(rotation, 64),
-            "head_pose": ParameterSpec.rotation(rotation, 60),
-            "hand_pose": ParameterSpec.rotation(rotation, 38),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity", default=0.5),
+            "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
+            "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }

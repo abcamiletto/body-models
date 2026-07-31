@@ -30,8 +30,8 @@ class MHR(SkinnedModel):
     """Expressive full-body model with neural pose correctives."""
 
     has_hands = True
-    SHAPE_DIM = 45
-    EXPR_DIM = 72
+    NUM_SHAPE_COEFFS = 45
+    NUM_EXPR_COEFFS = 72
     JOINTS = MHR_JOINTS
 
     def __init__(
@@ -65,7 +65,7 @@ class MHR(SkinnedModel):
 
     @property
     def pose_dim(self) -> int:
-        return self._weights.parameter_transform.shape[1] - self.SHAPE_DIM
+        return self._weights.parameter_transform.shape[1] - self.NUM_SHAPE_COEFFS
 
     @property
     def body_pose_dim(self) -> int:
@@ -82,8 +82,8 @@ class MHR(SkinnedModel):
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
-            "shape": ParameterSpec((self.SHAPE_DIM,), "identity"),
-            "expression": ParameterSpec((self.EXPR_DIM,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
+            "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
             "body_pose": ParameterSpec((self.body_pose_dim,), "pose"),
             "head_pose": ParameterSpec((self.head_pose_dim,), "pose"),
             "hand_pose": ParameterSpec((self.hand_pose_dim,), "pose"),
@@ -159,7 +159,7 @@ class MHR(SkinnedModel):
             parameter_transform=self._weights.parameter_transform,
             kinematic_fronts=self._weights.kinematic_fronts,
             num_joints=self.num_joints,
-            shape_dim=self.SHAPE_DIM,
+            shape_dim=self.NUM_SHAPE_COEFFS,
             pose=pose,
             xp=xp,
         )
@@ -200,7 +200,7 @@ class MHR(SkinnedModel):
             parameter_transform=self._weights.parameter_transform,
             kinematic_fronts=self._weights.kinematic_fronts,
             num_joints=self.num_joints,
-            shape_dim=self.SHAPE_DIM,
+            shape_dim=self.NUM_SHAPE_COEFFS,
             bind_inv_linear=self._weights.bind_inv_linear,
             bind_inv_translation=self._weights.bind_inv_translation,
             corrective_hidden_weights=self._weights.correctives.hidden_weights,

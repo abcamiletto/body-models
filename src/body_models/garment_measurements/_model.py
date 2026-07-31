@@ -38,6 +38,9 @@ class GarmentMeasurements(SkinnedModel):
     """PCA body model for garment measurement workflows."""
 
     has_hands = True
+    NUM_BODY_JOINTS = 25
+    NUM_HAND_JOINTS = 30
+    NUM_HEAD_JOINTS = 3
     JOINTS = GARMENT_JOINTS
 
     def __init__(
@@ -68,9 +71,9 @@ class GarmentMeasurements(SkinnedModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.num_shape_components,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, 25),
-            "head_pose": ParameterSpec.rotation(rotation, 3),
-            "hand_pose": ParameterSpec.rotation(rotation, 30),
+            "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
+            "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),

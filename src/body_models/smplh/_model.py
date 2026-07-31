@@ -33,9 +33,10 @@ class SMPLH(SmplFamilyModel):
     """Skinned human body model with articulated hands."""
 
     has_hands = True
+    NUM_JOINTS = 52
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
-    NUM_JOINTS = 52
+    NUM_SHAPE_COEFFS = 10
     JOINTS = SMPLH_JOINTS
 
     def __init__(
@@ -73,7 +74,7 @@ class SMPLH(SmplFamilyModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
-            "shape": ParameterSpec((10,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
             "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
