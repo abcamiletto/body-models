@@ -35,8 +35,8 @@ class SkelConfig:
 class SKEL(SkinnedModel):
     """Skinned body model with anatomical articulation."""
 
-    NUM_BETAS = 10
     NUM_JOINTS = 24
+    NUM_SHAPE_COEFFS = 10
     JOINTS = SKEL_JOINTS
 
     def __init__(
@@ -116,7 +116,7 @@ class SKEL(SkinnedModel):
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
-            "shape": ParameterSpec((self.NUM_BETAS,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "body_pose": ParameterSpec((self.body_pose_dim,), "pose"),
             "head_pose": ParameterSpec((self.head_pose_dim,), "pose"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),

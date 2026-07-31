@@ -31,8 +31,9 @@ class SmplConfig:
 class SMPL(SmplFamilyModel):
     """Skinned human body model with shape and pose controls."""
 
-    NUM_BODY_JOINTS = 23
     NUM_JOINTS = 24
+    NUM_BODY_JOINTS = 23
+    NUM_SHAPE_COEFFS = 10
     JOINTS = SMPL_JOINTS
 
     def __init__(
@@ -72,7 +73,7 @@ class SMPL(SmplFamilyModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
-            "shape": ParameterSpec((10,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),

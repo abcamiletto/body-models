@@ -33,8 +33,9 @@ class MANO(SmplFamilyModel):
     """Skinned hand model with shape and finger-pose controls."""
 
     has_hands = True
-    NUM_HAND_JOINTS = 15
     NUM_JOINTS = 16
+    NUM_HAND_JOINTS = 15
+    NUM_SHAPE_COEFFS = 10
 
     def __init__(
         self,
@@ -71,7 +72,7 @@ class MANO(SmplFamilyModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
-            "shape": ParameterSpec((10,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
             "wrist_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),

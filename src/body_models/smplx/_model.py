@@ -33,10 +33,12 @@ class SMPLX(SmplFamilyModel):
     """Skinned body model with articulated hands and facial controls."""
 
     has_hands = True
+    NUM_JOINTS = 55
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
-    NUM_JOINTS = 55
+    NUM_SHAPE_COEFFS = 10
+    NUM_EXPR_COEFFS = 10
     JOINTS = SMPLX_JOINTS
 
     def __init__(
@@ -74,8 +76,8 @@ class SMPLX(SmplFamilyModel):
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         rotation = self.rotation_type
         return {
-            "shape": ParameterSpec((10,), "identity"),
-            "expression": ParameterSpec((10,), "identity"),
+            "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
+            "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
             "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
             "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
             "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
