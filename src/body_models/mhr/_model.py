@@ -35,7 +35,7 @@ class MHR(SkinnedModel):
     has_hands = True
     NUM_SHAPE_COEFFS = 45
     NUM_EXPR_COEFFS = 72
-    JOINTS = MHR_JOINTS
+    _COMMON_JOINTS = MHR_JOINTS
 
     def __init__(
         self,
@@ -53,10 +53,6 @@ class MHR(SkinnedModel):
     @property
     def faces(self) -> Int[Array, "F 3"]:
         return self._weights.faces
-
-    @property
-    def num_joints(self) -> int:
-        return len(self._weights.parents)
 
     @property
     def joint_names(self) -> list[str]:

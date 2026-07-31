@@ -71,13 +71,12 @@ SkinningPose = deformation.SkinningPose
 class ArticulatedModel(ABC):
     """Base class for all articulated models."""
 
+    _COMMON_JOINTS: ClassVar[Mapping[Joint, str]] = {}
     _state_fields: ClassVar[tuple[str, ...]] = ("_weights",)
     _config: Any
     _runtime: ArrayRuntime
-    parents: list[int]
     has_face: ClassVar[bool] = False
     has_hands: ClassVar[bool] = False
-    JOINTS: ClassVar[Mapping[Joint, str]] = {}
 
     @property
     def runtime(self) -> ArrayRuntime:
@@ -135,7 +134,7 @@ class ArticulatedModel(ABC):
     @property
     def num_joints(self) -> int:
         """Number of joints in the skeleton."""
-        return len(self.joint_names)
+        return len(self.parents)
 
     @property
     @abstractmethod
@@ -148,18 +147,23 @@ class ArticulatedModel(ABC):
         """Joint names in joint index order."""
 
     @property
+    @abstractmethod
+    def parents(self) -> list[int]:
+        """Parent indices in joint_names order, with -1 for the root."""
+
+    @property
     def common_joints(self) -> Mapping[Joint, str]:
         """Common anatomical joints mapped to this model's native joint names."""
-        return dict(self.JOINTS)
+        return self._COMMON_JOINTS
 
     def joint_index(self, joint: Joint) -> int:
-        """Resolve a standard joint to this model's native joint index."""
+        """Resolve a common joint to this model's native joint index."""
         if not isinstance(joint, Joint):
             raise TypeError("joint_index() expects a body_models.Joint; use joint_names.index(...) for native names.")
         try:
             native_name = self.common_joints[joint]
         except KeyError as exc:
-            raise KeyError(f"{self.__class__.__name__} has no standard joint {joint.value!r}") from exc
+            raise KeyError(f"{self.__class__.__name__} has no common joint {joint.value!r}") from exc
         return self.joint_names.index(native_name)
 
     @property

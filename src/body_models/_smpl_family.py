@@ -32,10 +32,6 @@ class SmplFamilyModel(SkinnedModel):
         return self._weights.faces
 
     @property
-    def num_joints(self) -> int:
-        return len(self._weights.parents)
-
-    @property
     def num_vertices(self) -> int:
         return self._weights.v_template.shape[0]
 

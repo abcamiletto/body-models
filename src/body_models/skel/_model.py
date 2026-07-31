@@ -39,7 +39,7 @@ class SKEL(SkinnedModel):
 
     NUM_JOINTS = 24
     NUM_SHAPE_COEFFS = 10
-    JOINTS = SKEL_JOINTS
+    _COMMON_JOINTS = SKEL_JOINTS
 
     def __init__(
         self,
@@ -70,10 +70,6 @@ class SKEL(SkinnedModel):
     @property
     def skeleton_faces(self) -> Int[Array, "Fs 3"]:
         return self._weights.skel_faces
-
-    @property
-    def num_joints(self) -> int:
-        return self.NUM_JOINTS
 
     @property
     def joint_names(self) -> list[str]:

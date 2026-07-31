@@ -26,7 +26,7 @@ class MyoFullBodyConfig:
 class MyoFullBody(RigidBodyModel):
     """Rigid articulated musculoskeletal full-body model."""
 
-    JOINTS = MYOFULLBODY_JOINTS
+    _COMMON_JOINTS = MYOFULLBODY_JOINTS
 
     def __init__(
         self,

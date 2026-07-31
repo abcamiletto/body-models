@@ -108,12 +108,17 @@ behavior such as Warp skinning.
 All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
 define its two public specializations. They expose `has_face`, `has_hands`,
 `parameter_spec`, `get_rest_pose`, `faces`, `num_vertices`, `num_joints`,
-`joint_names`, and `forward_skeleton`.
+`joint_names`, `parents`, and `forward_skeleton`.
 `has_face` indicates facial-expression controls; `has_hands` indicates
 articulated hand controls. Neither describes mesh geometry. Skinned models
 additionally share `skin_weights`, `rest_vertices`, and `forward_vertices`.
 Rigid articulated models expose link metadata, `forward_links`, and
 `forward_meshes` instead of skinning weights.
+
+`joint_names` and `parents` describe the complete native skeleton in joint
+index order. The `Joint` enum names anatomical joints shared across models;
+`common_joints` maps those names to the native skeleton, and
+`joint_index(Joint.LEFT_WRIST)` resolves the corresponding native index.
 
 Each skinned model package exports its exact prepared identity and pose types.
 Shared renderer-facing contracts are available as `SkinningIdentity`,

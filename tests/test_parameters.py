@@ -4,12 +4,23 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models import ParameterSpec
+from body_models import Joint, ParameterSpec
 
 
 @pytest.mark.parametrize(("_name", "model_class", "kwargs"), model_cases.MODELS)
-def test_parameter_spec_describes_rest_parameters(_name, model_class, kwargs) -> None:
+def test_model_contract(_name, model_class, kwargs) -> None:
     model = model_class(**kwargs)
+    joint_names = model.joint_names
+    parents = model.parents
+
+    assert len(parents) == len(joint_names) == model.num_joints
+    assert parents.count(-1) == 1
+    assert all(parent == -1 or 0 <= parent < model.num_joints for parent in parents)
+    assert all(isinstance(joint, Joint) for joint in model.common_joints)
+    for joint, native_name in model.common_joints.items():
+        assert native_name in joint_names
+        assert model.joint_index(joint) == joint_names.index(native_name)
+
     batch_shape = (2, 3)
     parameters = model.get_rest_pose(batch_dims=batch_shape, dtype=np.float32)
 

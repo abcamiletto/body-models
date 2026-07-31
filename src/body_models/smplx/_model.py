@@ -42,7 +42,7 @@ class SMPLX(SmplFamilyModel):
     NUM_HEAD_JOINTS = 3
     NUM_SHAPE_COEFFS = 10
     NUM_EXPR_COEFFS = 10
-    JOINTS = SMPLX_JOINTS
+    _COMMON_JOINTS = SMPLX_JOINTS
 
     def __init__(
         self,
