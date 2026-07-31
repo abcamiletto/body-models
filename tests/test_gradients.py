@@ -141,7 +141,7 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
 
     torch.manual_seed(7)
     models = {
-        skinning_backend: SOMA(runtime=TorchRuntime(skinning_backend)).as_module().cuda()
+        skinning_backend: SOMA(runtime=TorchRuntime(skinning_backend=skinning_backend)).as_module().cuda()
         for skinning_backend in ("torch", "warp")
     }
     params = models["torch"].get_rest_pose(batch_dims=(1,))
@@ -193,7 +193,7 @@ def test_torch_skinning_backend_gradients_match_default(
 
     expected_vertices, expected_gradients = forward_and_grad(default_model)
     for skinning_backend in TorchRuntime.SKINNING_BACKENDS[1:]:
-        model = model_class(**kwargs, runtime=TorchRuntime(skinning_backend)).as_module().cuda()
+        model = model_class(**kwargs, runtime=TorchRuntime(skinning_backend=skinning_backend)).as_module().cuda()
         actual_vertices, actual_gradients = forward_and_grad(model)
         torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
         for actual, expected in zip(actual_gradients, expected_gradients, strict=True):

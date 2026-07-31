@@ -30,8 +30,8 @@ class BrainCoHand(RigidBodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
         *,
+        model_path: Path | str | None = None,
         side: Side = "right",
         runtime: RuntimeLike = "numpy",
     ) -> None:
@@ -67,9 +67,9 @@ class BrainCoHand(RigidBodyModel):
     def forward_skeleton(
         self,
         hand_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms."""
@@ -94,35 +94,36 @@ class BrainCoHand(RigidBodyModel):
     def forward_links(
         self,
         hand_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
         skeleton = self.forward_skeleton(
             hand_pose,
-            global_translation,
             global_rotation=global_rotation,
+            global_translation=global_translation,
         )
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
         hand_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
         links = self.forward_links(
             hand_pose,
-            global_translation,
             global_rotation=global_rotation,
+            global_translation=global_translation,
         )
         return self._meshes_from_links(links)
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
@@ -130,7 +131,7 @@ class BrainCoHand(RigidBodyModel):
         """Return the configured default or canonical hand pose."""
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
-        params = super().get_rest_pose(batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             hand_pose = self._runtime.asarray(BRAINCO_HAND_PRESETS[self.side][hands], like=params["hand_pose"])
             params["hand_pose"] = self._runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))

@@ -47,8 +47,8 @@ class GarmentMeasurements(SkinnedModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
         *,
+        model_path: Path | str | None = None,
         rotation_type: RotationType = "axis_angle",
         runtime: RuntimeLike = "numpy",
     ) -> None:
@@ -73,9 +73,9 @@ class GarmentMeasurements(SkinnedModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.num_shape_components,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
-            "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -119,12 +119,12 @@ class GarmentMeasurements(SkinnedModel):
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch C"] | None = None,
         identity: GarmentMeasurementsIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed GarmentMeasurements vertices."""
         xp = self._runtime.xp
@@ -157,12 +157,12 @@ class GarmentMeasurements(SkinnedModel):
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch C"] | None = None,
         identity: GarmentMeasurementsIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed GarmentMeasurements joint transforms."""
         xp = self._runtime.xp
@@ -243,6 +243,7 @@ class GarmentMeasurements(SkinnedModel):
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: HandPreset = "default",
@@ -251,7 +252,7 @@ class GarmentMeasurements(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}")
 
-        params = super().get_rest_pose(batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             runtime = self.runtime
             axis_angle = runtime.asarray(GARMENT_HAND_PRESETS[hands], like=params["hand_pose"]).reshape(-1, 3)
@@ -266,6 +267,7 @@ class GarmentMeasurements(SkinnedModel):
 
     def get_tpose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,
@@ -284,6 +286,7 @@ class GarmentMeasurements(SkinnedModel):
 
     def get_apose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: HandPreset = "default",
         **kwargs: Any,

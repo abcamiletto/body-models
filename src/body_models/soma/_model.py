@@ -69,12 +69,12 @@ class SOMA(SkinnedModel):
 
     def __init__(
         self,
-        model_path: PathLike | None = None,
         *,
+        model_path: PathLike | None = None,
         model_type: str = "soma",
         lod: str = "mid",
-        simplify: float = 1.0,
         rotation_type: RotationType = "axis_angle",
+        simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         normalized_model_type = model_type.lower()
@@ -151,9 +151,9 @@ class SOMA(SkinnedModel):
             parameters["scale_params"] = ParameterSpec((self.num_scale_params,), "identity")
         parameters.update(
             {
-                "body_pose": ParameterSpec.rotation(rotation, self.NUM_BODY_JOINTS),
-                "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
-                "hand_pose": ParameterSpec.rotation(rotation, self.NUM_HAND_JOINTS),
+                "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
+                "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
+                "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
                 "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
                 "global_translation": ParameterSpec((3,), "transform"),
             }
@@ -213,11 +213,11 @@ class SOMA(SkinnedModel):
         body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
         head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"],
         hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
         shape: Float[Array, "*batch I"] | None = None,
         scale_params: Float[Array, "*batch K"] | None = None,
         identity: SomaIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
@@ -253,11 +253,11 @@ class SOMA(SkinnedModel):
         body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
         head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"],
         hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
         shape: Float[Array, "*batch I"] | None = None,
         scale_params: Float[Array, "*batch K"] | None = None,
         identity: SomaIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch 77 4 4"]:
@@ -383,6 +383,7 @@ class SOMA(SkinnedModel):
 
     def get_rest_pose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
@@ -391,7 +392,7 @@ class SOMA(SkinnedModel):
         if hands not in ("default", "flat", "rest"):
             raise ValueError(f"Invalid hands: {hands!r}. Expected 'default', 'flat', or 'rest'.")
 
-        params = super().get_rest_pose(batch_dims, dtype)
+        params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             runtime = self.runtime
             axis_angle = runtime.asarray(SOMA_HAND_PRESETS[hands], like=params["hand_pose"]).reshape(-1, 3)
@@ -406,6 +407,7 @@ class SOMA(SkinnedModel):
 
     def get_tpose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,
@@ -415,6 +417,7 @@ class SOMA(SkinnedModel):
 
     def get_apose(
         self,
+        *,
         batch_dims: tuple[int, ...] = (),
         hands: Literal["default", "flat", "rest"] = "default",
         **kwargs: Any,

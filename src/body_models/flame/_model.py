@@ -39,10 +39,10 @@ class FLAME(SmplFamilyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
-        simplify: float = 1.0,
-        rotation_type: RotationType = "axis_angle",
         *,
+        model_path: Path | str | None = None,
+        rotation_type: RotationType = "axis_angle",
+        simplify: float = 1.0,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
@@ -66,7 +66,7 @@ class FLAME(SmplFamilyModel):
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
-            "head_pose": ParameterSpec.rotation(rotation, self.NUM_HEAD_JOINTS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
             "head_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -83,14 +83,14 @@ class FLAME(SmplFamilyModel):
     def forward_vertices(
         self,
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
-        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
         *,
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
         identity: FlameIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed head vertices."""
         xp = self._runtime.xp
@@ -103,7 +103,7 @@ class FLAME(SmplFamilyModel):
             expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression)
 
-        pose = self.prepare_pose(head_pose, head_rotation, identity=identity)
+        pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=identity)
         return self._deform_vertices(
             identity,
             pose,
@@ -115,14 +115,14 @@ class FLAME(SmplFamilyModel):
     def forward_skeleton(
         self,
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
-        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
         *,
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
         identity: FlameIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch 5 4 4"]:
         """Compute posed head joint transforms."""
         xp = self._runtime.xp
@@ -174,8 +174,8 @@ class FLAME(SmplFamilyModel):
     def prepare_pose(
         self,
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
-        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         *,
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         identity: FlameIdentity,
     ) -> FlamePreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""

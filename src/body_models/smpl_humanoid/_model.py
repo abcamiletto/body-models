@@ -32,8 +32,8 @@ class SmplHumanoid(RigidBodyModel):
 
     def __init__(
         self,
-        source: Path | str = "humenv",
         *,
+        source: Path | str = "humenv",
         runtime: RuntimeLike = "numpy",
     ) -> None:
         runtime = self._set_runtime(runtime)
@@ -55,9 +55,9 @@ class SmplHumanoid(RigidBodyModel):
     def forward_skeleton(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed joint transforms."""
@@ -77,40 +77,48 @@ class SmplHumanoid(RigidBodyModel):
     def forward_links(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
-        skeleton = self.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+        skeleton = self.forward_skeleton(
+            body_pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
+        )
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
-        links = self.forward_links(body_pose, global_translation, global_rotation=global_rotation)
+        links = self.forward_links(
+            body_pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
+        )
         return self._meshes_from_links(links)
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 
     def from_smpl_motion(
         self,
         smpl_body_pose: Float[Array, "*batch 23 3"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
         pelvis_rotation: Float[Array, "*batch 3"] | None = None,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> dict[str, Float[Array, "..."]]:
         """Convert canonical SMPL motion into humanoid controls."""
         xp = self._runtime.xp

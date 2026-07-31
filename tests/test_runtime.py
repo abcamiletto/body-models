@@ -100,7 +100,7 @@ def test_compact_skinning_ignores_padding_slots() -> None:
 
 @pytest.mark.fast
 def test_runtime_is_serializable() -> None:
-    runtime = pickle.loads(pickle.dumps(TorchRuntime("warp")))
+    runtime = pickle.loads(pickle.dumps(TorchRuntime(skinning_backend="warp")))
 
     assert runtime.skinning_backend == "warp"
     assert runtime.xp.__name__ == "torch"
@@ -161,12 +161,12 @@ def test_registered_model_pytree_preserves_non_jax_runtime() -> None:
     pytest.importorskip("torch")
     from body_models.g1 import G1
 
-    model = G1(runtime=TorchRuntime("warp"))
+    model = G1(runtime=TorchRuntime(skinning_backend="warp"))
     G1(runtime="jax")
     restored = jax.tree_util.tree_map(lambda value: value, model)
 
     assert type(restored) is G1
-    assert restored.runtime == TorchRuntime("warp")
+    assert restored.runtime == TorchRuntime(skinning_backend="warp")
     assert restored._weights is model._weights
 
 

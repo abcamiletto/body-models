@@ -25,9 +25,17 @@ def test_g1_forward_skeleton_matches_mujoco_fk() -> None:
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
     global_rotation = np.array([[0.05, -0.1, 0.08]], dtype=np.float32)
 
-    data.qpos[:] = model.to_qpos(body_pose, global_translation, global_rotation=global_rotation)[0]
+    data.qpos[:] = model.to_qpos(
+        body_pose,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+    )[0]
     mujoco.mj_forward(mj_model, data)
-    skeleton = model.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+    skeleton = model.forward_skeleton(
+        body_pose,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+    )
     mujoco_to_model = np.asarray(core.MUJOCO_TO_KIMODO)
 
     for joint_index, joint_name in enumerate(model.joint_names):

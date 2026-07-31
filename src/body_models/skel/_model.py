@@ -43,10 +43,10 @@ class SKEL(SkinnedModel):
 
     def __init__(
         self,
+        *,
         model_path: Path | str | None = None,
         gender: Literal["male", "female"] = "male",
         simplify: float = 1.0,
-        *,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         if gender not in ("male", "female"):
@@ -129,12 +129,12 @@ class SKEL(SkinnedModel):
         self,
         body_pose: Float[Array, "*batch 43"],
         head_pose: Float[Array, "*batch 3"],
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: SkelIdentity | None = None,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        vertex_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed SKEL vertices."""
         xp = self._runtime.xp
@@ -164,12 +164,12 @@ class SKEL(SkinnedModel):
         self,
         body_pose: Float[Array, "*batch 43"],
         head_pose: Float[Array, "*batch 3"],
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        joint_indices: Int[Array, "S"] | None = None,
         *,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: SkelIdentity | None = None,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+        joint_indices: Int[Array, "S"] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed SKEL joint transforms."""
         xp = self._runtime.xp
@@ -213,11 +213,11 @@ class SKEL(SkinnedModel):
         self,
         body_pose: Float[Array, "*batch 43"],
         head_pose: Float[Array, "*batch 3"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
         shape: Float[Array, "*batch 10"] | None = None,
         identity: SkelIdentity | None = None,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Alias the SKEL joint transforms as anatomical link transforms."""
         return self.forward_skeleton(
@@ -285,11 +285,11 @@ class SKEL(SkinnedModel):
             xp=self._runtime.xp,
         )
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SKEL T-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the SKEL A-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
         pose = self._runtime.asarray(SKEL_BODY_PRESETS["a_pose"], like=params["body_pose"])

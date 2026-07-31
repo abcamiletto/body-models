@@ -30,8 +30,8 @@ class MyoFullBody(RigidBodyModel):
 
     def __init__(
         self,
-        model_path: Path | str | None = None,
         *,
+        model_path: Path | str | None = None,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         runtime = self._set_runtime(runtime)
@@ -72,9 +72,9 @@ class MyoFullBody(RigidBodyModel):
     def forward_skeleton(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: list[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed body transforms."""
@@ -99,23 +99,31 @@ class MyoFullBody(RigidBodyModel):
     def forward_links(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch L 4 4"]:
         """Compute posed link transforms."""
-        skeleton = self.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
+        skeleton = self.forward_skeleton(
+            body_pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
+        )
         return self._link_transforms(skeleton)
 
     def forward_meshes(
         self,
         body_pose: Float[Array, "*batch Q"],
-        global_translation: Float[Array, "*batch 3"] | None = None,
         *,
         global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> list[Trimesh]:
         """Build one posed render mesh per batch element."""
-        links = self.forward_links(body_pose, global_translation, global_rotation=global_rotation)
+        links = self.forward_links(
+            body_pose,
+            global_rotation=global_rotation,
+            global_translation=global_translation,
+        )
         return self._meshes_from_links(links)
 
     def world_sites(self, skeleton: Float[Array, "*batch J 4 4"]) -> Float[Array, "*batch S 3"]:
@@ -127,11 +135,11 @@ class MyoFullBody(RigidBodyModel):
             xp=self._runtime.xp,
         )
 
-    def get_tpose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the MyoFullBody T-pose."""
         return self._preset_pose("t_pose", batch_dims, **kwargs)
 
-    def get_apose(self, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
         """Return the MyoFullBody A-pose."""
         return self._preset_pose("a_pose", batch_dims, **kwargs)
 

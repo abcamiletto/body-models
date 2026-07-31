@@ -36,6 +36,10 @@ cannot create a partial object that later fails in a mesh forward.
 Each model package exports the exact `TypedDict` contracts returned by its
 public preparation methods. Shared skinning contracts are exported from
 `body_models`; skeleton-only preparation types remain private.
+Required numerical inputs may be positional, while optional configuration,
+state, transforms, and output selection are keyword-only. Forward signatures
+order those groups as local pose options, identity, global transform, and
+selection.
 
 SMPL, SMPL-H, SMPL-X, MANO, and FLAME share one private family engine. Their
 `_core.py` modules describe the ordered pose blocks and apply model-specific

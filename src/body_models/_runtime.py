@@ -129,7 +129,7 @@ class NumpyRuntime(ArrayRuntime):
         return np.asarray(value)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class TorchRuntime(ArrayRuntime):
     """Torch model runtime with optional Warp operation lowerings."""
 

@@ -90,7 +90,7 @@ LOADERS = {
     "flame": FLAME,
     "garment_measurements": GarmentMeasurements,
     "soma": lambda: SOMA(),
-    "g1": lambda: G1(rotation_type="hinge"),
+    "g1": G1,
     "myofullbody": MyoFullBody,
 }
 
