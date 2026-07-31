@@ -87,9 +87,10 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
     model = SOMA(model_path=normalized_model_path, model_type="soma", rotation_type="axis_angle")
 
     shape = np.zeros((1, 128), dtype=np.float32)
-    poses = np.zeros((3, 1, 77, 3), dtype=np.float32)
+    poses = np.zeros((3, 1, len(model.joint_names), 3), dtype=np.float32)
     poses[1, 0, 0, 0] = 0.4
-    poses[2, 0, 38, 0] = 0.8
+    poses[2, 0, model.joint_names.index("LeftLeg")] = np.deg2rad((50.0, 35.0, -20.0))
+    poses[2, 0, model.joint_names.index("LeftShin")] = np.deg2rad((70.0, 0.0, 0.0))
 
     for pose in poses:
         with torch.no_grad():

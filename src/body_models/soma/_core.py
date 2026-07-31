@@ -364,13 +364,15 @@ def _prepare_skeleton_state(
     Float[Array, "*batch Jf 4 4"],
 ]:
     pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    pose_rot_internal = _expand_public_pose_rotations(xp, data, pose_rot_public)
-    pose_rot_full = _orient_pose_rot_full(
-        xp,
-        pose_rot_internal,
-        data.t_pose_world,
-        data.topology.parent_indices_full,
-    )
+    if data.public is None:
+        pose_rot_full = _orient_pose_rot_full(
+            xp,
+            pose_rot_public,
+            data.t_pose_world,
+            data.topology.parent_indices_full,
+        )
+    else:
+        pose_rot_full = _expand_public_pose_rotations(xp, data, pose_rot_public)
     skeleton = _pose_skeleton(
         xp,
         local_joint_translations,
@@ -392,15 +394,26 @@ def _public_joint_transforms(
 
 def _expand_public_pose_rotations(
     xp, data: Any, pose_rot: Float[Array, "*batch J 3 3"]
-) -> Float[Array, "*batch Ji 3 3"]:
-    if data.public is None:
-        return pose_rot
-
+) -> Float[Array, "*batch Jf 3 3"]:
     procedural = data.public.procedural
     public_joint_indices = procedural.public_joint_indices_full
     batch_shape = pose_rot.shape[:-3]
     root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
     pose_rot_public = xp.concat([root_identity, pose_rot], axis=-3)
+    public_local_rotations = _orient_pose_rot_full(
+        xp,
+        pose_rot,
+        data.public.t_pose_world,
+        data.public.topology.parent_indices_full,
+    )
+    public_local_translations = xp.asarray(data.public.t_pose_local[..., :3, 3], dtype=pose_rot.dtype)
+    public_world_transforms = _pose_skeleton(
+        xp,
+        public_local_translations,
+        data.public.topology.kinematic_fronts_full,
+        public_local_rotations,
+    )
+
     internal_joint_count = len(data.topology.parents_full)
     pose_rot_internal = common.eye_as(pose_rot, batch_dims=(*batch_shape, internal_joint_count), xp=xp)
     pose_rot_internal = common.at_set(
@@ -409,11 +422,20 @@ def _expand_public_pose_rotations(
         pose_rot_public,
         xp=xp,
     )
+    pose_rot_internal = _orient_pose_rot_full(
+        xp,
+        pose_rot_internal[..., 1:, :, :],
+        data.t_pose_world,
+        data.topology.parent_indices_full,
+    )
 
-    source_axis_ids = xp.asarray(procedural.source_axis_ids)
-    source_axis_signs = xp.asarray(procedural.source_axis_signs, dtype=pose_rot.dtype)
-    twist_values = _local_axis_twist_angles(xp, pose_rot_public, source_axis_ids) * source_axis_signs
-    twist_angles = twist_values @ xp.asarray(procedural.rotation_matrix, dtype=pose_rot.dtype).mT
+    twist_values = _aligned_twist_channels_from_world(
+        xp,
+        data,
+        public_world_transforms[..., :3, :3],
+    )
+    rotation_matrix = xp.asarray(procedural.rotation_matrix, dtype=pose_rot.dtype)
+    twist_angles = twist_values @ rotation_matrix.mT
     twist_rot = _single_axis_rotation_matrices(
         xp,
         twist_angles,
@@ -428,19 +450,64 @@ def _expand_public_pose_rotations(
         current_twist_rot @ twist_rot,
         xp=xp,
     )
-    return pose_rot_internal[..., 1:, :, :]
+    return pose_rot_internal
 
 
-def _local_axis_twist_angles(
-    xp, rotations: Float[Array, "*batch J 3 3"], axis_ids: Int[Array, "J"]
-) -> Float[Array, "*batch J"]:
-    x = xp.atan2(rotations[..., :, 2, 1], rotations[..., :, 1, 1])
-    y = xp.atan2(rotations[..., :, 0, 2], rotations[..., :, 0, 0])
-    z = xp.atan2(rotations[..., :, 1, 0], rotations[..., :, 0, 0])
-    angles = xp.stack([x, y, z], axis=-1)
-    index = axis_ids.reshape(*((1,) * (angles.ndim - 2)), -1, 1)
-    index = xp.broadcast_to(index, (*angles.shape[:-1], 1))
-    return common.take_along_axis(angles, index, axis=-1, xp=xp)[..., 0]
+def _x_swing_twist_angles(xp, rotations: Float[Array, "... 3 3"]) -> Float[Array, "..."]:
+    m00 = rotations[..., 0, 0]
+    m11 = rotations[..., 1, 1]
+    m12 = rotations[..., 1, 2]
+    m21 = rotations[..., 2, 1]
+    m22 = rotations[..., 2, 2]
+    zero = xp.zeros_like(m00)
+    eps = xp.full_like(m00, 1e-12)
+
+    qw = 0.5 * xp.sqrt(xp.maximum(1.0 + m00 + m11 + m22, zero) + eps)
+    qx = 0.5 * xp.copysign(
+        xp.sqrt(xp.maximum(1.0 + m00 - m11 - m22, zero) + eps),
+        m21 - m12,
+    )
+    return 4.0 * xp.atan2(qx, qw + 1.0)
+
+
+def _aligned_twist_channels_from_world(
+    xp,
+    data: Any,
+    public_world_rotations: Float[Array, "*batch Jp 3 3"],
+) -> Float[Array, "*batch Jp"]:
+    procedural = data.public.procedural
+    start_ids = xp.asarray(procedural.segment_start_joint_indices)
+    end_ids = xp.asarray(procedural.segment_end_joint_indices)
+    parent_ids = xp.asarray(procedural.segment_parent_joint_indices)
+    alignment = xp.asarray(
+        procedural.segment_alignment_rotations,
+        dtype=public_world_rotations.dtype,
+    )
+    bind_rotations = xp.asarray(
+        data.public.t_pose_world[..., :3, :3],
+        dtype=public_world_rotations.dtype,
+    )
+
+    def virtual_rotations(joint_ids):
+        current = public_world_rotations[..., joint_ids, :, :]
+        return current @ bind_rotations[joint_ids].mT @ alignment
+
+    end_virtual = virtual_rotations(end_ids)
+    start_virtual = virtual_rotations(start_ids)
+    parent_virtual = virtual_rotations(parent_ids)
+    local_twist = _x_swing_twist_angles(xp, start_virtual.mT @ end_virtual)
+    inherited_twist = _x_swing_twist_angles(xp, parent_virtual.mT @ start_virtual)
+
+    twist_values = common.zeros_as(
+        public_world_rotations,
+        shape=(*public_world_rotations.shape[:-3], public_world_rotations.shape[-3]),
+        xp=xp,
+    )
+    twist_values = common.at_set(twist_values, (..., end_ids), local_twist, xp=xp)
+    reverse_indices = xp.asarray(procedural.segment_reverse_indices)
+    reverse_start_ids = start_ids[reverse_indices]
+    reverse_twist = inherited_twist[..., reverse_indices]
+    return common.at_set(twist_values, (..., reverse_start_ids), reverse_twist, xp=xp)
 
 
 def _single_axis_rotation_matrices(
