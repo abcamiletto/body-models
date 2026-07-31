@@ -78,10 +78,6 @@ class FLAME(SmplFamilyModel):
     def exprdirs(self) -> Float[Array, "V 3 E"]:
         return self._weights.exprdirs
 
-    @property
-    def lbs_weights(self) -> Float[Array, "V 5"]:
-        return self._weights.lbs_weights
-
     def forward_vertices(
         self,
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
@@ -100,7 +96,7 @@ class FLAME(SmplFamilyModel):
         if identity is None:
             if shape is None or expression is None:
                 raise ValueError("shape and expression are required when identity is not provided")
-            batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = head_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression)
@@ -132,7 +128,7 @@ class FLAME(SmplFamilyModel):
         if identity is None:
             if shape is None or expression is None:
                 raise ValueError("shape and expression are required when identity is not provided")
-            batch_shape = head_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = head_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             skeleton_identity = self._prepare_skeleton_identity(shape, expression)

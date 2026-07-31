@@ -24,7 +24,7 @@ class SmplFamilyModel(SkinnedModel):
     rotation_type: RotationType
 
     @property
-    def num_rot_dims(self) -> int:
+    def _num_rot_dims(self) -> int:
         return rotation_ndim(self.rotation_type)
 
     @property

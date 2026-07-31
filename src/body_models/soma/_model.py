@@ -132,7 +132,7 @@ class SOMA(SkinnedModel):
         return self._config.num_scale_params
 
     @property
-    def num_rot_dims(self) -> int:
+    def _num_rot_dims(self) -> int:
         return rotation_ndim(self.rotation_type)
 
     @property
@@ -161,10 +161,6 @@ class SOMA(SkinnedModel):
     @property
     def faces(self) -> Int[Array, "F 3"]:
         return self._weights.faces
-
-    @property
-    def mean_active(self) -> Float[Array, "Va 3"]:
-        return self._weights.mean_active
 
     @property
     def num_joints(self) -> int:
@@ -229,7 +225,7 @@ class SOMA(SkinnedModel):
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
@@ -269,7 +265,7 @@ class SOMA(SkinnedModel):
         if identity is None:
             if shape is None:
                 raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             if scale_params is not None:
                 scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
@@ -277,7 +273,7 @@ class SOMA(SkinnedModel):
         else:
             skeleton_identity = identity
 
-        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
@@ -330,7 +326,7 @@ class SOMA(SkinnedModel):
     ) -> core.SomaPreparedPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
-        batch_shape = body_pose.shape[: -(self.num_rot_dims + 1)]
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
