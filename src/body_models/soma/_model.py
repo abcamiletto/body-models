@@ -61,7 +61,6 @@ class SOMA(SkinnedModel):
     has_hands = True
     SHAPE_DIM = 128
     NUM_JOINTS = 77
-    VALID_MODEL_TYPES = tuple(MODEL_TYPE_SPECS)
     JOINTS = SOMA_JOINTS
 
     def __init__(
@@ -75,8 +74,8 @@ class SOMA(SkinnedModel):
         runtime: RuntimeLike = "numpy",
     ) -> None:
         normalized_model_type = model_type.lower()
-        if normalized_model_type not in self.VALID_MODEL_TYPES:
-            supported = ", ".join(self.VALID_MODEL_TYPES)
+        if normalized_model_type not in MODEL_TYPE_SPECS:
+            supported = ", ".join(MODEL_TYPE_SPECS)
             raise ValueError(f"Invalid model_type: {model_type!r}. Expected one of {supported}.")
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
