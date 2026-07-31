@@ -4,6 +4,7 @@ from importlib import import_module
 
 import pytest
 
+from body_models import ArticulatedModel
 from body_models._catalog import ASSET_SPECS, DOWNLOAD_SPECS, MODEL_SPECS
 from body_models._registry import get_model_spec
 
@@ -12,9 +13,9 @@ MODEL_TARGETS = sorted({(spec.module, spec.class_name) for spec in MODEL_SPECS.v
 
 @pytest.mark.fast
 @pytest.mark.parametrize(("module_name", "class_name"), MODEL_TARGETS)
-def test_catalog_models_are_exported_from_their_packages(module_name, class_name) -> None:
-    module = import_module(module_name)
-    assert hasattr(module, class_name)
+def test_catalog_models_are_exported_and_articulated(module_name, class_name) -> None:
+    model_class = getattr(import_module(module_name), class_name)
+    assert issubclass(model_class, ArticulatedModel)
 
 
 @pytest.mark.fast

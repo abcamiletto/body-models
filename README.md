@@ -84,7 +84,8 @@ such as `gender="male"` or `side="left"` are passed as constructor kwargs.
 The stable API consists of names exported from `body_models` and each model
 package. For example, `body_models.smpl.SMPL` is public; underscore-prefixed
 modules such as `body_models.smpl._model` are implementation details and are
-not covered by semantic-versioning compatibility guarantees.
+not covered by semantic-versioning compatibility guarantees. Every model
+derives from `body_models.ArticulatedModel`.
 
 When shape-dependent identity parameters stay fixed across many poses, prepare
 them once and pass the returned dictionary back through `identity`. This avoids

@@ -9,8 +9,7 @@ from typing import Any, Literal
 import numpy as np
 import viser
 
-from body_models._base import RigidBodyModel
-from body_models._registry import create_model
+from body_models import RigidBodyModel, create_model
 from body_models.smpl_humanoid import SMPL_HUMANOID_VARIANTS
 
 SMPL_HUMANOID_LABELS = {

@@ -6,7 +6,7 @@ from fnmatch import fnmatchcase
 from importlib import import_module
 from typing import Any
 
-from body_models._base import RigidBodyModel, SkinnedModel
+from body_models._base import ArticulatedModel
 from body_models._catalog import MODEL_SPECS, ModelSpec
 from body_models._runtime import RuntimeLike
 
@@ -16,7 +16,7 @@ def create_model(
     *,
     runtime: RuntimeLike = "numpy",
     **kwargs: Any,
-) -> SkinnedModel | RigidBodyModel:
+) -> ArticulatedModel:
     """Create a model by catalog name and array runtime."""
     name = _normalize_name(model_name)
     try:

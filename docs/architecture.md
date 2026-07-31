@@ -26,9 +26,11 @@ Each model family follows the same file roles:
 | `_model.py` | Define the model class, validation, state preparation, and forward orchestration. |
 | `__init__.py` | Export the model class and give it its stable public identity. |
 
-Every model is self-contained in `body_models/<name>/`; descriptive categories
-do not create a second package tree. One public class and signature serve every
-runtime. Public identity and pose preparation return complete mesh-ready state.
+Every model derives from the public `ArticulatedModel` base through either
+`SkinnedModel` or `RigidBodyModel`. Models are self-contained in
+`body_models/<name>/`; descriptive categories do not create a second package
+tree. One public class and signature serve every runtime. Public identity and
+pose preparation return complete mesh-ready state.
 Skeleton forwards use distinct model-local preparation paths, so an optimization
 cannot create a partial object that later fails in a mesh forward.
 

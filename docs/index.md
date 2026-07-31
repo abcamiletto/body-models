@@ -105,8 +105,10 @@ cached module view on every call, and lifecycle mutations affect the model's
 shared numeric state. Pass a configured runtime object for runtime-specific
 behavior such as Warp skinning.
 
-All models expose `has_face`, `has_hands`, `parameter_spec`, `get_rest_pose`,
-`faces`, `num_vertices`, `num_joints`, `joint_names`, and `forward_skeleton`.
+All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
+define its two public specializations. They expose `has_face`, `has_hands`,
+`parameter_spec`, `get_rest_pose`, `faces`, `num_vertices`, `num_joints`,
+`joint_names`, and `forward_skeleton`.
 `has_face` indicates facial-expression controls; `has_hands` indicates
 articulated hand controls. Neither describes mesh geometry. Skinned models
 additionally share `skin_weights`, `rest_vertices`, and `forward_vertices`.
