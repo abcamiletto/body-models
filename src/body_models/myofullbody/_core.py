@@ -15,16 +15,9 @@ from jaxtyping import Float
 from nanomanifold import SO3
 
 from body_models import _common as common
+from body_models.myofullbody import _constants as constants
 
 Array = Any
-
-# Matches body_models.myofullbody._io.MUJOCO_TO_KIMODO (Ry(+90°) @ kimodo swap)
-# so the qpos round-trip recovers the same world frame the loader produces.
-MUJOCO_TO_KIMODO = (
-    (0.0, 0.0, 1.0),
-    (0.0, 1.0, 0.0),
-    (-1.0, 0.0, 0.0),
-)
 
 
 # ----------------------------------------------------------------------------
@@ -186,17 +179,21 @@ def parameters_from_qpos(
     xp: Any,
 ) -> dict[str, Float[Array, "..."]]:
     """Split a MuJoCo ``qpos`` into ``body_pose`` + global root parameters."""
-    root_t_mj = qpos[..., :3]
-    root_q_mj = qpos[..., 3:7]
+    root_translation_mujoco = qpos[..., :3]
+    root_quaternion_mujoco = qpos[..., 3:7]
     body_pose = qpos[..., 7:]
 
-    coord = xp.asarray(MUJOCO_TO_KIMODO, dtype=qpos.dtype)
-    kimodo_to_mujoco = coord.mT
+    coord = xp.asarray(constants.MUJOCO_TO_MYOFULLBODY, dtype=qpos.dtype)
+    model_to_mujoco = coord.mT
 
-    global_translation = xp.squeeze(coord @ root_t_mj[..., None], axis=-1)
-    R_mj = SO3.conversions.from_quat_to_rotmat(root_q_mj, convention="wxyz", xp=xp)
-    R_k = coord @ R_mj @ kimodo_to_mujoco
-    global_rotation = SO3.conversions.from_rotmat_to_axis_angle(R_k, xp=xp)
+    global_translation = xp.squeeze(coord @ root_translation_mujoco[..., None], axis=-1)
+    rotation_mujoco = SO3.conversions.from_quat_to_rotmat(
+        root_quaternion_mujoco,
+        convention="wxyz",
+        xp=xp,
+    )
+    rotation_model = coord @ rotation_mujoco @ model_to_mujoco
+    global_rotation = SO3.conversions.from_rotmat_to_axis_angle(rotation_model, xp=xp)
     return {
         "body_pose": body_pose,
         "global_rotation": global_rotation,

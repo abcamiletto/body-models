@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NotRequired, TypedDict
 
 from jaxtyping import Float, Int
@@ -105,20 +106,6 @@ class ArticulatedModel(ABC):
         if resolved.backend == "jax":
             _register_jax_model(type(self))
         return resolved
-
-    def tree_flatten(self):
-        children = tuple(getattr(self, name) for name in self._state_fields)
-        return children, (self._config, self._runtime)
-
-    @classmethod
-    def tree_unflatten(cls, auxiliary, children):
-        config, runtime = auxiliary
-        obj = cls.__new__(cls)
-        obj._runtime = runtime
-        obj._config = config
-        for name, value in zip(cls._state_fields, children, strict=True):
-            setattr(obj, name, value)
-        return obj
 
     def __setstate__(self, values: dict[str, Any]) -> None:
         self.__dict__.update(values)
@@ -233,7 +220,7 @@ class ArticulatedModel(ABC):
         self,
         *,
         batch_dims: tuple[int, ...] = (),
-        **kwargs: Any,
+        dtype: Any | None = None,
     ) -> dict[str, Float[Array, "..."]]:
         """Construct parameters for the canonical T-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
@@ -242,7 +229,7 @@ class ArticulatedModel(ABC):
         self,
         *,
         batch_dims: tuple[int, ...] = (),
-        **kwargs: Any,
+        dtype: Any | None = None,
     ) -> dict[str, Float[Array, "..."]]:
         """Construct parameters for the canonical A-pose."""
         raise NotImplementedError("Canonical body poses are not defined for this model.")
@@ -480,5 +467,28 @@ def _register_jax_model(model_type: type) -> None:
         return
     import jax
 
-    jax.tree_util.register_pytree_node_class(model_type)
+    jax.tree_util.register_pytree_node(
+        model_type,
+        _flatten_model,
+        partial(_unflatten_model, model_type),
+    )
     _JAX_MODELS.add(model_type)
+
+
+def _flatten_model(model: ArticulatedModel) -> tuple[tuple[Any, ...], tuple[Any, ArrayRuntime]]:
+    children = tuple(getattr(model, name) for name in model._state_fields)
+    return children, (model._config, model._runtime)
+
+
+def _unflatten_model(
+    model_type: type[ArticulatedModel],
+    auxiliary: tuple[Any, ArrayRuntime],
+    children: tuple[Any, ...],
+) -> ArticulatedModel:
+    config, runtime = auxiliary
+    model = model_type.__new__(model_type)
+    model._runtime = runtime
+    model._config = config
+    for name, value in zip(model_type._state_fields, children, strict=True):
+        setattr(model, name, value)
+    return model

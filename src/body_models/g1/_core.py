@@ -13,8 +13,6 @@ from body_models._common import rigid
 Array = Any
 Convention = Literal["soma", "mujoco"]
 
-MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
-
 
 def _hinge_rotations(
     body_pose: Float[Array, "B Q"],

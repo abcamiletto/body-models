@@ -12,7 +12,6 @@ from body_models import _common as common
 from body_models._common import rigid
 
 Array = Any
-MUJOCO_TO_KIMODO = ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
 
 
 def _hinge_rotations(

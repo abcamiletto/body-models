@@ -282,13 +282,23 @@ class SKEL(SkinnedModel):
             xp=self._runtime.xp,
         )
 
-    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SKEL T-pose."""
-        return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
 
-    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SKEL A-pose."""
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         pose = self._runtime.asarray(SKEL_BODY_PRESETS["a_pose"], like=params["body_pose"])
         pose = self._runtime.xp.broadcast_to(pose, (*batch_dims, *pose.shape))
         params["body_pose"], params["head_pose"] = unpack_pose(self._runtime.xp, pose)

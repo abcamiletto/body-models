@@ -236,11 +236,11 @@ class MHR(SkinnedModel):
         self,
         *,
         batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
         """Return the MHR T-pose."""
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
         pose = self._runtime.zeros(
             (*batch_dims, self.pose_dim),
             like=params["body_pose"],
@@ -259,11 +259,11 @@ class MHR(SkinnedModel):
         self,
         *,
         batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
         """Return the MHR A-pose."""
-        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
 
 
 __all__ = ["MHR"]

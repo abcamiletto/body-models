@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from body_models.g1 import G1
-from body_models.g1 import _core as core
 from body_models.g1._io import get_model_path
 
 
@@ -36,7 +35,10 @@ def test_g1_forward_skeleton_matches_mujoco_fk() -> None:
         global_rotation=global_rotation,
         global_translation=global_translation,
     )
-    mujoco_to_model = np.asarray(core.MUJOCO_TO_KIMODO)
+    mujoco_to_model = np.array(
+        [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]],
+        dtype=np.float32,
+    )
 
     for joint_index, joint_name in enumerate(model.joint_names):
         body_name = _g1_body_name(joint_name)

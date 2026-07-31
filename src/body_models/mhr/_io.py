@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
+from ptloader import load as load_pytorch_checkpoint
 
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir, write_npz_atomic
@@ -247,12 +248,7 @@ def _get_attr(obj: Any, path: str) -> Any:
 
 
 def _load_checkpoint_numpy(checkpoint_path: Path) -> Any:
-    try:
-        from ptloader import load
-    except ImportError as exc:
-        raise ImportError("ptloader is required to load MHR checkpoints without torch.") from exc
-
-    return load(checkpoint_path, weights_only=True)
+    return load_pytorch_checkpoint(checkpoint_path, weights_only=True)
 
 
 def _build_dense_skinning(

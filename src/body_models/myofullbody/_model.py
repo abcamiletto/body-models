@@ -12,8 +12,8 @@ from trimesh import Trimesh
 
 from body_models._base import ParameterSpec, RigidBodyModel
 from body_models._runtime import RuntimeLike
+from body_models.myofullbody import _constants as constants
 from body_models.myofullbody import _core as core
-from body_models.myofullbody._constants import MYOFULLBODY_BODY_PRESETS, MYOFULLBODY_JOINTS
 from body_models.myofullbody._io import load_model_data
 
 Array = Any
@@ -27,7 +27,7 @@ class MyoFullBodyConfig:
 class MyoFullBody(RigidBodyModel):
     """Rigid articulated musculoskeletal full-body model."""
 
-    _COMMON_JOINTS = MYOFULLBODY_JOINTS
+    _COMMON_JOINTS = constants.MYOFULLBODY_JOINTS
 
     def __init__(
         self,
@@ -52,7 +52,7 @@ class MyoFullBody(RigidBodyModel):
         }
 
     def _mujoco_to_model(self):
-        return core.MUJOCO_TO_KIMODO
+        return constants.MUJOCO_TO_MYOFULLBODY
 
     @property
     def site_names(self) -> list[str]:
@@ -143,22 +143,32 @@ class MyoFullBody(RigidBodyModel):
         """Convert MuJoCo qpos into model forward parameters."""
         return core.parameters_from_qpos(qpos, xp=self._runtime.xp)
 
-    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the MyoFullBody T-pose."""
-        return self._preset_pose("t_pose", batch_dims, **kwargs)
+        return self._preset_pose("t_pose", batch_dims, dtype)
 
-    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the MyoFullBody A-pose."""
-        return self._preset_pose("a_pose", batch_dims, **kwargs)
+        return self._preset_pose("a_pose", batch_dims, dtype)
 
     def _preset_pose(
         self,
         name: str,
         batch_dims: tuple[int, ...],
-        **kwargs: Any,
+        dtype: Any | None,
     ) -> dict[str, Float[Array, "..."]]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
-        pose = self._runtime.asarray(MYOFULLBODY_BODY_PRESETS[name], like=params["body_pose"])
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
+        pose = self._runtime.asarray(constants.MYOFULLBODY_BODY_PRESETS[name], like=params["body_pose"])
         params["body_pose"] = self._runtime.xp.broadcast_to(pose, (*batch_dims, *pose.shape))
         return params
 

@@ -199,13 +199,23 @@ class SMPL(SmplFamilyModel):
             shape=shape,
         )
 
-    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL T-pose."""
-        return self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
 
-    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL A-pose."""
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         axis_angle = self._runtime.asarray(
             SMPL_BODY_PRESETS["a_pose"],
             like=params["body_pose"],
