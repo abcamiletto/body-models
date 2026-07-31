@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 
 Array = Any
 ParameterRole = Literal["identity", "pose", "transform"]
+MUJOCO_TO_MODEL = (
+    (1.0, 0.0, 0.0),
+    (0.0, 1.0, 0.0),
+    (0.0, 0.0, 1.0),
+)
 
 
 @dataclass(frozen=True)
@@ -290,11 +295,6 @@ class RigidBodyModel(_ArticulatedModel):
     """Base class for rigid articulated models."""
 
     _weights: Any
-    mujoco_to_model: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]] = (
-        (1.0, 0.0, 0.0),
-        (0.0, 1.0, 0.0),
-        (0.0, 0.0, 1.0),
-    )
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -406,7 +406,7 @@ class RigidBodyModel(_ArticulatedModel):
         else:
             root_rot = SO3.convert(global_rotation, src="axis_angle", dst="rotmat", xp=xp)
 
-        coord = xp.asarray(self.mujoco_to_model, dtype=body_pose.dtype)
+        coord = xp.asarray(self._mujoco_to_model(), dtype=body_pose.dtype)
         model_to_mujoco = coord.mT
         root_t = xp.squeeze(model_to_mujoco @ global_translation[..., None], axis=-1)
         root_rot_mujoco = model_to_mujoco @ root_rot @ coord
@@ -416,6 +416,9 @@ class RigidBodyModel(_ArticulatedModel):
             limits = xp.asarray(self.actuated_joint_limits, dtype=body_pose.dtype)
             body_pose = xp.clip(body_pose, limits[:, 0], limits[:, 1])
         return xp.concat([root_t, root_quat, body_pose], axis=-1)
+
+    def _mujoco_to_model(self):
+        return MUJOCO_TO_MODEL
 
     @property
     @abstractmethod

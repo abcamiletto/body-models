@@ -46,11 +46,10 @@ class G1(RigidBodyModel):
     def convention(self) -> core.Convention:
         return self._config.convention
 
-    @property
-    def mujoco_to_model(self):
+    def _mujoco_to_model(self):
         if self.convention == "soma":
             return core.MUJOCO_TO_KIMODO
-        return super().mujoco_to_model
+        return super()._mujoco_to_model()
 
     @property
     def actuated_joint_types(self) -> list[str]:
