@@ -10,7 +10,7 @@ _BODY_HEAD_SPLIT = 27
 _BODY_EYE_SPLIT = 79
 _BODY_POSE_SPLIT = 68
 _HAND_POSE_SPLIT = 54
-_CANONICAL_BODY_POSE_DIM = 100
+_CANONICAL_BODY_POSE_COEFFS = 100
 
 
 def _require_last_dim(name: str, value: Float[Array, "... N"], size: int) -> None:
@@ -56,7 +56,7 @@ def unpack_pose(
     """Split the canonical MHR 204-vector into body, head, and hand controls."""
     _require_last_dim("pose", pose, 204)
     body_tail_start = _BODY_POSE_SPLIT + _HAND_POSE_SPLIT
-    body_tail_end = body_tail_start + (_CANONICAL_BODY_POSE_DIM - _BODY_POSE_SPLIT)
+    body_tail_end = body_tail_start + (_CANONICAL_BODY_POSE_COEFFS - _BODY_POSE_SPLIT)
     old_body_pose = xp.concat(
         [
             pose[..., :_BODY_POSE_SPLIT],

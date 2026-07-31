@@ -16,9 +16,8 @@ from body_models.skel import _core as core
 from body_models.skel._constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 from body_models.skel._io import get_model_path, load_model_data
 from body_models.skel._pose import (
-    SKEL_BODY_POSE_DIM,
-    SKEL_CANONICAL_POSE_DIM,
-    SKEL_HEAD_POSE_DIM,
+    SKEL_BODY_POSE_COEFFS,
+    SKEL_HEAD_POSE_COEFFS,
     pack_pose,
     unpack_pose,
 )
@@ -40,6 +39,9 @@ class SKEL(SkinnedModel):
 
     NUM_JOINTS = 24
     NUM_SHAPE_COEFFS = 10
+    NUM_BODY_POSE_COEFFS = SKEL_BODY_POSE_COEFFS
+    NUM_HEAD_POSE_COEFFS = SKEL_HEAD_POSE_COEFFS
+    NUM_POSE_COEFFS = NUM_BODY_POSE_COEFFS + NUM_HEAD_POSE_COEFFS
     _COMMON_JOINTS = SKEL_JOINTS
 
     def __init__(
@@ -101,23 +103,11 @@ class SKEL(SkinnedModel):
         return list(self._weights.parents)
 
     @property
-    def pose_dim(self) -> int:
-        return SKEL_CANONICAL_POSE_DIM
-
-    @property
-    def body_pose_dim(self) -> int:
-        return SKEL_BODY_POSE_DIM
-
-    @property
-    def head_pose_dim(self) -> int:
-        return SKEL_HEAD_POSE_DIM
-
-    @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec((self.body_pose_dim,), "pose"),
-            "head_pose": ParameterSpec((self.head_pose_dim,), "pose"),
+            "body_pose": ParameterSpec((self.NUM_BODY_POSE_COEFFS,), "pose"),
+            "head_pose": ParameterSpec((self.NUM_HEAD_POSE_COEFFS,), "pose"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }

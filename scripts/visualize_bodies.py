@@ -464,7 +464,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
         elif name == "GarmentMeasurements":
             with server.gui.add_folder("Shape"):
-                handles += betas(server, state, key="shape", count=state.model.num_shape_components)
+                handles += betas(server, state, key="shape", count=state.model.NUM_SHAPE_COEFFS)
             with server.gui.add_folder("Body Pose"):
                 handles += joint_xyz(
                     server,
@@ -488,7 +488,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     server,
                     state,
                     key="shape",
-                    count=min(10, state.model.identity_dim),
+                    count=min(10, state.model.num_shape_coeffs),
                     prefix="identity",
                     lo=-1.0,
                     hi=1.0,

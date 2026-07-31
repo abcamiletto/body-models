@@ -14,11 +14,11 @@ from body_models._common import skinning
 from body_models._runtime import RuntimeLike
 from body_models.mhr import _core as core
 from body_models.mhr._constants import (
-    MHR_BODY_POSE_DIM,
+    MHR_BODY_POSE_COEFFS,
     MHR_BODY_PRESETS,
-    MHR_HAND_POSE_DIM,
+    MHR_HAND_POSE_COEFFS,
     MHR_HAND_PRESETS,
-    MHR_HEAD_POSE_DIM,
+    MHR_HEAD_POSE_COEFFS,
     MHR_JOINTS,
 )
 from body_models.mhr._io import get_model_path, load_model_data
@@ -34,8 +34,13 @@ class MHR(SkinnedModel):
 
     has_face = True
     has_hands = True
+    NUM_JOINTS = 127
     NUM_SHAPE_COEFFS = 45
     NUM_EXPR_COEFFS = 72
+    NUM_BODY_POSE_COEFFS = MHR_BODY_POSE_COEFFS
+    NUM_HEAD_POSE_COEFFS = MHR_HEAD_POSE_COEFFS
+    NUM_HAND_POSE_COEFFS = MHR_HAND_POSE_COEFFS
+    NUM_POSE_COEFFS = NUM_BODY_POSE_COEFFS + NUM_HEAD_POSE_COEFFS + NUM_HAND_POSE_COEFFS
     _COMMON_JOINTS = MHR_JOINTS
 
     def __init__(
@@ -64,29 +69,13 @@ class MHR(SkinnedModel):
         return self._weights.base_vertices.shape[0]
 
     @property
-    def pose_dim(self) -> int:
-        return self._weights.parameter_transform.shape[1] - self.NUM_SHAPE_COEFFS
-
-    @property
-    def body_pose_dim(self) -> int:
-        return MHR_BODY_POSE_DIM
-
-    @property
-    def head_pose_dim(self) -> int:
-        return MHR_HEAD_POSE_DIM
-
-    @property
-    def hand_pose_dim(self) -> int:
-        return MHR_HAND_POSE_DIM
-
-    @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
-            "body_pose": ParameterSpec((self.body_pose_dim,), "pose"),
-            "head_pose": ParameterSpec((self.head_pose_dim,), "pose"),
-            "hand_pose": ParameterSpec((self.hand_pose_dim,), "pose"),
+            "body_pose": ParameterSpec((self.NUM_BODY_POSE_COEFFS,), "pose"),
+            "head_pose": ParameterSpec((self.NUM_HEAD_POSE_COEFFS,), "pose"),
+            "hand_pose": ParameterSpec((self.NUM_HAND_POSE_COEFFS,), "pose"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }
@@ -229,7 +218,10 @@ class MHR(SkinnedModel):
         if hands != "default":
             runtime = self.runtime
             hand_pose = runtime.asarray(MHR_HAND_PRESETS[hands], like=params["hand_pose"], dtype=dtype)
-            params["hand_pose"] = runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.hand_pose_dim))
+            params["hand_pose"] = runtime.xp.broadcast_to(
+                hand_pose,
+                (*batch_dims, self.NUM_HAND_POSE_COEFFS),
+            )
         return params
 
     def get_tpose(
@@ -242,7 +234,7 @@ class MHR(SkinnedModel):
         """Return the MHR T-pose."""
         params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
         pose = self._runtime.zeros(
-            (*batch_dims, self.pose_dim),
+            (*batch_dims, self.NUM_POSE_COEFFS),
             like=params["body_pose"],
             dtype=params["body_pose"].dtype,
         )

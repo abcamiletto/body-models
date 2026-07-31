@@ -96,7 +96,7 @@ def source_shape(
             cast("MHR", model),
             identity,
             scale_params,
-            num_scale_params=68,
+            num_scale_coeffs=68,
             xp=xp,
         )
     if model_type == "anny":
@@ -117,23 +117,23 @@ def linear_identity_shape(
     *,
     xp: Any,
 ) -> Float[Any, "B V 3"]:
-    identity_dim = identity.shape[-1]
-    return mean + xp.einsum("...i,vci->...vc", identity, shapedirs[..., :identity_dim])
+    num_shape_coeffs = identity.shape[-1]
+    return mean + xp.einsum("...i,vci->...vc", identity, shapedirs[..., :num_shape_coeffs])
 
 
 def mhr_identity_shape(
     model: MHR,
     identity: Float[Any, "B I"],
     scale_params: Float[Any, "B K"] | None,
-    num_scale_params: int,
+    num_scale_coeffs: int,
     *,
     xp: Any,
 ) -> Float[Any, "B V 3"]:
     batch_shape = identity.shape[:-1]
     if scale_params is None:
-        scale_params = common.zeros_as(identity, shape=(*batch_shape, num_scale_params), xp=xp)
-    zero_pose = common.zeros_as(identity, shape=(*batch_shape, model.pose_dim), xp=xp)
-    zero_pose = common.at_set(zero_pose, (..., slice(-num_scale_params, None)), scale_params, xp=xp)
+        scale_params = common.zeros_as(identity, shape=(*batch_shape, num_scale_coeffs), xp=xp)
+    zero_pose = common.zeros_as(identity, shape=(*batch_shape, model.NUM_POSE_COEFFS), xp=xp)
+    zero_pose = common.at_set(zero_pose, (..., slice(-num_scale_coeffs, None)), scale_params, xp=xp)
     body_pose, head_pose, hand_pose = mhr_pose.unpack_pose(xp, zero_pose)
     expression = common.zeros_as(identity, shape=(*batch_shape, model.NUM_EXPR_COEFFS), xp=xp)
     return model.forward_vertices(

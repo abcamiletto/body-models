@@ -50,8 +50,8 @@ class SomaConfig:
     model_type: Literal["soma", "anny", "mhr", "smpl", "smplx"]
     lod: Literal["mid", "low", "xlo"]
     rotation_type: RotationType
-    identity_dim: int
-    num_scale_params: int | None
+    num_shape_coeffs: int
+    num_scale_coeffs: int | None
     default_identity_value: float
     parents: tuple[int, ...]
     joint_names: tuple[str, ...]
@@ -95,8 +95,8 @@ class SOMA(SkinnedModel):
             model_type=model_type,
             lod=lod,
             rotation_type=rotation_type,
-            identity_dim=spec.identity_dim,
-            num_scale_params=spec.num_scale_params,
+            num_shape_coeffs=spec.num_shape_coeffs,
+            num_scale_coeffs=spec.num_scale_coeffs,
             default_identity_value=spec.default_identity_value,
             parents=tuple(parents),
             joint_names=tuple(joint_names),
@@ -128,12 +128,12 @@ class SOMA(SkinnedModel):
         return self._config.rotation_type
 
     @property
-    def identity_dim(self) -> int:
-        return self._config.identity_dim
+    def num_shape_coeffs(self) -> int:
+        return self._config.num_shape_coeffs
 
     @property
-    def num_scale_params(self) -> int | None:
-        return self._config.num_scale_params
+    def num_scale_coeffs(self) -> int | None:
+        return self._config.num_scale_coeffs
 
     @property
     def _num_rot_dims(self) -> int:
@@ -144,13 +144,13 @@ class SOMA(SkinnedModel):
         rotation = self.rotation_type
         parameters = {
             "shape": ParameterSpec(
-                (self.identity_dim,),
+                (self.num_shape_coeffs,),
                 "identity",
                 default=self._config.default_identity_value,
             ),
         }
-        if self.num_scale_params is not None:
-            parameters["scale_params"] = ParameterSpec((self.num_scale_params,), "identity")
+        if self.num_scale_coeffs is not None:
+            parameters["scale_params"] = ParameterSpec((self.num_scale_coeffs,), "identity")
         parameters.update(
             {
                 "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
@@ -362,11 +362,11 @@ class SOMA(SkinnedModel):
         shape: Float[Array, "*batch I"],
         scale_params: Float[Array, "*batch K"] | None,
     ) -> tuple[Float[Array, "*batch Vf 3"], Float[Array, "*batch Va 3"]]:
-        if self.num_scale_params is None:
+        if self.num_scale_coeffs is None:
             scale_params = None
         elif scale_params is None:
             scale_params = self._runtime.zeros(
-                (*shape.shape[:-1], self.num_scale_params),
+                (*shape.shape[:-1], self.num_scale_coeffs),
                 like=shape,
             )
         return identities.rest_shapes(
