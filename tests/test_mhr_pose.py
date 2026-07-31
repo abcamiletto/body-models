@@ -1,4 +1,4 @@
-"""MHR control packing contracts."""
+"""MHR control packing behavior."""
 
 import numpy as np
 import pytest
