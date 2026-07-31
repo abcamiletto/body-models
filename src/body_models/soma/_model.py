@@ -407,21 +407,21 @@ class SOMA(SkinnedModel):
         self,
         *,
         batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
         """Return the SOMA T-pose."""
-        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
 
     def get_apose(
         self,
         *,
         batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
         hands: Literal["default", "flat", "rest"] = "default",
-        **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
         """Return the SOMA A-pose."""
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
         xp = self._runtime.xp
         axis_angle = self._runtime.asarray(SOMA_BODY_PRESETS["a_pose"], like=params["body_pose"])
         axis_angle = xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))

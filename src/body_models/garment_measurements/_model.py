@@ -287,11 +287,11 @@ class GarmentMeasurements(SkinnedModel):
         self,
         *,
         batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
         hands: HandPreset = "default",
-        **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
         """Return the GarmentMeasurements T-pose."""
-        params = self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
         axis_angle = self._runtime.asarray(GARMENT_BODY_PRESETS["t_pose"], like=params["body_pose"])
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         params["body_pose"] = SO3.convert(
@@ -306,11 +306,11 @@ class GarmentMeasurements(SkinnedModel):
         self,
         *,
         batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
         hands: HandPreset = "default",
-        **kwargs: Any,
     ) -> dict[str, Float[Array, "..."]]:
         """Return the GarmentMeasurements rest A-pose."""
-        return self.get_rest_pose(batch_dims=batch_dims, hands=hands, **kwargs)
+        return self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
 
 
 __all__ = ["GarmentMeasurements", "GarmentMeasurementsConfig"]

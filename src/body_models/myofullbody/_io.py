@@ -20,14 +20,9 @@ from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
 from body_models._common import mjcf
 from body_models._common.stl import load_stl_mesh as _load_stl_mesh
+from body_models.myofullbody import _constants as constants
 
-# MUJOCO_TO_KIMODO maps MuJoCo's Z-up world to body-models Y-up. MyoFullBody's
-# OpenSim-derived bodies still come out with their lateral axis on Z, so an
-# additional Ry(+90°) puts left/right on ±X to match SMPL/G1 and the rendering
-# pipeline (X = lateral, Y = up, Z = depth).
-_RY_90 = np.array([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]], dtype=np.float32)
-_MUJOCO_TO_KIMODO_BARE = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
-MUJOCO_TO_KIMODO = (_RY_90 @ _MUJOCO_TO_KIMODO_BARE).astype(np.float32)
+_MUJOCO_TO_MODEL = np.asarray(constants.MUJOCO_TO_MYOFULLBODY, dtype=np.float32)
 MAIN_XML_RELPATH = Path("body") / "myofullbody.xml"
 ROOT_BODY_NAME = "Full Body"
 Array = Any
@@ -324,8 +319,8 @@ def _walk_body(
     else:
         raw_pos = mjcf.parse_vec(elem.get("pos"), default=np.zeros(3, dtype=np.float32))
         raw_rot = mjcf.parse_orientation(elem)
-        pos = MUJOCO_TO_KIMODO @ raw_pos
-        rot = MUJOCO_TO_KIMODO @ raw_rot @ MUJOCO_TO_KIMODO.T
+        pos = _MUJOCO_TO_MODEL @ raw_pos
+        rot = _MUJOCO_TO_MODEL @ raw_rot @ _MUJOCO_TO_MODEL.T
 
     body_idx = len(bodies)
     body_record: dict = {"name": name, "parent": parent_idx, "pos": pos, "rot": rot, "qpos_count": 0}
@@ -345,8 +340,8 @@ def _walk_body(
         qpos.append(
             {
                 "name": joint.get("name") or f"joint_{len(qpos)}",
-                "axis": (MUJOCO_TO_KIMODO @ axis_raw).astype(np.float32),
-                "anchor": (MUJOCO_TO_KIMODO @ anchor_raw).astype(np.float32),
+                "axis": (_MUJOCO_TO_MODEL @ axis_raw).astype(np.float32),
+                "anchor": (_MUJOCO_TO_MODEL @ anchor_raw).astype(np.float32),
                 "type": joint_type,
                 "range": np.asarray([lo, hi], dtype=np.float32),
             }
@@ -364,8 +359,8 @@ def _walk_body(
                 "body": body_idx,
                 "mesh_name": mesh,
                 "geom_name": geom.get("name") or mesh,
-                "geom_pos": (MUJOCO_TO_KIMODO @ gpos_raw).astype(np.float32),
-                "geom_rot": (MUJOCO_TO_KIMODO @ grot_raw @ MUJOCO_TO_KIMODO.T).astype(np.float32),
+                "geom_pos": (_MUJOCO_TO_MODEL @ gpos_raw).astype(np.float32),
+                "geom_rot": (_MUJOCO_TO_MODEL @ grot_raw @ _MUJOCO_TO_MODEL.T).astype(np.float32),
             }
         )
 
@@ -378,7 +373,7 @@ def _walk_body(
             {
                 "name": name,
                 "body": body_idx,
-                "pos": (MUJOCO_TO_KIMODO @ spos_raw).astype(np.float32),
+                "pos": (_MUJOCO_TO_MODEL @ spos_raw).astype(np.float32),
             }
         )
 
@@ -460,10 +455,11 @@ def load_stl_mesh(
     dtype=np.float32,
     scale: Float[np.ndarray, "3"] | None = None,
 ) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
-    """Load an STL into kimodo coordinates, applying an optional per-mesh ``scale``.
+    """Load an STL into model coordinates, applying an optional per-mesh ``scale``.
 
     ``scale`` is the MJCF ``<mesh scale="...">`` triple, applied in the STL's own
-    (mujoco) frame before rotating into kimodo. Reflective scales (``det < 0``)
+    MuJoCo frame before rotating into model coordinates. Reflective scales
+    (``det < 0``)
     flip triangle winding so outward normals stay consistent.
     """
-    return _load_stl_mesh(path, coord=MUJOCO_TO_KIMODO, dtype=dtype, scale=scale)
+    return _load_stl_mesh(path, coord=_MUJOCO_TO_MODEL, dtype=dtype, scale=scale)

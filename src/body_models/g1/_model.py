@@ -12,6 +12,7 @@ from nanomanifold import SO3
 from trimesh import Trimesh
 
 from body_models._base import ParameterSpec, RigidBodyModel
+from body_models._common import coordinates
 from body_models._runtime import RuntimeLike
 from body_models.g1 import _core as core
 from body_models.g1._constants import G1_BODY_PRESETS, G1_JOINTS
@@ -49,7 +50,7 @@ class G1(RigidBodyModel):
 
     def _mujoco_to_model(self):
         if self.convention == "soma":
-            return core.MUJOCO_TO_KIMODO
+            return coordinates.MUJOCO_Z_UP_TO_Y_UP
         return super()._mujoco_to_model()
 
     @property
@@ -117,21 +118,31 @@ class G1(RigidBodyModel):
         )
         return self._meshes_from_links(links)
 
-    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the G1 T-pose."""
-        return self._preset_pose("t_pose", batch_dims, **kwargs)
+        return self._preset_pose("t_pose", batch_dims, dtype)
 
-    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the G1 A-pose."""
-        return self._preset_pose("a_pose", batch_dims, **kwargs)
+        return self._preset_pose("a_pose", batch_dims, dtype)
 
     def _preset_pose(
         self,
         name: str,
         batch_dims: tuple[int, ...],
-        **kwargs: Any,
+        dtype: Any | None,
     ) -> dict[str, Float[Array, "..."]]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         runtime = self._runtime
         axis_angle = runtime.asarray(G1_BODY_PRESETS[name], like=params["body_pose"])
         axis_angle = runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))

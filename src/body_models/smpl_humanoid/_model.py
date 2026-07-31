@@ -108,13 +108,23 @@ class SmplHumanoid(RigidBodyModel):
         )
         return self._meshes_from_links(links)
 
-    def get_tpose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_tpose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid T-pose."""
-        return self._preset_pose("t_pose", batch_dims, **kwargs)
+        return self._preset_pose("t_pose", batch_dims, dtype)
 
-    def get_apose(self, *, batch_dims: tuple[int, ...] = (), **kwargs: Any) -> dict[str, Float[Array, "..."]]:
+    def get_apose(
+        self,
+        *,
+        batch_dims: tuple[int, ...] = (),
+        dtype: Any | None = None,
+    ) -> dict[str, Float[Array, "..."]]:
         """Return the SMPL humanoid A-pose."""
-        return self._preset_pose("a_pose", batch_dims, **kwargs)
+        return self._preset_pose("a_pose", batch_dims, dtype)
 
     def parameters_from_smpl(
         self,
@@ -186,9 +196,9 @@ class SmplHumanoid(RigidBodyModel):
         self,
         name: str,
         batch_dims: tuple[int, ...],
-        **kwargs: Any,
+        dtype: Any | None,
     ) -> dict[str, Float[Array, "..."]]:
-        params = self.get_rest_pose(batch_dims=batch_dims, **kwargs)
+        params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         runtime = self._runtime
         xp = runtime.xp
         axis_angle = runtime.asarray(SMPL_BODY_PRESETS[name], like=params["body_pose"])

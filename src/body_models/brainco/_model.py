@@ -11,6 +11,7 @@ from jaxtyping import Float
 from trimesh import Trimesh
 
 from body_models._base import ParameterSpec, RigidBodyModel
+from body_models._common import coordinates
 from body_models._constants import Joint
 from body_models._runtime import RuntimeLike
 from body_models.brainco import _core as core
@@ -64,7 +65,7 @@ class BrainCoHand(RigidBodyModel):
         }
 
     def _mujoco_to_model(self):
-        return core.MUJOCO_TO_KIMODO
+        return coordinates.MUJOCO_Z_UP_TO_Y_UP
 
     def forward_skeleton(
         self,

@@ -1,6 +1,14 @@
 from body_models._common.pose_assets import load_npz
 from body_models._constants import Joint
 
+# The OpenSim-derived body frames need an additional Y-axis rotation after
+# conversion from MuJoCo Z-up coordinates.
+MUJOCO_TO_MYOFULLBODY = (
+    (0.0, 0.0, 1.0),
+    (0.0, 1.0, 0.0),
+    (-1.0, 0.0, 0.0),
+)
+
 MYOFULLBODY_JOINTS = {
     Joint.LEFT_SHOULDER: "humerus_l",
     Joint.RIGHT_SHOULDER: "humerus_r",
@@ -51,4 +59,4 @@ _POSES = load_npz("body_models.myofullbody")
 
 MYOFULLBODY_BODY_PRESETS = _POSES["body"]
 
-__all__ = ["MYOFULLBODY_BODY_PRESETS", "MYOFULLBODY_JOINTS"]
+__all__ = ["MUJOCO_TO_MYOFULLBODY", "MYOFULLBODY_BODY_PRESETS", "MYOFULLBODY_JOINTS"]

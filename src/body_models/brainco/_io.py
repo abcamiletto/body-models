@@ -12,14 +12,14 @@ from jaxtyping import Float, Int
 
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
-from body_models._common import mjcf
+from body_models._common import coordinates, mjcf
 from body_models._common.stl import load_stl_mesh as _load_stl_mesh
 
 PathLike = Path | str
 Side = Literal["left", "right"]
 Array = Any
 VALID_SIDES = ("left", "right")
-MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
+_MUJOCO_TO_MODEL = np.asarray(coordinates.MUJOCO_Z_UP_TO_Y_UP, dtype=np.float32)
 JOINT_SUFFIXES = [
     "base_skel",
     "thumb_metacarpal_skel",
@@ -174,7 +174,7 @@ def _parse_rest_and_mesh_transforms(
 
     by_name = {name: i for i, name in enumerate(names)}
     base_rot = mjcf.parse_orientation(base)
-    rotations[0] = MUJOCO_TO_KIMODO @ base_rot @ MUJOCO_TO_KIMODO.T
+    rotations[0] = _MUJOCO_TO_MODEL @ base_rot @ _MUJOCO_TO_MODEL.T
     _add_mesh_transforms(base, side, mesh_file_by_name, base_rot, mesh_transforms)
 
     def walk(
@@ -189,8 +189,8 @@ def _parse_rest_and_mesh_transforms(
         local_rot = parent_rot @ body_rot if fold_parent else body_rot
         name = _side_name(side, _body_to_joint_name(body))
         if name in by_name:
-            offsets[by_name[name]] = MUJOCO_TO_KIMODO @ local_pos
-            rotations[by_name[name]] = MUJOCO_TO_KIMODO @ local_rot @ MUJOCO_TO_KIMODO.T
+            offsets[by_name[name]] = _MUJOCO_TO_MODEL @ local_pos
+            rotations[by_name[name]] = _MUJOCO_TO_MODEL @ local_rot @ _MUJOCO_TO_MODEL.T
         _add_mesh_transforms(body, side, mesh_file_by_name, np.eye(3, dtype=np.float32), mesh_transforms)
         for child in body.findall("body"):
             walk(child, np.zeros(3, dtype=np.float32), np.eye(3, dtype=np.float32), False)
@@ -219,7 +219,7 @@ def _parse_active_joints(
         suffix = skel_name.split("_", 1)[1]
         if suffix not in ACTIVE_JOINT_SUFFIXES:
             continue
-        axis = MUJOCO_TO_KIMODO @ _joint_axis(joint, class_axes)
+        axis = _MUJOCO_TO_MODEL @ _joint_axis(joint, class_axes)
         indices.append(by_name[skel_name])
         axes.append(axis / np.linalg.norm(axis))
         limits.append(_joint_limit(joint, class_limits))
@@ -250,7 +250,7 @@ def _parse_coupled_joints(
         if driver_name not in qpos_by_name or coupled_name not in by_name:
             continue
         coupled_joint = joint_by_name[joint2]
-        axis = MUJOCO_TO_KIMODO @ _joint_axis(coupled_joint, class_axes)
+        axis = _MUJOCO_TO_MODEL @ _joint_axis(coupled_joint, class_axes)
         polycoef = mjcf.parse_vec(equality.get("polycoef"), default=np.array([0, 1, 0, 0], dtype=np.float32))
         if polycoef.shape != (4,):
             raise ValueError(f"BrainCo equality joint {joint2} must have four polycoef values")
@@ -308,7 +308,7 @@ def _load_link_meshes(
 
 
 def load_stl_mesh(path: Path, *, dtype=np.float32) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
-    return _load_stl_mesh(path, coord=MUJOCO_TO_KIMODO, dtype=dtype)
+    return _load_stl_mesh(path, coord=_MUJOCO_TO_MODEL, dtype=dtype)
 
 
 def _add_mesh_transforms(
@@ -330,7 +330,10 @@ def _add_mesh_transforms(
             continue
         pos = mjcf.parse_vec(geom.get("pos"), default=np.zeros(3, dtype=np.float32), size=3)
         rot = mjcf.parse_orientation(geom)
-        out[name] = (MUJOCO_TO_KIMODO @ (base_rot @ pos), MUJOCO_TO_KIMODO @ (base_rot @ rot) @ MUJOCO_TO_KIMODO.T)
+        out[name] = (
+            _MUJOCO_TO_MODEL @ (base_rot @ pos),
+            _MUJOCO_TO_MODEL @ (base_rot @ rot) @ _MUJOCO_TO_MODEL.T,
+        )
 
 
 def _body_to_joint_name(body: ET.Element) -> str:

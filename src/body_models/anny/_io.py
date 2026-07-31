@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
+from ptloader import load as load_pytorch_checkpoint
 
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir, write_npz_atomic
@@ -228,12 +229,7 @@ def _load_data_numpy(
         return _load_npz_cache(cache_npz)
 
     if cache_pth.exists():
-        try:
-            from ptloader import load as ptload
-        except ImportError as exc:
-            raise ImportError("ptloader is required to load legacy ANNY .pth caches.") from exc
-
-        data = ptload(cache_pth, weights_only=True)
+        data = load_pytorch_checkpoint(cache_pth, weights_only=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
         _save_npz_cache(cache_npz, data)
         return data

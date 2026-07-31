@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
+import trimesh
 from jaxtyping import Float, Int, Shaped
+from ptloader import load as load_pytorch_checkpoint
 from scipy import linalg as scipy_linalg
 from scipy import sparse as scipy_sparse
 from scipy.sparse import csc_matrix
@@ -485,11 +487,6 @@ def _identity_transfer_cache_file(asset_dir: Path, model_type: str) -> Path:
 
 
 def _load_mesh(path: Path) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
-    try:
-        import trimesh
-    except ImportError as exc:
-        raise ImportError(f"SOMA identity backends require trimesh to load {path.name}.") from exc
-
     mesh = cast(Any, trimesh.load(path, maintain_order=True, process=False))
     return np.asarray(mesh.vertices, dtype=np.float32), np.asarray(mesh.faces, dtype=np.int64)
 
@@ -521,11 +518,6 @@ def _compute_identity_correspondence(
     source_faces: Int[np.ndarray, "Fs 3"],
     target_vertices: Float[np.ndarray, "Vt 3"],
 ) -> tuple[Int[np.ndarray, "Fs 4"], Int[np.ndarray, "Vt"], Float[np.ndarray, "Vt 4"]]:
-    try:
-        import trimesh
-    except ImportError as exc:
-        raise ImportError("SOMA identity backends require trimesh to precompute topology transfer.") from exc
-
     mesh = trimesh.Trimesh(vertices=source_vertices, faces=source_faces, process=False)
     _closest_points, _distance, face_ids = mesh.nearest.on_surface(target_vertices)
     face_ids = np.asarray(face_ids, dtype=np.int64)
@@ -728,12 +720,7 @@ def _load_sparse_checkpoint_numpy(checkpoint_path: Path) -> dict[str, Any]:
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"SOMA corrective checkpoint not found: {checkpoint_path}")
 
-    try:
-        from ptloader import load
-    except ImportError as exc:
-        raise ImportError("ptloader is required to load SOMA corrective checkpoints.") from exc
-
-    return load(
+    return load_pytorch_checkpoint(
         checkpoint_path,
         weights_only=True,
         pickle_global_registry={

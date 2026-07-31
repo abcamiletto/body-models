@@ -43,20 +43,20 @@ def create_model(
     return model_class(**(dict(spec.defaults) | kwargs), runtime=runtime)
 
 
-def list_models(*, filter: str = "") -> list[str]:
+def list_models(*, pattern: str | None = None) -> list[str]:
     """
     List public model factory names.
 
     Args:
-        filter: Optional shell-style pattern such as ``"smpl*"``.
+        pattern: Optional shell-style pattern such as ``"smpl*"``.
 
     Returns:
         Sorted matching model names.
     """
     names = sorted(MODEL_SPECS)
-    if not filter:
+    if pattern is None:
         return names
-    return [name for name in names if fnmatchcase(name, filter)]
+    return [name for name in names if fnmatchcase(name, pattern)]
 
 
 def _normalize_name(name: str) -> str:

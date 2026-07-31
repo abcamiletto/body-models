@@ -12,14 +12,14 @@ from jaxtyping import Float, Int
 
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
-from body_models._common import mjcf
+from body_models._common import coordinates, mjcf
 from body_models._common.stl import load_stl_mesh as _load_stl_mesh
 
 PathLike = Path | str
 Convention = Literal["soma", "mujoco"]
 Array = Any
 
-MUJOCO_TO_KIMODO = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
+_MUJOCO_TO_MODEL = np.asarray(coordinates.MUJOCO_Z_UP_TO_Y_UP, dtype=np.float32)
 VALID_CONVENTIONS = ("soma", "mujoco")
 
 JOINT_NAMES = [
@@ -196,7 +196,7 @@ def load_model_data(
 ) -> G1Weights:
     if convention not in VALID_CONVENTIONS:
         raise ValueError(f"Invalid convention: {convention}")
-    coord = MUJOCO_TO_KIMODO if convention == "soma" else np.eye(3, dtype=np.float32)
+    coord = _MUJOCO_TO_MODEL if convention == "soma" else np.eye(3, dtype=np.float32)
     xml_path = get_model_path(model_path)
     root = mjcf.parse_xml(xml_path)
 
@@ -385,7 +385,7 @@ def _load_link_meshes(
 def load_stl_mesh(
     path: Path,
     *,
-    coord: Float[np.ndarray, "3 3"] = MUJOCO_TO_KIMODO,
+    coord: Float[np.ndarray, "3 3"] = _MUJOCO_TO_MODEL,
     dtype=np.float32,
 ) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 3"]]:
     return _load_stl_mesh(path, coord=coord, dtype=dtype)
