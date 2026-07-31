@@ -6,6 +6,9 @@ MHR_HEAD_POSE_COEFFS = 6
 MHR_HAND_POSE_COEFFS = 104
 
 MHR_JOINTS = {
+    Joint.PELVIS: "root",
+    Joint.NECK: "c_neck",
+    Joint.HEAD: "c_head",
     Joint.LEFT_SHOULDER: "l_uparm",
     Joint.RIGHT_SHOULDER: "r_uparm",
     Joint.LEFT_ELBOW: "l_lowarm",

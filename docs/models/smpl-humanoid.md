@@ -16,10 +16,11 @@ body-models download smpl-humanoid
 The hosted folder includes license/provenance notes for the XML variants.
 
 Select the `humenv`, `phc`, or `smplsim` variant with `variant`; `humenv` is
-the default. Pass a custom MJCF file with `model_path`. The hosted variants
-are also available as factory names:
-`create_model("humenv")`, `create_model("phc")`, and
-`create_model("smplsim")`.
+the default. Pass a custom MJCF file with `model_path`.
+
+```python
+model = body_models.create_model("smpl-humanoid", variant="phc")
+```
 
 ## API
 

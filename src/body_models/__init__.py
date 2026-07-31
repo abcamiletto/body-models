@@ -16,10 +16,10 @@ from body_models._registry import create_model, list_models
 from body_models._rotations import RotationType
 from body_models._runtime import (
     ArrayRuntime,
-    Backend,
     JaxRuntime,
     NumpyRuntime,
     RuntimeLike,
+    RuntimeName,
     TorchRuntime,
 )
 
@@ -46,7 +46,6 @@ del _public
 __all__ = [
     "ArrayRuntime",
     "ArticulatedModel",
-    "Backend",
     "JaxRuntime",
     "Joint",
     "LinearIdentity",
@@ -56,6 +55,7 @@ __all__ = [
     "RigidBodyModel",
     "RotationType",
     "RuntimeLike",
+    "RuntimeName",
     "SkinnedModel",
     "SkinningIdentity",
     "SkinningPayload",

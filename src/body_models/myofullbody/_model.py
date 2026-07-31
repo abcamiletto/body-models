@@ -37,7 +37,7 @@ class MyoFullBody(RigidBodyModel):
     ) -> None:
         runtime = self._set_runtime(runtime)
         self._config = MyoFullBodyConfig()
-        self._weights = runtime.materialize(load_model_data(model_path))
+        self._weights = runtime._materialize(load_model_data(model_path))
 
     @property
     def actuated_joint_types(self) -> list[str]:
@@ -46,7 +46,7 @@ class MyoFullBody(RigidBodyModel):
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
-            "body_pose": ParameterSpec((self.num_actuated,), "pose"),
+            "body_pose": ParameterSpec((self.num_dofs,), "pose"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }

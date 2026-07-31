@@ -48,7 +48,7 @@ def list_models(*, pattern: str | None = None) -> list[str]:
     List public model factory names.
 
     Args:
-        pattern: Optional shell-style pattern such as ``"smpl*"``.
+        pattern: Optional case-insensitive shell-style pattern such as ``"smpl*"``.
 
     Returns:
         Sorted matching model names.
@@ -56,6 +56,7 @@ def list_models(*, pattern: str | None = None) -> list[str]:
     names = sorted(MODEL_SPECS)
     if pattern is None:
         return names
+    pattern = _normalize_name(pattern)
     return [name for name in names if fnmatchcase(name, pattern)]
 
 

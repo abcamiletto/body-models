@@ -25,7 +25,7 @@ MODEL_SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "BrainCo Right": ("brainco", {"side": "right"}),
     "BrainCo Left": ("brainco", {"side": "left"}),
     "MyoFullBody": ("myofullbody", {}),
-    **{SMPL_HUMANOID_LABELS[name]: (name, {}) for name in SMPL_HUMANOID_VARIANTS},
+    **{SMPL_HUMANOID_LABELS[variant]: ("smpl-humanoid", {"variant": variant}) for variant in SMPL_HUMANOID_VARIANTS},
 }
 SMPL_HUMANOID_COLOR = (190, 190, 205)
 MODEL_COLORS: dict[str, tuple[int, int, int]] = {
@@ -124,7 +124,7 @@ def main() -> None:
 def specs(smpl_humanoid_model_path: str | None) -> dict[str, tuple[str, dict[str, Any]]]:
     model_specs = {name: (model_id, dict(kwargs)) for name, (model_id, kwargs) in MODEL_SPECS.items()}
     if smpl_humanoid_model_path is not None:
-        model_specs[SMPL_HUMANOID] = ("smpl_humanoid", {"source": smpl_humanoid_model_path})
+        model_specs[SMPL_HUMANOID] = ("smpl-humanoid", {"model_path": smpl_humanoid_model_path})
     return model_specs
 
 
@@ -205,7 +205,7 @@ def add_robot_controls(server: viser.ViserServer, name: str, state: RobotState) 
     key = pose_key(state.params)
     with server.gui.add_folder(name, expand_by_default=True) as folder:
         with server.gui.add_folder("Pose"):
-            for coord_index in range(state.model.num_actuated):
+            for coord_index in range(state.model.num_dofs):
                 lo, hi = slider_limits(state.model.actuated_joint_limits[coord_index])
                 initial = float(state.params[key][coord_index])
                 lo = min(lo, initial)

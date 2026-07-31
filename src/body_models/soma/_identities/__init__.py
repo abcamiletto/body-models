@@ -104,7 +104,7 @@ def source_shape(
     linear_model = cast("SMPL | SMPLX", model)
     return linear_identity_shape(
         mean=linear_model.rest_vertices,
-        shapedirs=linear_model.shapedirs,
+        shapedirs=linear_model._weights.shapedirs,
         identity=identity,
         xp=xp,
     )

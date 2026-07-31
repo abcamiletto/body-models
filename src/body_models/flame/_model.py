@@ -7,14 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from jaxtyping import Float, Int
+from jaxtyping import Float
 
 from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
 from body_models._smpl_family import SmplFamilyModel
 from body_models.flame import _core as core
-from body_models.flame._constants import FLAME_JOINT_NAMES
+from body_models.flame._constants import FLAME_JOINT_NAMES, FLAME_JOINTS
 from body_models.flame._io import get_model_path, load_model_data
 
 Array = Any
@@ -35,6 +35,7 @@ class FLAME(SmplFamilyModel):
     NUM_HEAD_JOINTS = 4
     NUM_SHAPE_COEFFS = 300
     NUM_EXPR_COEFFS = 100
+    _COMMON_JOINTS = FLAME_JOINTS
 
     def __init__(
         self,
@@ -53,7 +54,7 @@ class FLAME(SmplFamilyModel):
         weights = load_model_data(resolved_path, simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = FlameConfig(rotation_type=rotation_type)
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -75,10 +76,6 @@ class FLAME(SmplFamilyModel):
     def joint_names(self) -> list[str]:
         return list(FLAME_JOINT_NAMES)
 
-    @property
-    def exprdirs(self) -> Float[Array, "V 3 E"]:
-        return self._weights.exprdirs
-
     def forward_vertices(
         self,
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
@@ -89,7 +86,7 @@ class FLAME(SmplFamilyModel):
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed head vertices."""
         xp = self._runtime.xp

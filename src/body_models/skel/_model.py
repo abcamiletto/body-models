@@ -60,7 +60,7 @@ class SKEL(SkinnedModel):
         weights = load_model_data(get_model_path(model_path, gender), simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = SkelConfig(gender=gender)
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
 
     @property
     def gender(self) -> Literal["male", "female"]:
@@ -91,14 +91,6 @@ class SKEL(SkinnedModel):
         return self._weights.v_template
 
     @property
-    def shapedirs(self) -> Float[Array, "V 3 B"]:
-        return self._weights.shapedirs
-
-    @property
-    def posedirs(self) -> Float[Array, "P V*3"]:
-        return self._weights.posedirs
-
-    @property
     def parents(self) -> list[int]:
         return list(self._weights.parents)
 
@@ -121,7 +113,7 @@ class SKEL(SkinnedModel):
         identity: SkelIdentity | None = None,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed SKEL vertices."""
         xp = self._runtime.xp
@@ -134,7 +126,7 @@ class SKEL(SkinnedModel):
             identity = self.prepare_identity(shape)
 
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
-        vertices = self._runtime.compact_linear_blend_skinning(
+        vertices = self._runtime._skin_vertices(
             identity["rest_vertices"] + pose["pose_offsets"],
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,

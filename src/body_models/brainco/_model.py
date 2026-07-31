@@ -42,7 +42,7 @@ class BrainCoHand(RigidBodyModel):
             raise ValueError(f"Invalid side: {side!r}")
         runtime = self._set_runtime(runtime)
         self._config = BrainCoConfig(side)
-        self._weights = runtime.materialize(load_model_data(model_path, side=side))
+        self._weights = runtime._materialize(load_model_data(model_path, side=side))
 
     @property
     def side(self) -> Side:
@@ -54,12 +54,12 @@ class BrainCoHand(RigidBodyModel):
 
     @property
     def actuated_joint_types(self) -> list[str]:
-        return ["hinge"] * self.num_actuated
+        return ["hinge"] * self.num_dofs
 
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
-            "hand_pose": ParameterSpec((self.num_actuated,), "pose"),
+            "hand_pose": ParameterSpec((self.num_dofs,), "pose"),
             "global_rotation": ParameterSpec.rotation("axis_angle", role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }
@@ -137,7 +137,7 @@ class BrainCoHand(RigidBodyModel):
         params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             hand_pose = self._runtime.asarray(BRAINCO_HAND_PRESETS[self.side][hands], like=params["hand_pose"])
-            params["hand_pose"] = self._runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.num_actuated))
+            params["hand_pose"] = self._runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.num_dofs))
         return params
 
 

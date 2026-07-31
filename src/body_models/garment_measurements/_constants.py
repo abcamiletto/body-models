@@ -2,6 +2,9 @@ from body_models._common.pose_assets import load_npz
 from body_models._constants import Joint
 
 GARMENT_JOINTS = {
+    Joint.PELVIS: "pelvis",
+    Joint.NECK: "neck_01",
+    Joint.HEAD: "head",
     Joint.LEFT_SHOULDER: "upper_arm_L",
     Joint.RIGHT_SHOULDER: "upper_arm_R",
     Joint.LEFT_ELBOW: "lower_arm_01_L",

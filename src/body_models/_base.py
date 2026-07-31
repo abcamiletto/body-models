@@ -103,13 +103,13 @@ class ArticulatedModel(ABC):
     def _set_runtime(self, runtime: RuntimeLike) -> ArrayRuntime:
         resolved = resolve_runtime(runtime)
         self._runtime = resolved
-        if resolved.backend == "jax":
+        if resolved.name == "jax":
             _register_jax_model(type(self))
         return resolved
 
     def __setstate__(self, values: dict[str, Any]) -> None:
         self.__dict__.update(values)
-        if self.runtime.backend != "jax":
+        if self.runtime.name != "jax":
             return
         _register_jax_model(type(self))
         state.register_jax_state(tuple(getattr(self, name) for name in self._state_fields))
@@ -216,24 +216,6 @@ class ArticulatedModel(ABC):
         value = runtime.zeros((*batch_dims, *spec.shape), like=reference, dtype=dtype)
         return value if spec.default == 0.0 else value + spec.default
 
-    def get_tpose(
-        self,
-        *,
-        batch_dims: tuple[int, ...] = (),
-        dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
-        """Construct parameters for the canonical T-pose."""
-        raise NotImplementedError("Canonical body poses are not defined for this model.")
-
-    def get_apose(
-        self,
-        *,
-        batch_dims: tuple[int, ...] = (),
-        dtype: Any | None = None,
-    ) -> dict[str, Float[Array, "..."]]:
-        """Construct parameters for the canonical A-pose."""
-        raise NotImplementedError("Canonical body poses are not defined for this model.")
-
 
 class SkinnedModel(ArticulatedModel):
     """Base class for models that expose one skinned mesh."""
@@ -333,8 +315,8 @@ class RigidBodyModel(ArticulatedModel):
         return self._weights.vertices
 
     @property
-    def num_actuated(self) -> int:
-        """Number of actuated pose coordinates."""
+    def num_dofs(self) -> int:
+        """Number of scalar pose degrees of freedom."""
         return len(self.actuated_joint_names)
 
     @property
@@ -358,8 +340,8 @@ class RigidBodyModel(ArticulatedModel):
 
     def unpack_pose(self, pose: Float[Array, "*batch Q"]) -> dict[str, Float[Array, "*batch dof"]]:
         """Unpack a flattened pose ``[..., Q]`` into ``name -> [..., dof]`` arrays."""
-        if pose.shape[-1] != self.num_actuated:
-            raise ValueError(f"pose must have shape [..., {self.num_actuated}], got {tuple(pose.shape)}")
+        if pose.shape[-1] != self.num_dofs:
+            raise ValueError(f"pose must have shape [..., {self.num_dofs}], got {tuple(pose.shape)}")
         return {name: pose[..., joint_slice] for name, joint_slice in self.actuated_joint_slices.items()}
 
     def pack_pose(self, pose_by_joint: Mapping[str, Float[Array, "*batch dof"]]) -> Float[Array, "*batch Q"]:
@@ -383,18 +365,19 @@ class RigidBodyModel(ArticulatedModel):
         self,
         body_pose: Float[Array, "*batch Q"],
         *,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         clamp_to_limits: bool = False,
     ) -> Float[Array, "*batch qpos"]:
         """Build full MuJoCo ``qpos`` as ``[root_xyz, root_wxyz, body_pose]``.
 
         ``body_pose`` is the model's flattened scalar coordinate vector ``[..., Q]``.
+        ``global_rotation`` is an axis-angle vector ``[..., 3]``.
         The root prefix is converted from the model coordinate frame to MuJoCo's
         coordinate frame.
         """
-        if body_pose.shape[-1] != self.num_actuated:
-            raise ValueError(f"body_pose must have shape [..., {self.num_actuated}], got {tuple(body_pose.shape)}")
+        if body_pose.shape[-1] != self.num_dofs:
+            raise ValueError(f"body_pose must have shape [..., {self.num_dofs}], got {tuple(body_pose.shape)}")
 
         xp = self._runtime.xp
         batch_shape = tuple(body_pose.shape[:-1])

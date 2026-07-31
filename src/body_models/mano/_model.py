@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from nanomanifold import SO3
 
 from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
@@ -60,7 +60,7 @@ class MANO(SmplFamilyModel):
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         runtime = self._set_runtime(runtime)
         self._config = ManoConfig(side=side or "right", rotation_type=rotation_type)
-        self._weights = runtime.materialize(weights)
+        self._weights = runtime._materialize(weights)
 
     @property
     def side(self) -> Literal["right", "left"]:
@@ -99,7 +99,7 @@ class MANO(SmplFamilyModel):
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
-        vertex_indices: Int[Array, "S"] | None = None,
+        vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed hand vertices."""
         xp = self._runtime.xp
