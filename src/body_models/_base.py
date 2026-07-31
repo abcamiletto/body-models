@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -55,19 +55,13 @@ class ParameterSpec:
         )
 
 
-class SkinningPayload(TypedDict):
-    """Renderer-ready linear blend skinning inputs."""
-
-    rest_vertices: Float[Array, "*batch V 3"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
-    skin_weights: Float[Array, "V J"]
-    faces: Int[Array, "F C"]
-
-
+CorrectiveBasis = deformation.CorrectiveBasis
+DenseCorrectiveBasis = deformation.DenseCorrectiveBasis
 LinearIdentity = deformation.LinearIdentity
+SkinningSpec = deformation.SkinningSpec
 SkinningIdentity = deformation.SkinningIdentity
 SkinningPose = deformation.SkinningPose
+SparseCorrectiveBasis = deformation.SparseCorrectiveBasis
 
 
 class ArticulatedModel(ABC):
@@ -234,6 +228,14 @@ class SkinnedModel(ArticulatedModel):
     def _parameter_reference(self) -> Float[Array, "V 3"]:
         return self.rest_vertices
 
+    @property
+    def skinning_spec(self) -> SkinningSpec:
+        """Model-static topology, skin weights, and optional pose correctives."""
+        return SkinningSpec(
+            faces=self.faces,
+            skin_weights=self.skin_weights,
+        )
+
     @abstractmethod
     def forward_vertices(self, *args, **kwargs) -> Float[Array, "*batch V 3"]:
         """
@@ -246,22 +248,19 @@ class SkinnedModel(ArticulatedModel):
             Mesh vertices with shape ``[*batch, V, 3]`` in meters.
         """
 
-    def prepare_skinning(
+    def _posed_vertices(
         self,
-        *,
         identity: SkinningIdentity,
         pose: SkinningPose,
-    ) -> SkinningPayload:
-        """Pack prepared model state into renderer-ready skinning inputs."""
-        skinning: SkinningPayload = {
-            "rest_vertices": identity["rest_vertices"],
-            "skinning_transforms": pose["skinning_transforms"],
-            "skin_weights": self.skin_weights,
-            "faces": self.faces,
-        }
-        if "pose_offsets" in pose:
-            skinning["pose_offsets"] = pose["pose_offsets"]
-        return skinning
+    ) -> Float[Array, "*batch V 3"]:
+        vertices = identity["rest_vertices"]
+        coefficients = pose.get("pose_coefficients")
+        if coefficients is None:
+            return vertices
+        basis = self.skinning_spec.corrective_basis
+        if basis is None:
+            raise RuntimeError("Prepared pose has corrective coefficients, but the model has no corrective basis.")
+        return vertices + basis.apply(coefficients)
 
     @staticmethod
     def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:
@@ -305,6 +304,19 @@ class RigidBodyModel(ArticulatedModel):
     @property
     def link_joint_indices(self) -> list[int]:
         return list(self._weights.link_joint_indices)
+
+    @property
+    def link_meshes(self) -> Sequence[Trimesh]:
+        """Link-local meshes aligned with :attr:`link_names` and ``forward_links()``."""
+        return rigid_ops.link_meshes(
+            self._weights.vertices,
+            self._weights.faces,
+            self._weights.link_vertex_starts,
+            self._weights.link_vertex_counts,
+            self._weights.link_face_starts,
+            self._weights.link_face_counts,
+            to_numpy=self._runtime.to_numpy,
+        )
 
     @property
     def num_vertices(self) -> int:

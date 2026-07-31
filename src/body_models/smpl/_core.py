@@ -18,7 +18,6 @@ prepare_skeleton_identity = family.prepare_shape_skeleton_identity
 
 
 def prepare_pose(
-    posedirs: Float[Array, "P V*3"],
     kinematic_fronts: list[Front],
     body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
     pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
@@ -28,7 +27,7 @@ def prepare_pose(
     rest_joints: Float[Array, "*identity_batch J 3"],
     xp: Any,
 ) -> deformation.SkinningPose:
-    """Prepare SMPL transforms and pose-dependent vertex offsets."""
+    """Prepare SMPL transforms and pose-corrective coefficients."""
     pose_matrices = family.assemble_pose_matrices(
         [(body_pose, rotation_type)],
         pelvis_rotation,
@@ -37,7 +36,6 @@ def prepare_pose(
     )
     return family.prepare_pose(
         pose_matrices,
-        posedirs,
         kinematic_fronts,
         local_joint_offsets=local_joint_offsets,
         rest_joints=rest_joints,

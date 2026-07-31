@@ -2,15 +2,19 @@
 
 from body_models._base import (
     ArticulatedModel,
+    CorrectiveBasis,
+    DenseCorrectiveBasis,
     LinearIdentity,
     ParameterRole,
     ParameterSpec,
     RigidBodyModel,
     SkinnedModel,
     SkinningIdentity,
-    SkinningPayload,
     SkinningPose,
+    SkinningSpec,
+    SparseCorrectiveBasis,
 )
+from body_models._common.sparse import SparseMatrix
 from body_models._constants import Joint
 from body_models._registry import create_model, list_models
 from body_models._rotations import RotationType
@@ -26,6 +30,8 @@ from body_models._runtime import (
 for _public in (
     ArticulatedModel,
     ArrayRuntime,
+    CorrectiveBasis,
+    DenseCorrectiveBasis,
     JaxRuntime,
     Joint,
     LinearIdentity,
@@ -34,8 +40,10 @@ for _public in (
     RigidBodyModel,
     SkinnedModel,
     SkinningIdentity,
-    SkinningPayload,
     SkinningPose,
+    SkinningSpec,
+    SparseCorrectiveBasis,
+    SparseMatrix,
     TorchRuntime,
     create_model,
     list_models,
@@ -46,6 +54,8 @@ del _public
 __all__ = [
     "ArrayRuntime",
     "ArticulatedModel",
+    "CorrectiveBasis",
+    "DenseCorrectiveBasis",
     "JaxRuntime",
     "Joint",
     "LinearIdentity",
@@ -58,8 +68,10 @@ __all__ = [
     "RuntimeName",
     "SkinnedModel",
     "SkinningIdentity",
-    "SkinningPayload",
     "SkinningPose",
+    "SkinningSpec",
+    "SparseCorrectiveBasis",
+    "SparseMatrix",
     "TorchRuntime",
     "create_model",
     "list_models",

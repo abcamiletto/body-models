@@ -28,5 +28,18 @@ class SparseLinear:
         output = inputs.reshape(-1, inputs.shape[-1]) @ self._weights
         return np.asarray(output).reshape(*batch_shape, self._weights.shape[1])
 
+    @property
+    def shape(self) -> tuple[int, int]:
+        return self._weights.shape
+
+    def to_coo(self) -> sparse_common.SparseMatrix:
+        matrix = self._weights.tocoo()
+        return sparse_common.SparseMatrix(
+            row_indices=matrix.row,
+            column_indices=matrix.col,
+            values=matrix.data,
+            shape=matrix.shape,
+        )
+
 
 __all__ = ["SparseLinear"]

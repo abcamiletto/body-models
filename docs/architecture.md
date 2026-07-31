@@ -30,12 +30,13 @@ Every model derives from the public `ArticulatedModel` base through either
 `SkinnedModel` or `RigidBodyModel`. Models are self-contained in
 `body_models/<name>/`; descriptive categories do not create a second package
 tree. One public class and signature serve every runtime. On skinned models,
-public identity and pose preparation return complete mesh-ready state.
-Skeleton forwards use distinct model-local preparation paths, so an optimization
-cannot create a partial object that later fails in a mesh forward.
-Each skinned model package exports the exact `TypedDict` contracts returned by
-its public preparation methods. Shared skinning contracts are exported from
-`body_models`; skeleton-only preparation types remain private.
+identity preparation returns identity-dependent vertices and joints, while
+pose preparation returns transforms and compact corrective coefficients.
+`SkinningSpec` holds model-static topology, render-rig skin weights, and the
+optional corrective basis. `forward_vertices()` expands correctives and skins
+the surface. Skeleton forwards use distinct model-local preparation paths.
+Shared preparation and skinning contracts are exported from `body_models`;
+skeleton-only preparation types remain private.
 Required numerical inputs may be positional, while optional configuration,
 state, transforms, and output selection are keyword-only. Forward signatures
 order those groups as local pose options, identity, global transform, and
@@ -44,7 +45,8 @@ selection.
 SMPL, SMPL-H, SMPL-X, MANO, and FLAME share one private family engine. Their
 `_core.py` modules describe the ordered pose blocks and apply model-specific
 means, while the engine owns rotation conversion, root insertion, batch
-validation, forward kinematics, bind-relative transforms, and pose correctives.
+validation, forward kinematics, bind-relative transforms, and corrective
+coefficient construction.
 The public methods remain explicit per model. The engine accepts arrays and
 pose blocks only; it has no model names, optional-feature flags, or knowledge of
 hands and faces.
@@ -93,8 +95,8 @@ lowered by the runtime; reusable derived inputs are created during state
 materialization. Compact skinning illustrates the boundary: every runtime
 executes the same call contract, while Torch/Warp materialization augments the
 compact weights with a transform-gradient plan. A vertex subset chosen during a
-call gets a short-lived subset plan instead. Sparse corrective multiplication
-similarly owns its prepared sparse representation as materialized state. This
+call gets a short-lived subset plan instead. Sparse corrective bases similarly
+own their prepared representation as materialized state. This
 keeps `ArrayRuntime` independent of model semantics without hiding persistent
 work in global caches.
 
@@ -114,7 +116,7 @@ pose layouts remain beside their model; the family engine composes those layouts
 with the generic kinematics and skinning operations.
 
 The same rule applies below the runtime boundary. `_common.deformation` owns
-linear blend shapes and rotation-deviation correctives; `_common.kinematics`
+linear blend shapes and dense or sparse corrective bases; `_common.kinematics`
 owns affine transform assembly, rigid inversion, parent-relative offsets, and
 generic forward kinematics. These functions operate on explicit arrays and do
 not know model names, parameter layouts, or asset formats.
@@ -123,17 +125,20 @@ not know model names, parameter layouts, or asset formats.
 
 Rigid robots and anatomical models do not implement the skinning protocol.
 They derive from `RigidBodyModel`, which shares metadata, link attachment, mesh
-projection, and zero-control construction. Their kinematics remain local:
+projection, link-local mesh access, and zero-control construction. A
+`link_meshes[i]` surface is transformed by `forward_links(...)[i]`; packed
+vertex and face ranges remain private storage details. Their kinematics remain local:
 BrainCo retains coupled-joint polynomials, G1 retains hinge axes, SmplHumanoid
 retains its Euler convention, and MyoFullBody retains mixed hinge/slide joints.
 
 ## Specialized operations
 
 An operation belongs in the runtime only when its contract is independent of a
-particular model. SOMA's learned sparse corrective network is the deliberate
-counterexample: it is a visible SOMA component with optimized NumPy/SciPy,
-Torch sparse, and JAX scatter implementations. Hiding it in the global runtime
-would make the runtime understand SOMA and create a leaky abstraction.
+particular model. SOMA and MHR compute their corrective coefficients locally;
+their final coefficient-to-offset map uses the same public sparse-basis
+contract as every other corrective model. Hiding coefficient generation in the
+global runtime would make the runtime understand model semantics and create a
+leaky abstraction.
 
 ## Adding a model
 

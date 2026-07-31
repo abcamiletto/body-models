@@ -25,13 +25,6 @@ class AnnyIdentity(AnnySkeletonIdentity):
     rest_vertices: Float[Array, "*batch V 3"]
 
 
-class AnnyPose(TypedDict):
-    """Complete pose-dependent ANNY mesh state."""
-
-    skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-
-
 def shape_vertices(
     template_vertices: Float[Array, "V 3"],
     blendshapes: Float[Array, "S V 3"],
@@ -65,7 +58,7 @@ def prepare_pose(
     *,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
     xp: Any,
-) -> AnnyPose:
+) -> common.deformation.SkinningPose:
     """Prepare ANNY skeleton and bind-relative skinning transforms."""
     pose_transforms = _pose_to_transform(xp, pose, rotation_type)
     skeleton_transforms, skinning_transforms = _forward_core(
@@ -382,4 +375,4 @@ def _pose_to_transform(
     return common.affine_transforms(rotations, xp=xp)
 
 
-__all__ = ["AnnyIdentity", "AnnyPose", "prepare_identity", "prepare_pose", "shape_vertices"]
+__all__ = ["AnnyIdentity", "prepare_identity", "prepare_pose", "shape_vertices"]

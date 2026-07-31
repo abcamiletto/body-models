@@ -24,10 +24,15 @@ def _weights() -> tuple[sparse.SparseMatrix, np.ndarray]:
 def test_numpy_sparse_linear_matches_dense() -> None:
     weights, dense = _weights()
     inputs = np.arange(16, dtype=np.float32).reshape(2, 2, 4)
+    linear = state.numpy_state(weights)
 
-    actual = sparse.linear(inputs, state.numpy_state(weights))
+    actual = sparse.linear(inputs, linear)
 
     np.testing.assert_array_equal(actual, inputs @ dense)
+    exported = linear.to_coo()
+    reconstructed = np.zeros(exported.shape, dtype=exported.values.dtype)
+    reconstructed[exported.row_indices, exported.column_indices] = exported.values
+    np.testing.assert_array_equal(reconstructed, dense)
 
 
 @pytest.mark.fast

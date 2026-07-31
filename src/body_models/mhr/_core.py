@@ -1,13 +1,13 @@
 """MHR deformation computations."""
 
 import math
-from typing import Any, TypedDict
+from typing import Any
 
 from jaxtyping import Float
 from nanomanifold import SO3
 
 from body_models import _common as common
-from body_models._common import sparse
+from body_models._common import deformation
 
 Array = Any  # Generic array type (numpy, torch, jax)
 Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
@@ -15,27 +15,12 @@ Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, paren
 _LN2 = math.log(2)
 
 
-class MhrIdentity(TypedDict):
-    """Complete shape- and expression-dependent MHR mesh state."""
-
-    rest_vertices: Float[Array, "*batch V 3"]
-
-
-class MhrPose(TypedDict):
-    """Complete pose-dependent MHR mesh state."""
-
-    skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: Float[Array, "*batch V 3"]
-
-
-def _apply_pose_correctives(
-    joint_params: Float[Array, "B J 7"],
+def _pose_coefficients(
+    joint_params: Float[Array, "*batch J 7"],
     hidden_weights: Float[Array, "input hidden"],
-    output_weights: sparse.SparseLinear,
     *,
     xp: Any,
-) -> Float[Array, "B V 3"]:
+) -> Float[Array, "*batch hidden"]:
     dtype = joint_params.dtype
 
     euler = joint_params[..., 2:, 3:6]
@@ -47,10 +32,7 @@ def _apply_pose_correctives(
     batch_shape = feat.shape[:-2]
     feat_flat = feat.reshape(*batch_shape, -1)
     h = feat_flat @ hidden_weights
-    h = xp.maximum(h, xp.asarray(0.0, dtype=dtype))
-    out = sparse.linear(h, output_weights)
-
-    return out.reshape(*batch_shape, -1, 3)
+    return xp.maximum(h, xp.asarray(0.0, dtype=dtype))
 
 
 def prepare_pose(
@@ -63,11 +45,10 @@ def prepare_pose(
     bind_inv_linear: Float[Array, "J 3 3"],
     bind_inv_translation: Float[Array, "J 3"],
     corrective_hidden_weights: Float[Array, "input hidden"],
-    corrective_output_weights: sparse.SparseLinear,
     pose: Float[Array, "B 204"],
     *,
     xp: Any,
-) -> MhrPose:
+) -> deformation.SkinningPose:
     """Precompute pose-dependent MHR state for repeated forward passes."""
     if pose.ndim < 1 or pose.shape[-1] != 204:
         raise ValueError(f"pose must have shape [..., 204], got {tuple(pose.shape)}")
@@ -91,13 +72,11 @@ def prepare_pose(
             bind_inv_linear=bind_inv_linear,
             bind_inv_translation=bind_inv_translation,
         ),
-        "pose_offsets": _apply_pose_correctives(
+        "pose_coefficients": _pose_coefficients(
             j_p,
             corrective_hidden_weights,
-            corrective_output_weights,
             xp=xp,
-        )
-        * 0.01,
+        ),
     }
 
 
@@ -133,7 +112,7 @@ def prepare_identity(
     blendshape_dirs: Float[Array, "117 V 3"],
     shape: Float[Array, "*batch 45"],
     expression: Float[Array, "*batch 72"],
-) -> MhrIdentity:
+) -> deformation.SkinningIdentity:
     """Precompute shape- and expression-dependent MHR state for repeated forward passes."""
     if shape.ndim < 1 or shape.shape[-1] != 45:
         raise ValueError(f"shape must have shape [..., 45], got {tuple(shape.shape)}")
