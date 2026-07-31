@@ -28,7 +28,7 @@ class SmplHumanoidConfig:
 class SmplHumanoid(RigidBodyModel):
     """Rigid SMPL-compatible humanoid loaded from MJCF."""
 
-    JOINTS = SMPL_HUMANOID_JOINTS
+    _COMMON_JOINTS = SMPL_HUMANOID_JOINTS
 
     def __init__(
         self,

@@ -65,7 +65,7 @@ class SOMA(SkinnedModel):
     NUM_BODY_JOINTS = 23
     NUM_HAND_JOINTS = 48
     NUM_HEAD_JOINTS = 5
-    JOINTS = SOMA_JOINTS
+    _COMMON_JOINTS = SOMA_JOINTS
 
     def __init__(
         self,
@@ -163,10 +163,6 @@ class SOMA(SkinnedModel):
     @property
     def faces(self) -> Int[Array, "F 3"]:
         return self._weights.faces
-
-    @property
-    def num_joints(self) -> int:
-        return self.NUM_JOINTS
 
     @property
     def joint_names(self) -> list[str]:

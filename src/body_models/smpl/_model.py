@@ -36,7 +36,7 @@ class SMPL(SmplFamilyModel):
     NUM_JOINTS = 24
     NUM_BODY_JOINTS = 23
     NUM_SHAPE_COEFFS = 10
-    JOINTS = SMPL_JOINTS
+    _COMMON_JOINTS = SMPL_JOINTS
 
     def __init__(
         self,

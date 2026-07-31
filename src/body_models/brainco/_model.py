@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -10,6 +11,7 @@ from jaxtyping import Float
 from trimesh import Trimesh
 
 from body_models._base import ParameterSpec, RigidBodyModel
+from body_models._constants import Joint
 from body_models._runtime import RuntimeLike
 from body_models.brainco import _core as core
 from body_models.brainco._constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
@@ -46,7 +48,7 @@ class BrainCoHand(RigidBodyModel):
         return self._config.side
 
     @property
-    def common_joints(self):
+    def common_joints(self) -> Mapping[Joint, str]:
         return LEFT_BRAINCO_JOINTS if self.side == "left" else RIGHT_BRAINCO_JOINTS
 
     @property

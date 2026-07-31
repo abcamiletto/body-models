@@ -43,7 +43,7 @@ class GarmentMeasurements(SkinnedModel):
     NUM_BODY_JOINTS = 25
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
-    JOINTS = GARMENT_JOINTS
+    _COMMON_JOINTS = GARMENT_JOINTS
 
     def __init__(
         self,
@@ -84,10 +84,6 @@ class GarmentMeasurements(SkinnedModel):
     @property
     def faces(self) -> Int[Array, "F 3"]:
         return self._weights.faces
-
-    @property
-    def num_joints(self) -> int:
-        return len(self._weights.joint_names)
 
     @property
     def joint_names(self) -> list[str]:

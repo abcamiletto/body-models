@@ -27,7 +27,7 @@ class G1Config:
 class G1(RigidBodyModel):
     """Rigid articulated Unitree G1 model."""
 
-    JOINTS = G1_JOINTS
+    _COMMON_JOINTS = G1_JOINTS
 
     def __init__(
         self,

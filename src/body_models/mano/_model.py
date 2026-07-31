@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -10,6 +11,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models._base import ParameterSpec
+from body_models._constants import Joint
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
 from body_models._smpl_family import SmplFamilyModel
@@ -86,9 +88,9 @@ class MANO(SmplFamilyModel):
         return list(self._weights.joint_names)
 
     @property
-    def common_joints(self):
+    def common_joints(self) -> Mapping[Joint, str]:
         joints = LEFT_MANO_JOINTS if self.side == "left" else RIGHT_MANO_JOINTS
-        return dict(joints)
+        return joints
 
     def forward_vertices(
         self,

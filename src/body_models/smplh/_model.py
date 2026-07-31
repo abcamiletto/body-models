@@ -39,7 +39,7 @@ class SMPLH(SmplFamilyModel):
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_SHAPE_COEFFS = 10
-    JOINTS = SMPLH_JOINTS
+    _COMMON_JOINTS = SMPLH_JOINTS
 
     def __init__(
         self,

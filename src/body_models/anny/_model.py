@@ -41,7 +41,7 @@ class ANNY(SkinnedModel):
     NUM_HAND_JOINTS = 38
     NUM_HEAD_JOINTS = 60
     NUM_SHAPE_COEFFS = 6
-    JOINTS = ANNY_JOINTS
+    _COMMON_JOINTS = ANNY_JOINTS
 
     def __init__(
         self,
@@ -110,10 +110,6 @@ class ANNY(SkinnedModel):
     @property
     def faces(self) -> Int[Array, "F _"]:
         return self._weights.faces
-
-    @property
-    def num_joints(self) -> int:
-        return len(self._weights.bone_labels)
 
     @property
     def joint_names(self) -> list[str]:
