@@ -1,16 +1,10 @@
 import numpy as np
 import pytest
 
-import model_cases
-from body_models import config
-from body_models.bodies.mhr import io as mhr_io
-from body_models.bodies.soma.io import validate_path
-import body_models.robots.brainco.io as brainco_io
-
-
-@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.MODELS)
-def test_model_loads(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
-    numpy_model(**kwargs)
+import body_models.brainco._io as brainco_io
+from body_models import _config as config
+from body_models.mhr import _io as mhr_io
+from body_models.soma._io import validate_path
 
 
 def test_soma_slim_npz_asset_layout_requires_rig_fields(tmp_path) -> None:
@@ -67,15 +61,15 @@ def test_validate_model_path_myofullbody(tmp_path) -> None:
 
 @pytest.mark.fast
 def test_g1_get_model_path_uses_cache(tmp_path, monkeypatch) -> None:
-    from body_models.robots.g1 import io as g1_io
+    from body_models.g1 import _io as g1_io
 
-    monkeypatch.setattr("body_models.robots.g1.io.get_cache_dir", lambda: tmp_path)
+    monkeypatch.setattr("body_models.g1._io.get_cache_dir", lambda: tmp_path)
     monkeypatch.setattr(g1_io.config, "get_model_path", lambda model: None)
 
     def _raise(*args, **kwargs):
         raise AssertionError("download_hf_archive should not be called when cache is populated")
 
-    monkeypatch.setattr("body_models.robots.g1.io.download_hf_archive", _raise)
+    monkeypatch.setattr("body_models.g1._io.download_hf_archive", _raise)
 
     cache_xml = tmp_path / "g1" / "g1.xml"
     cache_xml.parent.mkdir(parents=True)
@@ -94,3 +88,26 @@ def test_mhr_has_model_requires_all_hosted_lods(tmp_path) -> None:
     (tmp_path / mhr_io.MHR_ASSETS[-1]).touch()
 
     assert mhr_io._has_model(tmp_path)
+
+
+@pytest.mark.fast
+def test_mhr_validation_reports_missing_default_assets(tmp_path) -> None:
+    (tmp_path / "mhr_model.pt").touch()
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=r"corrective_activation\.npz, corrective_blendshapes_lod1\.npz",
+    ):
+        mhr_io.validate_path(tmp_path)
+
+
+@pytest.mark.fast
+def test_mhr_loading_reports_missing_selected_lod_assets(tmp_path) -> None:
+    for name in mhr_io._MHR_DEFAULT_ASSETS:
+        (tmp_path / name).touch()
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=r"corrective_blendshapes_lod2\.npz, mhr_lod2\.npz",
+    ):
+        mhr_io.load_model_data(tmp_path, lod=2)

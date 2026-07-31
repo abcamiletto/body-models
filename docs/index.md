@@ -1,21 +1,41 @@
 # body-models
 
-`body-models` provides a shared interface for parametric human body, head, hand, and measurement models across PyTorch, NumPy, and JAX.
+`body-models` provides a shared interface for parametric and rigid articulated
+models with NumPy, PyTorch, and JAX runtimes plus optional Warp acceleration.
 
 ## Install
 
 ```bash
-# Install the core package with the NumPy backend.
 uv add body-models
 ```
 
-Install optional differentiable backends when needed:
+Install optional framework runtimes when needed:
 
 ```bash
-# Add PyTorch or JAX support only when your project needs it.
 uv add "body-models[torch]"
 uv add "body-models[jax]"
+uv add "body-models[torch,warp]"
 ```
+
+## Model assets
+
+Public assets download automatically on first use when `model_path` is omitted.
+They live in the operating system's private user cache, not beside the
+configuration file or inside the Python environment. Run `body-models` to see
+both locations.
+
+Use the CLI to prefetch assets or choose an exact destination:
+
+```bash
+body-models download anny
+body-models download anny --output-dir /path/to/models/anny
+```
+
+The custom path is saved as the model's configured override. With
+`body-models download all --output-dir /path/to/models`, each family gets its
+own subdirectory. Licensed models cannot download silently on first use because
+they require accepted licenses and account credentials; their setup command
+prompts for those credentials and stores the resulting private-cache path.
 
 ## Supported Models
 
@@ -50,7 +70,7 @@ uv add "body-models[jax]"
 | --- | --- | --- |
 | [MANO](models/mano.md) | hand | registration required |
 
-### Robots
+### Robots and Humanoids
 
 | Model | Scope | Setup |
 | --- | --- | --- |
@@ -60,20 +80,60 @@ uv add "body-models[jax]"
 
 ## Common Usage
 
-Each model exposes backend modules under `body_models.<model>.torch`, `body_models.<model>.numpy`, and `body_models.<model>.jax` when that backend is supported. The model pages use the NumPy backend for API generation because it has the same public model interface without optional backend dependencies.
+Each model has one public class shared by its NumPy, Torch, and JAX runtimes.
+Select the runtime with the `runtime` argument. NumPy is the default and does
+not require an optional framework dependency.
+
+Names exported from `body_models` and model packages are the stable public API.
+Underscore-prefixed modules are private implementation details and are not
+covered by compatibility guarantees. See the [API reference](api.md) for the
+shared contracts and the [architecture guide](architecture.md) for the runtime
+boundary and extension rules.
 
 ```python
-from body_models.smpl.torch import SMPL
+from body_models.smpl import SMPL
 
-# Load the neutral SMPL model from the configured model path.
-model = SMPL(gender="neutral")
-
-# Start from a batched rest pose.
+model = SMPL(gender="neutral", runtime="torch")
 params = model.get_rest_pose(batch_dims=(1,))
-
-# Evaluate the mesh vertices and skeleton transforms with the same parameters.
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
-Skinned models share `faces`, `num_vertices`, `num_joints`, `joint_names`, `skin_weights`, `rest_vertices`, `forward_vertices`, `forward_skeleton`, and `get_rest_pose`. Rigid articulated models expose link metadata and `forward_links` instead of skinning weights.
+Call `model.as_module()` when PyTorch module lifecycle behavior such as
+`.to()`, `.cuda()`, or `state_dict()` is needed. Each model returns the same
+cached module view on every call, and lifecycle mutations affect the model's
+shared numeric state. Pass a configured runtime object for runtime-specific
+behavior such as Warp skinning.
+
+All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
+define its two public specializations. The shared contract includes `runtime`,
+`has_face`, `has_hands`, `parameter_spec`, `get_rest_pose`, `faces`,
+`num_vertices`, `num_joints`, `joint_names`, `parents`, `common_joints`,
+`joint_index`, and `forward_skeleton`.
+`has_face` indicates facial-expression controls; `has_hands` indicates
+articulated hand controls. Neither describes mesh geometry. Skinned models
+additionally share `skin_weights`, `rest_vertices`, and `forward_vertices`.
+Rigid articulated models expose link metadata, `forward_links`, and
+`forward_meshes` instead of skinning weights.
+
+`joint_names` and `parents` describe the complete native skeleton in joint
+index order. The `Joint` enum names anatomical joints shared across models;
+`common_joints` maps those names to the native skeleton, and
+`joint_index(Joint.LEFT_WRIST)` resolves the corresponding native index.
+
+Fixed public parameter dimensions use `NUM_*` class constants:
+`NUM_JOINTS`, `NUM_BODY_JOINTS`, `NUM_HAND_JOINTS`, `NUM_HEAD_JOINTS`,
+`NUM_SHAPE_COEFFS`, `NUM_EXPR_COEFFS`, and, for compact pose controls,
+`NUM_POSE_COEFFS` and `NUM_*_POSE_COEFFS`. A class defines only the constants
+that apply to that model. A dimension fixed by the supported checkpoint schema
+is a class constant even when the checkpoint is loaded from a custom path.
+Dimensions selected by a constructor option remain instance properties; for
+example, SOMA exposes `num_shape_coeffs` because it depends on `model_type`.
+
+Array shapes use arbitrary leading batch dimensions throughout. For example,
+an annotated `*batch J 4 4` skeleton can be unbatched, singly batched, or have
+several leading batch axes.
+
+Skinned model packages export model-specific identity and pose types when their
+schemas are unique. Shared contracts are available as `LinearIdentity`,
+`SkinningIdentity`, `SkinningPose`, and `SkinningPayload` from `body_models`.

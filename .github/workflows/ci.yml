@@ -39,3 +39,34 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
       - run: uv run --group dev --extra torch --extra warp pytest -q -m fast
+
+  functional-tests:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Download test assets
+        env:
+          HF_HUB_DISABLE_XET: "1"
+        run: |
+          uvx --from huggingface-hub hf download \
+            abcamiletto/body-models-assets \
+            --repo-type dataset \
+            --local-dir tests/assets \
+            --token "$HF_TOKEN"
+      - run: uv sync --group dev --all-extras --frozen
+      - name: Run cross-runtime functional tests
+        run: |
+          uv run pytest -q \
+            tests/test_runtime.py \
+            tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
+            tests/test_backend_consistency.py::test_rigid_body_meshes_match_numpy \
+            tests/test_backend_consistency.py::test_skinning_backends_match_default \
+            tests/test_backend_consistency.py::test_raw_and_prepared_identity_are_mutually_exclusive

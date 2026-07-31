@@ -1,56 +1,31 @@
-"""Benchmark forward_skeleton and geometry forwards for supported body models.
+"""Benchmark skeleton and geometry forwards for public body models.
 
-Usage:
-    uv run bench/run.py
-    uv run bench/run.py -m SMPLX
-    uv run bench/run.py -m SMPLX -m SMPL
-    uv run bench/run.py --backend numpy
-    uv run bench/run.py -m SMPL --backend numpy --kernel numba
-    uv run bench/run.py -m SMPL --backend torch --kernel warp -d cuda
-    uv run bench/run.py --backend torch -d cuda
-    uv run bench/run.py --method skeleton
-    uv run bench/run.py --batch-sizes 512,1024
+Examples:
+    uv run bench/run.py -m smpl --backend numpy
+    uv run bench/run.py -m smpl --backend torch --skinning-backend warp -d cuda
+    uv run bench/run.py -m smplx --backend torch -d cuda --prepared-identity
+    uv run bench/run.py --method skeleton --batch-sizes 512,1024
+    uv run bench/run.py --backend torch --torch-mode eager
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
+import platform
 import statistics
 import time
-from collections.abc import Callable
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 
-from body_models.anny import numpy as anny_numpy
-from body_models.anny import torch as anny_torch
-from body_models.brainco import numpy as brainco_numpy
-from body_models.flame import numpy as flame_numpy
-from body_models.flame import torch as flame_torch
-from body_models.g1 import numpy as g1_numpy
-from body_models.g1 import torch as g1_torch
-from body_models.garment_measurements import numpy as garment_measurements_numpy
-from body_models.garment_measurements import torch as garment_measurements_torch
-from body_models.mano import numpy as mano_numpy
-from body_models.mano import torch as mano_torch
-from body_models.mhr import numpy as mhr_numpy
-from body_models.mhr import torch as mhr_torch
-from body_models.myofullbody import numpy as myofullbody_numpy
-from body_models.myofullbody import torch as myofullbody_torch
-from body_models.skel import numpy as skel_numpy
-from body_models.skel import torch as skel_torch
-from body_models.smpl import numpy as smpl_numpy
-from body_models.smpl import torch as smpl_torch
-from body_models.smplh import numpy as smplh_numpy
-from body_models.smplh import torch as smplh_torch
-from body_models.smplx import numpy as smplx_numpy
-from body_models.smplx import torch as smplx_torch
-from body_models.soma import numpy as soma_numpy
-from body_models.soma import torch as soma_torch
+from body_models import _catalog as catalog
+from body_models import _registry as registry
+from body_models._runtime import TorchRuntime
 
 DEFAULT_SKELETON_BATCH_SIZES = [256, 512, 1024, 2048, 4096]
 DEFAULT_VERTICES_BATCH_SIZES = [64, 128, 256, 512]
@@ -62,142 +37,40 @@ BACKENDS = ("numpy", "torch")
 
 
 @dataclass(frozen=True)
-class ModelSpec:
-    name: str
-    numpy: Callable[[str], Any] | None
-    torch: Callable[[str, torch.device], torch.nn.Module] | None
-    numpy_kernels: tuple[str, ...] = ("numpy",)
-    torch_kernels: tuple[str, ...] = ("torch",)
-    prepare_identity: bool = False
-    vertices_method: str = "forward_vertices"
+class BenchmarkSpec:
+    model_name: str
+    kwargs: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def vertices_method(self) -> str:
+        return "forward_links" if catalog.MODEL_SPECS[self.model_name].kind == "rigid" else "forward_vertices"
+
+    @property
+    def supports_warp(self) -> bool:
+        return catalog.MODEL_SPECS[self.model_name].kind == "skinned"
+
+
+@dataclass(frozen=True)
+class BenchmarkMeasurement:
+    first_call_ms: float
+    steady_state_ms: float
+    peak_memory_mib: float | None
 
 
 @dataclass(frozen=True)
 class BenchmarkResult:
     label: str
-    timings: dict[tuple[str, int], float]
+    measurements: dict[tuple[str, int], BenchmarkMeasurement]
 
 
-def torch_model(model: torch.nn.Module, device: torch.device) -> torch.nn.Module:
-    return model.to(device).eval()
-
-
-MODELS = [
-    ModelSpec(
-        "SMPL",
-        lambda kernel: smpl_numpy.SMPL(gender="neutral", kernel=kernel),
-        lambda kernel, d: torch_model(smpl_torch.SMPL(gender="neutral", kernel=kernel), d),
-        numpy_kernels=smpl_numpy.SMPL.kernels,
-        torch_kernels=smpl_torch.SMPL.kernels,
-    ),
-    ModelSpec(
-        "SMPLH",
-        lambda kernel: smplh_numpy.SMPLH(gender="neutral", kernel=kernel),
-        lambda kernel, d: torch_model(smplh_torch.SMPLH(gender="neutral", kernel=kernel), d),
-        numpy_kernels=smplh_numpy.SMPLH.kernels,
-        torch_kernels=smplh_torch.SMPLH.kernels,
-    ),
-    ModelSpec(
-        "SMPLX",
-        lambda kernel: smplx_numpy.SMPLX(gender="neutral", kernel=kernel),
-        lambda kernel, d: torch_model(smplx_torch.SMPLX(gender="neutral", kernel=kernel), d),
-        numpy_kernels=smplx_numpy.SMPLX.kernels,
-        torch_kernels=smplx_torch.SMPLX.kernels,
-    ),
-    ModelSpec(
-        "MANO",
-        lambda kernel: mano_numpy.MANO(side="left", kernel=kernel),
-        lambda kernel, d: torch_model(mano_torch.MANO(side="left", kernel=kernel), d),
-        numpy_kernels=mano_numpy.MANO.kernels,
-        torch_kernels=mano_torch.MANO.kernels,
-    ),
-    ModelSpec(
-        "SKEL",
-        lambda _kernel: skel_numpy.SKEL(gender="male"),
-        lambda _kernel, d: torch_model(skel_torch.SKEL(gender="male"), d),
-    ),
-    ModelSpec(
-        "FLAME",
-        lambda kernel: flame_numpy.FLAME(kernel=kernel),
-        lambda kernel, d: torch_model(flame_torch.FLAME(kernel=kernel), d),
-        numpy_kernels=flame_numpy.FLAME.kernels,
-        torch_kernels=flame_torch.FLAME.kernels,
-    ),
-    ModelSpec(
-        "ANNY",
-        lambda kernel: anny_numpy.ANNY(kernel=kernel),
-        lambda kernel, d: torch_model(anny_torch.ANNY(kernel=kernel), d),
-        numpy_kernels=anny_numpy.ANNY.kernels,
-        torch_kernels=anny_torch.ANNY.kernels,
-    ),
-    ModelSpec("MHR", lambda _kernel: mhr_numpy.MHR(), lambda _kernel, d: torch_model(mhr_torch.MHR(), d)),
-    ModelSpec(
-        "BRAINCO",
-        lambda _kernel: brainco_numpy.BrainCoHand(side="right"),
-        None,
-        vertices_method="forward_links",
-    ),
-    ModelSpec(
-        "G1",
-        lambda _kernel: g1_numpy.G1(),
-        lambda _kernel, d: torch_model(g1_torch.G1(), d),
-        vertices_method="forward_links",
-    ),
-    ModelSpec(
-        "SOMA",
-        lambda kernel: soma_numpy.SOMA(model_type="soma", kernel=kernel),
-        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="soma", kernel=kernel), d),
-        numpy_kernels=soma_numpy.SOMA.kernels,
-        torch_kernels=soma_torch.SOMA.kernels,
-        prepare_identity=True,
-    ),
-    ModelSpec(
-        "SOMA-ANNY",
-        lambda kernel: soma_numpy.SOMA(model_type="anny", kernel=kernel),
-        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="anny", kernel=kernel), d),
-        numpy_kernels=soma_numpy.SOMA.kernels,
-        torch_kernels=soma_torch.SOMA.kernels,
-        prepare_identity=True,
-    ),
-    ModelSpec(
-        "SOMA-MHR",
-        lambda kernel: soma_numpy.SOMA(model_type="mhr", kernel=kernel),
-        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="mhr", kernel=kernel), d),
-        numpy_kernels=soma_numpy.SOMA.kernels,
-        torch_kernels=soma_torch.SOMA.kernels,
-        prepare_identity=True,
-    ),
-    ModelSpec(
-        "SOMA-SMPL",
-        lambda kernel: soma_numpy.SOMA(model_type="smpl", kernel=kernel),
-        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="smpl", kernel=kernel), d),
-        numpy_kernels=soma_numpy.SOMA.kernels,
-        torch_kernels=soma_torch.SOMA.kernels,
-        prepare_identity=True,
-    ),
-    ModelSpec(
-        "SOMA-SMPLX",
-        lambda kernel: soma_numpy.SOMA(model_type="smplx", kernel=kernel),
-        lambda kernel, d: torch_model(soma_torch.SOMA(model_type="smplx", kernel=kernel), d),
-        numpy_kernels=soma_numpy.SOMA.kernels,
-        torch_kernels=soma_torch.SOMA.kernels,
-        prepare_identity=True,
-    ),
-    ModelSpec(
-        "GARMENT-MEASUREMENTS",
-        lambda kernel: garment_measurements_numpy.GarmentMeasurements(kernel=kernel),
-        lambda kernel, d: torch_model(garment_measurements_torch.GarmentMeasurements(kernel=kernel), d),
-        numpy_kernels=garment_measurements_numpy.GarmentMeasurements.kernels,
-        torch_kernels=garment_measurements_torch.GarmentMeasurements.kernels,
-    ),
-    ModelSpec(
-        "MYOFULLBODY",
-        lambda _kernel: myofullbody_numpy.MyoFullBody(),
-        lambda _kernel, d: torch_model(myofullbody_torch.MyoFullBody(), d),
-        vertices_method="forward_links",
-    ),
-]
-MODEL_NAMES = [model.name for model in MODELS]
+BENCHMARKS = {name: BenchmarkSpec(name) for name in catalog.MODEL_SPECS}
+BENCHMARKS |= {
+    f"soma-{model_type}": BenchmarkSpec(
+        "soma",
+        {"model_type": model_type},
+    )
+    for model_type in ("anny", "mhr", "smpl", "smplx")
+}
 
 
 def main() -> None:
@@ -205,15 +78,24 @@ def main() -> None:
     batch_sizes = parse_batch_sizes(args.batch_sizes)
     skeleton_batch_sizes = batch_sizes or DEFAULT_SKELETON_BATCH_SIZES
     vertices_batch_sizes = batch_sizes or DEFAULT_VERTICES_BATCH_SIZES
+    benchmark_names = args.models or list(BENCHMARKS)
     backends = args.backends or list(BACKENDS)
-    kernels = args.kernels or list(model_kernels())
+    skinning_backends = args.skinning_backends or list(TorchRuntime.SKINNING_BACKENDS)
     devices = parse_devices(args.devices)
     methods = args.methods or ["skeleton", "vertices"]
-    preflight_models(args.models or MODEL_NAMES, backends, kernels)
+
+    preflight_models(
+        benchmark_names,
+        backends,
+        skinning_backends,
+        methods,
+        args.prepared_identity,
+        args.torch_mode,
+    )
     results = benchmark_all(
-        model_names=args.models or MODEL_NAMES,
+        benchmark_names=benchmark_names,
         backends=backends,
-        kernels=kernels,
+        skinning_backends=skinning_backends,
         devices=devices,
         methods=methods,
         skeleton_batch_sizes=skeleton_batch_sizes,
@@ -221,66 +103,60 @@ def main() -> None:
         skeleton_runs=args.skeleton_runs,
         vertices_runs=args.vertices_runs,
         warmup=args.warmup,
+        prepared_identity=args.prepared_identity,
+        torch_mode=args.torch_mode,
     )
 
-    if args.no_save:
-        return
-
-    output_path = Path(__file__).resolve().parent.parent / "BENCHMARK.md"
-    write_markdown(
-        results=results,
-        output_path=output_path,
-        skeleton_runs=args.skeleton_runs,
-        vertices_runs=args.vertices_runs,
-        warmup=args.warmup,
-        backends=backends,
-        kernels=kernels,
-        devices=devices,
-        methods=methods,
-        skeleton_batch_sizes=skeleton_batch_sizes,
-        vertices_batch_sizes=vertices_batch_sizes,
-    )
-
-
-def preflight_models(model_names: list[str], backends: list[str], kernels: list[str]) -> None:
-    print("Checking model instantiation...")
-    wanted = {normalize_model_name(name) for name in model_names}
-
-    for spec in MODELS:
-        if spec.name not in wanted:
-            continue
-
-        if "numpy" in backends and spec.numpy is not None:
-            for kernel in spec.numpy_kernels:
-                if kernel not in kernels:
-                    continue
-                spec.numpy(kernel)
-                print(f"  {spec.name} (numpy/{kernel})")
-
-        if "torch" in backends and spec.torch is not None:
-            for kernel in spec.torch_kernels:
-                if kernel not in kernels:
-                    continue
-                spec.torch(kernel, torch.device("cpu"))
-                print(f"  {spec.name} (torch/{kernel})")
-
-
-def model_kernels() -> tuple[str, ...]:
-    return tuple(
-        dict.fromkeys(
-            kernel
-            for model in MODELS
-            for model_kernels in (model.numpy_kernels, model.torch_kernels)
-            for kernel in model_kernels
+    if args.output is not None:
+        write_markdown(
+            results=results,
+            output_path=args.output,
+            skeleton_runs=args.skeleton_runs,
+            vertices_runs=args.vertices_runs,
+            warmup=args.warmup,
+            backends=backends,
+            skinning_backends=skinning_backends,
+            devices=devices,
+            methods=methods,
+            skeleton_batch_sizes=skeleton_batch_sizes,
+            vertices_batch_sizes=vertices_batch_sizes,
+            prepared_identity=args.prepared_identity,
+            torch_mode=args.torch_mode,
         )
-    )
+
+
+def preflight_models(
+    benchmark_names: list[str],
+    backends: list[str],
+    skinning_backends: list[str],
+    methods: list[str],
+    prepared_identity: bool,
+    torch_mode: str,
+) -> None:
+    print("Checking model instantiation...")
+    for benchmark_name in benchmark_names:
+        spec = BENCHMARKS[benchmark_name]
+        for backend in backends:
+            for skinning_backend in implementations(spec, backend, skinning_backends):
+                if not benchmark_methods(methods, skinning_backend):
+                    continue
+                model = create_model(spec, backend, skinning_backend, torch.device("cpu"))
+                uses_prepared_identity = prepared_identity and hasattr(model, "prepare_identity")
+                result_label = label(
+                    benchmark_name,
+                    backend,
+                    skinning_backend,
+                    prepared_identity=uses_prepared_identity,
+                    torch_mode=torch_mode,
+                )
+                print(f"  {result_label}")
 
 
 def benchmark_all(
     *,
-    model_names: list[str],
+    benchmark_names: list[str],
     backends: list[str],
-    kernels: list[str],
+    skinning_backends: list[str],
     devices: list[torch.device],
     methods: list[str],
     skeleton_batch_sizes: list[int],
@@ -288,136 +164,185 @@ def benchmark_all(
     skeleton_runs: int,
     vertices_runs: int,
     warmup: int,
+    prepared_identity: bool,
+    torch_mode: str,
 ) -> list[BenchmarkResult]:
     results = []
-    wanted = {normalize_model_name(name) for name in model_names}
-
-    for spec in MODELS:
-        if spec.name not in wanted:
-            continue
-
-        if "numpy" in backends and spec.numpy is not None:
-            for kernel in spec.numpy_kernels:
-                if kernel not in kernels:
+    for benchmark_name in benchmark_names:
+        spec = BENCHMARKS[benchmark_name]
+        for backend in backends:
+            for skinning_backend in implementations(spec, backend, skinning_backends):
+                selected_methods = benchmark_methods(methods, skinning_backend)
+                if not selected_methods:
                     continue
-                label = f"{spec.name} (numpy/{kernel})"
-                result = benchmark_model(
-                    label,
-                    spec.numpy(kernel),
-                    "numpy",
-                    None,
-                    spec.prepare_identity,
-                    spec.vertices_method,
-                    methods,
-                    skeleton_batch_sizes,
-                    vertices_batch_sizes,
-                    skeleton_runs,
-                    vertices_runs,
-                    warmup,
-                )
-                results.append(result)
-
-        if "torch" in backends and spec.torch is not None:
-            for kernel in spec.torch_kernels:
-                if kernel not in kernels:
-                    continue
-                for device in devices:
-                    device_name = "gpu" if device.type == "cuda" else device.type
-                    label = f"{spec.name} (torch/{kernel}, {device_name})"
-                    result = benchmark_model(
-                        label,
-                        spec.torch(kernel, device),
-                        "torch",
+                backend_devices = devices if backend == "torch" else [None]
+                for device in backend_devices:
+                    model = create_model(spec, backend, skinning_backend, device)
+                    uses_prepared_identity = prepared_identity and hasattr(model, "prepare_identity")
+                    result_label = label(
+                        benchmark_name,
+                        backend,
+                        skinning_backend,
                         device,
-                        spec.prepare_identity,
-                        spec.vertices_method,
-                        methods,
-                        skeleton_batch_sizes,
-                        vertices_batch_sizes,
-                        skeleton_runs,
-                        vertices_runs,
-                        warmup,
+                        uses_prepared_identity,
+                        torch_mode,
                     )
-                    results.append(result)
-
+                    results.append(
+                        benchmark_model(
+                            result_label,
+                            model,
+                            backend,
+                            device,
+                            spec,
+                            selected_methods,
+                            skeleton_batch_sizes,
+                            vertices_batch_sizes,
+                            skeleton_runs,
+                            vertices_runs,
+                            warmup,
+                            uses_prepared_identity,
+                            torch_mode,
+                        )
+                    )
     return results
 
 
+def implementations(
+    spec: BenchmarkSpec,
+    backend: str,
+    skinning_backends: list[str],
+) -> tuple[str | None, ...]:
+    if backend != "torch" or not spec.supports_warp:
+        return (None,)
+    return tuple(skinning_backends)
+
+
+def benchmark_methods(methods: list[str], skinning_backend: str | None) -> list[str]:
+    if skinning_backend != "warp":
+        return methods
+    return [method for method in methods if method != "skeleton"]
+
+
+def create_model(
+    spec: BenchmarkSpec,
+    backend: str,
+    skinning_backend: str | None,
+    device: torch.device | None,
+) -> Any:
+    kwargs = dict(spec.kwargs)
+    runtime = TorchRuntime(skinning_backend=skinning_backend or "torch") if backend == "torch" else backend
+    model = registry.create_model(spec.model_name, runtime=runtime, **kwargs)
+    if backend == "torch":
+        model = model.as_module().to(device).eval()
+    return model
+
+
+def label(
+    benchmark_name: str,
+    backend: str,
+    skinning_backend: str | None,
+    device: torch.device | None = None,
+    prepared_identity: bool = False,
+    torch_mode: str = "compile",
+) -> str:
+    implementation = backend if skinning_backend is None else f"{backend}/{skinning_backend}"
+    if device is not None:
+        device_name = "gpu" if device.type == "cuda" else device.type
+        implementation = f"{implementation}, {device_name}"
+    if backend == "torch":
+        execution = "compiled" if torch_mode == "compile" else "eager"
+        implementation = f"{implementation}, {execution}"
+    if prepared_identity:
+        implementation = f"{implementation}, prepared identity"
+    return f"{benchmark_name.upper()} ({implementation})"
+
+
 def benchmark_model(
-    label: str,
+    result_label: str,
     model: Any,
     backend: str,
     device: torch.device | None,
-    prepare_identity: bool,
-    vertices_method: str,
+    spec: BenchmarkSpec,
     methods: list[str],
     skeleton_batch_sizes: list[int],
     vertices_batch_sizes: list[int],
     skeleton_runs: int,
     vertices_runs: int,
     warmup: int,
+    prepared_identity: bool,
+    torch_mode: str,
 ) -> BenchmarkResult:
-    print(f"\nBenchmarking {label}...")
-    results = {}
-    method_configs = []
+    print(f"\nBenchmarking {result_label}...")
+    measurements = {}
+    configurations = []
     if "skeleton" in methods:
-        method_configs.append(("forward_skeleton", "forward_skeleton", skeleton_batch_sizes, skeleton_runs))
+        configurations.append(("forward_skeleton", "forward_skeleton", skeleton_batch_sizes, skeleton_runs))
     if "vertices" in methods:
-        method_configs.append(("forward_vertices", vertices_method, vertices_batch_sizes, vertices_runs))
+        configurations.append(("forward_vertices", spec.vertices_method, vertices_batch_sizes, vertices_runs))
 
-    for result_name, method_name, batch_sizes, runs in method_configs:
+    for result_name, method_name, batch_sizes, runs in configurations:
         method = getattr(model, method_name)
-        if backend == "torch":
-            method = compile_method(method, model, device, prepare_identity)
+        if backend == "torch" and torch_mode == "compile":
+            method = torch.compile(method, mode=TORCH_COMPILE_MODE)
 
         for batch_size in batch_sizes:
-            params = benchmark_params(model, batch_size, prepare_identity)
+            params = benchmark_params(model, batch_size, prepared_identity)
             params = move_tensors(params, device)
-            mean_ms = benchmark_method(method, params, backend, device, runs, warmup)
-            results[(result_name, batch_size)] = mean_ms
-            print(f"  {method_name} (B={batch_size:>4}): {mean_ms:8.2f} ms")
+            measurement = benchmark_method(method, params, backend, device, runs, warmup)
+            measurements[(result_name, batch_size)] = measurement
+            memory = f", peak {measurement.peak_memory_mib:.1f} MiB" if measurement.peak_memory_mib is not None else ""
+            print(
+                f"  {method_name} (B={batch_size:>4}): "
+                f"{measurement.steady_state_ms:8.2f} ms steady, "
+                f"{measurement.first_call_ms:.2f} ms first{memory}"
+            )
 
-    return BenchmarkResult(label, results)
+    return BenchmarkResult(result_label, measurements)
 
 
-def benchmark_params(model: Any, batch_size: int, prepare_identity: bool = False) -> dict[str, Any]:
+def benchmark_params(model: Any, batch_size: int, prepared_identity: bool) -> dict[str, Any]:
     params = model.get_rest_pose(batch_dims=(batch_size,))
-    if not prepare_identity:
+    if not prepared_identity:
         return params
 
-    identity = params.pop("shape")
-    scale_params = params.pop("scale_params", None)
-    prepared_identity = model.prepare_identity(identity, scale_params=scale_params)
-    params["identity"] = prepared_identity
+    identity_params = {}
+    for name, parameter in inspect.signature(model.prepare_identity).parameters.items():
+        if name in params:
+            identity_params[name] = params.pop(name)
+        elif parameter.default is inspect.Parameter.empty:
+            raise ValueError(f"get_rest_pose() does not provide required identity parameter {name!r}")
+    params["identity"] = model.prepare_identity(**identity_params)
     return params
 
 
-def compile_method(method: Any, model: Any, device: torch.device | None, prepare_identity: bool) -> Any:
-    method = torch.compile(method, mode=TORCH_COMPILE_MODE)
-    params = benchmark_params(model, batch_size=2, prepare_identity=prepare_identity)
-    params = move_tensors(params, device)
-    with torch.inference_mode():
-        method(**params)
-    return method
-
-
 def benchmark_method(
-    method,
+    method: Any,
     params: dict[str, Any],
     backend: str,
     device: torch.device | None,
-    n_runs: int,
+    runs: int,
     warmup: int,
-) -> float:
+) -> BenchmarkMeasurement:
     context = torch.inference_mode if backend == "torch" else nullcontext
+    synchronize(device)
+    start = time.perf_counter()
+    with context():
+        method(**params)
+    synchronize(device)
+    first_call_ms = (time.perf_counter() - start) * 1000
 
     for _ in range(warmup):
         with context():
             method(**params)
         synchronize(device)
 
+    baseline_memory = None
+    if device is not None and device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+        baseline_memory = torch.cuda.memory_allocated(device)
+
     times = []
-    for _ in range(n_runs):
+    for _ in range(runs):
         synchronize(device)
         start = time.perf_counter()
         with context():
@@ -425,7 +350,15 @@ def benchmark_method(
         synchronize(device)
         times.append((time.perf_counter() - start) * 1000)
 
-    return mean_without_outliers(times)
+    peak_memory_mib = None
+    if baseline_memory is not None:
+        peak_memory = torch.cuda.max_memory_allocated(device) - baseline_memory
+        peak_memory_mib = peak_memory / 2**20
+    return BenchmarkMeasurement(
+        first_call_ms=first_call_ms,
+        steady_state_ms=mean_without_outliers(times),
+        peak_memory_mib=peak_memory_mib,
+    )
 
 
 def write_markdown(
@@ -436,13 +369,16 @@ def write_markdown(
     vertices_runs: int,
     warmup: int,
     backends: list[str],
-    kernels: list[str],
+    skinning_backends: list[str],
     devices: list[torch.device],
     methods: list[str],
     skeleton_batch_sizes: list[int],
     vertices_batch_sizes: list[int],
+    prepared_identity: bool,
+    torch_mode: str,
 ) -> None:
-    torch_devices = ", ".join("gpu" if device.type == "cuda" else device.type for device in devices)
+    torch_devices = ", ".join(device_description(device) for device in devices)
+    torch_execution = f"torch.compile(mode={TORCH_COMPILE_MODE!r})" if torch_mode == "compile" else "eager"
     lines = [
         "# Benchmark Results",
         "",
@@ -450,35 +386,68 @@ def write_markdown(
         f"- **Vertices runs per measurement**: {vertices_runs} (outliers removed via IQR)",
         f"- **Warmup runs**: {warmup}",
         f"- **Backends**: {', '.join(backends)}",
-        f"- **Kernels**: {', '.join(kernels)}",
+        f"- **Torch skinning backends**: {', '.join(skinning_backends)}",
         f"- **Torch devices**: {torch_devices}",
-        f"- **Torch mode**: `torch.compile(mode={TORCH_COMPILE_MODE!r})`",
+        f"- **Torch execution**: {torch_execution}",
+        f"- **Prepared identities**: {prepared_identity}",
+        f"- **Platform**: {platform.platform()}",
         f"- **PyTorch version**: {torch.__version__}",
         f"- **CUDA available**: {torch.cuda.is_available()}",
         "",
     ]
-
     if "skeleton" in methods:
-        skeleton_table = format_table(results, "forward_skeleton", skeleton_batch_sizes)
-        lines.extend(["## `forward_skeleton` (ms)", "", skeleton_table, ""])
+        lines.extend(
+            [
+                "## `forward_skeleton` (ms)",
+                "",
+                format_table(results, "forward_skeleton", skeleton_batch_sizes, "steady_state_ms"),
+                "",
+                "### First call (ms)",
+                "",
+                format_table(results, "forward_skeleton", skeleton_batch_sizes, "first_call_ms"),
+                "",
+                "### Peak CUDA memory (MiB)",
+                "",
+                format_table(results, "forward_skeleton", skeleton_batch_sizes, "peak_memory_mib"),
+                "",
+            ]
+        )
     if "vertices" in methods:
-        vertices_table = format_table(results, "forward_vertices", vertices_batch_sizes)
-        lines.extend(["## `forward_vertices` / `forward_links` (ms)", "", vertices_table, ""])
+        lines.extend(
+            [
+                "## `forward_vertices` / `forward_links` (ms)",
+                "",
+                format_table(results, "forward_vertices", vertices_batch_sizes, "steady_state_ms"),
+                "",
+                "### First call (ms)",
+                "",
+                format_table(results, "forward_vertices", vertices_batch_sizes, "first_call_ms"),
+                "",
+                "### Peak CUDA memory (MiB)",
+                "",
+                format_table(results, "forward_vertices", vertices_batch_sizes, "peak_memory_mib"),
+                "",
+            ]
+        )
 
     output_path.write_text("\n".join(lines))
     print(f"\nResults saved to {output_path}")
 
 
-def format_table(results: list[BenchmarkResult], method_name: str, batch_sizes: list[int]) -> str:
+def format_table(
+    results: list[BenchmarkResult],
+    method_name: str,
+    batch_sizes: list[int],
+    metric: str,
+) -> str:
     header = "| Model | " + " | ".join(f"B={batch_size}" for batch_size in batch_sizes) + " |"
     separator = "|---|" + "|".join("---:" for _ in batch_sizes) + "|"
     rows = []
-
     for result in results:
-        values = [result.timings.get((method_name, batch_size)) for batch_size in batch_sizes]
+        measurements = [result.measurements.get((method_name, batch_size)) for batch_size in batch_sizes]
+        values = [getattr(measurement, metric) if measurement is not None else None for measurement in measurements]
         cells = [f"{value:.2f}" if value is not None else "N/A" for value in values]
         rows.append(f"| {result.label} | " + " | ".join(cells) + " |")
-
     return "\n".join([header, separator, *rows])
 
 
@@ -503,30 +472,35 @@ def synchronize(device: torch.device | None) -> None:
         torch.cuda.synchronize()
 
 
+def device_description(device: torch.device) -> str:
+    if device.type != "cuda":
+        return device.type
+    return f"cuda ({torch.cuda.get_device_name(device)})"
+
+
 def parse_args() -> argparse.Namespace:
-    kernels = model_kernels()
     parser = argparse.ArgumentParser(description="Benchmark body models")
     parser.add_argument(
         "-m",
         "--model",
         action="append",
         dest="models",
-        metavar="NAME",
-        help=f"Model(s) to benchmark (can repeat). Choices: {', '.join(MODEL_NAMES)}",
+        choices=BENCHMARKS,
+        help="Model benchmark to run (can repeat). Default: all",
     )
     parser.add_argument(
         "--backend",
         action="append",
         dest="backends",
         choices=BACKENDS,
-        help=f"Backend(s) to benchmark: {', '.join(BACKENDS)} (can repeat). Default: all",
+        help="Array backend to benchmark (can repeat). Default: all",
     )
     parser.add_argument(
-        "--kernel",
+        "--skinning-backend",
         action="append",
-        dest="kernels",
-        choices=kernels,
-        help=f"Kernel(s) to benchmark: {', '.join(kernels)} (can repeat). Default: all",
+        dest="skinning_backends",
+        choices=TorchRuntime.SKINNING_BACKENDS,
+        help="Torch skinning backend (can repeat). Default: all",
     )
     parser.add_argument(
         "-d",
@@ -534,43 +508,37 @@ def parse_args() -> argparse.Namespace:
         action="append",
         dest="devices",
         metavar="DEV",
-        help="Torch device(s) to benchmark: cpu, cuda (can repeat). Default: cpu plus cuda when available",
+        help="Torch device (can repeat). Default: cpu plus cuda when available",
     )
     parser.add_argument(
         "--method",
         action="append",
         dest="methods",
         choices=["skeleton", "vertices"],
-        help="Method(s) to benchmark (can repeat). Default: both",
+        help="Method to benchmark (can repeat). Default: both",
     )
     parser.add_argument(
         "--batch-sizes",
-        type=str,
-        help="Override batch sizes (comma-separated, e.g. '512,1024,2048'). Applies to both methods.",
+        help="Override batch sizes with a comma-separated list",
     )
+    parser.add_argument("--skeleton-runs", type=int, default=DEFAULT_SKELETON_RUNS)
+    parser.add_argument("--vertices-runs", type=int, default=DEFAULT_VERTICES_RUNS)
+    parser.add_argument("-w", "--warmup", type=int, default=DEFAULT_WARMUP)
     parser.add_argument(
-        "--skeleton-runs",
-        type=int,
-        default=DEFAULT_SKELETON_RUNS,
-        help=f"Timed runs for forward_skeleton (default: {DEFAULT_SKELETON_RUNS})",
-    )
-    parser.add_argument(
-        "--vertices-runs",
-        type=int,
-        default=DEFAULT_VERTICES_RUNS,
-        help=f"Timed runs for forward_vertices (default: {DEFAULT_VERTICES_RUNS})",
-    )
-    parser.add_argument(
-        "-w",
-        "--warmup",
-        type=int,
-        default=DEFAULT_WARMUP,
-        help=f"Number of warmup runs (default: {DEFAULT_WARMUP})",
-    )
-    parser.add_argument(
-        "--no-save",
+        "--prepared-identity",
         action="store_true",
-        help="Don't write results to BENCHMARK.md",
+        help="Precompute identity-dependent state for models that support it",
+    )
+    parser.add_argument(
+        "--torch-mode",
+        choices=("compile", "eager"),
+        default="compile",
+        help="Torch execution mode (default: compile)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Optional Markdown output path",
     )
     return parser.parse_args()
 
@@ -584,15 +552,10 @@ def parse_batch_sizes(value: str | None) -> list[int] | None:
 def parse_devices(values: list[str] | None) -> list[torch.device]:
     if values is not None:
         return [torch.device(value) for value in values]
-
     devices = [torch.device("cpu")]
     if torch.cuda.is_available():
         devices.append(torch.device("cuda"))
     return devices
-
-
-def normalize_model_name(name: str) -> str:
-    return name.upper().replace("_", "-")
 
 
 if __name__ == "__main__":

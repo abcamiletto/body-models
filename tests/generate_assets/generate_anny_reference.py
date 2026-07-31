@@ -12,7 +12,7 @@
 """Generate reference assets from the official ANNY model.
 
 Installs the official ANNY package, runs it directly to produce vertices and
-bone poses, and saves inputs/outputs under `tests/assets/references/anny`.
+bone poses, and saves inputs/outputs under `tests/assets/anny`.
 """
 
 import json
@@ -23,7 +23,7 @@ import torch
 
 torch.manual_seed(42)
 
-TEST_ASSETS_DIR = Path(__file__).parent.parent / "tests" / "assets" / "references" / "anny"
+TEST_ASSETS_DIR = Path(__file__).parents[1] / "assets" / "anny"
 
 
 def _prepare_phenotype_data(batch_size: int) -> dict[str, torch.Tensor]:

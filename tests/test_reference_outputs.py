@@ -1,23 +1,24 @@
 import json
 
+import model_assets
+import model_cases
 import numpy as np
 import pytest
 from nanomanifold import SO3
 
-import model_assets
-import model_cases
-from body_models.anny import pose as anny_pose
-from body_models.base import RigidBodyModel
-from body_models.mhr import pose as mhr_pose
-from body_models.skel import pose as skel_pose
-from body_models.bodies.soma import pose as soma_pose
-from body_models.bodies.soma.generate_asset import generate_asset as generate_soma_asset
-from body_models.bodies.soma.numpy import SOMA
+from body_models import RigidBodyModel
+from body_models._common import skinning
+from body_models.anny import _pose as anny_pose
+from body_models.mhr import _pose as mhr_pose
+from body_models.skel import _pose as skel_pose
+from body_models.soma import SOMA
+from body_models.soma import _pose as soma_pose
+from body_models.soma._generate_asset import generate_asset as generate_soma_asset
 
 
-@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
-def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
-    model = numpy_model(**kwargs)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.REFERENCE_MODELS)
+def test_numpy_reference_vertices(name, model_class, kwargs) -> None:
+    model = model_class(**kwargs)
     inputs = reference_inputs(name)
     if isinstance(model, RigidBodyModel):
         vertices = np.stack([mesh.vertices for mesh in model.forward_meshes(**inputs)], axis=0)
@@ -30,11 +31,11 @@ def test_numpy_reference_vertices(name, numpy_model, _torch_model, _jax_model, k
     np.testing.assert_allclose(vertices[0], expected, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(("name", "numpy_model", "_torch_model", "_jax_model", "kwargs"), model_cases.REFERENCE_MODELS)
-def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, kwargs) -> None:
-    model = numpy_model(**kwargs)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.REFERENCE_MODELS)
+def test_numpy_reference_skeleton(name, model_class, kwargs) -> None:
+    model = model_class(**kwargs)
     inputs = reference_inputs(name)
-    skeleton = model.forward_skeleton(**inputs)
+    skeleton = model_cases.forward_skeleton(model, inputs)
     skeleton_outputs = {"anny": "bone_poses.npy", "mhr": "skeleton.npy", "skel": "joints.npy"}
     filename = skeleton_outputs.get(name, "joints.npy")
     expected = np.load(model_cases.ASSETS / name / "outputs/0" / filename)
@@ -47,9 +48,7 @@ def test_numpy_reference_skeleton(name, numpy_model, _torch_model, _jax_model, k
         np.testing.assert_allclose(skeleton[0, :, :3, 3], expected[: skeleton.shape[1]], rtol=1e-4, atol=1e-4)
     elif name == "mhr":
         assert_mhr_skeleton_close(skeleton[0], expected)
-    elif name == "skel":
-        np.testing.assert_allclose(skeleton[0], expected, rtol=1e-4, atol=1e-4)
-    elif expected.shape[-2:] == (4, 4):
+    elif name == "skel" or expected.shape[-2:] == (4, 4):
         np.testing.assert_allclose(skeleton[0], expected, rtol=1e-4, atol=1e-4)
     else:
         np.testing.assert_allclose(skeleton[0, ..., :3, 3], expected, rtol=1e-4, atol=1e-4)
@@ -107,17 +106,13 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
         global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
         identity = model.prepare_identity(shape)
         prepared_pose = model.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
-        vertices = model._kernel.forward_vertices(
-            data=model.weights,
-            global_rotation=global_rotation,
-            global_translation=None,
-            vertex_indices=None,
-            rotation_type=model.rotation_type,
-            rest_vertices=identity["rest_vertices"],
-            skinning_transforms=prepared_pose["skinning_transforms"],
-            pose_offsets=np.zeros_like(prepared_pose["pose_offsets"]),
+        vertices = skinning.linear_blend_skinning(
+            identity["rest_vertices"],
+            prepared_pose["skinning_transforms"],
+            model.prepare_skinning(identity=identity, pose=prepared_pose)["skin_weights"],
             xp=np,
         )
+        vertices = skinning.apply_global_transform(vertices, global_rotation, None, xp=np)
 
         np.testing.assert_allclose(vertices, expected, rtol=2e-3, atol=2e-3)
 

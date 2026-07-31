@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from body_models.robots.g1.io import get_model_path
-from body_models.robots.g1.numpy import G1
+from body_models.g1 import G1
+from body_models.g1._io import get_model_path
 
 
 def test_g1_to_qpos_accepts_rest_pose_motion_dict() -> None:
@@ -24,10 +24,21 @@ def test_g1_forward_skeleton_matches_mujoco_fk() -> None:
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
     global_rotation = np.array([[0.05, -0.1, 0.08]], dtype=np.float32)
 
-    data.qpos[:] = model.to_qpos(body_pose, global_translation, global_rotation=global_rotation)[0]
+    data.qpos[:] = model.to_qpos(
+        body_pose,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+    )[0]
     mujoco.mj_forward(mj_model, data)
-    skeleton = model.forward_skeleton(body_pose, global_translation, global_rotation=global_rotation)
-    mujoco_to_model = np.asarray(model.mujoco_to_model)
+    skeleton = model.forward_skeleton(
+        body_pose,
+        global_rotation=global_rotation,
+        global_translation=global_translation,
+    )
+    mujoco_to_model = np.array(
+        [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]],
+        dtype=np.float32,
+    )
 
     for joint_index, joint_name in enumerate(model.joint_names):
         body_name = _g1_body_name(joint_name)

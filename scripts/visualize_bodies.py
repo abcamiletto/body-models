@@ -11,9 +11,7 @@ import numpy as np
 import viser
 from nanomanifold import SO3
 
-from body_models.base import SkinnedModel
-from body_models.registry import create_model
-
+from body_models import SkinnedModel, create_model
 
 DISPLAY_GLOBAL_ROTATIONS = {
     "ANNY": (-np.pi / 2, 0.0, 0.0),
@@ -223,7 +221,7 @@ def load_models(names: list[str] | None) -> dict[str, SkinnedModel]:
     models = {}
     for name in names or list(MODEL_IDS):
         print(f"Loading {name}", flush=True)
-        model = create_model(MODEL_IDS[name], backend="numpy")
+        model = create_model(MODEL_IDS[name], runtime="numpy")
         if not isinstance(model, SkinnedModel):
             raise TypeError(f"{name} is not a skinned model")
         models[name] = model
@@ -466,7 +464,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
         elif name == "GarmentMeasurements":
             with server.gui.add_folder("Shape"):
-                handles += betas(server, state, key="shape", count=state.model.num_shape_components)
+                handles += betas(server, state, key="shape", count=state.model.NUM_SHAPE_COEFFS)
             with server.gui.add_folder("Body Pose"):
                 handles += joint_xyz(
                     server,
@@ -490,7 +488,7 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                     server,
                     state,
                     key="shape",
-                    count=min(10, state.model.identity_dim),
+                    count=min(10, state.model.num_shape_coeffs),
                     prefix="identity",
                     lo=-1.0,
                     hi=1.0,

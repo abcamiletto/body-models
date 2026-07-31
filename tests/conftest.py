@@ -1,10 +1,9 @@
 """pytest configuration for body-models tests."""
 
+import model_assets
 import pytest
 
-from body_models import config
-
-import model_assets
+from body_models import _config as config
 
 
 @pytest.fixture(autouse=True)
