@@ -61,7 +61,7 @@ MODEL_SPECS: Mapping[str, ModelSpec] = MappingProxyType(
         "mhr": _model("body_models.mhr", "MHR"),
         "myofullbody": _model("body_models.myofullbody", "MyoFullBody"),
         "phc": _model("body_models.smpl_humanoid", "SmplHumanoid", source="phc"),
-        "skel": _model("body_models.skel", "SKEL", gender="male"),
+        "skel": _model("body_models.skel", "SKEL"),
         "smpl": _model("body_models.smpl", "SMPL", gender="neutral"),
         "smpl-humanoid": _model("body_models.smpl_humanoid", "SmplHumanoid"),
         "smplh": _model("body_models.smplh", "SMPLH", gender="neutral"),
