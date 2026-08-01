@@ -72,14 +72,30 @@ SO(3) rotation.
 `SkinningIdentity` is a `TypedDict` containing identity-dependent
 `rest_vertices`. `LinearIdentity` adds rest joints and local joint offsets.
 `SkinningPose` contains `skeleton_transforms`, `skinning_transforms`, and
-optional `pose_offsets`. Shapes retain arbitrary leading batch dimensions.
-Model packages export `*Identity` and `*Pose` types only when they add fields
-to these shared contracts.
+optional compact `pose_coefficients`. `SkinningSpec` contains model-static
+triangles, weights aligned with `skinning_transforms`, and an optional dense or
+sparse corrective basis. Shapes retain arbitrary leading batch dimensions.
+
+The corrective contract is
+`pose_offsets = corrective_basis.apply(pose_coefficients)`. Coefficient
+semantics are model-local and must not be interpreted by consumers. Use
+`model.apply_pose_correctives(identity=identity, pose=pose)` to expand them
+without depending on the basis representation.
+Model packages export `*Identity` types only when they add fields to the shared
+identity contracts; all skinned models use the shared `SkinningPose`.
 
 ::: body_models.LinearIdentity
     options:
       show_source: false
 
-::: body_models.SkinningPayload
+::: body_models.SkinningSpec
+    options:
+      show_source: false
+
+::: body_models.DenseCorrectiveBasis
+    options:
+      show_source: false
+
+::: body_models.SparseCorrectiveBasis
     options:
       show_source: false

@@ -20,6 +20,7 @@ class SparseLinear:
     row_indices: Int[Array, "NNZ"]
     column_indices: Int[Array, "NNZ"]
     values: Float[Array, "NNZ"]
+    input_size: int
     output_size: int
 
     @classmethod
@@ -28,6 +29,7 @@ class SparseLinear:
             row_indices=jnp.asarray(weights.row_indices),
             column_indices=jnp.asarray(weights.column_indices),
             values=jnp.asarray(weights.values),
+            input_size=weights.shape[0],
             output_size=weights.shape[1],
         )
 
@@ -38,6 +40,18 @@ class SparseLinear:
         contributions = inputs[..., self.row_indices] * self.values
         output = jnp.zeros_like(inputs, shape=(*inputs.shape[:-1], self.output_size))
         return output.at[..., self.column_indices].add(contributions)
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return self.input_size, self.output_size
+
+    def to_coo(self) -> sparse_common.SparseMatrix:
+        return sparse_common.SparseMatrix(
+            row_indices=self.row_indices,
+            column_indices=self.column_indices,
+            values=self.values,
+            shape=self.shape,
+        )
 
 
 __all__ = ["SparseLinear"]

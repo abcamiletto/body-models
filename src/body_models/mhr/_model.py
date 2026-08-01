@@ -9,7 +9,14 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 
 from body_models import _common as common
-from body_models._base import ParameterSpec, SkinnedModel
+from body_models._base import (
+    CorrectiveBasis,
+    ParameterSpec,
+    SkinnedModel,
+    SkinningIdentity,
+    SkinningPose,
+    SparseCorrectiveBasis,
+)
 from body_models._common import skinning
 from body_models._runtime import RuntimeLike
 from body_models.mhr import _core as core
@@ -25,8 +32,6 @@ from body_models.mhr._io import get_model_path, load_model_data
 from body_models.mhr._pose import pack_pose, unpack_pose
 
 Array = Any
-MhrIdentity = core.MhrIdentity
-MhrPose = core.MhrPose
 
 
 class MHR(SkinnedModel):
@@ -92,6 +97,10 @@ class MHR(SkinnedModel):
     def parents(self) -> list[int]:
         return list(self._weights.parents)
 
+    @property
+    def _corrective_basis(self) -> CorrectiveBasis:
+        return SparseCorrectiveBasis(self._weights.correctives.basis)
+
     def forward_vertices(
         self,
         body_pose: Float[Array, "*batch 94"],
@@ -100,7 +109,7 @@ class MHR(SkinnedModel):
         *,
         shape: Float[Array, "*batch 45"] | None = None,
         expression: Float[Array, "*batch 72"] | None = None,
-        identity: MhrIdentity | None = None,
+        identity: SkinningIdentity | None = None,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Sequence[int] | None = None,
@@ -118,7 +127,7 @@ class MHR(SkinnedModel):
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose)
         vertices = self._runtime._skin_vertices(
-            identity["rest_vertices"] + pose["pose_offsets"],
+            self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,
@@ -138,7 +147,7 @@ class MHR(SkinnedModel):
         *,
         shape: Float[Array, "*batch 45"] | None = None,
         expression: Float[Array, "*batch 72"] | None = None,
-        identity: MhrIdentity | None = None,
+        identity: SkinningIdentity | None = None,
         global_rotation: Float[Array, "*batch 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Sequence[int] | None = None,
@@ -170,7 +179,7 @@ class MHR(SkinnedModel):
         self,
         shape: Float[Array, "*batch 45"],
         expression: Float[Array, "*batch 72"],
-    ) -> MhrIdentity:
+    ) -> SkinningIdentity:
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
@@ -185,7 +194,7 @@ class MHR(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
-    ) -> MhrPose:
+    ) -> SkinningPose:
         """Precompute pose-dependent MHR state."""
         pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
@@ -198,7 +207,6 @@ class MHR(SkinnedModel):
             bind_inv_linear=self._weights.bind_inv_linear,
             bind_inv_translation=self._weights.bind_inv_translation,
             corrective_hidden_weights=self._weights.correctives.hidden_weights,
-            corrective_output_weights=self._weights.correctives.output_weights,
             pose=pose,
             xp=self._runtime.xp,
         )

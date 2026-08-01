@@ -112,9 +112,12 @@ define its two public specializations. The shared contract includes `runtime`,
 `joint_index`, and `forward_skeleton`.
 `has_face` indicates facial-expression controls; `has_hands` indicates
 articulated hand controls. Neither describes mesh geometry. Skinned models
-additionally share `skin_weights`, `rest_vertices`, and `forward_vertices`.
-Rigid articulated models expose link metadata, `forward_links`, and
-`forward_meshes` instead of skinning weights.
+additionally share `skin_weights`, `skinning_spec`, `rest_vertices`,
+`apply_pose_correctives`, and `forward_vertices`. `skin_weights` follows the
+public skeleton; `skinning_spec.skinning_weights` follows the complete render
+rig and its prepared skinning transforms. Rigid articulated models expose link
+metadata, cached link-local `link_meshes`, `forward_links`, and `forward_meshes`
+instead of skinning weights.
 
 `joint_names` and `parents` describe the complete native skeleton in joint
 index order. The `Joint` enum names anatomical joints shared across models;
@@ -134,6 +137,6 @@ Array shapes use arbitrary leading batch dimensions throughout. For example,
 an annotated `*batch J 4 4` skeleton can be unbatched, singly batched, or have
 several leading batch axes.
 
-Skinned model packages export model-specific identity and pose types when their
-schemas are unique. Shared contracts are available as `LinearIdentity`,
-`SkinningIdentity`, `SkinningPose`, and `SkinningPayload` from `body_models`.
+Skinned model packages export model-specific identity types when their schemas
+are unique. Shared contracts are available as `LinearIdentity`,
+`SkinningIdentity`, `SkinningPose`, and `SkinningSpec` from `body_models`.

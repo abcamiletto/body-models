@@ -1,10 +1,11 @@
 """Backend-agnostic linear deformation primitives."""
 
-from typing import Any, NotRequired, TypedDict
+from dataclasses import dataclass
+from typing import Any, NotRequired, TypeAlias, TypedDict
 
-from jaxtyping import Float
+from jaxtyping import Float, Int
 
-from body_models._common import kinematics, ops
+from body_models._common import kinematics, ops, sparse
 
 Array = Any
 
@@ -31,7 +32,60 @@ class SkinningPose(TypedDict):
 
     skeleton_transforms: Float[Array, "*batch J 4 4"]
     skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
+    pose_coefficients: NotRequired[Float[Array, "*batch C"]]
+
+
+@dataclass(frozen=True)
+class DenseCorrectiveBasis:
+    """Dense corrective basis stored as ``[coefficients, vertex coordinates]``."""
+
+    values: Float[Array, "C V*3"]
+
+    @property
+    def coefficient_dim(self) -> int:
+        return self.values.shape[0]
+
+    @property
+    def num_vertices(self) -> int:
+        return self.values.shape[1] // 3
+
+    def apply(self, coefficients: Float[Array, "*batch C"]) -> Float[Array, "*batch V 3"]:
+        return (coefficients @ self.values).reshape(*coefficients.shape[:-1], self.num_vertices, 3)
+
+
+@dataclass(frozen=True)
+class SparseCorrectiveBasis:
+    """Sparse corrective basis backed by the active array runtime."""
+
+    linear: sparse.SparseLinear
+
+    @property
+    def coefficient_dim(self) -> int:
+        return self.linear.shape[0]
+
+    @property
+    def num_vertices(self) -> int:
+        return self.linear.shape[1] // 3
+
+    def apply(self, coefficients: Float[Array, "*batch C"]) -> Float[Array, "*batch V 3"]:
+        offsets = self.linear(coefficients)
+        return offsets.reshape(*coefficients.shape[:-1], self.num_vertices, 3)
+
+    def to_coo(self) -> sparse.SparseMatrix:
+        """Return the basis in coordinate format without densifying it."""
+        return self.linear.to_coo()
+
+
+CorrectiveBasis: TypeAlias = DenseCorrectiveBasis | SparseCorrectiveBasis
+
+
+@dataclass(frozen=True)
+class SkinningSpec:
+    """Model-static data consumed by linear blend skinning renderers."""
+
+    triangles: Int[Array, "F 3"]
+    skinning_weights: Float[Array, "V J"]
+    corrective_basis: CorrectiveBasis | None = None
 
 
 def prepare_linear_identity(
@@ -104,28 +158,28 @@ def blend_shapes(
     return mean + xp.einsum("...c,vdc->...vd", coefficients, directions)
 
 
-def pose_blend_shapes(
+def pose_coefficients(
     rotations: Float[Array, "*batch J 3 3"],
-    directions: Float[Array, "P V*3"],
     *,
     xp: Any,
-) -> Float[Array, "*batch V 3"]:
-    """Blend root-excluded joint rotation deviations into vertex offsets."""
+) -> Float[Array, "*batch C"]:
+    """Flatten root-excluded joint rotation deviations."""
     batch_shape = rotations.shape[:-3]
     identity = ops.eye_as(rotations, batch_dims=(*batch_shape, 1), xp=xp)
-    features = (rotations[..., 1:, :, :] - identity).reshape(*batch_shape, -1)
-    if features.shape[-1] != directions.shape[0]:
-        raise ValueError("directions do not match the non-root joint rotations")
-    return (features @ directions).reshape(*batch_shape, -1, 3)
+    return (rotations[..., 1:, :, :] - identity).reshape(*batch_shape, -1)
 
 
 __all__ = [
+    "CorrectiveBasis",
+    "DenseCorrectiveBasis",
     "LinearIdentity",
     "SkeletonIdentity",
     "SkinningIdentity",
     "SkinningPose",
+    "SkinningSpec",
+    "SparseCorrectiveBasis",
     "blend_shapes",
-    "pose_blend_shapes",
+    "pose_coefficients",
     "prepare_linear_identity",
     "prepare_linear_skeleton",
 ]

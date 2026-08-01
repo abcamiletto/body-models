@@ -177,6 +177,33 @@ def forward_meshes_from_links(
     return [_concatenate_meshes(batch_meshes) for batch_meshes in meshes_by_batch]
 
 
+def link_meshes(
+    vertices: Float[Array, "V 3"],
+    faces: Int[Array, "F 3"],
+    link_vertex_starts: list[int],
+    link_vertex_counts: list[int],
+    link_face_starts: list[int],
+    link_face_counts: list[int],
+    *,
+    to_numpy: _ToNumpy,
+) -> list[Trimesh]:
+    """Build one link-local mesh per packed geometry range."""
+    vertices = to_numpy(vertices)
+    faces = to_numpy(faces)
+    meshes = []
+    for vertex_start, vertex_count, face_start, face_count in zip(
+        link_vertex_starts,
+        link_vertex_counts,
+        link_face_starts,
+        link_face_counts,
+        strict=True,
+    ):
+        link_vertices = vertices[vertex_start : vertex_start + vertex_count]
+        link_faces = faces[face_start : face_start + face_count] - vertex_start
+        meshes.append(_make_trimesh(vertices=link_vertices, faces=link_faces))
+    return meshes
+
+
 def _make_trimesh(
     *,
     vertices: Float[np.ndarray, "V 3"],

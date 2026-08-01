@@ -3,8 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, NotRequired, TypedDict
+from functools import cached_property, partial
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -55,19 +55,13 @@ class ParameterSpec:
         )
 
 
-class SkinningPayload(TypedDict):
-    """Renderer-ready linear blend skinning inputs."""
-
-    rest_vertices: Float[Array, "*batch V 3"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: NotRequired[Float[Array, "*batch V 3"]]
-    skin_weights: Float[Array, "V J"]
-    faces: Int[Array, "F C"]
-
-
+CorrectiveBasis = deformation.CorrectiveBasis
+DenseCorrectiveBasis = deformation.DenseCorrectiveBasis
 LinearIdentity = deformation.LinearIdentity
+SkinningSpec = deformation.SkinningSpec
 SkinningIdentity = deformation.SkinningIdentity
 SkinningPose = deformation.SkinningPose
+SparseCorrectiveBasis = deformation.SparseCorrectiveBasis
 
 
 class ArticulatedModel(ABC):
@@ -223,7 +217,7 @@ class SkinnedModel(ArticulatedModel):
     @property
     @abstractmethod
     def skin_weights(self) -> Float[Array, "V J"]:
-        """Skinning weights mapping vertices to joints. Shape [V, J]."""
+        """Skinning weights aligned with the public skeleton. Shape [V, J]."""
 
     @property
     @abstractmethod
@@ -233,6 +227,27 @@ class SkinnedModel(ArticulatedModel):
     @property
     def _parameter_reference(self) -> Float[Array, "V 3"]:
         return self.rest_vertices
+
+    @property
+    def _skinning_triangles(self) -> Int[Array, "F 3"]:
+        return self.faces
+
+    @property
+    def _skinning_weights(self) -> Float[Array, "V J"]:
+        return self.skin_weights
+
+    @property
+    def _corrective_basis(self) -> CorrectiveBasis | None:
+        return None
+
+    @property
+    def skinning_spec(self) -> SkinningSpec:
+        """Static topology, render-rig weights, and optional pose correctives."""
+        return SkinningSpec(
+            triangles=self._skinning_triangles,
+            skinning_weights=self._skinning_weights,
+            corrective_basis=self._corrective_basis,
+        )
 
     @abstractmethod
     def forward_vertices(self, *args, **kwargs) -> Float[Array, "*batch V 3"]:
@@ -246,22 +261,21 @@ class SkinnedModel(ArticulatedModel):
             Mesh vertices with shape ``[*batch, V, 3]`` in meters.
         """
 
-    def prepare_skinning(
+    def apply_pose_correctives(
         self,
         *,
         identity: SkinningIdentity,
         pose: SkinningPose,
-    ) -> SkinningPayload:
-        """Pack prepared model state into renderer-ready skinning inputs."""
-        skinning: SkinningPayload = {
-            "rest_vertices": identity["rest_vertices"],
-            "skinning_transforms": pose["skinning_transforms"],
-            "skin_weights": self.skin_weights,
-            "faces": self.faces,
-        }
-        if "pose_offsets" in pose:
-            skinning["pose_offsets"] = pose["pose_offsets"]
-        return skinning
+    ) -> Float[Array, "*batch V 3"]:
+        """Apply prepared pose correctives to identity-dependent rest vertices."""
+        vertices = identity["rest_vertices"]
+        coefficients = pose.get("pose_coefficients")
+        if coefficients is None:
+            return vertices
+        basis = self._corrective_basis
+        if basis is None:
+            raise RuntimeError("Prepared pose has corrective coefficients, but the model has no corrective basis.")
+        return vertices + basis.apply(coefficients)
 
     @staticmethod
     def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:
@@ -305,6 +319,19 @@ class RigidBodyModel(ArticulatedModel):
     @property
     def link_joint_indices(self) -> list[int]:
         return list(self._weights.link_joint_indices)
+
+    @cached_property
+    def link_meshes(self) -> Sequence[Trimesh]:
+        """Link-local meshes aligned with :attr:`link_names` and ``forward_links()``."""
+        return rigid_ops.link_meshes(
+            self._weights.vertices,
+            self._weights.faces,
+            self._weights.link_vertex_starts,
+            self._weights.link_vertex_counts,
+            self._weights.link_face_starts,
+            self._weights.link_face_counts,
+            to_numpy=self._runtime.to_numpy,
+        )
 
     @property
     def num_vertices(self) -> int:
