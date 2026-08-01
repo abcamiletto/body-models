@@ -1,3 +1,5 @@
+import hashlib
+import json
 import tarfile
 import tempfile
 import zipfile
@@ -11,6 +13,7 @@ from platformdirs import user_cache_dir
 
 __all__ = [
     "HF_MODEL_REPO_ID",
+    "derived_cache_key",
     "download_hf_archive",
     "extract_archive",
     "get_cache_dir",
@@ -18,6 +21,26 @@ __all__ = [
 ]
 
 HF_MODEL_REPO_ID = "abcamiletto/body-models"
+
+
+def derived_cache_key(
+    version: str,
+    *,
+    sources: Iterable[Path],
+    parameters: Iterable[str | int | float | bool | None] = (),
+) -> str:
+    """Identify a derived artifact by its transformation and source files."""
+    digest = hashlib.sha256()
+    digest.update(version.encode() + b"\0")
+    digest.update(json.dumps(tuple(parameters), separators=(",", ":")).encode() + b"\0")
+    for source in sources:
+        source = source.resolve(strict=True)
+        if not source.is_file():
+            raise ValueError(f"Cache key source must be a file: {source}")
+        digest.update(str(source).encode() + b"\0")
+        stat = source.stat()
+        digest.update(f"{stat.st_size}:{stat.st_mtime_ns}".encode() + b"\0")
+    return digest.hexdigest()[:32]
 
 
 def get_cache_dir() -> Path:

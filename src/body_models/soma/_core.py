@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -11,6 +11,9 @@ from body_models import _common as common
 from body_models._common import skinning
 from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
+
+if TYPE_CHECKING:
+    from body_models.soma._io import SomaWeights
 
 Array = Any
 Front = tuple[list[int], list[int]]
@@ -30,12 +33,12 @@ class SomaIdentity(SomaSkeletonIdentity):
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"]
 
 
-def skinning_weights(data: Any) -> Float[Array, "Va Jf"]:
+def skinning_weights(data: SomaWeights) -> Float[Array, "Va Jf"]:
     return data.skin_weights_active[:, 1:]
 
 
 def prepare_identity_from_rest_shape(
-    data: Any,
+    data: SomaWeights,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
@@ -52,11 +55,11 @@ def prepare_identity_from_rest_shape(
         repose=repose,
         bind_pose=bind_pose,
     )
-    return _prepare_identity_state(xp, bind_shape, world_bind_pose, data.topology.parents_full)
+    return _prepare_identity_state(xp, bind_shape, world_bind_pose, data.kinematics.parents_full)
 
 
 def prepare_skeleton_identity_from_rest_shape(
-    data: Any,
+    data: SomaWeights,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
@@ -74,11 +77,11 @@ def prepare_skeleton_identity_from_rest_shape(
         repose=repose,
         bind_pose=bind_pose,
     )
-    return _prepare_skeleton_identity_state(xp, world_bind_pose, data.topology.parents_full)
+    return _prepare_skeleton_identity_state(xp, world_bind_pose, data.kinematics.parents_full)
 
 
 def _prepare_bind_state(
-    data: Any,
+    data: SomaWeights,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
@@ -87,83 +90,35 @@ def _prepare_bind_state(
     bind_pose: BindPoseMode,
 ) -> tuple[Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
     xp = runtime.xp
-    if data.public is not None:
-        return _prepare_procedural_bind_state(
-            data,
-            rest_shape_full=rest_shape_full,
-            rest_shape_active=rest_shape_active,
-            runtime=runtime,
-            repose=repose,
-            bind_pose=bind_pose,
-        )
+    control_rig = data.control_rig
 
-    rest_shape_full, world_bind_pose_fit = _bind_pose_for_rest_shape(
+    rest_shape_full, control_world_bind_pose_fit = _bind_pose_for_rest_shape(
         runtime=runtime,
         mode=bind_pose,
         bind_shape=data.bind_shape_full,
-        bind_pose_world=data.bind_pose_world,
-        joint_regressor=data.joint_regressor,
-        joint_children_full=data.topology.joint_children_full,
-        joint_children_indices_full=data.topology.joint_children_indices_full,
-        skinned_vertex_indices_full=data.topology.skinned_vertex_indices_full,
-        skinned_vertex_indices_full_index=data.topology.skinned_vertex_indices_full_index,
-        parents_full=data.topology.parents_full,
+        bind_pose_world=control_rig.bind_pose_world,
+        joint_regressor=control_rig.joint_regressor,
+        joint_children_full=control_rig.joint_children_full,
+        joint_children_indices_full=control_rig.joint_children_indices_full,
+        skinned_vertex_indices_full=control_rig.skinned_vertex_indices_full,
+        skinned_vertex_indices_full_index=control_rig.skinned_vertex_indices_full_index,
+        parents_full=control_rig.kinematics.parents_full,
         rest_shape=rest_shape_full,
     )
     bind_shape_active = rest_shape_active
-    world_bind_pose = world_bind_pose_fit
+    control_world_bind_pose = control_world_bind_pose_fit
     if repose:
-        bind_shape_active, world_bind_pose = repose_to_bind_pose(
+        bind_shape_active, control_world_bind_pose = repose_to_bind_pose(
             xp=xp,
             rest_shape=rest_shape_active,
-            skin_weights=data.skin_weights_active,
-            world_bind_pose_fit=world_bind_pose_fit,
-            bind_pose_local=data.bind_pose_local,
-            kinematic_fronts=data.topology.kinematic_fronts_full,
-            parents_full=data.topology.parents_full,
+            skin_weights=control_rig.skin_weights_active,
+            world_bind_pose_fit=control_world_bind_pose_fit,
+            bind_pose_local=control_rig.bind_pose_local,
+            kinematic_fronts=control_rig.kinematics.kinematic_fronts_full,
+            parents_full=control_rig.kinematics.parents_full,
         )
-    return bind_shape_active, world_bind_pose
-
-
-def _prepare_procedural_bind_state(
-    data: Any,
-    *,
-    rest_shape_full: Float[Array, "B Vf 3"],
-    rest_shape_active: Float[Array, "B Va 3"],
-    runtime: ArrayRuntime,
-    repose: bool,
-    bind_pose: BindPoseMode,
-) -> tuple[Float[Array, "B Va 3"], Float[Array, "B Jf 4 4"]]:
-    xp = runtime.xp
-    public = data.public
-
-    rest_shape_full, public_world_bind_pose_fit = _bind_pose_for_rest_shape(
-        runtime=runtime,
-        mode=bind_pose,
-        bind_shape=data.bind_shape_full,
-        bind_pose_world=public.bind_pose_world,
-        joint_regressor=public.joint_regressor,
-        joint_children_full=public.topology.joint_children_full,
-        joint_children_indices_full=public.topology.joint_children_indices_full,
-        skinned_vertex_indices_full=public.topology.skinned_vertex_indices_full,
-        skinned_vertex_indices_full_index=public.topology.skinned_vertex_indices_full_index,
-        parents_full=public.topology.parents_full,
-        rest_shape=rest_shape_full,
-    )
-    bind_shape_active = rest_shape_active
-    public_world_bind_pose = public_world_bind_pose_fit
-    if repose:
-        bind_shape_active, public_world_bind_pose = repose_to_bind_pose(
-            xp=xp,
-            rest_shape=rest_shape_active,
-            skin_weights=public.skin_weights_active,
-            world_bind_pose_fit=public_world_bind_pose_fit,
-            bind_pose_local=public.bind_pose_local,
-            kinematic_fronts=public.topology.kinematic_fronts_full,
-            parents_full=public.topology.parents_full,
-        )
-        public_world_bind_pose = _pin_root_transform(xp, public_world_bind_pose)
-    world_bind_pose = _expand_public_bind_pose(xp, data, public_world_bind_pose)
+        control_world_bind_pose = _pin_root_transform(xp, control_world_bind_pose)
+    world_bind_pose = _expand_control_bind_pose(xp, data, control_world_bind_pose)
 
     return bind_shape_active, world_bind_pose
 
@@ -261,22 +216,22 @@ def _bind_pose_for_rest_shape(
     return rest_shape, world_bind_pose
 
 
-def _expand_public_bind_pose(
+def _expand_control_bind_pose(
     xp: Any,
-    data: Any,
-    public_world_bind_pose: Float[Array, "*batch Jp 4 4"],
+    data: SomaWeights,
+    control_world_bind_pose: Float[Array, "*batch Jp 4 4"],
 ) -> Float[Array, "*batch Jf 4 4"]:
-    public_indices = xp.asarray(data.public.procedural.public_joint_indices_full)
-    batch_shape = public_world_bind_pose.shape[:-3]
-    internal_bind_pose = xp.asarray(data.bind_pose_world, dtype=public_world_bind_pose.dtype)
+    control_indices = xp.asarray(data.control_rig.procedural.control_joint_indices_full)
+    batch_shape = control_world_bind_pose.shape[:-3]
+    internal_bind_pose = xp.asarray(data.bind_pose_world, dtype=control_world_bind_pose.dtype)
     target = xp.broadcast_to(internal_bind_pose, (*batch_shape, *internal_bind_pose.shape))
-    target = common.at_set(target, (..., public_indices, slice(None), slice(None)), public_world_bind_pose, xp=xp)
-    translations = xp.asarray(data.public.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
+    target = common.at_set(target, (..., control_indices, slice(None), slice(None)), control_world_bind_pose, xp=xp)
+    translations = xp.asarray(data.control_rig.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
     return common.at_set(target, (..., slice(None), slice(None, 3), 3), translations, xp=xp)
 
 
 def prepare_pose(
-    data: Any,
+    data: SomaWeights,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
@@ -285,7 +240,7 @@ def prepare_pose(
     xp: Any,
 ) -> common.deformation.SkinningPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
-    pose_rot_public, pose_rot_full, skeleton_transforms_full = _prepare_skeleton_state(
+    correctives_pose_rot, skeleton_transforms_full = _prepare_skeleton_state(
         data,
         pose,
         rotation_type,
@@ -293,14 +248,6 @@ def prepare_pose(
         xp=xp,
     )
     skinning_transforms = skeleton_transforms_full @ inverse_bind_transforms
-    correctives_pose_rot = pose_rot_full
-    if data.public is not None:
-        correctives_pose_rot = _orient_pose_rot_full(
-            xp,
-            pose_rot_public,
-            data.public.t_pose_world,
-            data.public.topology.parent_indices_full,
-        )
     hidden = _corrective_hidden_activations(
         correctives_pose_rot,
         data.correctives.corrective_bindpose,
@@ -308,7 +255,7 @@ def prepare_pose(
         xp=xp,
     )
     return {
-        "skeleton_transforms": _public_joint_transforms(xp, data, skeleton_transforms_full),
+        "skeleton_transforms": _control_joint_transforms(xp, data, skeleton_transforms_full),
         "skinning_transforms": skinning_transforms[..., 1:, :, :],
         "pose_coefficients": hidden,
     }
@@ -333,7 +280,7 @@ def _corrective_hidden_activations(
 
 
 def prepare_skeleton(
-    data: Any,
+    data: SomaWeights,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
@@ -341,98 +288,88 @@ def prepare_skeleton(
     xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SOMA public-joint transforms."""
-    _, _, skeleton = _prepare_skeleton_state(
+    _, skeleton = _prepare_skeleton_state(
         data,
         pose,
         rotation_type,
         local_joint_translations=local_joint_translations,
         xp=xp,
     )
-    return _public_joint_transforms(xp, data, skeleton)
+    return _control_joint_transforms(xp, data, skeleton)
 
 
 def _prepare_skeleton_state(
-    data: Any,
+    data: SomaWeights,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
     xp: Any,
 ) -> tuple[
-    Float[Array, "*batch J 3 3"],
-    Float[Array, "*batch Jf 3 3"],
+    Float[Array, "*batch Jp 3 3"],
     Float[Array, "*batch Jf 4 4"],
 ]:
-    pose_rot_public = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    if data.public is None:
-        pose_rot_full = _orient_pose_rot_full(
-            xp,
-            pose_rot_public,
-            data.t_pose_world,
-            data.topology.parent_indices_full,
-        )
-    else:
-        pose_rot_full = _expand_public_pose_rotations(xp, data, pose_rot_public)
+    pose_rot_control = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
+    pose_rot_full, control_local_rotations = _expand_control_pose_rotations(xp, data, pose_rot_control)
     skeleton = _pose_skeleton(
         xp,
         local_joint_translations,
-        data.topology.kinematic_fronts_full,
+        data.kinematics.kinematic_fronts_full,
         pose_rot_full,
     )
-    return pose_rot_public, pose_rot_full, skeleton
+    return control_local_rotations, skeleton
 
 
-def _public_joint_transforms(
-    xp, data: Any, transforms_full: Float[Array, "*batch Jf 4 4"]
+def _control_joint_transforms(
+    xp, data: SomaWeights, transforms_full: Float[Array, "*batch Jf 4 4"]
 ) -> Float[Array, "*batch J 4 4"]:
-    if data.public is None:
-        return transforms_full[..., 1:, :, :]
-    public_joint_indices = data.public.procedural.public_joint_indices_full
-    indices = xp.asarray(public_joint_indices[1:])
+    control_joint_indices = data.control_rig.procedural.control_joint_indices_full
+    indices = xp.asarray(control_joint_indices[1:])
     return transforms_full[..., indices, :, :]
 
 
-def _expand_public_pose_rotations(
-    xp, data: Any, pose_rot: Float[Array, "*batch J 3 3"]
-) -> Float[Array, "*batch Jf 3 3"]:
-    procedural = data.public.procedural
-    public_joint_indices = procedural.public_joint_indices_full
+def _expand_control_pose_rotations(
+    xp, data: SomaWeights, pose_rot: Float[Array, "*batch J 3 3"]
+) -> tuple[Float[Array, "*batch Jf 3 3"], Float[Array, "*batch Jp 3 3"]]:
+    control_rig = data.control_rig
+    procedural = control_rig.procedural
+    control_joint_indices = procedural.control_joint_indices_full
     batch_shape = pose_rot.shape[:-3]
     root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
-    pose_rot_public = xp.concat([root_identity, pose_rot], axis=-3)
-    public_local_rotations = _orient_pose_rot_full(
+    pose_rot_control = xp.concat([root_identity, pose_rot], axis=-3)
+    control_local_rotations = _orient_pose_rot_full(
         xp,
         pose_rot,
-        data.public.t_pose_world,
-        data.public.topology.parent_indices_full,
+        control_rig.t_pose_world,
+        control_rig.kinematics.parent_indices_full,
     )
-    public_local_translations = xp.asarray(data.public.t_pose_local[..., :3, 3], dtype=pose_rot.dtype)
-    public_world_transforms = _pose_skeleton(
+    control_local_translations = xp.asarray(control_rig.t_pose_local[..., :3, 3], dtype=pose_rot.dtype)
+    control_world_transforms = _pose_skeleton(
         xp,
-        public_local_translations,
-        data.public.topology.kinematic_fronts_full,
-        public_local_rotations,
+        control_local_translations,
+        control_rig.kinematics.kinematic_fronts_full,
+        control_local_rotations,
     )
 
-    internal_joint_count = len(data.topology.parents_full)
+    internal_joint_count = len(data.kinematics.parents_full)
     pose_rot_internal = common.eye_as(pose_rot, batch_dims=(*batch_shape, internal_joint_count), xp=xp)
     pose_rot_internal = common.at_set(
         pose_rot_internal,
-        (..., xp.asarray(public_joint_indices), slice(None), slice(None)),
-        pose_rot_public,
+        (..., xp.asarray(control_joint_indices), slice(None), slice(None)),
+        pose_rot_control,
         xp=xp,
     )
     pose_rot_internal = _orient_pose_rot_full(
         xp,
         pose_rot_internal[..., 1:, :, :],
         data.t_pose_world,
-        data.topology.parent_indices_full,
+        data.kinematics.parent_indices_full,
     )
 
     twist_values = _aligned_twist_channels_from_world(
         xp,
         data,
-        public_world_transforms[..., :3, :3],
+        control_world_transforms[..., :3, :3],
     )
     rotation_matrix = xp.asarray(procedural.rotation_matrix, dtype=pose_rot.dtype)
     twist_angles = twist_values @ rotation_matrix.mT
@@ -450,7 +387,7 @@ def _expand_public_pose_rotations(
         current_twist_rot @ twist_rot,
         xp=xp,
     )
-    return pose_rot_internal
+    return pose_rot_internal, control_local_rotations
 
 
 def _x_swing_twist_angles(xp, rotations: Float[Array, "... 3 3"]) -> Float[Array, "..."]:
@@ -472,24 +409,25 @@ def _x_swing_twist_angles(xp, rotations: Float[Array, "... 3 3"]) -> Float[Array
 
 def _aligned_twist_channels_from_world(
     xp,
-    data: Any,
-    public_world_rotations: Float[Array, "*batch Jp 3 3"],
+    data: SomaWeights,
+    control_world_rotations: Float[Array, "*batch Jp 3 3"],
 ) -> Float[Array, "*batch Jp"]:
-    procedural = data.public.procedural
+    control_rig = data.control_rig
+    procedural = control_rig.procedural
     start_ids = xp.asarray(procedural.segment_start_joint_indices)
     end_ids = xp.asarray(procedural.segment_end_joint_indices)
     parent_ids = xp.asarray(procedural.segment_parent_joint_indices)
     alignment = xp.asarray(
         procedural.segment_alignment_rotations,
-        dtype=public_world_rotations.dtype,
+        dtype=control_world_rotations.dtype,
     )
     bind_rotations = xp.asarray(
-        data.public.t_pose_world[..., :3, :3],
-        dtype=public_world_rotations.dtype,
+        control_rig.t_pose_world[..., :3, :3],
+        dtype=control_world_rotations.dtype,
     )
 
     def virtual_rotations(joint_ids):
-        current = public_world_rotations[..., joint_ids, :, :]
+        current = control_world_rotations[..., joint_ids, :, :]
         return current @ bind_rotations[joint_ids].mT @ alignment
 
     end_virtual = virtual_rotations(end_ids)
@@ -499,8 +437,8 @@ def _aligned_twist_channels_from_world(
     inherited_twist = _x_swing_twist_angles(xp, parent_virtual.mT @ start_virtual)
 
     twist_values = common.zeros_as(
-        public_world_rotations,
-        shape=(*public_world_rotations.shape[:-3], public_world_rotations.shape[-3]),
+        control_world_rotations,
+        shape=(*control_world_rotations.shape[:-3], control_world_rotations.shape[-3]),
         xp=xp,
     )
     twist_values = common.at_set(twist_values, (..., end_ids), local_twist, xp=xp)

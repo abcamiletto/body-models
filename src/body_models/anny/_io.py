@@ -1,5 +1,4 @@
 import gzip
-import hashlib
 import itertools
 import json
 from dataclasses import dataclass
@@ -9,10 +8,9 @@ from typing import Any
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
-from ptloader import load as load_pytorch_checkpoint
 
 from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir, write_npz_atomic
+from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
 from body_models._common import Front, compute_kinematic_fronts
 from body_models._common.skinning import CompactSkinning
 
@@ -215,9 +213,21 @@ def _triangulate_faces(faces: Int[np.ndarray, "F _"]) -> Int[np.ndarray, "Ft 3"]
     return np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
 
 
-def _cache_file_stem(rig: str, eyes: bool, tongue: bool) -> str:
-    cache_key = hashlib.md5(f"{rig}_{eyes}_{tongue}".encode()).hexdigest()
-    return f"data_v2_{cache_key}"
+def _cache_file_stem(data_dir: Path, rig: str, eyes: bool, tongue: bool) -> str:
+    mpfb2 = data_dir / "data" / "mpfb2"
+    rig_file, weights_file = _RIG_CONFIGS[rig]
+    rig_dir = mpfb2 / "rigs" / "standard"
+    key = derived_cache_key(
+        "anny-data-v3",
+        sources=(
+            mpfb2 / "3dobjs" / "base.obj",
+            rig_dir / rig_file,
+            rig_dir / weights_file,
+            mpfb2 / "targets" / "target.json",
+        ),
+        parameters=(rig, eyes, tongue),
+    )
+    return f"data_{key}"
 
 
 def _load_data_numpy(
@@ -229,18 +239,11 @@ def _load_data_numpy(
     dtype: Any = np.float32,
 ) -> dict:
     """Load ANNY model data with NumPy."""
-    stem = _cache_file_stem(rig, eyes, tongue)
+    stem = _cache_file_stem(data_dir, rig, eyes, tongue)
     cache_npz = cache_dir / f"{stem}.npz"
-    cache_pth = cache_dir / f"{stem}.pth"
 
     if cache_npz.exists():
         return _load_npz_cache(cache_npz)
-
-    if cache_pth.exists():
-        data = load_pytorch_checkpoint(cache_pth, weights_only=True)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        _save_npz_cache(cache_npz, data)
-        return data
 
     world_T = (
         0.1
