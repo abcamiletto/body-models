@@ -212,7 +212,11 @@ class ArticulatedModel(ABC):
 
 
 class SkinnedModel(ArticulatedModel):
-    """Base class for models that expose one skinned mesh."""
+    """Base class for models that expose one skinned mesh.
+
+    Concrete models provide explicit ``prepare_identity(...)`` and
+    ``prepare_pose(..., identity=...)`` signatures for renderer integration.
+    """
 
     @property
     @abstractmethod

@@ -125,7 +125,7 @@ class MHR(SkinnedModel):
             expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
             identity = self.prepare_identity(shape, expression)
 
-        pose = self.prepare_pose(body_pose, head_pose, hand_pose)
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
             self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
@@ -194,6 +194,8 @@ class MHR(SkinnedModel):
         body_pose: Float[Array, "*batch 94"],
         head_pose: Float[Array, "*batch 6"],
         hand_pose: Float[Array, "*batch 104"],
+        *,
+        identity: SkinningIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent MHR state."""
         pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
