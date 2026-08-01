@@ -30,7 +30,6 @@ from body_models._runtime import (
 for _public in (
     ArticulatedModel,
     ArrayRuntime,
-    CorrectiveBasis,
     DenseCorrectiveBasis,
     JaxRuntime,
     Joint,

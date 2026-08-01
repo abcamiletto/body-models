@@ -196,6 +196,7 @@ def link_meshes(
         link_vertex_counts,
         link_face_starts,
         link_face_counts,
+        strict=True,
     ):
         link_vertices = vertices[vertex_start : vertex_start + vertex_count]
         link_faces = faces[face_start : face_start + face_count] - vertex_start

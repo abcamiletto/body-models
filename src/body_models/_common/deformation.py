@@ -1,7 +1,7 @@
 """Backend-agnostic linear deformation primitives."""
 
 from dataclasses import dataclass
-from typing import Any, NotRequired, Protocol, TypedDict
+from typing import Any, NotRequired, TypeAlias, TypedDict
 
 from jaxtyping import Float, Int
 
@@ -33,18 +33,6 @@ class SkinningPose(TypedDict):
     skeleton_transforms: Float[Array, "*batch J 4 4"]
     skinning_transforms: Float[Array, "*batch J 4 4"]
     pose_coefficients: NotRequired[Float[Array, "*batch C"]]
-
-
-class CorrectiveBasis(Protocol):
-    """Static linear map from pose coefficients to vertex offsets."""
-
-    @property
-    def coefficient_dim(self) -> int: ...
-
-    @property
-    def num_vertices(self) -> int: ...
-
-    def apply(self, coefficients: Float[Array, "*batch C"]) -> Float[Array, "*batch V 3"]: ...
 
 
 @dataclass(frozen=True)
@@ -88,12 +76,15 @@ class SparseCorrectiveBasis:
         return self.linear.to_coo()
 
 
+CorrectiveBasis: TypeAlias = DenseCorrectiveBasis | SparseCorrectiveBasis
+
+
 @dataclass(frozen=True)
 class SkinningSpec:
     """Model-static data consumed by linear blend skinning renderers."""
 
-    faces: Int[Array, "F C"]
-    skin_weights: Float[Array, "V J"]
+    triangles: Int[Array, "F 3"]
+    skinning_weights: Float[Array, "V J"]
     corrective_basis: CorrectiveBasis | None = None
 
 
