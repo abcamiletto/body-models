@@ -1,6 +1,5 @@
 """Shared model list for cross-model tests."""
 
-from inspect import signature
 from pathlib import Path
 
 from body_models import RigidBodyModel, SkinnedModel
@@ -55,9 +54,7 @@ def prepare_states(model, params):
     identity_params = {name: params[name] for name, spec in model.parameter_spec.items() if spec.role == "identity"}
     identity = model.prepare_identity(**identity_params)
     pose_params = {name: params[name] for name, spec in model.parameter_spec.items() if spec.role == "pose"}
-    if "identity" in signature(model.prepare_pose).parameters:
-        pose_params["identity"] = identity
-    pose = model.prepare_pose(**pose_params)
+    pose = model.prepare_pose(**pose_params, identity=identity)
     return identity, pose
 
 

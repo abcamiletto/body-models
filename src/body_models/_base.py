@@ -214,6 +214,19 @@ class ArticulatedModel(ABC):
 class SkinnedModel(ArticulatedModel):
     """Base class for models that expose one skinned mesh."""
 
+    @abstractmethod
+    def prepare_identity(self, *args: Any, **kwargs: Any) -> SkinningIdentity:
+        """Prepare identity-dependent state for rendering."""
+
+    @abstractmethod
+    def prepare_pose(
+        self,
+        *args: Any,
+        identity: SkinningIdentity,
+        **kwargs: Any,
+    ) -> SkinningPose:
+        """Prepare pose-dependent state for rendering."""
+
     @property
     @abstractmethod
     def skin_weights(self) -> Float[Array, "V J"]:
