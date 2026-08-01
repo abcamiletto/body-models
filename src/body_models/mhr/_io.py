@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,7 +12,7 @@ from nanomanifold import SO3
 from ptloader import load as load_pytorch_checkpoint
 
 from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir, write_npz_atomic
+from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
 from body_models._common import Front, compute_kinematic_fronts, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 
@@ -331,8 +330,7 @@ def _load_output_weights(asset_dir: Path, lod: int) -> sparse.SparseMatrix:
 
 def _output_weights_cache_file(asset_dir: Path, lod: int) -> Path:
     source = asset_dir / f"corrective_blendshapes_lod{lod}.npz"
-    stat = source.stat()
-    key = hashlib.md5(f"v1:{source.resolve()}:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()
+    key = derived_cache_key("mhr-correctives-v1", sources=(source,))
     cache_dir = get_cache_dir() / "mhr" / "preprocessed"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"correctives_{key}.npz"

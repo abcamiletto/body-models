@@ -101,24 +101,17 @@ def source_shape(
         )
     if model_type == "anny":
         return cast("ANNY", model).prepare_identity(identity)["rest_vertices"]
-    linear_model = cast("SMPL | SMPLX", model)
-    return linear_identity_shape(
-        mean=linear_model.rest_vertices,
-        shapedirs=linear_model._weights.shapedirs,
-        identity=identity,
-        xp=xp,
-    )
-
-
-def linear_identity_shape(
-    mean: Float[Any, "V 3"],
-    shapedirs: Float[Any, "V 3 I"],
-    identity: Float[Any, "B I"],
-    *,
-    xp: Any,
-) -> Float[Any, "B V 3"]:
-    num_shape_coeffs = identity.shape[-1]
-    return mean + xp.einsum("...i,vci->...vc", identity, shapedirs[..., :num_shape_coeffs])
+    if model_type == "smpl":
+        return cast("SMPL", model).prepare_identity(identity)["rest_vertices"]
+    if model_type == "smplx":
+        smplx = cast("SMPLX", model)
+        expression = common.zeros_as(
+            identity,
+            shape=(*identity.shape[:-1], smplx.NUM_EXPR_COEFFS),
+            xp=xp,
+        )
+        return smplx.prepare_identity(identity, expression)["rest_vertices"]
+    raise ValueError(f"Unsupported SOMA identity model: {model_type}")
 
 
 def mhr_identity_shape(
