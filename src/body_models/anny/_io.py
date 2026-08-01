@@ -102,6 +102,7 @@ class AnnyWeights:
     lbs_weights: Float[Array, "V J"]
     compact_skinning: CompactSkinning
     faces: Int[Array, "F _"]
+    triangles: Int[Array, "Ft 3"]
     bone_labels: list[str]
     parents: list[int]
     kinematic_fronts: list[Front]
@@ -198,6 +199,7 @@ def load_model_data_numpy(
             data["vertex_bone_weights"].astype(dtype),
         ),
         faces=data["faces"],
+        triangles=_triangulate_faces(data["faces"]),
         bone_labels=data["bone_labels"],
         parents=data["parents"],
         kinematic_fronts=kinematic_fronts,
@@ -205,6 +207,12 @@ def load_model_data_numpy(
         y_axis=np.asarray([0.0, 1.0, 0.0], dtype=dtype),
         degenerate_rotation=np.diag(np.asarray([1.0, -1.0, -1.0], dtype=dtype)),
     )
+
+
+def _triangulate_faces(faces: Int[np.ndarray, "F _"]) -> Int[np.ndarray, "Ft 3"]:
+    if faces.shape[-1] == 3:
+        return faces
+    return np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
 
 
 def _cache_file_stem(rig: str, eyes: bool, tongue: bool) -> str:

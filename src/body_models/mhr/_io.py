@@ -46,7 +46,7 @@ __all__ = [
 @dataclass(frozen=True)
 class MhrCorrectives:
     hidden_weights: Float[np.ndarray, "input hidden"]
-    output_weights: sparse.SparseMatrix
+    basis: sparse.SparseMatrix
 
 
 @dataclass(frozen=True)
@@ -293,11 +293,13 @@ def load_pose_correctives_weights(
 
     output_weights = _load_output_weights(asset_dir, lod)
     if vertex_map is not None:
-        output_weights = _select_output_vertices(output_weights, vertex_map)
+        selected_columns = (vertex_map[:, None] * 3 + np.arange(3)).reshape(-1)
+        output_weights = sparse.select_columns(output_weights, selected_columns)
+    output_weights = sparse.scaled(output_weights, 0.01)
 
     return MhrCorrectives(
         hidden_weights=hidden_weights,
-        output_weights=output_weights,
+        basis=output_weights,
     )
 
 
@@ -340,20 +342,3 @@ def _require_assets(model_path: Path, names: tuple[str, ...]) -> None:
     missing = [name for name in names if not (model_path / name).is_file()]
     if missing:
         raise FileNotFoundError(f"MHR model directory is missing required assets: {', '.join(missing)}")
-
-
-def _select_output_vertices(
-    weights: sparse.SparseMatrix,
-    vertex_map: Int[np.ndarray, "V"],
-) -> sparse.SparseMatrix:
-    selected_columns = (vertex_map[:, None] * 3 + np.arange(3)).reshape(-1)
-    column_map = np.full(weights.shape[1], -1, dtype=np.int64)
-    column_map[selected_columns] = np.arange(selected_columns.size)
-    remapped_columns = column_map[weights.column_indices]
-    keep = remapped_columns >= 0
-    return sparse.SparseMatrix(
-        row_indices=weights.row_indices[keep],
-        column_indices=remapped_columns[keep],
-        values=weights.values[keep],
-        shape=(weights.shape[0], selected_columns.size),
-    )

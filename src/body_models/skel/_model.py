@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from jaxtyping import Float, Int
 
-from body_models._base import ParameterSpec, SkinnedModel
+from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, ParameterSpec, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._runtime import RuntimeLike
 from body_models.skel import _core as core
@@ -24,7 +24,6 @@ from body_models.skel._pose import (
 
 Array = Any
 SkelIdentity = core.SkelIdentity
-SkelPose = core.SkelPose
 
 
 @dataclass(frozen=True)
@@ -95,6 +94,10 @@ class SKEL(SkinnedModel):
         return list(self._weights.parents)
 
     @property
+    def _corrective_basis(self) -> CorrectiveBasis:
+        return DenseCorrectiveBasis(self._weights.posedirs)
+
+    @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
@@ -127,7 +130,7 @@ class SKEL(SkinnedModel):
 
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
-            identity["rest_vertices"] + pose["pose_offsets"],
+            self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,
@@ -229,7 +232,7 @@ class SKEL(SkinnedModel):
         head_pose: Float[Array, "*batch 3"],
         *,
         identity: SkelIdentity,
-    ) -> SkelPose:
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
         return core.prepare_pose(
@@ -245,7 +248,6 @@ class SKEL(SkinnedModel):
             spine_axes=self._weights.spine_axes,
             parents=self._weights.parents,
             num_joints_smpl=self._weights.num_joints_smpl,
-            posedirs=self._weights.posedirs,
             pose=packed_pose,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],

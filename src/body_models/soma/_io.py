@@ -96,7 +96,7 @@ class _SparseCoo:
 class SomaCorrectives:
     corrective_bindpose: Float[np.ndarray, "Jf 3 3"]
     hidden_weights: Float[np.ndarray, "input hidden"]
-    output_weights: sparse.SparseMatrix
+    basis: sparse.SparseMatrix
 
 
 @dataclass(frozen=True)
@@ -376,12 +376,18 @@ def with_active_mesh(
     shapedirs_active: Float[np.ndarray, "S Va 3"],
     skin_weights_active: Float[np.ndarray, "Va Jf"],
     faces: Int[np.ndarray, "F 3"],
-    vertex_map: Int[np.ndarray, "Va"] | None,
+    full_vertex_indices: Int[np.ndarray, "Va"] | None,
+    active_vertex_indices: Int[np.ndarray, "Va"] | None,
 ) -> SomaWeights:
+    """Replace the active mesh using indices into the full and current meshes."""
     skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
     skin_joint_indices_active = np.maximum(skin_joint_indices_active - 1, -1)
-    public_skin_weights_active = _active_public_skin_weights(data, vertex_map)
+    public_skin_weights_active = _active_public_skin_weights(data, full_vertex_indices)
     public = None if data.public is None else replace(data.public, skin_weights_active=public_skin_weights_active)
+    correctives = replace(
+        data.correctives,
+        basis=_active_corrective_basis(data.correctives.basis, active_vertex_indices),
+    )
     return replace(
         data,
         mean_active=np.asarray(mean_active, dtype=np.float32),
@@ -392,7 +398,8 @@ def with_active_mesh(
             skin_joint_weights_active,
         ),
         faces=np.asarray(faces, dtype=np.int64),
-        vertex_map=vertex_map,
+        vertex_map=full_vertex_indices,
+        correctives=correctives,
         public=public,
     )
 
@@ -418,7 +425,8 @@ def with_lod_mesh(data: SomaWeights, lod: str) -> SomaWeights:
         shapedirs_active=data.shapedirs_full[:, lod_mesh.vertex_map],
         skin_weights_active=skin_weights,
         faces=lod_mesh.faces,
-        vertex_map=lod_mesh.vertex_map,
+        full_vertex_indices=lod_mesh.vertex_map,
+        active_vertex_indices=lod_mesh.vertex_map,
     )
 
 
@@ -431,6 +439,16 @@ def _active_public_skin_weights(
     if vertex_map is None:
         return data.public.skin_weights_full
     return data.public.skin_weights_full[vertex_map]
+
+
+def _active_corrective_basis(
+    basis: sparse.SparseMatrix,
+    active_vertex_indices: Int[np.ndarray, "Va"] | None,
+) -> sparse.SparseMatrix:
+    if active_vertex_indices is not None:
+        columns = (active_vertex_indices[:, None] * 3 + np.arange(3)).reshape(-1)
+        basis = sparse.select_columns(basis, columns)
+    return basis
 
 
 def public_joint_metadata(data: SomaWeights) -> tuple[list[int], list[str]]:
@@ -753,7 +771,7 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
             return SomaCorrectives(
                 corrective_bindpose=np.asarray(data["bindpose"], dtype=np.float32).copy(),
                 hidden_weights=np.asarray(data["W1"], dtype=np.float32).copy(),
-                output_weights=_cached_sparse_matrix(data, "W2"),
+                basis=sparse.scaled(_cached_sparse_matrix(data, "W2"), 0.01),
             )
 
     checkpoint_path = asset_dir / SOMA_CORRECTIVES_ASSET
@@ -805,7 +823,7 @@ def _load_pose_correctives_weights(asset_dir: Path) -> SomaCorrectives:
     return SomaCorrectives(
         corrective_bindpose=bindpose.copy(),
         hidden_weights=hidden_weights,
-        output_weights=W2,
+        basis=sparse.scaled(W2, 0.01),
     )
 
 
@@ -1130,6 +1148,7 @@ def load_model_data_for_lod(
         shapedirs_active=data.shapedirs_active[:, simplify_map],
         skin_weights_active=data.skin_weights_active[simplify_map],
         faces=faces,
-        vertex_map=vertex_map,
+        full_vertex_indices=vertex_map,
+        active_vertex_indices=simplify_map,
     )
     return resolved_path, weights

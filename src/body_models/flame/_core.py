@@ -33,7 +33,6 @@ def _pose_matrices(
 
 
 def prepare_pose(
-    posedirs: Float[Array, "P V*3"],
     kinematic_fronts: list[Front],
     head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
     head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
@@ -43,7 +42,7 @@ def prepare_pose(
     rest_joints: Float[Array, "*identity_batch J 3"],
     xp: Any,
 ) -> deformation.SkinningPose:
-    """Prepare FLAME transforms and pose-dependent vertex offsets."""
+    """Prepare FLAME transforms and pose-corrective coefficients."""
     pose_matrices = _pose_matrices(
         head_pose,
         head_rotation,
@@ -52,7 +51,6 @@ def prepare_pose(
     )
     return family.prepare_pose(
         pose_matrices,
-        posedirs,
         kinematic_fronts,
         local_joint_offsets=local_joint_offsets,
         rest_joints=rest_joints,

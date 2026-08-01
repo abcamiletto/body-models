@@ -40,7 +40,6 @@ def _pose_matrices(
 
 
 def prepare_pose(
-    posedirs: Float[Array, "P V*3"],
     kinematic_fronts: list[Front],
     hand_mean: Float[Array, "45"],
     hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
@@ -51,7 +50,7 @@ def prepare_pose(
     rest_joints: Float[Array, "*identity_batch J 3"],
     xp: Any,
 ) -> deformation.SkinningPose:
-    """Prepare MANO transforms and pose-dependent vertex offsets."""
+    """Prepare MANO transforms and pose-corrective coefficients."""
     pose_matrices = _pose_matrices(
         hand_mean,
         hand_pose,
@@ -61,7 +60,6 @@ def prepare_pose(
     )
     return family.prepare_pose(
         pose_matrices,
-        posedirs,
         kinematic_fronts,
         local_joint_offsets=local_joint_offsets,
         rest_joints=rest_joints,

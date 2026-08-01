@@ -8,7 +8,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import _common as common
-from body_models._common import skinning, sparse
+from body_models._common import skinning
 from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
 
@@ -28,14 +28,6 @@ class SomaIdentity(SomaSkeletonIdentity):
 
     rest_vertices: Float[Array, "*batch Va 3"]
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"]
-
-
-class SomaPose(TypedDict):
-    """Complete pose-dependent SOMA mesh state."""
-
-    skeleton_transforms: Float[Array, "*batch J 4 4"]
-    skinning_transforms: Float[Array, "*batch J 4 4"]
-    pose_offsets: Float[Array, "*batch Va 3"]
 
 
 def skinning_weights(data: Any) -> Float[Array, "Va Jf"]:
@@ -291,7 +283,7 @@ def prepare_pose(
     local_joint_translations: Float[Array, "*batch Jf 3"],
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"],
     xp: Any,
-) -> SomaPose:
+) -> common.deformation.SkinningPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     pose_rot_public, pose_rot_full, skeleton_transforms_full = _prepare_skeleton_state(
         data,
@@ -315,14 +307,10 @@ def prepare_pose(
         data.correctives.hidden_weights,
         xp=xp,
     )
-    pose_offsets = sparse.linear(hidden, data.correctives.output_weights)
-    pose_offsets = pose_offsets.reshape(*pose_offsets.shape[:-1], -1, 3)
-    if data.vertex_map is not None:
-        pose_offsets = pose_offsets[..., data.vertex_map, :]
     return {
         "skeleton_transforms": _public_joint_transforms(xp, data, skeleton_transforms_full),
         "skinning_transforms": skinning_transforms[..., 1:, :, :],
-        "pose_offsets": pose_offsets * 0.01,
+        "pose_coefficients": hidden,
     }
 
 

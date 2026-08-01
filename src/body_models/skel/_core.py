@@ -33,14 +33,6 @@ class SkelIdentity(SkelSkeletonIdentity):
     rest_vertices: Float[Array, "*batch V 3"]
 
 
-class SkelPose(TypedDict):
-    """Complete pose-dependent SKEL mesh state."""
-
-    skeleton_transforms: Float[Array, "*batch 24 4 4"]
-    skinning_transforms: Float[Array, "*batch 24 4 4"]
-    pose_offsets: Float[Array, "*batch V 3"]
-
-
 def prepare_pose(
     all_axes: Float[Array, "47 3"],
     rotation_indices: Int[Array, "24 3"],
@@ -54,13 +46,12 @@ def prepare_pose(
     spine_axes: Float[Array, "3 3"],
     parents: list[int],
     num_joints_smpl: int,
-    posedirs: Float[Array, "P V*3"],
     pose: Float[Array, "*batch 46"],
     *,
     local_joint_offsets: Float[Array, "*batch 24 3"],
     rest_joints: Float[Array, "*batch 24 3"],
     xp: Any,
-) -> SkelPose:
+) -> common.deformation.SkinningPose:
     """Precompute pose-dependent SKEL state for repeated forward passes."""
     if pose.ndim < 1 or pose.shape[-1] != NUM_POSE_PARAMS:
         raise ValueError(f"pose must have shape [..., {NUM_POSE_PARAMS}]")
@@ -92,7 +83,7 @@ def prepare_pose(
     return {
         "skeleton_transforms": G,
         "skinning_transforms": skinning.bind_relative_transforms(G, rest_joints, xp=xp),
-        "pose_offsets": (pose_feat @ posedirs).reshape(*batch_shape, -1, 3),
+        "pose_coefficients": pose_feat,
     }
 
 
@@ -450,4 +441,4 @@ def _rotation_between_vectors(
     return I + K + (K @ K) * scale
 
 
-__all__ = ["SkelIdentity", "SkelPose", "prepare_identity", "prepare_pose"]
+__all__ = ["SkelIdentity", "prepare_identity", "prepare_pose"]

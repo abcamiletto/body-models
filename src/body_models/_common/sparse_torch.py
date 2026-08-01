@@ -36,6 +36,19 @@ class SparseLinear(nn.Module):
         output = _sparse_mm(self.transpose, flat_inputs.T).T
         return output.reshape(*batch_shape, self.transpose.shape[0])
 
+    @property
+    def shape(self) -> tuple[int, int]:
+        return self.transpose.shape[1], self.transpose.shape[0]
+
+    def to_coo(self) -> sparse_common.SparseMatrix:
+        indices = self.transpose.indices()
+        return sparse_common.SparseMatrix(
+            row_indices=indices[1],
+            column_indices=indices[0],
+            values=self.transpose.values(),
+            shape=self.shape,
+        )
+
 
 @torch.compiler.disable
 def _sparse_mm(

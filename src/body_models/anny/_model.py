@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningIdentity, SkinningPayload, SkinningPose
+from body_models._base import ParameterSpec, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -22,7 +22,6 @@ from body_models.anny._io import EXCLUDED_PHENOTYPES, PHENOTYPE_LABELS, load_mod
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
 AnnyIdentity = core.AnnyIdentity
-AnnyPose = core.AnnyPose
 
 
 @dataclass(frozen=True)
@@ -132,15 +131,9 @@ class ANNY(SkinnedModel):
     def parents(self) -> list[int]:
         return list(self._weights.parents)
 
-    def prepare_skinning(
-        self,
-        *,
-        identity: SkinningIdentity,
-        pose: SkinningPose,
-    ) -> SkinningPayload:
-        payload = super().prepare_skinning(identity=identity, pose=pose)
-        payload["faces"] = _triangulate_faces(self.faces, self._runtime.xp)
-        return payload
+    @property
+    def _skinning_triangles(self) -> Int[Array, "F 3"]:
+        return self._weights.triangles
 
     def forward_vertices(
         self,
@@ -268,7 +261,7 @@ class ANNY(SkinnedModel):
         hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
         *,
         identity: AnnyIdentity,
-    ) -> AnnyPose:
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         xp = self._runtime.xp
         batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])
@@ -358,12 +351,6 @@ class ANNY(SkinnedModel):
     ) -> dict[str, Float[Array, "..."]]:
         """Return the ANNY rest A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
-
-
-def _triangulate_faces(faces: Int[Array, "F _"], xp: Any) -> Int[Array, "Ftri 3"]:
-    if faces.shape[-1] == 3:
-        return faces
-    return xp.concat([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
 
 
 __all__ = ["ANNY", "AnnyConfig"]

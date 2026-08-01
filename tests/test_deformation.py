@@ -19,13 +19,14 @@ def test_blend_shapes_supports_arbitrary_batch_dimensions() -> None:
     np.testing.assert_array_equal(actual, expected)
 
 
-def test_pose_blend_shapes_excludes_the_root_rotation() -> None:
+def test_pose_correctives_exclude_the_root_rotation() -> None:
     rotations = np.broadcast_to(np.eye(3), (2, 3, 3, 3)).copy()
     rotations[..., 0, :, :] = 7.0
     rotations[..., 1, 0, 0] = 2.0
     directions = np.arange(18 * 6, dtype=np.float64).reshape(18, 6)
 
-    actual = deformation.pose_blend_shapes(rotations, directions, xp=np)
+    coefficients = deformation.pose_coefficients(rotations, xp=np)
+    actual = deformation.DenseCorrectiveBasis(directions).apply(coefficients)
     features = (rotations[..., 1:, :, :] - np.eye(3)).reshape(2, -1)
     expected = (features @ directions).reshape(2, 2, 3)
 

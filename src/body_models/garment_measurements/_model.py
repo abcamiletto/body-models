@@ -11,7 +11,7 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel
+from body_models._base import ParameterSpec, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -27,7 +27,6 @@ from body_models.garment_measurements._pose import pack_pose
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
 GarmentMeasurementsIdentity = core.GarmentMeasurementsIdentity
-GarmentMeasurementsPose = core.GarmentMeasurementsPose
 
 
 @dataclass(frozen=True)
@@ -223,7 +222,7 @@ class GarmentMeasurements(SkinnedModel):
         *,
         identity: GarmentMeasurementsIdentity,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-    ) -> GarmentMeasurementsPose:
+    ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(
             self._runtime.xp,

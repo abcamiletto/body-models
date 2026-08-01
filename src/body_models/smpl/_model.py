@@ -178,7 +178,6 @@ class SMPL(SmplFamilyModel):
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             xp=self._runtime.xp,
-            posedirs=self._weights.posedirs,
             kinematic_fronts=self._weights.kinematic_fronts,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
