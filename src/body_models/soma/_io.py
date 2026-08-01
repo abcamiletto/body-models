@@ -29,7 +29,6 @@ SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
 SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
 SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
-SOMA_ARCHIVE = "soma/assets-v2.zip"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_UPSTREAM_02_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
 SOMA_LODS = ("mid", "low", "xlo")
@@ -283,7 +282,7 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
     if model_path is not None:
         return validate_path(model_path)
 
-    cache_path = get_cache_dir() / "soma-v2"
+    cache_path = get_cache_dir() / "soma"
     if not _missing_assets(cache_path):
         return validate_path(cache_path)
 
@@ -292,11 +291,11 @@ def get_model_path(model_path: PathLike | None = None) -> Path:
 
 def download_model(output_dir: PathLike | None = None) -> Path:
     """Download SOMA assets from Hugging Face."""
-    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "soma-v2"
+    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "soma"
     missing = [name for name in SOMA_ASSETS if not (output_dir / name).exists()]
     if missing:
         print(f"Downloading SOMA model to {output_dir}...")
-        download_hf_archive(SOMA_ARCHIVE, output_dir)
+        download_hf_archive("soma/assets.zip", output_dir)
         print("Done")
     return validate_path(output_dir)
 
