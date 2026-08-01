@@ -212,20 +212,11 @@ class ArticulatedModel(ABC):
 
 
 class SkinnedModel(ArticulatedModel):
-    """Base class for models that expose one skinned mesh."""
+    """Base class for models that expose one skinned mesh.
 
-    @abstractmethod
-    def prepare_identity(self, *args: Any, **kwargs: Any) -> SkinningIdentity:
-        """Prepare identity-dependent state for rendering."""
-
-    @abstractmethod
-    def prepare_pose(
-        self,
-        *args: Any,
-        identity: SkinningIdentity,
-        **kwargs: Any,
-    ) -> SkinningPose:
-        """Prepare pose-dependent state for rendering."""
+    Concrete models provide explicit ``prepare_identity(...)`` and
+    ``prepare_pose(..., identity=...)`` signatures for renderer integration.
+    """
 
     @property
     @abstractmethod
