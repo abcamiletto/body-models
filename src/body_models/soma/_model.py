@@ -24,9 +24,9 @@ from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SO
 from body_models.soma._io import (
     MODEL_TYPE_SPECS,
     SOMA_LODS,
+    control_joint_metadata,
     load_identity_transfer_data,
     load_model_data_for_lod,
-    public_joint_metadata,
 )
 from body_models.soma._pose import pack_pose
 
@@ -88,7 +88,7 @@ class SOMA(SkinnedModel):
 
         resolved_path, weights = load_model_data_for_lod(model_path, lod, simplify=simplify)
         spec = MODEL_TYPE_SPECS[model_type]
-        parents, joint_names = public_joint_metadata(weights)
+        parents, joint_names = control_joint_metadata(weights)
         runtime = self._set_runtime(runtime)
         self._config = SomaConfig(
             model_type=model_type,
@@ -179,9 +179,7 @@ class SOMA(SkinnedModel):
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        if self._weights.public is not None:
-            return self._weights.public.skin_weights_active[:, 1:]
-        return self._skinning_weights
+        return self._weights.control_rig.skin_weights_active[:, 1:]
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
