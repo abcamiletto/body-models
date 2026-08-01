@@ -47,11 +47,14 @@ SOMA_PROCEDURAL_RIG_FIELDS = (
     "public_joint_indices_full",
     "rotation_matrix",
     "translation_matrix",
-    "source_axis_ids",
-    "source_axis_signs",
     "twist_joint_indices",
     "twist_axis_ids",
     "twist_axis_signs",
+    "segment_start_joint_indices",
+    "segment_end_joint_indices",
+    "segment_parent_joint_indices",
+    "segment_reverse_indices",
+    "segment_alignment_rotations",
 )
 
 
@@ -306,28 +309,73 @@ def _axis_id(axis: str) -> int:
     return {"x": 0, "y": 1, "z": 2}[axis.lower()]
 
 
+def _normalize_vectors(vectors: np.ndarray) -> np.ndarray:
+    return vectors / np.linalg.norm(vectors, axis=-1, keepdims=True)
+
+
+def _bind_alignment_rotations(
+    bind_world_transforms: np.ndarray,
+    start_ids: np.ndarray,
+    end_ids: np.ndarray,
+) -> np.ndarray:
+    start = bind_world_transforms[start_ids]
+    end = bind_world_transforms[end_ids]
+    start_rot = start[..., :3, :3]
+    span = _normalize_vectors(end[..., :3, 3] - start[..., :3, 3])
+
+    local_x = np.asarray([1.0, 0.0, 0.0], dtype=start.dtype)
+    local_y = np.asarray([0.0, 1.0, 0.0], dtype=start.dtype)
+    up_x = start_rot @ local_x
+    x_sign = np.where(np.sum(up_x * span, axis=-1, keepdims=True) >= 0.0, 1.0, -1.0)
+    x_axis = span * x_sign
+
+    y_candidate = start_rot @ local_y
+    y_axis = y_candidate - np.sum(y_candidate * x_axis, axis=-1, keepdims=True) * x_axis
+    y_axis = _normalize_vectors(y_axis)
+    z_axis = _normalize_vectors(np.cross(x_axis, y_axis, axis=-1))
+    y_axis = _normalize_vectors(np.cross(z_axis, x_axis, axis=-1))
+    return np.stack((x_axis, y_axis, z_axis), axis=-1)
+
+
 def _load_procedural_data(
     asset_dir: Path,
     joint_names: list[str],
+    t_pose_world: np.ndarray,
+    joint_parent_ids: np.ndarray,
 ) -> tuple[list[str], dict[str, Shaped[np.ndarray, "..."]]]:
     with (asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET).open() as file:
         data = json.load(file)
+    if data["rotation_extraction"] != "aligned_x_swing_twist":
+        raise ValueError("SOMA procedural transforms must use aligned_x_swing_twist extraction")
 
     public_names = data["public_rig_derivation"]["main_joint_names"]
     joint_index = {name: index for index, name in enumerate(joint_names)}
     public_index = {name: index for index, name in enumerate(public_names)}
-    source_axis_ids = np.zeros((len(public_names),), dtype=np.int64)
-    source_axis_signs = np.ones((len(public_names),), dtype=np.float32)
+    public_full_indices = {joint_index[name] for name in public_names}
     twist_names: list[str] = []
     twist_axis_ids: list[int] = []
     twist_axis_signs: list[float] = []
+    segment_start_indices: list[int] = []
+    segment_end_indices: list[int] = []
+    segment_parent_indices: list[int] = []
+    reverse_segment_indices: list[int] = []
     for segment in data["segments"]:
         axis = _axis_id(segment["source_axis"])
         sign = float(segment["source_sign"])
-        for source_name in (segment["start_joint"], segment["end_joint"]):
-            if source_name in public_index:
-                source_axis_ids[public_index[source_name]] = axis
-                source_axis_signs[public_index[source_name]] = sign
+        segment_start_indices.append(public_index[segment["start_joint"]])
+        segment_end_indices.append(public_index[segment["end_joint"]])
+        parent_name = segment.get("parent_joint")
+        if parent_name is None:
+            start_full_index = joint_index[segment["start_joint"]]
+            parent_full_index = _nearest_kept_parent(
+                joint_parent_ids,
+                start_full_index,
+                public_full_indices,
+            )
+            parent_name = joint_names[parent_full_index]
+        segment_parent_indices.append(public_index[parent_name])
+        if segment.get("reverse", False):
+            reverse_segment_indices.append(len(segment_start_indices) - 1)
         for twist_name in segment["twist_joints"]:
             twist_names.append(twist_name)
             twist_axis_ids.append(axis)
@@ -347,15 +395,26 @@ def _load_procedural_data(
             cleared_rows.add(row)
         translation_matrix[row, joint_index[entry["column"]]] = float(entry["value"])
 
+    segment_start_indices_array = np.asarray(segment_start_indices, dtype=np.int64)
+    segment_end_indices_array = np.asarray(segment_end_indices, dtype=np.int64)
+    public_t_pose_world = t_pose_world[[joint_index[name] for name in public_names]]
+
     return public_names, {
         "public_joint_indices_full": np.asarray([joint_index[name] for name in public_names], dtype=np.int64),
         "rotation_matrix": rotation_matrix,
         "translation_matrix": translation_matrix,
-        "source_axis_ids": source_axis_ids,
-        "source_axis_signs": source_axis_signs,
         "twist_joint_indices": np.asarray([joint_index[name] for name in twist_names], dtype=np.int64),
         "twist_axis_ids": np.asarray(twist_axis_ids, dtype=np.int64),
         "twist_axis_signs": np.asarray(twist_axis_signs, dtype=np.float32),
+        "segment_start_joint_indices": segment_start_indices_array,
+        "segment_end_joint_indices": segment_end_indices_array,
+        "segment_parent_joint_indices": np.asarray(segment_parent_indices, dtype=np.int64),
+        "segment_reverse_indices": np.asarray(reverse_segment_indices, dtype=np.int64),
+        "segment_alignment_rotations": _bind_alignment_rotations(
+            public_t_pose_world,
+            segment_start_indices_array,
+            segment_end_indices_array,
+        ).astype(np.float32),
     }
 
 
@@ -410,7 +469,10 @@ def _derive_public_rig(rig_data: dict[str, Any], public_joint_names: list[str]) 
 def _load_soma_02_rig_data(asset_dir: Path) -> dict[str, Any]:
     expanded_rig = _load_soma_02_rig_from_usd(asset_dir)
     public_joint_names, procedural = _load_procedural_data(
-        asset_dir, [str(name) for name in expanded_rig["joint_names"]]
+        asset_dir,
+        [str(name) for name in expanded_rig["joint_names"]],
+        np.asarray(expanded_rig["t_pose_world"], dtype=np.float32),
+        np.asarray(expanded_rig["joint_parent_ids"], dtype=np.int64),
     )
     expanded_rig["procedural"] = procedural
     expanded_rig["public_rig_data"] = _derive_public_rig(expanded_rig, public_joint_names)
