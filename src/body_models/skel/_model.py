@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from jaxtyping import Float, Int
 
-from body_models._base import DenseCorrectiveBasis, ParameterSpec, SkinnedModel, SkinningPose, SkinningSpec
+from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, ParameterSpec, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._runtime import RuntimeLike
 from body_models.skel import _core as core
@@ -94,12 +94,8 @@ class SKEL(SkinnedModel):
         return list(self._weights.parents)
 
     @property
-    def skinning_spec(self) -> SkinningSpec:
-        return SkinningSpec(
-            faces=self.faces,
-            skin_weights=self.skin_weights,
-            corrective_basis=DenseCorrectiveBasis(self._weights.posedirs),
-        )
+    def _corrective_basis(self) -> CorrectiveBasis:
+        return DenseCorrectiveBasis(self._weights.posedirs)
 
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
@@ -134,7 +130,7 @@ class SKEL(SkinnedModel):
 
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
-            self._posed_vertices(identity, pose),
+            self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,

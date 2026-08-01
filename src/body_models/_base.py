@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import partial
+from functools import cached_property, partial
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from jaxtyping import Float, Int
@@ -217,7 +217,7 @@ class SkinnedModel(ArticulatedModel):
     @property
     @abstractmethod
     def skin_weights(self) -> Float[Array, "V J"]:
-        """Skinning weights mapping vertices to joints. Shape [V, J]."""
+        """Skinning weights aligned with the public skeleton. Shape [V, J]."""
 
     @property
     @abstractmethod
@@ -229,11 +229,24 @@ class SkinnedModel(ArticulatedModel):
         return self.rest_vertices
 
     @property
+    def _skinning_triangles(self) -> Int[Array, "F 3"]:
+        return self.faces
+
+    @property
+    def _skinning_weights(self) -> Float[Array, "V J"]:
+        return self.skin_weights
+
+    @property
+    def _corrective_basis(self) -> CorrectiveBasis | None:
+        return None
+
+    @property
     def skinning_spec(self) -> SkinningSpec:
-        """Model-static topology, skin weights, and optional pose correctives."""
+        """Static topology, render-rig weights, and optional pose correctives."""
         return SkinningSpec(
-            faces=self.faces,
-            skin_weights=self.skin_weights,
+            triangles=self._skinning_triangles,
+            skinning_weights=self._skinning_weights,
+            corrective_basis=self._corrective_basis,
         )
 
     @abstractmethod
@@ -248,16 +261,18 @@ class SkinnedModel(ArticulatedModel):
             Mesh vertices with shape ``[*batch, V, 3]`` in meters.
         """
 
-    def _posed_vertices(
+    def apply_pose_correctives(
         self,
+        *,
         identity: SkinningIdentity,
         pose: SkinningPose,
     ) -> Float[Array, "*batch V 3"]:
+        """Apply prepared pose correctives to identity-dependent rest vertices."""
         vertices = identity["rest_vertices"]
         coefficients = pose.get("pose_coefficients")
         if coefficients is None:
             return vertices
-        basis = self.skinning_spec.corrective_basis
+        basis = self._corrective_basis
         if basis is None:
             raise RuntimeError("Prepared pose has corrective coefficients, but the model has no corrective basis.")
         return vertices + basis.apply(coefficients)
@@ -305,7 +320,7 @@ class RigidBodyModel(ArticulatedModel):
     def link_joint_indices(self) -> list[int]:
         return list(self._weights.link_joint_indices)
 
-    @property
+    @cached_property
     def link_meshes(self) -> Sequence[Trimesh]:
         """Link-local meshes aligned with :attr:`link_names` and ``forward_links()``."""
         return rigid_ops.link_meshes(

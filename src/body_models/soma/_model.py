@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningPose, SkinningSpec, SparseCorrectiveBasis
+from body_models._base import CorrectiveBasis, ParameterSpec, SkinnedModel, SkinningPose, SparseCorrectiveBasis
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime, RuntimeLike
@@ -192,12 +192,8 @@ class SOMA(SkinnedModel):
         return self._weights.skin_weights_active[:, 1:]
 
     @property
-    def skinning_spec(self) -> SkinningSpec:
-        return SkinningSpec(
-            faces=self.faces,
-            skin_weights=self._skinning_weights,
-            corrective_basis=SparseCorrectiveBasis(self._weights.correctives.basis),
-        )
+    def _corrective_basis(self) -> CorrectiveBasis:
+        return SparseCorrectiveBasis(self._weights.correctives.basis)
 
     def forward_vertices(
         self,
@@ -226,7 +222,7 @@ class SOMA(SkinnedModel):
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
-            self._posed_vertices(identity, pose),
+            self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,

@@ -159,13 +159,11 @@ def test_prepared_deformation_matches_forward(name, model_class, kwargs) -> None
     def assert_compatible(model, params, xp):
         identity, pose = model_cases.prepare_states(model, params)
         spec = model.skinning_spec
-        posed_vertices = identity["rest_vertices"]
-        if "pose_coefficients" in pose:
-            posed_vertices = posed_vertices + spec.corrective_basis.apply(pose["pose_coefficients"])
+        posed_vertices = model.apply_pose_correctives(identity=identity, pose=pose)
         vertices = skinning.linear_blend_skinning(
             posed_vertices,
             pose["skinning_transforms"],
-            spec.skin_weights,
+            spec.skinning_weights,
             xp=xp,
         )
         prepared_params = model_cases.with_prepared_identity(model, params, identity)
@@ -200,7 +198,7 @@ def test_link_meshes_reconstruct_forward_mesh(name, model_class, kwargs) -> None
     vertices = []
     faces = []
     vertex_offset = 0
-    for mesh, transform in zip(model.link_meshes, transforms):
+    for mesh, transform in zip(model.link_meshes, transforms, strict=True):
         rotation = transform[:3, :3]
         translation = transform[:3, 3]
         vertices.append(np.asarray(mesh.vertices) @ rotation.T + translation)

@@ -10,11 +10,11 @@ from jaxtyping import Float, Int
 
 from body_models import _common as common
 from body_models._base import (
+    CorrectiveBasis,
     ParameterSpec,
     SkinnedModel,
     SkinningIdentity,
     SkinningPose,
-    SkinningSpec,
     SparseCorrectiveBasis,
 )
 from body_models._common import skinning
@@ -98,12 +98,8 @@ class MHR(SkinnedModel):
         return list(self._weights.parents)
 
     @property
-    def skinning_spec(self) -> SkinningSpec:
-        return SkinningSpec(
-            faces=self.faces,
-            skin_weights=self.skin_weights,
-            corrective_basis=SparseCorrectiveBasis(self._weights.correctives.basis),
-        )
+    def _corrective_basis(self) -> CorrectiveBasis:
+        return SparseCorrectiveBasis(self._weights.correctives.basis)
 
     def forward_vertices(
         self,
@@ -131,7 +127,7 @@ class MHR(SkinnedModel):
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose)
         vertices = self._runtime._skin_vertices(
-            self._posed_vertices(identity, pose),
+            self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,

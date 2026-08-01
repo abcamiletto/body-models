@@ -376,16 +376,17 @@ def with_active_mesh(
     shapedirs_active: Float[np.ndarray, "S Va 3"],
     skin_weights_active: Float[np.ndarray, "Va Jf"],
     faces: Int[np.ndarray, "F 3"],
-    vertex_map: Int[np.ndarray, "Va"] | None,
-    corrective_vertex_indices: Int[np.ndarray, "Va"] | None,
+    full_vertex_indices: Int[np.ndarray, "Va"] | None,
+    active_vertex_indices: Int[np.ndarray, "Va"] | None,
 ) -> SomaWeights:
+    """Replace the active mesh using indices into the full and current meshes."""
     skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
     skin_joint_indices_active = np.maximum(skin_joint_indices_active - 1, -1)
-    public_skin_weights_active = _active_public_skin_weights(data, vertex_map)
+    public_skin_weights_active = _active_public_skin_weights(data, full_vertex_indices)
     public = None if data.public is None else replace(data.public, skin_weights_active=public_skin_weights_active)
     correctives = replace(
         data.correctives,
-        basis=_active_corrective_basis(data.correctives.basis, corrective_vertex_indices),
+        basis=_active_corrective_basis(data.correctives.basis, active_vertex_indices),
     )
     return replace(
         data,
@@ -397,7 +398,7 @@ def with_active_mesh(
             skin_joint_weights_active,
         ),
         faces=np.asarray(faces, dtype=np.int64),
-        vertex_map=vertex_map,
+        vertex_map=full_vertex_indices,
         correctives=correctives,
         public=public,
     )
@@ -424,8 +425,8 @@ def with_lod_mesh(data: SomaWeights, lod: str) -> SomaWeights:
         shapedirs_active=data.shapedirs_full[:, lod_mesh.vertex_map],
         skin_weights_active=skin_weights,
         faces=lod_mesh.faces,
-        vertex_map=lod_mesh.vertex_map,
-        corrective_vertex_indices=lod_mesh.vertex_map,
+        full_vertex_indices=lod_mesh.vertex_map,
+        active_vertex_indices=lod_mesh.vertex_map,
     )
 
 
@@ -442,10 +443,10 @@ def _active_public_skin_weights(
 
 def _active_corrective_basis(
     basis: sparse.SparseMatrix,
-    vertex_map: Int[np.ndarray, "Va"] | None,
+    active_vertex_indices: Int[np.ndarray, "Va"] | None,
 ) -> sparse.SparseMatrix:
-    if vertex_map is not None:
-        columns = (vertex_map[:, None] * 3 + np.arange(3)).reshape(-1)
+    if active_vertex_indices is not None:
+        columns = (active_vertex_indices[:, None] * 3 + np.arange(3)).reshape(-1)
         basis = sparse.select_columns(basis, columns)
     return basis
 
@@ -1147,7 +1148,7 @@ def load_model_data_for_lod(
         shapedirs_active=data.shapedirs_active[:, simplify_map],
         skin_weights_active=data.skin_weights_active[simplify_map],
         faces=faces,
-        vertex_map=vertex_map,
-        corrective_vertex_indices=simplify_map,
+        full_vertex_indices=vertex_map,
+        active_vertex_indices=simplify_map,
     )
     return resolved_path, weights

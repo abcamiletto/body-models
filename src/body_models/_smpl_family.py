@@ -8,7 +8,7 @@ from typing import Any, TypeAlias
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import DenseCorrectiveBasis, SkinnedModel, SkinningSpec
+from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, SkinnedModel
 from body_models._common import deformation, kinematics, skinning
 from body_models._rotations import RotationType, rotation_ndim
 
@@ -48,12 +48,8 @@ class SmplFamilyModel(SkinnedModel):
         return list(self._weights.parents)
 
     @property
-    def skinning_spec(self) -> SkinningSpec:
-        return SkinningSpec(
-            faces=self.faces,
-            skin_weights=self.skin_weights,
-            corrective_basis=DenseCorrectiveBasis(self._weights.posedirs),
-        )
+    def _corrective_basis(self) -> CorrectiveBasis:
+        return DenseCorrectiveBasis(self._weights.posedirs)
 
     def _deform_vertices(
         self,
@@ -64,7 +60,7 @@ class SmplFamilyModel(SkinnedModel):
         vertex_indices: Sequence[int] | None,
     ) -> Float[Array, "*batch V 3"]:
         vertices = self._runtime._skin_vertices(
-            self._posed_vertices(identity, pose),
+            self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
             skinning=self._weights.compact_skinning,
             vertex_indices=vertex_indices,

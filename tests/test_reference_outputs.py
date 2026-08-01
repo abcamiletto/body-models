@@ -109,7 +109,7 @@ def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
         vertices = skinning.linear_blend_skinning(
             identity["rest_vertices"],
             prepared_pose["skinning_transforms"],
-            model.skinning_spec.skin_weights,
+            model.skinning_spec.skinning_weights,
             xp=np,
         )
         vertices = skinning.apply_global_transform(vertices, global_rotation, None, xp=np)

@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningPose, SkinningSpec
+from body_models._base import ParameterSpec, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -132,11 +132,8 @@ class ANNY(SkinnedModel):
         return list(self._weights.parents)
 
     @property
-    def skinning_spec(self) -> SkinningSpec:
-        return SkinningSpec(
-            faces=_triangulate_faces(self.faces, self._runtime.xp),
-            skin_weights=self.skin_weights,
-        )
+    def _skinning_triangles(self) -> Int[Array, "F 3"]:
+        return self._weights.triangles
 
     def forward_vertices(
         self,
@@ -354,12 +351,6 @@ class ANNY(SkinnedModel):
     ) -> dict[str, Float[Array, "..."]]:
         """Return the ANNY rest A-pose."""
         return self.get_rest_pose(batch_dims=batch_dims, dtype=dtype, hands=hands)
-
-
-def _triangulate_faces(faces: Int[Array, "F _"], xp: Any) -> Int[Array, "Ftri 3"]:
-    if faces.shape[-1] == 3:
-        return faces
-    return xp.concat([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0)
 
 
 __all__ = ["ANNY", "AnnyConfig"]
