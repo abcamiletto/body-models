@@ -9,7 +9,7 @@ from typing import Any
 
 from jaxtyping import Float
 
-from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
+from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
 from body_models._smpl_family import SmplFamilyModel
@@ -148,6 +148,40 @@ class FLAME(SmplFamilyModel):
             joint_indices,
         )
 
+    def forward_points(
+        self,
+        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
+        *,
+        point_regressor: PointRegressor,
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch S"] | None = None,
+        expression: Float[Array, "*batch E"] | None = None,
+        identity: LinearIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+    ) -> Float[Array, "*batch K 3"]:
+        """Compute positions defined by a prepared vertex mapping."""
+        xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
+        if identity is not None:
+            pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=identity)
+            return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
+        if shape is None or expression is None:
+            raise ValueError("shape and expression are required when identity is not provided")
+
+        batch_shape = head_pose.shape[: -(self._num_rot_dims + 1)]
+        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
+        skeleton_identity = self._prepare_skeleton_identity(shape, expression)
+        pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=skeleton_identity)
+        return self._deform_linear_points(
+            point_regressor,
+            (shape, expression),
+            pose,
+            global_rotation,
+            global_translation,
+        )
+
     def prepare_identity(
         self,
         shape: Float[Array, "*batch S"],
@@ -172,7 +206,7 @@ class FLAME(SmplFamilyModel):
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
         *,
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: LinearIdentity,
+        identity: core.FlameSkeletonIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(

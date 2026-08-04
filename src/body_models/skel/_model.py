@@ -9,7 +9,14 @@ from typing import Any, Literal
 
 from jaxtyping import Float, Int
 
-from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, ParameterSpec, SkinnedModel, SkinningPose
+from body_models._base import (
+    CorrectiveBasis,
+    DenseCorrectiveBasis,
+    ParameterSpec,
+    PointRegressor,
+    SkinnedModel,
+    SkinningPose,
+)
 from body_models._common import skinning
 from body_models._runtime import RuntimeLike
 from body_models.skel import _core as core
@@ -190,6 +197,30 @@ class SKEL(SkinnedModel):
             joint_indices=joint_indices,
             xp=xp,
         )
+
+    def forward_points(
+        self,
+        body_pose: Float[Array, "*batch 43"],
+        head_pose: Float[Array, "*batch 3"],
+        *,
+        point_regressor: PointRegressor,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: SkelIdentity | None = None,
+        global_rotation: Float[Array, "*batch 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+    ) -> Float[Array, "*batch K 3"]:
+        """Compute positions defined by a prepared vertex mapping."""
+        xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = body_pose.shape[:-1]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+
+        pose = self.prepare_pose(body_pose, head_pose, identity=identity)
+        return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 
     def forward_links(
         self,

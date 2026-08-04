@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import ParameterSpec, SkinnedModel, SkinningPose
+from body_models._base import ParameterSpec, PointRegressor, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import RuntimeLike
@@ -219,6 +219,31 @@ class ANNY(SkinnedModel):
             joint_indices,
             xp=xp,
         )
+
+    def forward_points(
+        self,
+        body_pose: Float[Array, "*batch 64 N"] | Float[Array, "*batch 64 3 3"],
+        head_pose: Float[Array, "*batch 60 N"] | Float[Array, "*batch 60 3 3"],
+        hand_pose: Float[Array, "*batch 38 N"] | Float[Array, "*batch 38 3 3"],
+        *,
+        point_regressor: PointRegressor,
+        shape: Float[Array, "*batch 6"] | None = None,
+        identity: AnnyIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+    ) -> Float[Array, "*batch K 3"]:
+        """Compute positions defined by a prepared vertex mapping."""
+        xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            identity = self.prepare_identity(shape)
+
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
+        return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 
     def prepare_identity(
         self,
