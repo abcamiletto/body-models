@@ -10,8 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from nanomanifold import SO3
 
-from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
-from body_models._common import skinning
+from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
 from body_models._smpl_family import SmplFamilyModel
@@ -178,85 +177,52 @@ class SMPLX(SmplFamilyModel):
             joint_indices,
         )
 
-    def forward_joint_positions(
+    def forward_points(
         self,
         body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
-        joint_regressor: core.JointRegressor,
-        shape: Float[Array, "*batch 10"],
-        expression: Float[Array, "*batch 10"],
+        point_regressor: PointRegressor,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        expression: Float[Array, "*batch 10"] | None = None,
+        identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
-        """Compute positions defined by a prepared vertex-to-joint regressor."""
+        """Compute positions defined by a prepared vertex mapping."""
         xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, expression=expression)
+        if identity is not None:
+            pose = self.prepare_pose(
+                body_pose,
+                head_pose,
+                hand_pose,
+                pelvis_rotation=pelvis_rotation,
+                identity=identity,
+            )
+            return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
+        if shape is None or expression is None:
+            raise ValueError("shape and expression are required when identity is not provided")
+
         batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
         shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
         expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
         skeleton_identity = self._prepare_skeleton_identity(shape, expression)
-        identity_coefficients = xp.concat([shape, expression], axis=-1)
-        rest_points = joint_regressor["template"] + xp.einsum(
-            "...c,kjdc->...kjd",
-            identity_coefficients,
-            joint_regressor["identity_directions"],
-        )
-
-        pose = core.prepare_pose(
-            self._weights.kinematic_fronts,
-            self._weights.hand_mean,
+        pose = self.prepare_pose(
             body_pose,
             head_pose,
             hand_pose,
-            pelvis_rotation,
-            self.rotation_type,
-            local_joint_offsets=skeleton_identity["local_joint_offsets"],
-            rest_joints=skeleton_identity["rest_joints"],
-            xp=xp,
+            pelvis_rotation=pelvis_rotation,
+            identity=skeleton_identity,
         )
-        positions = core.forward_joint_positions(joint_regressor, rest_points, pose, xp=xp)
-        positions = skinning.apply_global_transform(
-            positions,
+        return self._deform_linear_points(
+            point_regressor,
+            self._point_identity_coefficients(shape, expression),
+            pose,
             global_rotation,
-            None,
-            self.rotation_type,
-            xp=xp,
-        )
-        if global_translation is not None:
-            positions = positions + global_translation[..., None, :] * joint_regressor["weight_sums"][..., None]
-        return positions
-
-    def prepare_joint_regressor(
-        self,
-        mapping: Float[Array, "K V"],
-    ) -> core.JointRegressor:
-        """Preproject a vertex-to-joint mapping for repeated position forwards.
-
-        For Torch, call this after moving :meth:`as_module` to its target device.
-        """
-        if mapping.ndim != 2 or mapping.shape[0] < 1 or mapping.shape[1] != self.num_vertices:
-            raise ValueError(
-                f"mapping must have shape [K, {self.num_vertices}] with K >= 1, got {tuple(mapping.shape)}"
-            )
-
-        xp = self._runtime.xp
-        mapping = self._runtime.asarray(mapping, like=self._weights.v_template)
-        identity_directions = xp.concat(
-            [
-                self._weights.shapedirs[:, :, : self.NUM_SHAPE_COEFFS],
-                self._weights.exprdirs[:, :, : self.NUM_EXPR_COEFFS],
-            ],
-            axis=-1,
-        )
-        return core.prepare_joint_regressor(
-            mapping,
-            self._weights.v_template,
-            identity_directions,
-            self._weights.posedirs,
-            self._weights.lbs_weights,
-            xp=xp,
+            global_translation,
         )
 
     def prepare_identity(
@@ -285,7 +251,7 @@ class SMPLX(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: LinearIdentity,
+        identity: core.SmplxSkeletonIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(

@@ -17,6 +17,37 @@ def test_anny_torch_compile_on_cuda() -> None:
     assert vertices.is_cuda
 
 
+def test_points_torch_compile_and_jax_jit() -> None:
+    from body_models.smplx import SMPLX
+
+    torch = pytest.importorskip("torch")
+    torch_model = SMPLX(gender="neutral", runtime="torch")
+    mapping = np.zeros((2, torch_model.num_vertices), dtype=np.float32)
+    mapping[0, 0] = 1.0
+    mapping[1, 100] = 1.0
+    torch_params = torch_model.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
+    torch_regressor = torch_model.prepare_point_regressor(mapping)
+    with torch.no_grad():
+        points = torch.compile(torch_model.forward_points, backend="eager")(
+            **torch_params,
+            point_regressor=torch_regressor,
+        )
+    assert points.shape == (2, 2, 3)
+
+    jax = pytest.importorskip("jax")
+    pytest.importorskip("flax")
+    import jax.numpy as jnp
+
+    jax_model = SMPLX(gender="neutral", runtime="jax")
+    jax_params = jax_model.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
+    jax_regressor = jax_model.prepare_point_regressor(mapping)
+    points = jax.jit(jax_model.forward_points)(
+        **jax_params,
+        point_regressor=jax_regressor,
+    )
+    assert points.shape == (2, 2, 3)
+
+
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_torch_compile_and_jax_jit(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
