@@ -36,8 +36,10 @@ pose preparation returns transforms and compact corrective coefficients.
 `SkinningSpec` holds model-static triangles, render-rig skinning weights, and
 the optional corrective basis. `apply_pose_correctives()` expands compact
 coefficients without exposing the dense or sparse representation;
-`forward_vertices()` then skins the surface. Skeleton forwards use distinct
-model-local preparation paths.
+`forward_vertices()` then skins the surface. `PointRegressor` projects the same
+contract through arbitrary vertex mappings, while explicit model-local
+`forward_points()` methods retain each model's parameter signature. Skeleton
+forwards use distinct model-local preparation paths.
 Shared preparation and skinning contracts are exported from `body_models`;
 skeleton-only preparation types remain private.
 Required numerical inputs may be positional, while optional configuration,

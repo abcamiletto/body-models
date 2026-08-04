@@ -10,7 +10,14 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import CorrectiveBasis, ParameterSpec, SkinnedModel, SkinningPose, SparseCorrectiveBasis
+from body_models._base import (
+    CorrectiveBasis,
+    ParameterSpec,
+    PointRegressor,
+    SkinnedModel,
+    SkinningPose,
+    SparseCorrectiveBasis,
+)
 from body_models._common import skinning
 from body_models._registry import create_model
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
@@ -273,6 +280,34 @@ class SOMA(SkinnedModel):
             joint_indices,
             xp=xp,
         )
+
+    def forward_points(
+        self,
+        body_pose: Float[Array, "*batch 23 N"] | Float[Array, "*batch 23 3 3"],
+        head_pose: Float[Array, "*batch 5 N"] | Float[Array, "*batch 5 3 3"],
+        hand_pose: Float[Array, "*batch 48 N"] | Float[Array, "*batch 48 3 3"],
+        *,
+        point_regressor: PointRegressor,
+        shape: Float[Array, "*batch I"] | None = None,
+        scale_params: Float[Array, "*batch K"] | None = None,
+        identity: SomaIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+    ) -> Float[Array, "*batch P 3"]:
+        """Compute positions defined by a prepared vertex mapping."""
+        xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
+        if identity is None:
+            if shape is None:
+                raise ValueError("shape is required when identity is not provided")
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
+            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            if scale_params is not None:
+                scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
+            identity = self.prepare_identity(shape, scale_params=scale_params)
+
+        pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
+        return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 
     def prepare_identity(
         self,

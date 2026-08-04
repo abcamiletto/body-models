@@ -10,7 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from nanomanifold import SO3
 
-from body_models._base import LinearIdentity, ParameterSpec, SkinningPose
+from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import RuntimeLike
 from body_models._smpl_family import SmplFamilyModel
@@ -159,6 +159,49 @@ class SMPLH(SmplFamilyModel):
             joint_indices,
         )
 
+    def forward_points(
+        self,
+        body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
+        hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
+        *,
+        point_regressor: PointRegressor,
+        pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        shape: Float[Array, "*batch 10"] | None = None,
+        identity: LinearIdentity | None = None,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
+        global_translation: Float[Array, "*batch 3"] | None = None,
+    ) -> Float[Array, "*batch K 3"]:
+        """Compute positions defined by a prepared vertex mapping."""
+        xp = self._runtime.xp
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is not None:
+            pose = self.prepare_pose(
+                body_pose,
+                hand_pose,
+                pelvis_rotation=pelvis_rotation,
+                identity=identity,
+            )
+            return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
+        if shape is None:
+            raise ValueError("shape is required when identity is not provided")
+
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
+        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+        skeleton_identity = self._prepare_skeleton_identity(shape)
+        pose = self.prepare_pose(
+            body_pose,
+            hand_pose,
+            pelvis_rotation=pelvis_rotation,
+            identity=skeleton_identity,
+        )
+        return self._deform_linear_points(
+            point_regressor,
+            self._point_identity_coefficients(shape),
+            pose,
+            global_rotation,
+            global_translation,
+        )
+
     def prepare_identity(
         self,
         shape: Float[Array, "*batch 10"],
@@ -180,7 +223,7 @@ class SMPLH(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: LinearIdentity,
+        identity: core.SmplhSkeletonIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
