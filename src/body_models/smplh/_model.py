@@ -196,7 +196,7 @@ class SMPLH(SmplFamilyModel):
         )
         return self._deform_linear_points(
             point_regressor,
-            self._point_identity_coefficients(shape),
+            (shape,),
             pose,
             global_rotation,
             global_translation,

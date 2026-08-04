@@ -22,7 +22,7 @@ class PointRegressor(TypedDict):
     vertex_projection: sparse.SparseLinear
     corrective_basis: deformation.CorrectiveBasis | None
     template: NotRequired[Float[Array, "K J 3"]]
-    identity_directions: NotRequired[Float[Array, "K J 3 C"]]
+    identity_bases: NotRequired[tuple[Float[Array, "K J 3 C"], ...]]
 
 
 def prepare_point_regressor(

@@ -219,7 +219,7 @@ class SMPLX(SmplFamilyModel):
         )
         return self._deform_linear_points(
             point_regressor,
-            self._point_identity_coefficients(shape, expression),
+            (shape, expression),
             pose,
             global_rotation,
             global_translation,
