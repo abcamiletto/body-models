@@ -18,9 +18,14 @@ def model_for_backend(
     """Bind a model class to one array backend."""
     has_skinning_backend = backend == "torch" and issubclass(model_class, SkinnedModel)
     backend_base: Any = model_class
+    if backend == "torch":
+        from torch import nn
+
+        torch_base: Any = nn.Module
+
     if has_skinning_backend:
 
-        class BackendModel(backend_base):
+        class BackendModel(backend_base, torch_base):
             def __init__(
                 self,
                 *args: Any,
@@ -28,8 +33,17 @@ def model_for_backend(
                 **kwargs: Any,
             ) -> None:
                 _reject_runtime(kwargs, model_class)
+                nn.Module.__init__(self)
                 runtime = TorchRuntime(skinning_backend=skinning_backend)
                 super().__init__(*args, runtime=runtime, **kwargs)
+
+    elif backend == "torch":
+
+        class BackendModel(backend_base, torch_base):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                _reject_runtime(kwargs, model_class)
+                nn.Module.__init__(self)
+                super().__init__(*args, runtime=backend, **kwargs)
 
     else:
 

@@ -168,6 +168,9 @@ def test_smpl_humanoid_smpl_parameters_from_qpos_backends_match_numpy(smpl_human
     pytest.importorskip("jax")
     import jax.numpy as jnp
 
+    from body_models.smpl_humanoid.jax import SmplHumanoid as JaxSmplHumanoid
+    from body_models.smpl_humanoid.torch import SmplHumanoid as TorchSmplHumanoid
+
     model = SmplHumanoid(model_path=smpl_humanoid_xml)
     body_pose = np.linspace(-0.2, 0.2, model.num_dofs, dtype=np.float32)[None]
     global_translation = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
@@ -179,13 +182,11 @@ def test_smpl_humanoid_smpl_parameters_from_qpos_backends_match_numpy(smpl_human
     )
     expected = model.smpl_parameters_from_qpos(qpos)
 
-    torch_motion = SmplHumanoid(
+    torch_motion = TorchSmplHumanoid(
         model_path=smpl_humanoid_xml,
-        runtime="torch",
     ).smpl_parameters_from_qpos(torch.as_tensor(qpos))
-    jax_motion = SmplHumanoid(
+    jax_motion = JaxSmplHumanoid(
         model_path=smpl_humanoid_xml,
-        runtime="jax",
     ).smpl_parameters_from_qpos(jnp.asarray(qpos))
 
     for key, value in expected.items():

@@ -1,5 +1,6 @@
 """Shared model list for cross-model tests."""
 
+from importlib import import_module
 from pathlib import Path
 
 from body_models import RigidBodyModel, SkinnedModel
@@ -42,6 +43,13 @@ RIGID_BODY_MODELS = [model for model in MODELS if issubclass(model[1], RigidBody
 SKINNED_MODELS = [model for model in MODELS if issubclass(model[1], SkinnedModel)]
 
 REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" / "0.json").exists()]
+
+
+def backend_model_class(name: str, backend: str):
+    """Return a model's public class for one array backend."""
+    model_class = next(model_class for model_name, model_class, _ in MODELS if model_name == name)
+    module = import_module(f"body_models.{name}.{backend}")
+    return getattr(module, model_class.__name__)
 
 
 def forward_skeleton(model, params, **kwargs):

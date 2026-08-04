@@ -36,12 +36,12 @@ def assert_qpos_matches_pose(model, params) -> None:
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
 def test_torch_and_jax_match_numpy(name, model_class, kwargs) -> None:
-    numpy_instance = model_class(**kwargs)
+    numpy_instance = model_cases.backend_model_class(name, "numpy")(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
     expected = numpy_instance.forward_vertices(**numpy_params)
 
     torch = pytest.importorskip("torch")
-    torch_instance = model_class(**kwargs, runtime="torch")
+    torch_instance = model_cases.backend_model_class(name, "torch")(**kwargs)
     torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     with torch.no_grad():
         torch_vertices = torch_instance.forward_vertices(**torch_params)
@@ -51,7 +51,7 @@ def test_torch_and_jax_match_numpy(name, model_class, kwargs) -> None:
     pytest.importorskip("flax")
     import jax.numpy as jnp
 
-    jax_instance = model_class(**kwargs, runtime="jax")
+    jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
     jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     jax_vertices = jax_instance.forward_vertices(**jax_params)
     np.testing.assert_allclose(np.asarray(jax_vertices), expected, rtol=1e-4, atol=1e-4)
@@ -83,7 +83,7 @@ def test_myofullbody_qpos_conversion_round_trip() -> None:
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.RIGID_BODY_MODELS)
 def test_rigid_body_meshes_match_numpy(name, model_class, kwargs) -> None:
-    numpy_instance = model_class(**kwargs)
+    numpy_instance = model_cases.backend_model_class(name, "numpy")(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
     expected_meshes = numpy_instance.forward_meshes(**numpy_params)
     assert all(isinstance(mesh, Trimesh) for mesh in expected_meshes)
@@ -91,7 +91,7 @@ def test_rigid_body_meshes_match_numpy(name, model_class, kwargs) -> None:
     expected = mesh_vertices(expected_meshes)
 
     torch = pytest.importorskip("torch")
-    torch_instance = model_class(**kwargs, runtime="torch")
+    torch_instance = model_cases.backend_model_class(name, "torch")(**kwargs)
     torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     assert_pose_helpers_round_trip(
         torch_instance, torch_params["hand_pose" if "hand_pose" in torch_params else "body_pose"]
@@ -107,7 +107,7 @@ def test_rigid_body_meshes_match_numpy(name, model_class, kwargs) -> None:
     pytest.importorskip("flax")
     import jax.numpy as jnp
 
-    jax_instance = model_class(**kwargs, runtime="jax")
+    jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
     jax_params = jax_instance.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     assert_pose_helpers_round_trip(jax_instance, jax_params["hand_pose" if "hand_pose" in jax_params else "body_pose"])
     assert_qpos_matches_pose(jax_instance, jax_params)
@@ -135,16 +135,17 @@ def test_rigid_body_joint_name_spaces(name, model_class, kwargs) -> None:
     assert_qpos_matches_pose(model, params)
 
 
-@pytest.mark.parametrize(("_name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
-def test_skinning_backends_match_default(_name, model_class, kwargs) -> None:
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+def test_skinning_backends_match_default(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
-    torch_instance = model_class(**kwargs, runtime="torch")
+    torch_class = model_cases.backend_model_class(name, "torch")
+    torch_instance = torch_class(**kwargs)
     for skinning_backend in TorchRuntime.SKINNING_BACKENDS[1:]:
         params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
         vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():
             expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
-            model = model_class(**kwargs, runtime=TorchRuntime(skinning_backend=skinning_backend))
+            model = torch_class(**kwargs, skinning_backend=skinning_backend)
             actual = model.forward_vertices(**params, vertex_indices=vertex_indices)
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
@@ -170,12 +171,12 @@ def test_prepared_deformation_matches_forward(name, model_class, kwargs) -> None
         expected = model.forward_vertices(**prepared_params)
         np.testing.assert_allclose(np.asarray(vertices), np.asarray(expected), rtol=1e-4, atol=1e-4)
 
-    numpy_instance = model_class(**kwargs)
+    numpy_instance = model_cases.backend_model_class(name, "numpy")(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(dtype=np.float32)
     assert_compatible(numpy_instance, numpy_params, np)
 
     torch = pytest.importorskip("torch")
-    torch_instance = model_class(**kwargs, runtime="torch")
+    torch_instance = model_cases.backend_model_class(name, "torch")(**kwargs)
     torch_params = torch_instance.get_rest_pose(dtype=torch.float32)
     with torch.no_grad():
         assert_compatible(torch_instance, torch_params, torch)
@@ -184,7 +185,7 @@ def test_prepared_deformation_matches_forward(name, model_class, kwargs) -> None
     pytest.importorskip("flax")
     import jax.numpy as jnp
 
-    jax_instance = model_class(**kwargs, runtime="jax")
+    jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
     jax_params = jax_instance.get_rest_pose(dtype=jnp.float32)
     assert_compatible(jax_instance, jax_params, jnp)
 
@@ -284,12 +285,12 @@ def test_prepared_identity_broadcasts_across_pose_batch(
         np.testing.assert_allclose(np.asarray(vertices), np.asarray(expected_vertices), rtol=1e-4, atol=1e-4)
         np.testing.assert_allclose(np.asarray(skeleton), np.asarray(expected_skeleton), rtol=1e-4, atol=1e-4)
 
-    numpy_instance = model_class(**kwargs)
+    numpy_instance = model_cases.backend_model_class(name, "numpy")(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(batch_dims=(3,), dtype=np.float32)
     assert_broadcasts(numpy_instance, numpy_params)
 
     torch = pytest.importorskip("torch")
-    torch_instance = model_class(**kwargs, runtime="torch")
+    torch_instance = model_cases.backend_model_class(name, "torch")(**kwargs)
     torch_params = torch_instance.get_rest_pose(batch_dims=(3,), dtype=torch.float32)
     with torch.no_grad():
         assert_broadcasts(torch_instance, torch_params)
@@ -298,7 +299,7 @@ def test_prepared_identity_broadcasts_across_pose_batch(
     pytest.importorskip("flax")
     import jax.numpy as jnp
 
-    jax_instance = model_class(**kwargs, runtime="jax")
+    jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
     jax_params = jax_instance.get_rest_pose(batch_dims=(3,), dtype=jnp.float32)
     assert_broadcasts(jax_instance, jax_params)
 

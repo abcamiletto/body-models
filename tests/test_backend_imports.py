@@ -36,6 +36,10 @@ def test_backend_model_binds_runtime(backend) -> None:
     model = model_class()
 
     assert model.runtime.name == backend
+    if backend == "torch":
+        import torch
+
+        assert isinstance(model, torch.nn.Module)
     assert type(pickle.loads(pickle.dumps(model))) is model_class
     with pytest.raises(TypeError, match="unexpected keyword argument 'runtime'"):
         model_class(runtime="numpy")
