@@ -8,8 +8,8 @@ from typing import Any, TypeAlias
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, SkinnedModel
-from body_models._common import deformation, kinematics, skinning
+from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, PointRegressor, SkinnedModel
+from body_models._common import deformation, kinematics, point_regression, skinning
 from body_models._rotations import RotationType, rotation_ndim
 
 Array = Any
@@ -20,6 +20,8 @@ RotationBlock: TypeAlias = tuple[Float[Array, "..."], RotationType]
 class SmplFamilyModel(SkinnedModel):
     """Common state access and final deformation stages for the SMPL family."""
 
+    NUM_SHAPE_COEFFS: int
+    NUM_EXPR_COEFFS = 0
     _weights: Any
     rotation_type: RotationType
 
@@ -50,6 +52,50 @@ class SmplFamilyModel(SkinnedModel):
     @property
     def _corrective_basis(self) -> CorrectiveBasis:
         return DenseCorrectiveBasis(self._weights.posedirs)
+
+    def prepare_point_regressor(
+        self,
+        mapping: Float[Array, "K V"],
+    ) -> PointRegressor:
+        """Preproject a vertex mapping and the family's linear identity bases."""
+        regressor = super().prepare_point_regressor(mapping)
+        xp = self._runtime.xp
+        regressor["template"] = point_regression.project_vertex_values(
+            regressor,
+            self.rest_vertices,
+            xp=xp,
+        )
+        regressor["identity_bases"] = tuple(
+            point_regression.project_vertex_values(regressor, basis, xp=xp) for basis in self._point_identity_bases
+        )
+        return regressor
+
+    @property
+    def _point_identity_bases(self) -> tuple[Float[Array, "V 3 C"], ...]:
+        bases = (self._weights.shapedirs,)
+        return bases if self.NUM_EXPR_COEFFS == 0 else (*bases, self._weights.exprdirs)
+
+    def _deform_linear_points(
+        self,
+        point_regressor: PointRegressor,
+        identity_coefficients: Sequence[Float[Array, "*batch C"]],
+        pose: deformation.SkinningPose,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+        global_translation: Float[Array, "*batch 3"] | None,
+    ) -> Float[Array, "*batch K 3"]:
+        xp = self._runtime.xp
+        rest_points = point_regressor["template"]
+        for coefficients, basis in zip(identity_coefficients, point_regressor["identity_bases"], strict=True):
+            coefficient_dim = coefficients.shape[-1]
+            if coefficient_dim > basis.shape[-1]:
+                raise ValueError(f"identity coefficients exceed the model basis width of {basis.shape[-1]}")
+            rest_points = rest_points + xp.einsum(
+                "...c,kjdc->...kjd",
+                coefficients,
+                basis[..., :coefficient_dim],
+            )
+        points = point_regression.regress_points(point_regressor, rest_points, pose, xp=xp)
+        return self._transform_points(points, point_regressor, global_rotation, global_translation)
 
     def _deform_vertices(
         self,

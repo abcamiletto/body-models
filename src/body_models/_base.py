@@ -11,7 +11,7 @@ from nanomanifold import SO3
 from trimesh import Trimesh
 
 from body_models import _state as state
-from body_models._common import deformation, eye_as, zeros_as
+from body_models._common import deformation, eye_as, point_regression, skinning, zeros_as
 from body_models._common import rigid as rigid_ops
 from body_models._constants import Joint
 from body_models._rotations import RotationType, rotation_ndim, rotation_shape
@@ -55,6 +55,7 @@ class ParameterSpec:
 CorrectiveBasis = deformation.CorrectiveBasis
 DenseCorrectiveBasis = deformation.DenseCorrectiveBasis
 LinearIdentity = deformation.LinearIdentity
+PointRegressor = point_regression.PointRegressor
 SkinningSpec = deformation.SkinningSpec
 SkinningIdentity = deformation.SkinningIdentity
 SkinningPose = deformation.SkinningPose
@@ -247,6 +248,14 @@ class SkinnedModel(ArticulatedModel):
             Mesh vertices with shape ``[*batch, V, 3]`` in meters.
         """
 
+    @abstractmethod
+    def forward_points(self, *args, **kwargs) -> Float[Array, "*batch K 3"]:
+        """Compute positions defined by a prepared vertex mapping.
+
+        Signatures vary by model. Outputs use the model's native coordinate
+        system and meters.
+        """
+
     def apply_pose_correctives(
         self,
         *,
@@ -262,6 +271,64 @@ class SkinnedModel(ArticulatedModel):
         if basis is None:
             raise RuntimeError("Prepared pose has corrective coefficients, but the model has no corrective basis.")
         return vertices + basis.apply(coefficients)
+
+    def prepare_point_regressor(
+        self,
+        mapping: Float[Array, "K V"],
+    ) -> PointRegressor:
+        """Preproject a vertex mapping for repeated point forwards.
+
+        For Torch, call this after moving :meth:`as_module` to its target device.
+        """
+        if mapping.ndim != 2 or mapping.shape[0] < 1 or mapping.shape[1] != self.num_vertices:
+            raise ValueError(
+                f"mapping must have shape [K, {self.num_vertices}] with K >= 1, got {tuple(mapping.shape)}"
+            )
+        mapping = self._runtime.asarray(mapping, like=self.rest_vertices)
+        return point_regression.prepare_point_regressor(
+            mapping,
+            self._skinning_weights,
+            self._corrective_basis,
+            runtime=self._runtime,
+        )
+
+    def _deform_points(
+        self,
+        point_regressor: PointRegressor,
+        identity: SkinningIdentity,
+        pose: SkinningPose,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+        global_translation: Float[Array, "*batch 3"] | None,
+    ) -> Float[Array, "*batch K 3"]:
+        xp = self._runtime.xp
+        rest_points = point_regression.project_rest_points(
+            point_regressor,
+            identity["rest_vertices"],
+            xp=xp,
+        )
+        points = point_regression.regress_points(point_regressor, rest_points, pose, xp=xp)
+        return self._transform_points(points, point_regressor, global_rotation, global_translation)
+
+    def _transform_points(
+        self,
+        points: Float[Array, "*batch K 3"],
+        point_regressor: PointRegressor,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+        global_translation: Float[Array, "*batch 3"] | None,
+    ) -> Float[Array, "*batch K 3"]:
+        rotation_type = self.parameter_spec["global_rotation"].rotation_type
+        if rotation_type is None:
+            raise RuntimeError("global_rotation must declare its rotation type")
+        points = skinning.apply_global_transform(
+            points,
+            global_rotation,
+            None,
+            rotation_type,
+            xp=self._runtime.xp,
+        )
+        if global_translation is not None:
+            points = points + global_translation[..., None, :] * point_regressor["weight_sums"][..., None]
+        return points
 
     @staticmethod
     def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:

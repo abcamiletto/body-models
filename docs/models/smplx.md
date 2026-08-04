@@ -19,6 +19,9 @@ body-models set smplx-male /path/to/SMPLX_MALE.npz
 body-models set smplx-female /path/to/SMPLX_FEMALE.npz
 ```
 
+Like every skinned model, SMPL-X supports arbitrary vertex mappings through
+[`prepare_point_regressor()` and `forward_points()`](../api.md#mapped-points).
+
 ## API
 
 ::: body_models.smplx.SMPLX
