@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property, partial
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -16,9 +16,6 @@ from body_models._common import rigid as rigid_ops
 from body_models._constants import Joint
 from body_models._rotations import RotationType, rotation_ndim, rotation_shape
 from body_models._runtime import ArrayRuntime, RuntimeLike, resolve_runtime
-
-if TYPE_CHECKING:
-    from torch import nn
 
 Array = Any
 ParameterRole = Literal["identity", "pose", "transform"]
@@ -78,21 +75,6 @@ class ArticulatedModel(ABC):
     def runtime(self) -> ArrayRuntime:
         """Array runtime used by this model."""
         return self._runtime
-
-    def as_module(self) -> nn.Module:
-        """
-        Return this Torch-backed model's cached ``torch.nn.Module`` view.
-
-        The view shares all numeric state with the model. Device and dtype
-        changes made through the view therefore apply to the model as well.
-        """
-        from body_models._torch_module import TorchModule
-
-        module = self.__dict__.get("_torch_module")
-        if module is None:
-            module = TorchModule(self)
-            self._torch_module = module
-        return module
 
     def _set_runtime(self, runtime: RuntimeLike) -> ArrayRuntime:
         resolved = resolve_runtime(runtime)

@@ -21,7 +21,7 @@ the referenced mesh assets from the upstream `musclemimic_models/model/` tree.
 ## Usage
 
 ```python
-from body_models.myofullbody import MyoFullBody
+from body_models.myofullbody.numpy import MyoFullBody
 
 model = MyoFullBody()
 params = model.get_apose(batch_dims=(1,))

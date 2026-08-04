@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -12,12 +12,9 @@ from nanomanifold import SO3
 
 from body_models._base import CorrectiveBasis, ParameterSpec, SkinnedModel, SkinningPose, SparseCorrectiveBasis
 from body_models._common import skinning
+from body_models._registry import create_model
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import ArrayRuntime, RuntimeLike
-from body_models.anny import ANNY
-from body_models.mhr import MHR
-from body_models.smpl import SMPL
-from body_models.smplx import SMPLX
+from body_models._runtime import ArrayRuntime, RuntimeLike, TorchRuntime
 from body_models.soma import _core as core
 from body_models.soma import _identities as identities
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
@@ -33,13 +30,6 @@ from body_models.soma._pose import pack_pose
 Array = Any
 PathLike = Path | str
 SomaIdentity = core.SomaIdentity
-_IdentityModel = ANNY | MHR | SMPL | SMPLX
-_IDENTITY_MODEL_CLASSES: dict[str, Callable[..., _IdentityModel]] = {
-    "anny": ANNY,
-    "mhr": MHR,
-    "smpl": SMPL,
-    "smplx": SMPLX,
-}
 
 
 @dataclass(frozen=True)
@@ -416,14 +406,12 @@ class SOMA(SkinnedModel):
         return params
 
 
-def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> _IdentityModel:
+def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> Any:
     spec = MODEL_TYPE_SPECS[model_type]
-    model_class = _IDENTITY_MODEL_CLASSES[model_type]
-    return model_class(
-        simplify=1.0,
-        runtime=runtime,
-        **spec.identity_model_kwargs,
-    )
+    kwargs = dict(spec.identity_model_kwargs) | {"simplify": 1.0}
+    if isinstance(runtime, TorchRuntime):
+        kwargs["skinning_backend"] = runtime.skinning_backend
+    return create_model(model_type, runtime=runtime.name, **kwargs)
 
 
 __all__ = ["SOMA", "SomaConfig"]

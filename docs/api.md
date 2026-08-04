@@ -1,6 +1,7 @@
 # API Reference
 
-Only names exported from `body_models` and its model packages are public.
+Only names exported from `body_models`, its model packages, and backend modules
+are public.
 Model-specific classes and helpers are documented on their
 [model pages](index.md#supported-models).
 
