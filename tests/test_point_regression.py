@@ -10,8 +10,6 @@ from body_models.smpl import SMPL
 from body_models.smplh import SMPLH
 from body_models.smplx import SMPLX
 
-pytestmark = pytest.mark.fast
-
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
 def test_points_match_mapped_vertices(name, model_class, kwargs) -> None:

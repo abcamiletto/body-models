@@ -13,7 +13,6 @@ Front = tuple[list[int], list[int]]
 
 SmplxSkeletonIdentity = deformation.SkeletonIdentity
 
-
 prepare_identity = family.prepare_shape_expression_identity
 prepare_skeleton_identity = family.prepare_shape_expression_skeleton_identity
 
@@ -108,7 +107,4 @@ def prepare_skeleton(
     )
 
 
-__all__ = [
-    "prepare_identity",
-    "prepare_pose",
-]
+__all__ = ["prepare_identity", "prepare_pose"]
