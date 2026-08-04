@@ -26,7 +26,6 @@ def test_backend_model_signature(spec, backend) -> None:
     assert ("skinning_backend" in parameters) is has_skinning_backend
 
 
-@pytest.mark.fast
 @pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
 def test_backend_model_binds_runtime(backend) -> None:
     if backend != "numpy":
@@ -45,7 +44,6 @@ def test_backend_model_binds_runtime(backend) -> None:
         model_class(runtime="numpy")
 
 
-@pytest.mark.fast
 def test_torch_model_exposes_skinning_backend() -> None:
     pytest.importorskip("torch")
     pytest.importorskip("warp")

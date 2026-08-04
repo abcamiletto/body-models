@@ -65,6 +65,7 @@ jobs:
       - name: Run cross-runtime functional tests
         run: |
           uv run pytest -q \
+            tests/test_backend_imports.py \
             tests/test_runtime.py \
             tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
             tests/test_backend_consistency.py::test_rigid_body_meshes_match_numpy \
