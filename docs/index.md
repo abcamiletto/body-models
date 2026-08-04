@@ -80,20 +80,21 @@ prompts for those credentials and stores the resulting private-cache path.
 
 ## Common Usage
 
-Each model has one public class shared by its NumPy, Torch, and JAX runtimes.
-Select the runtime with the `runtime` argument. NumPy is the default and does
-not require an optional framework dependency.
+Each model exposes a class from its `numpy`, `torch`, and `jax` modules. Select
+the array backend in the import path. NumPy does not require an optional
+framework dependency.
 
-Names exported from `body_models` and model packages are the stable public API.
+Names exported from `body_models`, model packages, and backend modules are the
+stable public API.
 Underscore-prefixed modules are private implementation details and are not
 covered by compatibility guarantees. See the [API reference](api.md) for the
 shared contracts and the [architecture guide](architecture.md) for the runtime
 boundary and extension rules.
 
 ```python
-from body_models.smpl import SMPL
+from body_models.smpl.torch import SMPL
 
-model = SMPL(gender="neutral", runtime="torch")
+model = SMPL(gender="neutral")
 params = model.get_rest_pose(batch_dims=(1,))
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
@@ -102,8 +103,8 @@ skeleton = model.forward_skeleton(**params)
 Call `model.as_module()` when PyTorch module lifecycle behavior such as
 `.to()`, `.cuda()`, or `state_dict()` is needed. Each model returns the same
 cached module view on every call, and lifecycle mutations affect the model's
-shared numeric state. Pass a configured runtime object for runtime-specific
-behavior such as Warp skinning.
+shared numeric state. Torch models accept `skinning_backend="warp"` when Warp
+skinning is desired.
 
 All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
 define its two public specializations. The shared contract includes `runtime`,

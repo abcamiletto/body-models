@@ -1,0 +1,8 @@
+"""PyTorch MHR model."""
+
+from body_models._backend import model_for_backend
+from body_models.mhr import MHR as _MHR
+
+MHR = model_for_backend(_MHR, "torch", module=__name__)
+
+__all__ = ["MHR"]
