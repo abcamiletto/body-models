@@ -91,8 +91,8 @@ model = SMPL(skinning_backend="warp")
 ```
 
 The shared model implementation still receives an internal `ArrayRuntime`.
-`create_model()` accepts a runtime name or object for callers that select a
-model and backend dynamically.
+`create_model()` accepts a runtime name for callers that select a model and
+backend dynamically.
 
 Kernel dispatch follows the lifetime of the work. Operation execution is
 lowered by the runtime; reusable derived inputs are created during state
@@ -104,14 +104,12 @@ own their prepared representation as materialized state. This
 keeps `ArrayRuntime` independent of model semantics without hiding persistent
 work in global caches.
 
-Torch lifecycle behavior is orthogonal to model identity. `model.as_module()`
-returns a cached `torch.nn.Module` view for `.to()`, `state_dict()`, and buffer
-registration. The view and model share numeric state, so lifecycle mutations
-apply to both. Source numeric model state is persistent, so checkpoints are
-complete but may be large. Derived backend plans move with their owning module
-but are rebuilt rather than serialized. JAX-backed instances of the same model
-class implement the pytree protocol. Pytree reconstruction preserves both
-model configuration and runtime configuration.
+Torch backend models inherit `torch.nn.Module`, and their materialized state is
+registered directly as modules and persistent buffers. Source numeric model
+state is persistent, so checkpoints are complete but may be large. Derived
+backend plans move with their owning module but are rebuilt rather than
+serialized. JAX backend models implement the pytree protocol. Pytree
+reconstruction preserves both model configuration and runtime configuration.
 
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative

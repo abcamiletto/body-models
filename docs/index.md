@@ -100,11 +100,9 @@ vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
-Call `model.as_module()` when PyTorch module lifecycle behavior such as
-`.to()`, `.cuda()`, or `state_dict()` is needed. Each model returns the same
-cached module view on every call, and lifecycle mutations affect the model's
-shared numeric state. Torch models accept `skinning_backend="warp"` when Warp
-skinning is desired.
+Models imported from a `torch` module are `torch.nn.Module` instances, so
+`.to()`, `.cuda()`, and `state_dict()` work directly. Torch models accept
+`skinning_backend="warp"` when Warp skinning is desired.
 
 All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
 define its two public specializations. The shared contract includes `runtime`,

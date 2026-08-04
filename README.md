@@ -71,12 +71,11 @@ skinning implementation directly:
 from body_models.smpl.torch import SMPL
 
 model = SMPL(gender="neutral", skinning_backend="warp")
-module = model.as_module().cuda()
+model = model.cuda()
 ```
 
-`as_module()` returns one cached `torch.nn.Module` view per model. The view
-shares numeric state with the model, so device and dtype changes apply to both,
-without changing the underlying model class.
+Models imported from a `torch` module are `torch.nn.Module` instances, so
+`.to()`, `.cuda()`, and `state_dict()` work directly.
 
 The equivalent NumPy and JAX classes live in `body_models.smpl.numpy` and
 `body_models.smpl.jax`. Discover available model names with
