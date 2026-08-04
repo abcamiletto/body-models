@@ -34,6 +34,7 @@ class SmplxWeights:
     parents: list[int]
     kinematic_fronts: list[Front]
     joint_names: list[str]
+    pose_corrective_coefficient_indices: Int[Array, "C"] | None = None
 
 
 def validate_path(model_path: PathLike) -> Path:

@@ -30,6 +30,7 @@ class FlameWeights:
     j_exprdirs: Float[Array, "5 3 E"]
     parents: list[int]
     kinematic_fronts: list[Front]
+    pose_corrective_coefficient_indices: Int[Array, "C"] | None = None
 
 
 def validate_path(model_path: PathLike) -> Path:

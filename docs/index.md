@@ -139,3 +139,27 @@ several leading batch axes.
 Skinned model packages export model-specific identity types when their schemas
 are unique. Shared contracts are available as `LinearIdentity`,
 `SkinningIdentity`, `SkinningPose`, and `SkinningSpec` from `body_models`.
+
+## Pose-corrective LOD
+
+SMPL, SMPL-H, SMPL-X, MANO, and FLAME accept a static
+`pose_corrective_joints` selection, mirroring fixed LOD in the
+[SMPL Unreal plugin](https://github.com/PerceivingSystems/smpl-unreal) while
+leaving the full skeleton and skinning unchanged. `None` retains every nonzero
+joint block, while an empty sequence retains none. Names follow the model's
+native `joint_names`.
+
+```python
+from body_models.smplx import SMPLX
+
+model = SMPLX(
+    gender="neutral",
+    pose_corrective_joints=["L_Knee", "R_Knee", "L_Elbow", "R_Elbow"],
+)
+```
+
+Each retained joint contributes one complete 9-coefficient block. Omitting
+blocks trades deformation quality for lower model memory and multiplication
+work. For camera-driven LOD, construct immutable model instances for each rung
+and select between them outside compiled code; prepared poses can be shared
+across the ladder. `pose_corrective_joint_names` reports the retained subset.

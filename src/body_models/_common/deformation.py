@@ -40,16 +40,22 @@ class DenseCorrectiveBasis:
     """Dense corrective basis stored as ``[coefficients, vertex coordinates]``."""
 
     values: Float[Array, "C V*3"]
+    coefficient_indices: Int[Array, "selected"] | None = None
+    source_coefficient_dim: int | None = None
 
     @property
     def coefficient_dim(self) -> int:
-        return self.values.shape[0]
+        return self.values.shape[0] if self.source_coefficient_dim is None else self.source_coefficient_dim
 
     @property
     def num_vertices(self) -> int:
         return self.values.shape[1] // 3
 
     def apply(self, coefficients: Float[Array, "*batch C"]) -> Float[Array, "*batch V 3"]:
+        if coefficients.shape[-1] != self.coefficient_dim:
+            raise ValueError(f"Expected {self.coefficient_dim} corrective coefficients, got {coefficients.shape[-1]}")
+        if self.coefficient_indices is not None:
+            coefficients = coefficients[..., self.coefficient_indices]
         return (coefficients @ self.values).reshape(*coefficients.shape[:-1], self.num_vertices, 3)
 
 

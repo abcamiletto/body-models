@@ -28,6 +28,7 @@ class SmplWeights:
     j_shapedirs: Float[Array, "24 3 S"]
     parents: list[int]
     kinematic_fronts: list[Front]
+    pose_corrective_coefficient_indices: Int[Array, "C"] | None = None
 
 
 def validate_path(model_path: PathLike) -> Path:

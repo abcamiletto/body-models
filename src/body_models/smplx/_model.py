@@ -28,6 +28,7 @@ class SmplxConfig:
 
     gender: Literal["neutral", "male", "female"]
     rotation_type: RotationType
+    pose_corrective_joint_names: tuple[str, ...]
 
 
 class SMPLX(SmplFamilyModel):
@@ -51,6 +52,7 @@ class SMPLX(SmplFamilyModel):
         flat_hand_mean: bool = False,
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
+        pose_corrective_joints: Sequence[str] | None = None,
         runtime: RuntimeLike = "numpy",
     ) -> None:
         if gender is not None and gender not in ("neutral", "male", "female"):
@@ -62,8 +64,17 @@ class SMPLX(SmplFamilyModel):
 
         resolved_path = get_model_path(model_path, gender)
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        weights, corrective_joint_names = self._select_pose_correctives(
+            weights,
+            weights.joint_names,
+            pose_corrective_joints,
+        )
         runtime = self._set_runtime(runtime)
-        self._config = SmplxConfig(gender=gender or "neutral", rotation_type=rotation_type)
+        self._config = SmplxConfig(
+            gender=gender or "neutral",
+            rotation_type=rotation_type,
+            pose_corrective_joint_names=corrective_joint_names,
+        )
         self._weights = runtime._materialize(weights)
 
     @property

@@ -84,6 +84,8 @@ semantics are model-local and must not be interpreted by consumers. Use
 without depending on the basis representation.
 Model packages export `*Identity` types only when they add fields to the shared
 identity contracts; all skinned models use the shared `SkinningPose`.
+SMPL-family models additionally expose `pose_corrective_joint_names`, the
+effective construction-time joint subset backing their compact corrective basis.
 
 ::: body_models.LinearIdentity
     options:

@@ -17,6 +17,36 @@ def test_anny_torch_compile_on_cuda() -> None:
     assert vertices.is_cuda
 
 
+def test_smpl_pose_corrective_subset_torch_compiles() -> None:
+    torch = pytest.importorskip("torch")
+    from body_models.smpl.torch import SMPL as TorchSMPL
+
+    torch_model = TorchSMPL(
+        gender="neutral",
+        pose_corrective_joints=["left_elbow"],
+    )
+    torch_params = torch_model.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
+    with torch.no_grad():
+        torch_vertices = torch.compile(torch_model.forward_vertices, backend="eager")(**torch_params)
+    assert torch_vertices.shape[-1] == 3
+
+
+def test_smpl_pose_corrective_subset_jax_jits() -> None:
+    jax = pytest.importorskip("jax")
+    pytest.importorskip("flax")
+    import jax.numpy as jnp
+
+    from body_models.smpl.jax import SMPL as JaxSMPL
+
+    jax_model = JaxSMPL(
+        gender="neutral",
+        pose_corrective_joints=["left_elbow"],
+    )
+    jax_params = jax_model.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
+    jax_vertices = jax.jit(jax_model.forward_vertices)(**jax_params)
+    assert np.asarray(jax_vertices).shape[-1] == 3
+
+
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_torch_compile_and_jax_jit(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")

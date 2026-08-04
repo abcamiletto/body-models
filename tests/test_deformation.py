@@ -33,6 +33,28 @@ def test_pose_correctives_exclude_the_root_rotation() -> None:
     np.testing.assert_array_equal(actual, expected)
 
 
+def test_dense_corrective_basis_selects_coefficients() -> None:
+    coefficients = np.arange(24, dtype=np.float32).reshape(2, 12)
+    values = np.arange(4 * 6, dtype=np.float32).reshape(4, 6)
+    indices = np.array([0, 3, 7, 11])
+    basis = deformation.DenseCorrectiveBasis(values, coefficient_indices=indices, source_coefficient_dim=12)
+
+    actual = basis.apply(coefficients)
+    expected = (coefficients[..., indices] @ values).reshape(2, 2, 3)
+
+    assert basis.coefficient_dim == 12
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_dense_corrective_basis_rejects_wrong_input_dimension() -> None:
+    values = np.arange(4 * 6, dtype=np.float32).reshape(4, 6)
+    indices = np.array([0, 3, 7, 11])
+    basis = deformation.DenseCorrectiveBasis(values, coefficient_indices=indices, source_coefficient_dim=12)
+
+    with pytest.raises(ValueError, match="Expected 12"):
+        basis.apply(np.zeros((2, 4), dtype=np.float32))
+
+
 def test_prepare_linear_identity_shares_coefficients_across_joints_and_vertices() -> None:
     vertex_template = np.zeros((1, 3), dtype=np.float32)
     vertex_directions = np.ones((1, 3, 1), dtype=np.float32)

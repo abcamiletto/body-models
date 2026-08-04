@@ -11,6 +11,7 @@ Documentation: https://abcamiletto.github.io/body-models/
 
 - NumPy, PyTorch, and JAX runtimes
 - Optional Warp acceleration for Torch skinning
+- Static pose-corrective joint subsets for SMPL-family quality/performance LODs
 - Separate mesh and skeleton forwards with `forward_vertices()` and `forward_skeleton()`
 - Prepared identities for repeated poses with fixed shape/expression parameters
 - Mesh simplification and vertex-subset forwards for supported mesh models

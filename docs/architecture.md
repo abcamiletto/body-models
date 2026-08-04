@@ -49,7 +49,15 @@ SMPL, SMPL-H, SMPL-X, MANO, and FLAME share one private family engine. Their
 `_core.py` modules describe the ordered pose blocks and apply model-specific
 means, while the engine owns rotation conversion, root insertion, batch
 validation, forward kinematics, bind-relative transforms, and corrective
-coefficient construction.
+coefficient construction. During construction, each model selects complete
+9-coefficient joint blocks from its corrective basis before runtime
+materialization, omitting exact-zero blocks from the default selection. Its
+immutable `pose_corrective_joints` configuration can name a smaller subset for
+a fixed quality/performance LOD. Pose preparation still produces the complete
+root-excluded coefficient vector; the compact basis owns the matching
+coefficient gather. A prepared pose can therefore be shared by multiple LOD
+model instances. The renderer-facing corrective contract is unchanged, and
+full-rig forward kinematics remains mandatory for skinning.
 The public methods remain explicit per model. The engine accepts arrays and
 pose blocks only; it has no model names, optional-feature flags, or knowledge of
 hands and faces.

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any, TypeAlias
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, SkinnedModel
-from body_models._common import deformation, kinematics, skinning
+from body_models._common import deformation, kinematics, pose_correctives, skinning
 from body_models._rotations import RotationType, rotation_ndim
 
 Array = Any
@@ -22,6 +23,24 @@ class SmplFamilyModel(SkinnedModel):
 
     _weights: Any
     rotation_type: RotationType
+
+    @staticmethod
+    def _select_pose_correctives(
+        weights: Any,
+        joint_names: Sequence[str],
+        pose_corrective_joints: Sequence[str] | None,
+    ) -> tuple[Any, tuple[str, ...]]:
+        posedirs, coefficient_indices, selected_names = pose_correctives.select_blocks(
+            weights.posedirs,
+            joint_names,
+            pose_corrective_joints,
+        )
+        weights = replace(
+            weights,
+            posedirs=posedirs,
+            pose_corrective_coefficient_indices=coefficient_indices,
+        )
+        return weights, selected_names
 
     @property
     def _num_rot_dims(self) -> int:
@@ -48,8 +67,18 @@ class SmplFamilyModel(SkinnedModel):
         return list(self._weights.parents)
 
     @property
+    def pose_corrective_joint_names(self) -> list[str]:
+        """Joints whose pose-corrective blend shapes are active."""
+        return list(self._config.pose_corrective_joint_names)
+
+    @property
     def _corrective_basis(self) -> CorrectiveBasis:
-        return DenseCorrectiveBasis(self._weights.posedirs)
+        coefficient_indices = self._weights.pose_corrective_coefficient_indices
+        return DenseCorrectiveBasis(
+            self._weights.posedirs,
+            coefficient_indices=coefficient_indices,
+            source_coefficient_dim=None if coefficient_indices is None else (len(self.joint_names) - 1) * 9,
+        )
 
     def _deform_vertices(
         self,
