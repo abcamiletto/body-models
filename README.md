@@ -39,9 +39,9 @@ configured paths.
 ## Quick Start
 
 ```python
-import body_models
+from body_models.smpl.torch import SMPL
 
-model = body_models.create_model("smpl", runtime="torch")
+model = SMPL(gender="neutral")
 params = model.get_rest_pose(batch_dims=(1,))
 
 vertices = model.forward_vertices(**params)
@@ -64,11 +64,13 @@ and rotation representation when applicable. A rotation representation implies
 the corresponding identity rotation. `get_rest_pose()` constructs its arrays
 directly from this specification.
 
-Runtime-specific options stay in the runtime rather than every model signature:
+Select NumPy, Torch, or JAX in the import path. Torch models expose their
+skinning implementation directly:
 
 ```python
-runtime = body_models.TorchRuntime(skinning_backend="warp")
-model = body_models.create_model("smpl", runtime=runtime)
+from body_models.smpl.torch import SMPL
+
+model = SMPL(gender="neutral", skinning_backend="warp")
 module = model.as_module().cuda()
 ```
 
@@ -76,20 +78,23 @@ module = model.as_module().cuda()
 shares numeric state with the model, so device and dtype changes apply to both,
 without changing the underlying model class.
 
-Discover available model names with `body_models.list_models()`. Model options
-such as `gender="male"` or `side="left"` are passed as constructor kwargs.
+The equivalent NumPy and JAX classes live in `body_models.smpl.numpy` and
+`body_models.smpl.jax`. Discover available model names with
+`body_models.list_models()`. The `create_model()` factory remains available
+when the model and runtime must be selected dynamically.
 
 ## Public API
 
 The stable API consists of names exported from `body_models` and each model
-package. For example, `body_models.smpl.SMPL` is public; underscore-prefixed
-modules such as `body_models.smpl._model` are implementation details and are
-not covered by semantic-versioning compatibility guarantees. Every model
+backend package. For example, `body_models.smpl.torch.SMPL` is public;
+underscore-prefixed modules such as `body_models.smpl._model` are
+implementation details and are not covered by semantic-versioning
+compatibility guarantees. Every model
 derives from `body_models.ArticulatedModel`. Skinned model packages also export
 model-specific prepared-state types when their schema is unique. Shared linear
 models use `body_models.LinearIdentity` and `body_models.SkinningPose`.
-Required numerical inputs may be positional; optional model and runtime
-arguments are keyword-only.
+Required numerical inputs may be positional; optional model arguments are
+keyword-only.
 
 The shared metadata API exposes `joint_names`, `parents`, `num_joints`,
 `common_joints`, `has_hands`, and `has_face`. Fixed model dimensions use

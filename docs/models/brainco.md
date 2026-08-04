@@ -21,7 +21,7 @@ The original BrainCo Revo 2 description license is included with the hosted asse
 ## Usage
 
 ```python
-from body_models.brainco import BrainCoHand
+from body_models.brainco.numpy import BrainCoHand
 
 hand = BrainCoHand(side="right")
 ```

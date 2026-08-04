@@ -8,7 +8,7 @@ for array ownership and genuinely shared operations.
 The stable public API is intentionally small:
 
 - names exported from `body_models`;
-- names explicitly exported from a model package.
+- names explicitly exported from a model or backend package.
 
 All underscore-prefixed modules are private implementation details. This
 includes model programs and loaders such as `smpl._model` and `smpl._io`, and
@@ -24,12 +24,13 @@ Each model family follows the same file roles:
 | `_io.py` | Resolve assets and load immutable NumPy model data. |
 | `_core.py` | Model-specific mathematics with an explicit array namespace. |
 | `_model.py` | Define the model class, validation, state preparation, and forward orchestration. |
-| `__init__.py` | Export the model class and give it its stable public identity. |
+| `numpy.py`, `torch.py`, `jax.py` | Bind the shared model class to one public array backend. |
+| `__init__.py` | Export shared model-specific types and the dynamic-construction class. |
 
 Every model derives from the public `ArticulatedModel` base through either
 `SkinnedModel` or `RigidBodyModel`. Models are self-contained in
 `body_models/<name>/`; descriptive categories do not create a second package
-tree. One public class and signature serve every runtime. On skinned models,
+tree. Thin public subclasses bind that implementation to each runtime. On skinned models,
 identity preparation returns identity-dependent vertices and joints, while
 pose preparation returns transforms and compact corrective coefficients.
 `SkinningSpec` holds model-static triangles, render-rig skinning weights, and
@@ -80,17 +81,18 @@ because their container types are runtime-specific; stable model properties
 provide public access to meshes, skeletons, and deformation bases. The runtime
 does not own model semantics.
 
-Models accept either a runtime name or an `ArrayRuntime` instance. Runtime
-options are configured once on that object, so adding an execution option does
-not change every model constructor. Warp is a Torch operation lowering, not
-another runtime:
+The public backend modules bind each model to one runtime. Warp remains a Torch
+operation lowering and is selected directly on the Torch model:
 
 ```python
-from body_models import TorchRuntime
-from body_models.smpl import SMPL
+from body_models.smpl.torch import SMPL
 
-model = SMPL(runtime=TorchRuntime(skinning_backend="warp"))
+model = SMPL(skinning_backend="warp")
 ```
+
+The shared model implementation still receives an internal `ArrayRuntime`.
+`create_model()` accepts a runtime name or object for callers that select a
+model and backend dynamically.
 
 Kernel dispatch follows the lifetime of the work. Operation execution is
 lowered by the runtime; reusable derived inputs are created during state
