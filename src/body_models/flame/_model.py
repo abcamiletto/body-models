@@ -176,7 +176,7 @@ class FLAME(SmplFamilyModel):
         pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=skeleton_identity)
         return self._deform_linear_points(
             point_regressor,
-            self._point_identity_coefficients(shape, expression),
+            (shape, expression),
             pose,
             global_rotation,
             global_translation,

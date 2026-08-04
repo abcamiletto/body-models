@@ -65,63 +65,37 @@ class SmplFamilyModel(SkinnedModel):
             self.rest_vertices,
             xp=xp,
         )
-        regressor["identity_directions"] = point_regression.project_vertex_values(
-            regressor,
-            self._point_identity_directions,
-            xp=xp,
+        regressor["identity_bases"] = tuple(
+            point_regression.project_vertex_values(regressor, basis, xp=xp) for basis in self._point_identity_bases
         )
         return regressor
 
     @property
-    def _point_identity_directions(self) -> Float[Array, "V 3 C"]:
-        directions = self._weights.shapedirs[:, :, : self.NUM_SHAPE_COEFFS]
-        expression_dim = self.NUM_EXPR_COEFFS
-        if expression_dim == 0:
-            return directions
-        expression = self._weights.exprdirs[:, :, :expression_dim]
-        return self._runtime.xp.concat([directions, expression], axis=-1)
+    def _point_identity_bases(self) -> tuple[Float[Array, "V 3 C"], ...]:
+        bases = (self._weights.shapedirs,)
+        return bases if self.NUM_EXPR_COEFFS == 0 else (*bases, self._weights.exprdirs)
 
     def _deform_linear_points(
         self,
         point_regressor: PointRegressor,
-        identity_coefficients: Float[Array, "*batch C"],
+        identity_coefficients: Sequence[Float[Array, "*batch C"]],
         pose: deformation.SkinningPose,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
         global_translation: Float[Array, "*batch 3"] | None,
     ) -> Float[Array, "*batch K 3"]:
         xp = self._runtime.xp
-        rest_points = point_regressor["template"] + xp.einsum(
-            "...c,kjdc->...kjd",
-            identity_coefficients,
-            point_regressor["identity_directions"],
-        )
+        rest_points = point_regressor["template"]
+        for coefficients, basis in zip(identity_coefficients, point_regressor["identity_bases"], strict=True):
+            coefficient_dim = coefficients.shape[-1]
+            if coefficient_dim > basis.shape[-1]:
+                raise ValueError(f"identity coefficients exceed the model basis width of {basis.shape[-1]}")
+            rest_points = rest_points + xp.einsum(
+                "...c,kjdc->...kjd",
+                coefficients,
+                basis[..., :coefficient_dim],
+            )
         points = point_regression.regress_points(point_regressor, rest_points, pose, xp=xp)
         return self._transform_points(points, point_regressor, global_rotation, global_translation)
-
-    def _point_identity_coefficients(
-        self,
-        shape: Float[Array, "*batch S"],
-        expression: Float[Array, "*batch E"] | None = None,
-    ) -> Float[Array, "*batch C"]:
-        values = [self._pad_point_coefficients(shape, self.NUM_SHAPE_COEFFS)]
-        if expression is not None:
-            values.append(self._pad_point_coefficients(expression, self.NUM_EXPR_COEFFS))
-        return self._runtime.xp.concat(values, axis=-1) if len(values) > 1 else values[0]
-
-    def _pad_point_coefficients(
-        self,
-        coefficients: Float[Array, "*batch C"],
-        size: int,
-    ) -> Float[Array, "*batch size"]:
-        if coefficients.shape[-1] > size:
-            raise ValueError(f"point regression supports at most {size} identity coefficients")
-        if coefficients.shape[-1] == size:
-            return coefficients
-        padding = self._runtime.zeros(
-            (*coefficients.shape[:-1], size - coefficients.shape[-1]),
-            like=coefficients,
-        )
-        return self._runtime.xp.concat([coefficients, padding], axis=-1)
 
     def _deform_vertices(
         self,
