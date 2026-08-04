@@ -103,32 +103,35 @@ def test_runtime_is_serializable() -> None:
     assert runtime.xp.__name__ == "torch"
 
 
-def test_model_class_identity_is_backend_independent() -> None:
-    pytest.importorskip("torch")
+def test_factory_returns_backend_specific_model() -> None:
+    torch = pytest.importorskip("torch")
     pytest.importorskip("jax")
     from body_models import create_model
-    from body_models.g1 import G1
+    from body_models.g1.jax import G1 as JaxG1
+    from body_models.g1.numpy import G1 as NumpyG1
+    from body_models.g1.torch import G1 as TorchG1
 
-    models = [G1(), create_model("g1", runtime="torch"), create_model("g1", runtime="jax")]
+    models = [create_model("g1"), create_model("g1", runtime="torch"), create_model("g1", runtime="jax")]
 
-    assert all(type(model) is G1 for model in models)
+    assert [type(model) for model in models] == [NumpyG1, TorchG1, JaxG1]
     assert [model.runtime.name for model in models] == ["numpy", "torch", "jax"]
+    assert isinstance(models[1], torch.nn.Module)
 
 
 def test_model_pickle_uses_public_class_identity() -> None:
-    from body_models.g1 import G1
+    from body_models.g1.numpy import G1
 
     model = pickle.loads(pickle.dumps(G1()))
 
     assert type(model) is G1
-    assert type(model).__module__ == "body_models.g1"
+    assert type(model).__module__ == "body_models.g1.numpy"
 
 
 def test_pickled_jax_model_jits_in_a_fresh_process() -> None:
     pytest.importorskip("jax")
-    from body_models.g1 import G1
+    from body_models.g1.jax import G1
 
-    model = G1(runtime="jax")
+    model = G1()
     program = """
 import pickle
 import sys
@@ -149,77 +152,57 @@ print(jax.jit(lambda value: value.num_vertices)(model))
     assert result.stdout.decode().strip() == str(model.num_vertices)
 
 
-def test_registered_model_pytree_preserves_non_jax_runtime() -> None:
-    jax = pytest.importorskip("jax")
-    pytest.importorskip("torch")
-    from body_models.g1 import G1
-
-    model = G1(runtime=TorchRuntime(skinning_backend="warp"))
-    G1(runtime="jax")
-    restored = jax.tree_util.tree_map(lambda value: value, model)
-
-    assert type(restored) is G1
-    assert restored.runtime == TorchRuntime(skinning_backend="warp")
-    assert restored._weights is model._weights
-
-
-def test_torch_module_manages_model_state() -> None:
+def test_torch_model_manages_module_state() -> None:
     torch = pytest.importorskip("torch")
-    from body_models.g1 import G1
+    from body_models.g1.torch import G1
 
-    model = G1(runtime="torch")
-    module = model.as_module()
-    module.double()
+    model = G1()
+    model.double()
 
-    assert isinstance(module, torch.nn.Module)
-    assert model.as_module() is module
-    assert module.model is model
-    assert module._weights is model._weights
-    assert "_weights.vertices" in module.state_dict()
+    assert isinstance(model, torch.nn.Module)
+    assert "_weights.vertices" in model.state_dict()
     assert model._weights.vertices.dtype == torch.float64
 
-    restored_model = pickle.loads(pickle.dumps(model))
-    restored_module = restored_model.as_module()
-    assert restored_model.as_module() is restored_module
-    assert restored_module.model is restored_model
+    restored = pickle.loads(pickle.dumps(model))
+    assert isinstance(restored, G1)
+    assert "_weights.vertices" in restored.state_dict()
 
 
 @pytest.mark.parametrize("model_type", ["soma", "smpl"])
 def test_soma_is_a_jax_pytree(model_type) -> None:
     jax = pytest.importorskip("jax")
 
-    from body_models.soma import SOMA
+    from body_models.soma.jax import SOMA
 
-    model = SOMA(model_type=model_type, runtime="jax")
+    model = SOMA(model_type=model_type)
     assert all(leaf is not model for leaf in jax.tree_util.tree_leaves(model))
     assert jax.jit(lambda value: value.num_vertices)(model) == model.num_vertices
 
 
-def test_soma_torch_module_owns_external_identity_model() -> None:
+def test_soma_torch_model_owns_external_identity_model() -> None:
     torch = pytest.importorskip("torch")
-    from body_models.smpl import SMPL
-    from body_models.soma import SOMA
+    from body_models.smpl.torch import SMPL
+    from body_models.soma.torch import SOMA
 
-    model = SOMA(model_type="smpl", runtime="torch")
-    module = model.as_module()
+    model = SOMA(model_type="smpl")
     identity_model = model._identity_model
 
     assert isinstance(identity_model, SMPL)
-    assert module._identity_model is identity_model.as_module()
-    assert any(name.startswith("_identity_model._weights.") for name in module.state_dict())
+    assert any(name.startswith("_identity_model._weights.") for name in model.state_dict())
 
-    module.double()
+    model.double()
     assert identity_model.rest_vertices.dtype == torch.float64
 
     restored = pickle.loads(pickle.dumps(model))
     assert isinstance(restored._identity_model, SMPL)
-    assert restored.as_module()._identity_model is restored._identity_model.as_module()
+    assert any(name.startswith("_identity_model._weights.") for name in restored.state_dict())
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_jax_model_pytree_round_trip(name, model_class, kwargs) -> None:
     jax = pytest.importorskip("jax")
-    model = model_class(**kwargs, runtime="jax")
+    jax_class = model_cases.backend_model_class(name, "jax")
+    model = jax_class(**kwargs)
 
     leaves, tree = jax.tree_util.tree_flatten(model)
     restored = jax.tree_util.tree_unflatten(tree, leaves)

@@ -16,9 +16,8 @@ def surface_loss(model, params):
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_torch_and_jax_gradients_match_finite_difference(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
-    torch_instance = model_class(**kwargs, runtime="torch")
-    torch_module = torch_instance.as_module()
-    torch_module.double()
+    torch_class = model_cases.backend_model_class(name, "torch")
+    torch_instance = torch_class(**kwargs).double()
     torch_rest = torch_instance.get_rest_pose(batch_dims=(), dtype=torch.float64)
     torch_rest = {key: value + 0.03 for key, value in torch_rest.items()}
 
@@ -27,7 +26,8 @@ def test_torch_and_jax_gradients_match_finite_difference(name, model_class, kwar
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
 
-    jax_instance = model_class(**kwargs, runtime="jax")
+    jax_class = model_cases.backend_model_class(name, "jax")
+    jax_instance = jax_class(**kwargs)
     jax_rest = jax_instance.get_rest_pose(batch_dims=(), dtype=jnp.float64)
     jax_rest = {key: value + 0.03 for key, value in jax_rest.items()}
 
@@ -137,12 +137,11 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
     if not torch.cuda.is_available():
         pytest.skip("SOMA's Warp skinning backend requires CUDA")
 
-    from body_models.soma import SOMA
+    from body_models.soma.torch import SOMA
 
     torch.manual_seed(7)
     models = {
-        skinning_backend: SOMA(runtime=TorchRuntime(skinning_backend=skinning_backend)).as_module().cuda()
-        for skinning_backend in ("torch", "warp")
+        skinning_backend: SOMA(skinning_backend=skinning_backend).cuda() for skinning_backend in ("torch", "warp")
     }
     params = models["torch"].get_rest_pose(batch_dims=(1,))
     params = {key: value + 0.01 * torch.randn_like(value) for key, value in params.items()}
@@ -176,7 +175,8 @@ def test_torch_skinning_backend_gradients_match_default(
     if not torch.cuda.is_available():
         pytest.skip("CUDA is required")
 
-    default_model = model_class(**kwargs, runtime="torch").as_module().cuda()
+    torch_class = model_cases.backend_model_class(name, "torch")
+    default_model = torch_class(**kwargs).cuda()
     params = default_model.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     vertex_indices = list(range(min(8, default_model.num_vertices)))
     generator = torch.Generator(device="cuda").manual_seed(0)
@@ -193,7 +193,7 @@ def test_torch_skinning_backend_gradients_match_default(
 
     expected_vertices, expected_gradients = forward_and_grad(default_model)
     for skinning_backend in TorchRuntime.SKINNING_BACKENDS[1:]:
-        model = model_class(**kwargs, runtime=TorchRuntime(skinning_backend=skinning_backend)).as_module().cuda()
+        model = torch_class(**kwargs, skinning_backend=skinning_backend).cuda()
         actual_vertices, actual_gradients = forward_and_grad(model)
         torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
         for actual, expected in zip(actual_gradients, expected_gradients, strict=True):

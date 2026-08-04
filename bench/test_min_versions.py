@@ -43,7 +43,7 @@ def tier2_numpy_forward() -> bool:
 
     # ANNY
     try:
-        from body_models.anny import ANNY
+        from body_models.anny.numpy import ANNY
 
         model = ANNY()
         params = model.get_rest_pose(batch_dims=(2,))
@@ -73,7 +73,7 @@ def tier2_numpy_forward() -> bool:
 
     # MHR
     try:
-        from body_models.mhr import MHR
+        from body_models.mhr.numpy import MHR
 
         model = MHR()
         params = model.get_rest_pose(batch_dims=(2,))
@@ -115,9 +115,9 @@ def tier3_torch_forward() -> bool:
     ok = True
 
     try:
-        from body_models.anny import ANNY
+        from body_models.anny.torch import ANNY
 
-        model = ANNY(runtime="torch").as_module().eval()
+        model = ANNY().eval()
         params = model.get_rest_pose(batch_dims=(2,))
         with torch.no_grad():
             verts = model.forward_vertices(
@@ -145,9 +145,9 @@ def tier3_torch_forward() -> bool:
         ok = False
 
     try:
-        from body_models.mhr import MHR
+        from body_models.mhr.torch import MHR
 
-        model = MHR(runtime="torch").as_module().eval()
+        model = MHR().eval()
         params = model.get_rest_pose(batch_dims=(2,))
         with torch.no_grad():
             verts = model.forward_vertices(
@@ -188,9 +188,9 @@ def tier4_jax_forward() -> bool:
     ok = True
 
     try:
-        from body_models.anny import ANNY
+        from body_models.anny.jax import ANNY
 
-        model = ANNY(runtime="jax")
+        model = ANNY()
         params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(
             params["body_pose"],
@@ -217,9 +217,9 @@ def tier4_jax_forward() -> bool:
         ok = False
 
     try:
-        from body_models.mhr import MHR
+        from body_models.mhr.jax import MHR
 
-        model = MHR(runtime="jax")
+        model = MHR()
         params = model.get_rest_pose(batch_dims=(2,))
         verts = model.forward_vertices(
             params["body_pose"],
