@@ -1,7 +1,7 @@
 [project]
 name = "body-models"
 version = "0.22.1"
-description = "Parametric and articulated body models for NumPy, PyTorch, and JAX with optional Warp acceleration"
+description = "Parametric and articulated body models for NumPy, PyTorch, and JAX with optional GPU acceleration"
 readme = "README.md"
 authors = [
     { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
@@ -27,6 +27,9 @@ body-models = "body_models._cli:main"
 [project.optional-dependencies]
 torch = [
     "torch>=2.3.0",
+]
+triton = [
+    "torch>=2.6.0; sys_platform == 'linux'",
 ]
 jax = [
     "jax>=0.4.33",

@@ -2,6 +2,7 @@
 
 Examples:
     uv run bench/run.py -m smpl --backend numpy
+    uv run bench/run.py -m smpl --backend torch --kernel-backend triton -d cuda
     uv run bench/run.py -m smpl --backend torch --kernel-backend warp -d cuda
     uv run bench/run.py -m smplx --backend torch -d cuda --prepared-identity
     uv run bench/run.py --method skeleton --batch-sizes 512,1024
@@ -11,6 +12,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import importlib
 import inspect
 import platform
 import statistics
@@ -25,6 +27,7 @@ import torch
 
 from body_models import _catalog as catalog
 from body_models import _registry as registry
+from body_models._base import SkinnedModel
 from body_models._runtime import TorchRuntime
 
 DEFAULT_SKELETON_BATCH_SIZES = [256, 512, 1024, 2048, 4096]
@@ -43,11 +46,13 @@ class BenchmarkSpec:
 
     @property
     def vertices_method(self) -> str:
-        return "forward_links" if catalog.MODEL_SPECS[self.model_name].kind == "rigid" else "forward_vertices"
+        return "forward_vertices" if self.is_skinned else "forward_links"
 
     @property
-    def supports_warp(self) -> bool:
-        return catalog.MODEL_SPECS[self.model_name].kind == "skinned"
+    def is_skinned(self) -> bool:
+        spec = catalog.MODEL_SPECS[self.model_name]
+        model_class = getattr(importlib.import_module(spec.module), spec.class_name)
+        return issubclass(model_class, SkinnedModel)
 
 
 @dataclass(frozen=True)
@@ -212,13 +217,13 @@ def implementations(
     backend: str,
     kernel_backends: list[str],
 ) -> tuple[str | None, ...]:
-    if backend != "torch" or not spec.supports_warp:
+    if backend != "torch" or not spec.is_skinned:
         return (None,)
     return tuple(kernel_backends)
 
 
 def benchmark_methods(methods: list[str], kernel_backend: str | None) -> list[str]:
-    if kernel_backend != "warp":
+    if kernel_backend not in ("triton", "warp"):
         return methods
     return [method for method in methods if method != "skeleton"]
 
@@ -230,7 +235,7 @@ def create_model(
     device: torch.device | None,
 ) -> Any:
     kwargs = dict(spec.kwargs)
-    if backend == "torch" and spec.supports_warp:
+    if backend == "torch" and spec.is_skinned:
         kwargs["kernel_backend"] = kernel_backend or "torch"
     model = registry.create_model(spec.model_name, runtime=backend, **kwargs)
     if backend == "torch":

@@ -90,7 +90,7 @@ can additionally select a kernel backend without changing their tensor API:
 ```python
 from body_models.smpl.torch import SMPL
 
-model = SMPL(kernel_backend="warp")
+model = SMPL(kernel_backend="triton")
 ```
 
 The shared model implementation still receives an internal `ArrayRuntime`.
@@ -104,14 +104,16 @@ their parent-tree composition to the runtime, independent of the model's pose
 layout or rotation representation. Core entry points that execute a lowered
 operation receive the runtime; pure numerical helpers receive only its array
 namespace. Compact skinning follows the same boundary: every runtime executes
-the same call contract, while Torch/Warp materialization augments the compact
-weights with a transform-gradient plan. A vertex subset chosen during a call
-gets a short-lived subset plan instead. Sparse corrective bases similarly own
-their prepared representation as materialized state. Kernel backends are
-additive operation lowerings; a selected lowering must execute or raise for an
-unsupported input, never silently switch implementations. This keeps
-`ArrayRuntime` independent of model semantics without hiding persistent work in
-global caches.
+the same call contract. The Triton lowering uses one forward kernel and an
+analytic first-order backward. Its joint-major CSR plan is derived once from
+the vertex-major weights, then stored as non-persistent Torch buffers; the
+optional Warp lowering prepares a corresponding reduction plan. A vertex
+subset chosen during a call gets a short-lived subset plan. Sparse corrective
+bases similarly own their prepared representation as materialized state.
+Kernel backends are additive operation lowerings; a selected lowering must
+execute or raise for an unsupported input, never silently switch
+implementations. This keeps `ArrayRuntime` independent of model semantics
+without hiding persistent work in global caches.
 
 Torch backend models inherit `torch.nn.Module`, and their materialized state is
 registered directly as modules and persistent buffers. Source numeric model
