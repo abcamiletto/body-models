@@ -13,7 +13,7 @@ Documentation: https://abcamiletto.github.io/body-models/
 - Prepared identities for repeated poses with fixed shape/expression parameters
 - Mesh simplification and vertex-subset forwards for supported mesh models
 - Multiple rotation representations for supported pose models
-- Optional Warp-accelerated skinning for Torch models
+- Triton skinning with an analytic backward, plus optional Warp skinning
 
 ## Install
 
@@ -25,6 +25,7 @@ Install optional extras when needed:
 
 ```bash
 uv add "body-models[torch]"
+uv add "body-models[triton]"  # Linux CUDA
 uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
 uv add "body-models[simplify]"

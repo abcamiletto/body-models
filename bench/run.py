@@ -2,6 +2,7 @@
 
 Examples:
     uv run bench/run.py -m smpl --backend numpy
+    uv run bench/run.py -m smpl --backend torch --kernel-backend triton -d cuda
     uv run bench/run.py -m smpl --backend torch --kernel-backend warp -d cuda
     uv run bench/run.py -m smplx --backend torch -d cuda --prepared-identity
     uv run bench/run.py --method skeleton --batch-sizes 512,1024
@@ -44,10 +45,6 @@ class BenchmarkSpec:
     @property
     def vertices_method(self) -> str:
         return "forward_vertices"
-
-    @property
-    def supports_warp(self) -> bool:
-        return True
 
 
 @dataclass(frozen=True)
@@ -137,7 +134,7 @@ def preflight_models(
     for benchmark_name in benchmark_names:
         spec = BENCHMARKS[benchmark_name]
         for backend in backends:
-            for kernel_backend in implementations(spec, backend, kernel_backends):
+            for kernel_backend in implementations(backend, kernel_backends):
                 if not benchmark_methods(methods, kernel_backend):
                     continue
                 model = create_model(spec, backend, kernel_backend, torch.device("cpu"))
@@ -171,7 +168,7 @@ def benchmark_all(
     for benchmark_name in benchmark_names:
         spec = BENCHMARKS[benchmark_name]
         for backend in backends:
-            for kernel_backend in implementations(spec, backend, kernel_backends):
+            for kernel_backend in implementations(backend, kernel_backends):
                 selected_methods = benchmark_methods(methods, kernel_backend)
                 if not selected_methods:
                     continue
@@ -208,17 +205,16 @@ def benchmark_all(
 
 
 def implementations(
-    spec: BenchmarkSpec,
     backend: str,
     kernel_backends: list[str],
 ) -> tuple[str | None, ...]:
-    if backend != "torch" or not spec.supports_warp:
+    if backend != "torch":
         return (None,)
     return tuple(kernel_backends)
 
 
 def benchmark_methods(methods: list[str], kernel_backend: str | None) -> list[str]:
-    if kernel_backend != "warp":
+    if kernel_backend not in ("triton", "warp"):
         return methods
     return [method for method in methods if method != "skeleton"]
 
@@ -230,7 +226,7 @@ def create_model(
     device: torch.device | None,
 ) -> Any:
     kwargs = dict(spec.kwargs)
-    if backend == "torch" and spec.supports_warp:
+    if backend == "torch":
         kwargs["kernel_backend"] = kernel_backend or "torch"
     model = registry.create_model(spec.model_name, runtime=backend, **kwargs)
     if backend == "torch":
