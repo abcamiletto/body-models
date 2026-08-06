@@ -4,12 +4,13 @@ from typing import Any
 
 from jaxtyping import Float
 
+from body_models import _common as common
 from body_models import _smpl_family as family
 from body_models._common import deformation
 from body_models._rotations import RotationType
+from body_models._runtime import ArrayRuntime
 
 Array = Any
-Front = tuple[list[int], list[int]]
 
 ManoSkeletonIdentity = deformation.SkeletonIdentity
 
@@ -40,7 +41,8 @@ def _pose_matrices(
 
 
 def prepare_pose(
-    kinematic_fronts: list[Front],
+    runtime: ArrayRuntime,
+    tree: common.KinematicTree,
     hand_mean: Float[Array, "45"],
     hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
     wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
@@ -48,7 +50,6 @@ def prepare_pose(
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
     rest_joints: Float[Array, "*identity_batch J 3"],
-    xp: Any,
 ) -> deformation.SkinningPose:
     """Prepare MANO transforms and pose-corrective coefficients."""
     pose_matrices = _pose_matrices(
@@ -56,26 +57,26 @@ def prepare_pose(
         hand_pose,
         wrist_rotation,
         rotation_type,
-        xp=xp,
+        xp=runtime.xp,
     )
     return family.prepare_pose(
+        runtime,
+        tree,
         pose_matrices,
-        kinematic_fronts,
         local_joint_offsets=local_joint_offsets,
         rest_joints=rest_joints,
-        xp=xp,
     )
 
 
 def prepare_skeleton(
-    kinematic_fronts: list[Front],
+    runtime: ArrayRuntime,
+    tree: common.KinematicTree,
     hand_mean: Float[Array, "45"],
     hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
     wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     rotation_type: RotationType,
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
-    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed MANO joint transforms."""
     pose_matrices = _pose_matrices(
@@ -83,13 +84,13 @@ def prepare_skeleton(
         hand_pose,
         wrist_rotation,
         rotation_type,
-        xp=xp,
+        xp=runtime.xp,
     )
     return family.forward_skeleton(
+        runtime,
+        tree,
         pose_matrices,
         local_joint_offsets,
-        kinematic_fronts,
-        xp=xp,
     )
 
 

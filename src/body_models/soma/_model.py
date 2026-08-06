@@ -28,7 +28,6 @@ from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SO
 from body_models.soma._io import (
     MODEL_TYPE_SPECS,
     SOMA_LODS,
-    control_joint_metadata,
     load_identity_transfer_data,
     load_model_data_for_lod,
 )
@@ -49,8 +48,6 @@ class SomaConfig:
     num_shape_coeffs: int
     num_scale_coeffs: int | None
     default_identity_value: float
-    parents: tuple[int, ...]
-    joint_names: tuple[str, ...]
 
 
 class SOMA(SkinnedModel):
@@ -85,7 +82,6 @@ class SOMA(SkinnedModel):
 
         resolved_path, weights = load_model_data_for_lod(model_path, lod, simplify=simplify)
         spec = MODEL_TYPE_SPECS[model_type]
-        parents, joint_names = control_joint_metadata(weights)
         runtime = self._set_runtime(runtime)
         self._config = SomaConfig(
             model_type=model_type,
@@ -94,8 +90,6 @@ class SOMA(SkinnedModel):
             num_shape_coeffs=spec.num_shape_coeffs,
             num_scale_coeffs=spec.num_scale_coeffs,
             default_identity_value=spec.default_identity_value,
-            parents=tuple(parents),
-            joint_names=tuple(joint_names),
         )
         self._weights = runtime._materialize(weights)
         self._identity_model = None
@@ -164,11 +158,12 @@ class SOMA(SkinnedModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self._config.joint_names)
+        return list(self._weights.control_rig.joint_names_full[1:])
 
     @property
     def parents(self) -> list[int]:
-        return list(self._config.parents)
+        parents = self._weights.control_rig.kinematics.kinematic_tree.parents
+        return [parent - 1 for parent in parents[1:]]
 
     @property
     def num_vertices(self) -> int:
@@ -266,11 +261,11 @@ class SOMA(SkinnedModel):
         )
         pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
+            self._runtime,
             self._weights,
             pose,
             self.rotation_type,
             local_joint_translations=skeleton_identity["local_joint_translations"],
-            xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
@@ -320,10 +315,10 @@ class SOMA(SkinnedModel):
         """Precompute identity-dependent state for repeated forward passes."""
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_identity_from_rest_shape(
+            self._runtime,
             data=self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            runtime=self._runtime,
             repose=repose,
             bind_pose=bind_pose,
         )
@@ -347,12 +342,12 @@ class SOMA(SkinnedModel):
         )
         pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
+            self._runtime,
             self._weights,
             pose,
             rotation_type=self.rotation_type,
             local_joint_translations=identity["local_joint_translations"],
             inverse_bind_transforms=identity["inverse_bind_transforms"],
-            xp=xp,
         )
 
     def _prepare_skeleton_identity(
@@ -363,10 +358,10 @@ class SOMA(SkinnedModel):
     ) -> core.SomaSkeletonIdentity:
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_skeleton_identity_from_rest_shape(
+            self._runtime,
             self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            runtime=self._runtime,
         )
 
     def _rest_shapes(
@@ -445,7 +440,7 @@ def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> Any:
     spec = MODEL_TYPE_SPECS[model_type]
     kwargs = dict(spec.identity_model_kwargs) | {"simplify": 1.0}
     if isinstance(runtime, TorchRuntime):
-        kwargs["skinning_backend"] = runtime.skinning_backend
+        kwargs["kernel_backend"] = runtime.kernel_backend
     return create_model(model_type, runtime=runtime.name, **kwargs)
 
 

@@ -21,5 +21,5 @@ def test_backend_model_signatures() -> None:
             assert issubclass(model_class, base_class)
             assert model_class.__module__ == f"{package}.{backend}"
             assert "runtime" not in parameters
-            has_skinning_backend = backend == "torch" and issubclass(base_class, SkinnedModel)
-            assert ("skinning_backend" in parameters) is has_skinning_backend
+            has_kernel_backend = backend == "torch" and issubclass(base_class, SkinnedModel)
+            assert ("kernel_backend" in parameters) is has_kernel_backend

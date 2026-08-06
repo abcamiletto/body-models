@@ -102,7 +102,9 @@ skeleton = model.forward_skeleton(**params)
 
 Models imported from a `torch` module are `torch.nn.Module` instances, so
 `.to()`, `.cuda()`, and `state_dict()` work directly. Torch models accept
-`skinning_backend="warp"` when Warp skinning is desired.
+`kernel_backend="warp"` when Warp operation lowerings are desired. The array
+runtime remains Torch; kernel backends only replace shared operations they
+implement.
 
 All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
 define its two public specializations. The shared contract includes `runtime`,

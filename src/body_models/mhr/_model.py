@@ -96,7 +96,7 @@ class MHR(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return list(self._weights.parents)
+        return list(self._weights.kinematic_tree.parents)
 
     @property
     def _corrective_basis(self) -> CorrectiveBasis:
@@ -158,14 +158,14 @@ class MHR(SkinnedModel):
         xp = self._runtime.xp
         pose = pack_pose(xp, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
+            runtime=self._runtime,
             joint_offsets=self._weights.joint_offsets,
             joint_pre_rotations=self._weights.joint_pre_rotations,
             parameter_transform=self._weights.parameter_transform,
-            kinematic_fronts=self._weights.kinematic_fronts,
+            tree=self._weights.kinematic_tree,
             num_joints=self.num_joints,
             shape_dim=self.NUM_SHAPE_COEFFS,
             pose=pose,
-            xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
@@ -228,17 +228,17 @@ class MHR(SkinnedModel):
         """Precompute pose-dependent MHR state."""
         pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
+            runtime=self._runtime,
             joint_offsets=self._weights.joint_offsets,
             joint_pre_rotations=self._weights.joint_pre_rotations,
             parameter_transform=self._weights.parameter_transform,
-            kinematic_fronts=self._weights.kinematic_fronts,
+            tree=self._weights.kinematic_tree,
             num_joints=self.num_joints,
             shape_dim=self.NUM_SHAPE_COEFFS,
             bind_inv_linear=self._weights.bind_inv_linear,
             bind_inv_translation=self._weights.bind_inv_translation,
             corrective_hidden_weights=self._weights.correctives.hidden_weights,
             pose=pose,
-            xp=self._runtime.xp,
         )
 
     def get_rest_pose(

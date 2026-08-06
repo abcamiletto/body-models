@@ -85,6 +85,7 @@ SO(3) rotation.
 
 `RuntimeName` is the runtime-name literal (`"numpy"`, `"torch"`, or `"jax"`), and
 `RuntimeLike` accepts either one of those names or an `ArrayRuntime` instance.
+`KernelBackend` selects the Torch operation lowering (`"torch"` or `"warp"`).
 
 ::: body_models.ArrayRuntime
     options:

@@ -19,7 +19,7 @@ from scipy.sparse import csc_matrix
 
 from body_models import _config as config
 from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
-from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh, sparse
+from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -78,8 +78,6 @@ __all__ = [
     "SomaIdentityTransfer",
     "SomaProceduralRig",
     "SomaWeights",
-    "compute_kinematic_fronts",
-    "control_joint_metadata",
     "download_model",
     "get_model_path",
     "load_identity_transfer_data",
@@ -109,9 +107,10 @@ class SomaCorrectives:
 
 @dataclass(frozen=True)
 class SomaKinematics:
-    parents_full: list[int]
-    parent_indices_full: Int[np.ndarray, "Jf"]
-    kinematic_fronts_full: list[Front]
+    """Tree traversal and orientation-gather state for one SOMA rig."""
+
+    kinematic_tree: kinematics.KinematicTree
+    orientation_parent_indices: Int[np.ndarray, "Jf"]
 
 
 @dataclass(frozen=True)
@@ -451,12 +450,6 @@ def _active_corrective_basis(
         columns = (active_vertex_indices[:, None] * 3 + np.arange(3)).reshape(-1)
         basis = sparse.select_columns(basis, columns)
     return basis
-
-
-def control_joint_metadata(data: SomaWeights) -> tuple[list[int], list[str]]:
-    parents = data.control_rig.kinematics.parents_full
-    names = data.control_rig.joint_names_full
-    return [parent - 1 for parent in parents[1:]], names[1:]
 
 
 def _missing_assets(model_dir: Path) -> list[str]:
@@ -1023,9 +1016,8 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         skin_weights_full=control_skin_weights,
         skin_weights_active=control_skin_weights,
         kinematics=SomaKinematics(
-            parents_full=control_parents_full,
-            parent_indices_full=control_parents,
-            kinematic_fronts_full=compute_kinematic_fronts(control_parents),
+            kinematic_tree=kinematics.KinematicTree.from_parents(control_parents_full),
+            orientation_parent_indices=control_parents,
         ),
         joint_children_full=control_joint_children_full,
         joint_children_indices_full=_pad_indices(control_joint_children_full),
@@ -1056,9 +1048,8 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
         vertex_map=None,
         facial_inner_vertices=facial_inner,
         kinematics=SomaKinematics(
-            parents_full=parents_full,
-            parent_indices_full=joint_parents_full,
-            kinematic_fronts_full=compute_kinematic_fronts(joint_parents_full),
+            kinematic_tree=kinematics.KinematicTree.from_parents(parents_full),
+            orientation_parent_indices=joint_parents_full,
         ),
         correctives=correctives,
         control_rig=control_rig,

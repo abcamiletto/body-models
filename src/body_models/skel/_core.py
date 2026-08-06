@@ -8,6 +8,7 @@ from nanomanifold import SO3
 
 from body_models import _common as common
 from body_models._common import skinning
+from body_models._runtime import ArrayRuntime
 
 Array = Any  # Generic array type (numpy, torch, jax)
 
@@ -34,6 +35,7 @@ class SkelIdentity(SkelSkeletonIdentity):
 
 
 def prepare_pose(
+    runtime: ArrayRuntime,
     all_axes: Float[Array, "47 3"],
     rotation_indices: Int[Array, "24 3"],
     apose_R: Float[Array, "24 3 3"],
@@ -44,17 +46,17 @@ def prepare_pose(
     scapula_r_axes: Float[Array, "3 3"],
     scapula_l_axes: Float[Array, "3 3"],
     spine_axes: Float[Array, "3 3"],
-    parents: list[int],
+    tree: common.KinematicTree,
     num_joints_smpl: int,
     pose: Float[Array, "*batch 46"],
     *,
     local_joint_offsets: Float[Array, "*batch 24 3"],
     rest_joints: Float[Array, "*batch 24 3"],
-    xp: Any,
 ) -> common.deformation.SkinningPose:
     """Precompute pose-dependent SKEL state for repeated forward passes."""
     if pose.ndim < 1 or pose.shape[-1] != NUM_POSE_PARAMS:
         raise ValueError(f"pose must have shape [..., {NUM_POSE_PARAMS}]")
+    xp = runtime.xp
     batch_shape = tuple(pose.shape[:-1])
     G_local = _compute_local_transforms(
         xp=xp,
@@ -72,7 +74,7 @@ def prepare_pose(
         scapula_l_axes=scapula_l_axes,
         spine_axes=spine_axes,
     )
-    G = _propagate_transforms(xp, G_local, parents[1:])
+    G = runtime._compose_kinematic_tree(G_local, tree)
 
     eye3 = common.eye_as(G_local[..., :3, :3], batch_dims=(*batch_shape, 1), xp=xp)
     R_smpl = xp.broadcast_to(eye3, (*batch_shape, num_joints_smpl, 3, 3))
@@ -88,6 +90,7 @@ def prepare_pose(
 
 
 def prepare_skeleton(
+    runtime: ArrayRuntime,
     all_axes: Float[Array, "47 3"],
     rotation_indices: Int[Array, "24 3"],
     apose_R: Float[Array, "24 3 3"],
@@ -98,16 +101,16 @@ def prepare_skeleton(
     scapula_r_axes: Float[Array, "3 3"],
     scapula_l_axes: Float[Array, "3 3"],
     spine_axes: Float[Array, "3 3"],
-    parents: list[int],
+    tree: common.KinematicTree,
     pose: Float[Array, "*batch 46"],
     *,
     local_joint_offsets: Float[Array, "*batch 24 3"],
     rest_joints: Float[Array, "*batch 24 3"],
-    xp: Any,
 ) -> Float[Array, "*batch 24 4 4"]:
     """Prepare only posed SKEL joint transforms."""
     if pose.ndim < 1 or pose.shape[-1] != NUM_POSE_PARAMS:
         raise ValueError(f"pose must have shape [..., {NUM_POSE_PARAMS}]")
+    xp = runtime.xp
     local = _compute_local_transforms(
         xp=xp,
         pose=pose,
@@ -124,7 +127,7 @@ def prepare_skeleton(
         scapula_l_axes=scapula_l_axes,
         spine_axes=spine_axes,
     )
-    return _propagate_transforms(xp, local, parents[1:])
+    return runtime._compose_kinematic_tree(local, tree)
 
 
 def prepare_identity(
@@ -380,20 +383,6 @@ def _spine_offset(
 
     dx = xp.stack([-x1 + x1_0, y1 - y1_0 + y2 - y2_0, -x2 + x2_0], axis=-1)
     return dx
-
-
-def _propagate_transforms(
-    xp,
-    G_local: Float[Array, "B 24 4 4"],
-    parents: list[int],
-) -> Float[Array, "B 24 4 4"]:
-    """Propagate local transforms to world space."""
-    full_parents = [-1, *parents]
-    G_list: list[Float[Array, "B 4 4"] | None] = [None] * NUM_JOINTS
-    G_list[0] = G_local[..., 0, :, :]
-    for i in range(1, NUM_JOINTS):
-        G_list[i] = G_list[full_parents[i]] @ G_local[..., i, :, :]
-    return xp.stack(G_list, axis=-3)
 
 
 def _homog_matrix(

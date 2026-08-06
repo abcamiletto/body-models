@@ -129,7 +129,7 @@ class ANNY(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return list(self._weights.parents)
+        return list(self._weights.kinematic_tree.parents)
 
     @property
     def _skinning_triangles(self) -> Int[Array, "F 3"]:
@@ -205,11 +205,11 @@ class ANNY(SkinnedModel):
         )
         packed_pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
-            self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             packed_pose,
             self.rotation_type,
             rest_skeleton_transforms=skeleton_identity["rest_skeleton_transforms"],
-            xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
@@ -298,11 +298,11 @@ class ANNY(SkinnedModel):
         )
         packed_pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
-            self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             packed_pose,
             self.rotation_type,
             rest_skeleton_transforms=identity["rest_skeleton_transforms"],
-            xp=xp,
         )
 
     def _prepare_skeleton_identity(

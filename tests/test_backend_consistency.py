@@ -3,9 +3,22 @@ import numpy as np
 import pytest
 from trimesh import Trimesh
 
-from body_models._runtime import TorchRuntime
+from body_models._runtime import NumpyRuntime, TorchRuntime
 from body_models.garment_measurements import GarmentMeasurements
 from body_models.myofullbody import MyoFullBody
+
+
+class _RecordingRuntime(NumpyRuntime):
+    kinematic_trees: list[tuple[int, ...]]
+
+    def __init__(self) -> None:
+        object.__setattr__(self, "kinematic_trees", [])
+
+    def _compose_kinematic_tree(self, local_transforms, tree):
+        assert len(tree.parents) == local_transforms.shape[-3]
+        self.kinematic_trees.append(tuple(tree.parents))
+        return super()._compose_kinematic_tree(local_transforms, tree)
+
 
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
@@ -136,18 +149,32 @@ def test_rigid_body_joint_name_spaces(name, model_class, kwargs) -> None:
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
-def test_skinning_backends_match_default(name, model_class, kwargs) -> None:
+def test_kernel_backends_match_default(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
     torch_class = model_cases.backend_model_class(name, "torch")
     torch_instance = torch_class(**kwargs)
-    for skinning_backend in TorchRuntime.SKINNING_BACKENDS[1:]:
+    for kernel_backend in TorchRuntime.KERNEL_BACKENDS[1:]:
         params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
         vertex_indices = list(range(min(8, torch_instance.num_vertices)))
         with torch.no_grad():
             expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
-            model = torch_class(**kwargs, skinning_backend=skinning_backend)
+            model = torch_class(**kwargs, kernel_backend=kernel_backend)
             actual = model.forward_vertices(**params, vertex_indices=vertex_indices)
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+def test_skinned_pose_uses_runtime_kinematics(name, model_class, kwargs) -> None:
+    runtime = _RecordingRuntime()
+    model = model_class(**kwargs, runtime=runtime)
+    params = model.get_rest_pose()
+
+    model.forward_skeleton(**params)
+    assert runtime.kinematic_trees
+
+    runtime.kinematic_trees.clear()
+    model.forward_vertices(**params)
+    assert runtime.kinematic_trees
 
 
 @pytest.mark.parametrize(
