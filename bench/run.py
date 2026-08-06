@@ -223,7 +223,7 @@ def implementations(
 
 
 def benchmark_methods(methods: list[str], kernel_backend: str | None) -> list[str]:
-    if kernel_backend not in ("triton", "warp"):
+    if kernel_backend != "warp":
         return methods
     return [method for method in methods if method != "skeleton"]
 

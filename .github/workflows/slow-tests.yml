@@ -28,4 +28,6 @@ jobs:
           uv run pytest -q \
             tests/test_compile.py \
             tests/test_gradients.py::test_triton_skinning_gradients_match_dense_under_compile \
+            tests/test_gradients.py::test_triton_kinematics_matches_torch_under_compile \
+            tests/test_gradients.py::test_triton_kinematics_supports_all_rotation_representations \
             tests/test_gradients.py::test_triton_model_gradients_match_default
