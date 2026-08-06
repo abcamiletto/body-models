@@ -42,12 +42,32 @@ def test_torch_sparse_linear_matches_dense_under_compile() -> None:
     linear = state.torch_state(weights).to(dtype=torch.float64)
     inputs = torch.arange(16, dtype=torch.float64).reshape(2, 2, 4).requires_grad_()
 
-    actual = torch.compile(sparse.linear, backend="eager")(inputs, linear)
+    actual = torch.compile(sparse.linear, backend="eager", fullgraph=True)(inputs, linear)
     expected = inputs @ torch.as_tensor(dense, dtype=torch.float64)
 
     torch.testing.assert_close(actual, expected)
     actual_grad = torch.autograd.grad(actual.square().sum(), inputs)[0]
     expected_grad = torch.autograd.grad(expected.square().sum(), inputs)[0]
+    torch.testing.assert_close(actual_grad, expected_grad)
+
+
+@pytest.mark.slow
+def test_torch_sparse_linear_compiles_with_inductor() -> None:
+    torch = pytest.importorskip("torch")
+    weights, dense = _weights()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    linear = state.torch_state(weights).to(device=device)
+    inputs = torch.arange(16, dtype=torch.float32, device=device).reshape(2, 2, 4).requires_grad_()
+
+    def loss(value):
+        return sparse.linear(value, linear).square().sum()
+
+    actual = torch.compile(loss, fullgraph=True)(inputs)
+    actual_grad = torch.autograd.grad(actual, inputs)[0]
+    expected = (inputs @ torch.as_tensor(dense, device=device)).square().sum()
+    expected_grad = torch.autograd.grad(expected, inputs)[0]
+
+    torch.testing.assert_close(actual, expected)
     torch.testing.assert_close(actual_grad, expected_grad)
 
 

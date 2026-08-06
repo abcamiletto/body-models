@@ -55,7 +55,11 @@ def test_skinned_torch_compile_and_jax_jit(name, model_class, kwargs) -> None:
     torch_instance = torch_class(**kwargs)
     torch_params = torch_instance.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     with torch.no_grad():
-        torch_vertices = torch.compile(torch_instance.forward_vertices, backend="eager")(**torch_params)
+        torch_vertices = torch.compile(
+            torch_instance.forward_vertices,
+            backend="eager",
+            fullgraph=True,
+        )(**torch_params)
     assert torch_vertices.shape[-1] == 3
 
     jax = pytest.importorskip("jax")
