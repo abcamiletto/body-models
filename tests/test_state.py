@@ -105,3 +105,29 @@ def test_triton_plan_is_rebuilt_after_loading_state() -> None:
     torch.testing.assert_close(first._plan_vertex_indices, second._plan_vertex_indices)
     torch.testing.assert_close(first._plan_weights, second._plan_weights)
     torch.testing.assert_close(first._plan_offsets, second._plan_offsets)
+
+
+@pytest.mark.fast
+def test_triton_tree_materializes_parent_table() -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("triton")
+    from body_models._common import triton_kinematics
+
+    tree = KinematicTree.from_parents([-1, 0, 1])
+    state = torch_state(tree, kernel_backend="triton")
+
+    assert isinstance(state, triton_kinematics.TritonKinematicTree)
+    assert state.parents == tree.parents
+    assert state.fronts == tree.fronts
+    torch.testing.assert_close(state.parent_indices, torch.tensor([0, 0, 1], dtype=torch.int32))
+    assert not state.state_dict()
+
+
+@pytest.mark.fast
+def test_triton_tree_rejects_non_topological_parents_during_materialization() -> None:
+    pytest.importorskip("torch")
+    pytest.importorskip("triton")
+    tree = KinematicTree.from_parents([1, -1])
+
+    with pytest.raises(ValueError, match="parents to precede their children"):
+        torch_state(tree, kernel_backend="triton")
