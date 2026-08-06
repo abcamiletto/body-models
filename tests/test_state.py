@@ -5,7 +5,8 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from body_models._state import numpy_state, torch_state
+from body_models._common.kinematics import KinematicTree
+from body_models._state import jax_state, numpy_state, torch_state
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,22 @@ class _Leaf:
 class _Tree:
     leaves: dict[str, _Leaf]
     arrays: dict[str, np.ndarray]
+
+
+@pytest.mark.fast
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax"])
+def test_kinematic_tree_remains_static_state(backend) -> None:
+    tree = KinematicTree.from_parents([-1, 0, 1])
+    if backend == "numpy":
+        materialized = numpy_state(tree)
+    elif backend == "torch":
+        pytest.importorskip("torch")
+        materialized = torch_state(tree)
+    else:
+        pytest.importorskip("jax")
+        materialized = jax_state(tree)
+
+    assert materialized is tree
 
 
 @pytest.mark.fast

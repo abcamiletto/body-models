@@ -11,7 +11,7 @@ from nanomanifold import SO3
 
 from body_models import _config as config
 from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
-from body_models._common import Front, compute_kinematic_fronts
+from body_models._common import kinematics
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -102,8 +102,7 @@ class AnnyWeights:
     faces: Int[Array, "F _"]
     triangles: Int[Array, "Ft 3"]
     bone_labels: list[str]
-    parents: list[int]
-    kinematic_fronts: list[Front]
+    kinematic_tree: kinematics.KinematicTree
     anchors: AnnyAnchors
     y_axis: Float[Array, "3"]
     degenerate_rotation: Float[Array, "3 3"]
@@ -179,9 +178,6 @@ def load_model_data_numpy(
     rows = np.arange(V)[:, None]
     lbs_weights[rows, data["vertex_bone_indices"]] = data["vertex_bone_weights"]
 
-    # Build kinematic fronts
-    kinematic_fronts = compute_kinematic_fronts(data["parents"])
-
     return AnnyWeights(
         template_vertices=data["template_vertices"].astype(dtype),
         blendshapes=data["blendshapes"].astype(dtype),
@@ -199,8 +195,7 @@ def load_model_data_numpy(
         faces=data["faces"],
         triangles=_triangulate_faces(data["faces"]),
         bone_labels=data["bone_labels"],
-        parents=data["parents"],
-        kinematic_fronts=kinematic_fronts,
+        kinematic_tree=kinematics.KinematicTree.from_parents(data["parents"]),
         anchors=build_anchors(dtype=dtype),
         y_axis=np.asarray([0.0, 1.0, 0.0], dtype=dtype),
         degenerate_rotation=np.diag(np.asarray([1.0, -1.0, -1.0], dtype=dtype)),

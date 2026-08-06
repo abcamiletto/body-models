@@ -3,9 +3,9 @@
 from body_models._common import deformation, sparse
 from body_models._common.kinematics import (
     Front,
+    KinematicTree,
     affine_transforms,
-    compose_local_transforms,
-    compute_kinematic_fronts,
+    compose_kinematic_fronts,
     compute_sparse_skin_weights,
     invert_rigid_transforms,
     local_joint_offsets,
@@ -17,10 +17,10 @@ from body_models._common.simplify_mesh import simplify_mesh
 __all__ = [
     "Array",
     "Front",
+    "KinematicTree",
     "affine_transforms",
     "at_set",
-    "compose_local_transforms",
-    "compute_kinematic_fronts",
+    "compose_kinematic_fronts",
     "compute_sparse_skin_weights",
     "deformation",
     "eye_as",

@@ -11,7 +11,7 @@ from jaxtyping import Float, Int
 
 from body_models import _config as config
 from body_models._cache import download_hf_archive, get_cache_dir
-from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights
+from body_models._common import compute_sparse_skin_weights, kinematics
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -27,8 +27,7 @@ class GarmentMeasurementsWeights:
     eigenvalues: Float[Array, "C"]
     faces: Int[Array, "F 3"]
     joint_names: list[str]
-    parents: Int[Array, "J"]
-    kinematic_fronts: list[Front]
+    kinematic_tree: kinematics.KinematicTree
     bind_quats: Float[Array, "J 4"]
     skin_weights: Float[Array, "V J"]
     compact_skinning: CompactSkinning
@@ -152,8 +151,7 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
         eigenvalues=eigenvalues,
         faces=faces,
         joint_names=joint_names,
-        parents=parents,
-        kinematic_fronts=compute_kinematic_fronts(parents),
+        kinematic_tree=kinematics.KinematicTree.from_parents(parents),
         bind_quats=bind_quats,
         skin_weights=skin_weights,
         compact_skinning=CompactSkinning(skin_joint_indices, skin_joint_weights),
@@ -221,9 +219,7 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
 
 __all__ = [
     "PREPROCESSED_FILENAME",
-    "Front",
     "GarmentMeasurementsWeights",
-    "compute_kinematic_fronts",
     "download_model",
     "get_model_path",
     "load_model_data",

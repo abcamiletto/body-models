@@ -115,7 +115,7 @@ def test_compact_and_warp_skinning_gradients_match_dense_on_cpu() -> None:
         xp=torch,
     )
     compact_grads = torch.autograd.grad(compact, (vertices, transforms), grad_output)
-    warp_runtime = TorchRuntime(skinning_backend="warp")
+    warp_runtime = TorchRuntime(kernel_backend="warp")
     warp_skinning = warp_runtime._materialize(skinning.CompactSkinning(joint_indices, joint_weights))
     warp = warp_runtime._skin_vertices(
         vertices,
@@ -140,20 +140,18 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
     from body_models.soma.torch import SOMA
 
     torch.manual_seed(7)
-    models = {
-        skinning_backend: SOMA(skinning_backend=skinning_backend).cuda() for skinning_backend in ("torch", "warp")
-    }
+    models = {kernel_backend: SOMA(kernel_backend=kernel_backend).cuda() for kernel_backend in ("torch", "warp")}
     params = models["torch"].get_rest_pose(batch_dims=(1,))
     params = {key: value + 0.01 * torch.randn_like(value) for key, value in params.items()}
     grad_output = torch.randn(1, models["torch"].num_vertices, 3, device="cuda")
     param_keys = tuple(params)
     results = {}
 
-    for skinning_backend, model in models.items():
+    for kernel_backend, model in models.items():
         backend_params = {key: value.detach().requires_grad_(True) for key, value in params.items()}
         vertices = model.forward_vertices(**backend_params)
         grads = torch.autograd.grad(vertices, tuple(backend_params.values()), grad_output)
-        results[skinning_backend] = vertices, dict(zip(param_keys, grads, strict=True))
+        results[kernel_backend] = vertices, dict(zip(param_keys, grads, strict=True))
 
     torch_vertices, torch_grads = results["torch"]
     warp_vertices, warp_grads = results["warp"]
@@ -166,7 +164,7 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
     ("name", "model_class", "kwargs"),
     [case for case in model_cases.SKINNED_MODELS if case[0] == "garment_measurements"],
 )
-def test_torch_skinning_backend_gradients_match_default(
+def test_torch_kernel_backend_gradients_match_default(
     name,
     model_class,
     kwargs,
@@ -192,8 +190,8 @@ def test_torch_skinning_backend_gradients_match_default(
         return vertices, gradients
 
     expected_vertices, expected_gradients = forward_and_grad(default_model)
-    for skinning_backend in TorchRuntime.SKINNING_BACKENDS[1:]:
-        model = torch_class(**kwargs, skinning_backend=skinning_backend).cuda()
+    for kernel_backend in TorchRuntime.KERNEL_BACKENDS[1:]:
+        model = torch_class(**kwargs, kernel_backend=kernel_backend).cuda()
         actual_vertices, actual_gradients = forward_and_grad(model)
         torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
         for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
