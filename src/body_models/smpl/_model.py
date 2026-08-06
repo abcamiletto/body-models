@@ -139,12 +139,12 @@ class SMPL(SmplFamilyModel):
             skeleton_identity = identity
 
         skeleton = core.prepare_skeleton(
-            self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             body_pose,
             pelvis_rotation,
             self.rotation_type,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
-            xp=xp,
         )
         return self._transform_skeleton(
             skeleton,
@@ -196,7 +196,7 @@ class SMPL(SmplFamilyModel):
             shapedirs=self._weights.shapedirs,
             j_template=self._weights.j_template,
             j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.parents,
+            parents=self._weights.kinematic_tree.parents,
             shape=shape,
         )
 
@@ -209,8 +209,8 @@ class SMPL(SmplFamilyModel):
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
-            xp=self._runtime.xp,
-            kinematic_fronts=self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
             rotation_type=self.rotation_type,
@@ -226,7 +226,7 @@ class SMPL(SmplFamilyModel):
             xp=self._runtime.xp,
             j_template=self._weights.j_template,
             j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.parents,
+            parents=self._weights.kinematic_tree.parents,
             shape=shape,
         )
 

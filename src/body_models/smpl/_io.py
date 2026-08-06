@@ -6,7 +6,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
+from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
 from body_models._common.chumpy_fix import load_model_dict
 from body_models._common.skinning import CompactSkinning
 
@@ -26,8 +26,7 @@ class SmplWeights:
     posedirs: Float[Array, "P V*3"]
     j_template: Float[Array, "24 3"]
     j_shapedirs: Float[Array, "24 3 S"]
-    parents: list[int]
-    kinematic_fronts: list[Front]
+    kinematic_tree: kinematics.KinematicTree
 
 
 def validate_path(model_path: PathLike) -> Path:
@@ -99,6 +98,5 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplWeights:
         posedirs=posedirs.reshape(-1, posedirs.shape[-1]).T,
         j_template=j_template,
         j_shapedirs=j_shapedirs,
-        parents=parent_list,
-        kinematic_fronts=compute_kinematic_fronts(parents),
+        kinematic_tree=kinematics.KinematicTree.from_parents(parent_list),
     )

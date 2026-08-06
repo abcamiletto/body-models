@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from jaxtyping import Float, Int
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
     from body_models.soma._io import SomaWeights
 
 Array = Any
-Front = tuple[list[int], list[int]]
 BindPoseMode = Literal["fit", "fit_detached", "canonical"]
 
 
@@ -38,11 +38,11 @@ def skinning_weights(data: SomaWeights) -> Float[Array, "Va Jf"]:
 
 
 def prepare_identity_from_rest_shape(
+    runtime: ArrayRuntime,
     data: SomaWeights,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    runtime: ArrayRuntime,
     repose: bool = True,
     bind_pose: BindPoseMode = "fit",
 ) -> SomaIdentity:
@@ -55,15 +55,15 @@ def prepare_identity_from_rest_shape(
         repose=repose,
         bind_pose=bind_pose,
     )
-    return _prepare_identity_state(xp, bind_shape, world_bind_pose, data.kinematics.parents_full)
+    return _prepare_identity_state(xp, bind_shape, world_bind_pose, data.kinematics.tree_full.parents)
 
 
 def prepare_skeleton_identity_from_rest_shape(
+    runtime: ArrayRuntime,
     data: SomaWeights,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
-    runtime: ArrayRuntime,
     repose: bool = True,
     bind_pose: BindPoseMode = "fit",
 ) -> SomaSkeletonIdentity:
@@ -77,7 +77,7 @@ def prepare_skeleton_identity_from_rest_shape(
         repose=repose,
         bind_pose=bind_pose,
     )
-    return _prepare_skeleton_identity_state(xp, world_bind_pose, data.kinematics.parents_full)
+    return _prepare_skeleton_identity_state(xp, world_bind_pose, data.kinematics.tree_full.parents)
 
 
 def _prepare_bind_state(
@@ -102,20 +102,19 @@ def _prepare_bind_state(
         joint_children_indices_full=control_rig.joint_children_indices_full,
         skinned_vertex_indices_full=control_rig.skinned_vertex_indices_full,
         skinned_vertex_indices_full_index=control_rig.skinned_vertex_indices_full_index,
-        parents_full=control_rig.kinematics.parents_full,
+        tree=control_rig.kinematics.tree_full,
         rest_shape=rest_shape_full,
     )
     bind_shape_active = rest_shape_active
     control_world_bind_pose = control_world_bind_pose_fit
     if repose:
         bind_shape_active, control_world_bind_pose = repose_to_bind_pose(
-            xp=xp,
+            runtime=runtime,
             rest_shape=rest_shape_active,
             skin_weights=control_rig.skin_weights_active,
             world_bind_pose_fit=control_world_bind_pose_fit,
             bind_pose_local=control_rig.bind_pose_local,
-            kinematic_fronts=control_rig.kinematics.kinematic_fronts_full,
-            parents_full=control_rig.kinematics.parents_full,
+            tree=control_rig.kinematics.tree_full,
         )
         control_world_bind_pose = _pin_root_transform(xp, control_world_bind_pose)
     world_bind_pose = _expand_control_bind_pose(xp, data, control_world_bind_pose)
@@ -127,7 +126,7 @@ def _prepare_identity_state(
     xp: Any,
     bind_shape: Float[Array, "*batch Va 3"],
     world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    parents_full: list[int],
+    parents_full: Sequence[int],
 ) -> SomaIdentity:
     identity = _prepare_skeleton_identity_state(xp, world_bind_pose, parents_full)
     inverse_bind_transforms = common.invert_rigid_transforms(world_bind_pose, xp=xp)
@@ -147,7 +146,7 @@ def _prepare_identity_state(
 def _prepare_skeleton_identity_state(
     xp: Any,
     world_bind_pose: Float[Array, "*batch Jf 4 4"],
-    parents_full: list[int],
+    parents_full: Sequence[int],
 ) -> SomaSkeletonIdentity:
     bind_local = _joint_world_to_local(xp, world_bind_pose, parents_full)
     local_joint_translations = bind_local[..., :3, 3]
@@ -186,7 +185,7 @@ def _bind_pose_for_rest_shape(
     joint_children_indices_full: Int[Array, "J C"],
     skinned_vertex_indices_full: list[list[int]],
     skinned_vertex_indices_full_index: Int[Array, "J K"],
-    parents_full: list[int],
+    tree: common.KinematicTree,
     rest_shape: Float[Array, "B V 3"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     xp = runtime.xp
@@ -207,7 +206,7 @@ def _bind_pose_for_rest_shape(
         joint_children_indices_full=joint_children_indices_full,
         skinned_vertex_indices_full=skinned_vertex_indices_full,
         skinned_vertex_indices_full_index=skinned_vertex_indices_full_index,
-        parents_full=parents_full,
+        parents_full=tree.parents,
         rest_shape=rest_shape,
     )
     if mode == "fit_detached":
@@ -231,21 +230,22 @@ def _expand_control_bind_pose(
 
 
 def prepare_pose(
+    runtime: ArrayRuntime,
     data: SomaWeights,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"],
-    xp: Any,
 ) -> common.deformation.SkinningPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
+    xp = runtime.xp
     correctives_pose_rot, skeleton_transforms_full = _prepare_skeleton_state(
+        runtime,
         data,
         pose,
         rotation_type,
         local_joint_translations=local_joint_translations,
-        xp=xp,
     )
     skinning_transforms = skeleton_transforms_full @ inverse_bind_transforms
     hidden = _corrective_hidden_activations(
@@ -280,41 +280,42 @@ def _corrective_hidden_activations(
 
 
 def prepare_skeleton(
+    runtime: ArrayRuntime,
     data: SomaWeights,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
-    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SOMA public-joint transforms."""
     _, skeleton = _prepare_skeleton_state(
+        runtime,
         data,
         pose,
         rotation_type,
         local_joint_translations=local_joint_translations,
-        xp=xp,
     )
-    return _control_joint_transforms(xp, data, skeleton)
+    return _control_joint_transforms(runtime.xp, data, skeleton)
 
 
 def _prepare_skeleton_state(
+    runtime: ArrayRuntime,
     data: SomaWeights,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
-    xp: Any,
 ) -> tuple[
     Float[Array, "*batch Jp 3 3"],
     Float[Array, "*batch Jf 4 4"],
 ]:
+    xp = runtime.xp
     pose_rot_control = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    pose_rot_full, control_local_rotations = _expand_control_pose_rotations(xp, data, pose_rot_control)
+    pose_rot_full, control_local_rotations = _expand_control_pose_rotations(runtime, data, pose_rot_control)
     skeleton = _pose_skeleton(
-        xp,
+        runtime,
         local_joint_translations,
-        data.kinematics.kinematic_fronts_full,
+        data.kinematics.tree_full,
         pose_rot_full,
     )
     return control_local_rotations, skeleton
@@ -329,8 +330,9 @@ def _control_joint_transforms(
 
 
 def _expand_control_pose_rotations(
-    xp, data: SomaWeights, pose_rot: Float[Array, "*batch J 3 3"]
+    runtime: ArrayRuntime, data: SomaWeights, pose_rot: Float[Array, "*batch J 3 3"]
 ) -> tuple[Float[Array, "*batch Jf 3 3"], Float[Array, "*batch Jp 3 3"]]:
+    xp = runtime.xp
     control_rig = data.control_rig
     procedural = control_rig.procedural
     control_joint_indices = procedural.control_joint_indices_full
@@ -345,13 +347,13 @@ def _expand_control_pose_rotations(
     )
     control_local_translations = xp.asarray(control_rig.t_pose_local[..., :3, 3], dtype=pose_rot.dtype)
     control_world_transforms = _pose_skeleton(
-        xp,
+        runtime,
         control_local_translations,
-        control_rig.kinematics.kinematic_fronts_full,
+        control_rig.kinematics.tree_full,
         control_local_rotations,
     )
 
-    internal_joint_count = len(data.kinematics.parents_full)
+    internal_joint_count = len(data.kinematics.tree_full.parents)
     pose_rot_internal = common.eye_as(pose_rot, batch_dims=(*batch_shape, internal_joint_count), xp=xp)
     pose_rot_internal = common.at_set(
         pose_rot_internal,
@@ -510,20 +512,19 @@ def fit_rigid_transform(
 
 
 def repose_to_bind_pose(
-    xp,
+    runtime: ArrayRuntime,
     rest_shape: Float[Array, "B V 3"],
     skin_weights: Float[Array, "V J"],
     world_bind_pose_fit: Float[Array, "B J 4 4"],
     bind_pose_local: Float[Array, "J 4 4"],
-    kinematic_fronts: list[Front],
-    parents_full: list[int],
+    tree: common.KinematicTree,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
+    xp = runtime.xp
     T_world = _repose_skeleton_to_bind_pose(
-        xp=xp,
+        runtime=runtime,
         world_bind_pose_fit=world_bind_pose_fit,
         bind_pose_local=bind_pose_local,
-        kinematic_fronts=kinematic_fronts,
-        parents_full=parents_full,
+        tree=tree,
     )
     bone = T_world @ common.invert_rigid_transforms(world_bind_pose_fit, xp=xp)
     verts = skinning.linear_blend_skinning(rest_shape, bone, skin_weights, xp=xp)
@@ -563,7 +564,7 @@ def _fit_rest_shape_to_bind_pose(
     joint_children_indices_full: Int[Array, "J C"],
     skinned_vertex_indices_full: list[list[int]],
     skinned_vertex_indices_full_index: Int[Array, "J K"],
-    parents_full: list[int],
+    parents_full: Sequence[int],
     rest_shape: Float[Array, "B V 3"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     joint_positions = xp.einsum("jv,...vc->...jc", joint_regressor, rest_shape)
@@ -583,14 +584,14 @@ def _fit_rest_shape_to_bind_pose(
 
 
 def _repose_skeleton_to_bind_pose(
-    xp,
+    runtime: ArrayRuntime,
     world_bind_pose_fit: Float[Array, "B J 4 4"],
     bind_pose_local: Float[Array, "J 4 4"],
-    kinematic_fronts: list[Front],
-    parents_full: list[int],
+    tree: common.KinematicTree,
 ) -> Float[Array, "B J 4 4"]:
+    xp = runtime.xp
     batch_shape = world_bind_pose_fit.shape[:-3]
-    bind_local_fit = _joint_world_to_local(xp, world_bind_pose_fit, parents_full)
+    bind_local_fit = _joint_world_to_local(xp, world_bind_pose_fit, tree.parents)
     local_t = bind_local_fit[..., :3, 3]
 
     zeros = xp.asarray(0.0, dtype=local_t.dtype)
@@ -599,7 +600,7 @@ def _repose_skeleton_to_bind_pose(
 
     bind_rot = xp.broadcast_to(bind_pose_local[:, :3, :3], (*batch_shape, bind_pose_local.shape[0], 3, 3))
     T_local = common.affine_transforms(bind_rot, local_t, xp=xp)
-    T_world = common.compose_local_transforms(T_local, kinematic_fronts, xp=xp)
+    T_world = runtime._compose_kinematic_tree(T_local, tree)
 
     y_shift = xp.amin(T_world[..., :, 1, 3], axis=-1)
     return common.at_set(
@@ -625,13 +626,14 @@ def _orient_pose_rot_full(
 
 
 def _pose_skeleton(
-    xp,
+    runtime: ArrayRuntime,
     local_joint_translations: Float[Array, "B Jf 3"],
-    kinematic_fronts: list[Front],
+    tree: common.KinematicTree,
     pose_rot_full: Float[Array, "B Jf 3 3"],
 ) -> Float[Array, "B Jf 4 4"]:
+    xp = runtime.xp
     T_local = common.affine_transforms(pose_rot_full, local_joint_translations, xp=xp)
-    return common.compose_local_transforms(T_local, kinematic_fronts, xp=xp)
+    return runtime._compose_kinematic_tree(T_local, tree)
 
 
 def _fit_joint_rotations(
@@ -642,7 +644,7 @@ def _fit_joint_rotations(
     joint_children_indices_full: Int[Array, "J C"],
     skinned_vertex_indices_full: list[list[int]],
     skinned_vertex_indices_full_index: Int[Array, "J K"],
-    parents_full: list[int],
+    parents_full: Sequence[int],
     joint_positions: Float[Array, "B J 3"],
     target_shape: Float[Array, "B V 3"],
 ) -> Float[Array, "B J 4 4"]:
@@ -751,7 +753,11 @@ def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:
     )
 
 
-def _joint_world_to_local(xp, world: Float[Array, "B J 4 4"], parents_full: list[int]) -> Float[Array, "B J 4 4"]:
+def _joint_world_to_local(
+    xp,
+    world: Float[Array, "B J 4 4"],
+    parents_full: Sequence[int],
+) -> Float[Array, "B J 4 4"]:
     inv = common.invert_rigid_transforms(world, xp=xp)
     local = inv[..., xp.asarray(parents_full), :, :] @ world
     for joint, parent in enumerate(parents_full):

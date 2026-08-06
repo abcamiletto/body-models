@@ -8,12 +8,12 @@ from typing import Any, TypeAlias
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
+from body_models import _runtime as runtime_ops
 from body_models._base import CorrectiveBasis, DenseCorrectiveBasis, PointRegressor, SkinnedModel
 from body_models._common import deformation, kinematics, point_regression, skinning
 from body_models._rotations import RotationType, rotation_ndim
 
 Array = Any
-Front = tuple[list[int], list[int]]
 RotationBlock: TypeAlias = tuple[Float[Array, "..."], RotationType]
 
 
@@ -47,7 +47,7 @@ class SmplFamilyModel(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return list(self._weights.parents)
+        return list(self._weights.kinematic_tree.parents)
 
     @property
     def _corrective_basis(self) -> CorrectiveBasis:
@@ -186,38 +186,35 @@ def add_axis_angle_mean(
 
 
 def forward_skeleton(
+    runtime: runtime_ops.ArrayRuntime,
+    tree: kinematics.KinematicTree,
     pose_matrices: Float[Array, "*batch J 3 3"],
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
-    kinematic_fronts: list[Front],
-    *,
-    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Broadcast identity state and run family forward kinematics."""
+    xp = runtime.xp
     batch_shape = tuple(pose_matrices.shape[:-3])
     offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
-    return kinematics.forward_kinematics(
-        pose_matrices,
-        offsets,
-        kinematic_fronts,
-        xp=xp,
-    )
+    local_transforms = kinematics.affine_transforms(pose_matrices, offsets, xp=xp)
+    return runtime._compose_kinematic_tree(local_transforms, tree)
 
 
 def prepare_pose(
+    runtime: runtime_ops.ArrayRuntime,
+    tree: kinematics.KinematicTree,
     pose_matrices: Float[Array, "*batch J 3 3"],
-    kinematic_fronts: list[Front],
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
     rest_joints: Float[Array, "*identity_batch J 3"],
-    xp: Any,
 ) -> deformation.SkinningPose:
     """Prepare transforms and pose offsets from assembled family rotations."""
     world_transforms = forward_skeleton(
+        runtime,
+        tree,
         pose_matrices,
         local_joint_offsets,
-        kinematic_fronts,
-        xp=xp,
     )
+    xp = runtime.xp
     batch_shape = tuple(pose_matrices.shape[:-3])
     rest_joints = xp.broadcast_to(rest_joints, (*batch_shape, *rest_joints.shape[-2:]))
     return {

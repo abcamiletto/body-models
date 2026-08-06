@@ -2,7 +2,7 @@
 
 Examples:
     uv run bench/run.py -m smpl --backend numpy
-    uv run bench/run.py -m smpl --backend torch --skinning-backend warp -d cuda
+    uv run bench/run.py -m smpl --backend torch --kernel-backend warp -d cuda
     uv run bench/run.py -m smplx --backend torch -d cuda --prepared-identity
     uv run bench/run.py --method skeleton --batch-sizes 512,1024
     uv run bench/run.py --backend torch --torch-mode eager
@@ -80,14 +80,14 @@ def main() -> None:
     vertices_batch_sizes = batch_sizes or DEFAULT_VERTICES_BATCH_SIZES
     benchmark_names = args.models or list(BENCHMARKS)
     backends = args.backends or list(BACKENDS)
-    skinning_backends = args.skinning_backends or list(TorchRuntime.SKINNING_BACKENDS)
+    kernel_backends = args.kernel_backends or list(TorchRuntime.KERNEL_BACKENDS)
     devices = parse_devices(args.devices)
     methods = args.methods or ["skeleton", "vertices"]
 
     preflight_models(
         benchmark_names,
         backends,
-        skinning_backends,
+        kernel_backends,
         methods,
         args.prepared_identity,
         args.torch_mode,
@@ -95,7 +95,7 @@ def main() -> None:
     results = benchmark_all(
         benchmark_names=benchmark_names,
         backends=backends,
-        skinning_backends=skinning_backends,
+        kernel_backends=kernel_backends,
         devices=devices,
         methods=methods,
         skeleton_batch_sizes=skeleton_batch_sizes,
@@ -115,7 +115,7 @@ def main() -> None:
             vertices_runs=args.vertices_runs,
             warmup=args.warmup,
             backends=backends,
-            skinning_backends=skinning_backends,
+            kernel_backends=kernel_backends,
             devices=devices,
             methods=methods,
             skeleton_batch_sizes=skeleton_batch_sizes,
@@ -128,7 +128,7 @@ def main() -> None:
 def preflight_models(
     benchmark_names: list[str],
     backends: list[str],
-    skinning_backends: list[str],
+    kernel_backends: list[str],
     methods: list[str],
     prepared_identity: bool,
     torch_mode: str,
@@ -137,15 +137,15 @@ def preflight_models(
     for benchmark_name in benchmark_names:
         spec = BENCHMARKS[benchmark_name]
         for backend in backends:
-            for skinning_backend in implementations(spec, backend, skinning_backends):
-                if not benchmark_methods(methods, skinning_backend):
+            for kernel_backend in implementations(spec, backend, kernel_backends):
+                if not benchmark_methods(methods, kernel_backend):
                     continue
-                model = create_model(spec, backend, skinning_backend, torch.device("cpu"))
+                model = create_model(spec, backend, kernel_backend, torch.device("cpu"))
                 uses_prepared_identity = prepared_identity and hasattr(model, "prepare_identity")
                 result_label = label(
                     benchmark_name,
                     backend,
-                    skinning_backend,
+                    kernel_backend,
                     prepared_identity=uses_prepared_identity,
                     torch_mode=torch_mode,
                 )
@@ -156,7 +156,7 @@ def benchmark_all(
     *,
     benchmark_names: list[str],
     backends: list[str],
-    skinning_backends: list[str],
+    kernel_backends: list[str],
     devices: list[torch.device],
     methods: list[str],
     skeleton_batch_sizes: list[int],
@@ -171,18 +171,18 @@ def benchmark_all(
     for benchmark_name in benchmark_names:
         spec = BENCHMARKS[benchmark_name]
         for backend in backends:
-            for skinning_backend in implementations(spec, backend, skinning_backends):
-                selected_methods = benchmark_methods(methods, skinning_backend)
+            for kernel_backend in implementations(spec, backend, kernel_backends):
+                selected_methods = benchmark_methods(methods, kernel_backend)
                 if not selected_methods:
                     continue
                 backend_devices = devices if backend == "torch" else [None]
                 for device in backend_devices:
-                    model = create_model(spec, backend, skinning_backend, device)
+                    model = create_model(spec, backend, kernel_backend, device)
                     uses_prepared_identity = prepared_identity and hasattr(model, "prepare_identity")
                     result_label = label(
                         benchmark_name,
                         backend,
-                        skinning_backend,
+                        kernel_backend,
                         device,
                         uses_prepared_identity,
                         torch_mode,
@@ -210,15 +210,15 @@ def benchmark_all(
 def implementations(
     spec: BenchmarkSpec,
     backend: str,
-    skinning_backends: list[str],
+    kernel_backends: list[str],
 ) -> tuple[str | None, ...]:
     if backend != "torch" or not spec.supports_warp:
         return (None,)
-    return tuple(skinning_backends)
+    return tuple(kernel_backends)
 
 
-def benchmark_methods(methods: list[str], skinning_backend: str | None) -> list[str]:
-    if skinning_backend != "warp":
+def benchmark_methods(methods: list[str], kernel_backend: str | None) -> list[str]:
+    if kernel_backend != "warp":
         return methods
     return [method for method in methods if method != "skeleton"]
 
@@ -226,12 +226,12 @@ def benchmark_methods(methods: list[str], skinning_backend: str | None) -> list[
 def create_model(
     spec: BenchmarkSpec,
     backend: str,
-    skinning_backend: str | None,
+    kernel_backend: str | None,
     device: torch.device | None,
 ) -> Any:
     kwargs = dict(spec.kwargs)
     if backend == "torch" and spec.supports_warp:
-        kwargs["skinning_backend"] = skinning_backend or "torch"
+        kwargs["kernel_backend"] = kernel_backend or "torch"
     model = registry.create_model(spec.model_name, runtime=backend, **kwargs)
     if backend == "torch":
         model = model.to(device).eval()
@@ -241,12 +241,12 @@ def create_model(
 def label(
     benchmark_name: str,
     backend: str,
-    skinning_backend: str | None,
+    kernel_backend: str | None,
     device: torch.device | None = None,
     prepared_identity: bool = False,
     torch_mode: str = "compile",
 ) -> str:
-    implementation = backend if skinning_backend is None else f"{backend}/{skinning_backend}"
+    implementation = backend if kernel_backend is None else f"{backend}/{kernel_backend}"
     if device is not None:
         device_name = "gpu" if device.type == "cuda" else device.type
         implementation = f"{implementation}, {device_name}"
@@ -370,7 +370,7 @@ def write_markdown(
     vertices_runs: int,
     warmup: int,
     backends: list[str],
-    skinning_backends: list[str],
+    kernel_backends: list[str],
     devices: list[torch.device],
     methods: list[str],
     skeleton_batch_sizes: list[int],
@@ -387,7 +387,7 @@ def write_markdown(
         f"- **Vertices runs per measurement**: {vertices_runs} (outliers removed via IQR)",
         f"- **Warmup runs**: {warmup}",
         f"- **Backends**: {', '.join(backends)}",
-        f"- **Torch skinning backends**: {', '.join(skinning_backends)}",
+        f"- **Torch kernel backends**: {', '.join(kernel_backends)}",
         f"- **Torch devices**: {torch_devices}",
         f"- **Torch execution**: {torch_execution}",
         f"- **Prepared identities**: {prepared_identity}",
@@ -497,11 +497,11 @@ def parse_args() -> argparse.Namespace:
         help="Array backend to benchmark (can repeat). Default: all",
     )
     parser.add_argument(
-        "--skinning-backend",
+        "--kernel-backend",
         action="append",
-        dest="skinning_backends",
-        choices=TorchRuntime.SKINNING_BACKENDS,
-        help="Torch skinning backend (can repeat). Default: all",
+        dest="kernel_backends",
+        choices=TorchRuntime.KERNEL_BACKENDS,
+        help="Torch operation backend (can repeat). Default: all",
     )
     parser.add_argument(
         "-d",

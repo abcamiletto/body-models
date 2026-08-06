@@ -74,22 +74,23 @@ relaxed hands.
 ## Runtime boundary
 
 `ArrayRuntime` owns the array namespace, device- and dtype-aware construction,
-state materialization, and lowerings of stable shared operations such as
-compact linear blend skinning. Materialization delegates to the recursive
-converters in `_state.py`, which accept loader data rather than model objects;
-models composed inside another model remain models. Callers therefore cannot
+state materialization, and lowerings of stable shared operations. These include
+compact linear blend skinning and parent-tree composition. Materialization
+delegates to the recursive converters in `_state.py`, which accept loader data
+rather than model objects; models composed inside another model remain models.
+Callers therefore cannot
 pair a runtime with the wrong framework state. Materialized weights are private
 because their container types are runtime-specific; stable model properties
 provide public access to meshes, skeletons, and deformation bases. The runtime
 does not own model semantics.
 
-The public backend modules bind each model to one runtime. Warp remains a Torch
-operation lowering and is selected directly on the Torch model:
+The public backend modules bind each model to one array runtime. Torch models
+can additionally select a kernel backend without changing their tensor API:
 
 ```python
 from body_models.smpl.torch import SMPL
 
-model = SMPL(skinning_backend="warp")
+model = SMPL(kernel_backend="warp")
 ```
 
 The shared model implementation still receives an internal `ArrayRuntime`.
@@ -98,13 +99,19 @@ backend dynamically.
 
 Kernel dispatch follows the lifetime of the work. Operation execution is
 lowered by the runtime; reusable derived inputs are created during state
-materialization. Compact skinning illustrates the boundary: every runtime
-executes the same call contract, while Torch/Warp materialization augments the
-compact weights with a transform-gradient plan. A vertex subset chosen during a
-call gets a short-lived subset plan instead. Sparse corrective bases similarly
-own their prepared representation as materialized state. This
-keeps `ArrayRuntime` independent of model semantics without hiding persistent
-work in global caches.
+materialization. Model code constructs local affine transforms but delegates
+their parent-tree composition to the runtime, independent of the model's pose
+layout or rotation representation. Core entry points that execute a lowered
+operation receive the runtime; pure numerical helpers receive only its array
+namespace. Compact skinning follows the same boundary: every runtime executes
+the same call contract, while Torch/Warp materialization augments the compact
+weights with a transform-gradient plan. A vertex subset chosen during a call
+gets a short-lived subset plan instead. Sparse corrective bases similarly own
+their prepared representation as materialized state. Kernel backends are
+additive operation lowerings; a selected lowering must execute or raise for an
+unsupported input, never silently switch implementations. This keeps
+`ArrayRuntime` independent of model semantics without hiding persistent work in
+global caches.
 
 Torch backend models inherit `torch.nn.Module`, and their materialized state is
 registered directly as modules and persistent buffers. Source numeric model

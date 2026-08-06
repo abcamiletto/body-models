@@ -8,9 +8,9 @@ from nanomanifold import SO3
 
 from body_models import _common as common
 from body_models._common import deformation
+from body_models._runtime import ArrayRuntime
 
 Array = Any  # Generic array type (numpy, torch, jax)
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
 
 _LN2 = math.log(2)
 
@@ -36,39 +36,37 @@ def _pose_coefficients(
 
 
 def prepare_pose(
+    runtime: ArrayRuntime,
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    kinematic_fronts: list[Front],
+    tree: common.KinematicTree,
     num_joints: int,
     shape_dim: int,
     bind_inv_linear: Float[Array, "J 3 3"],
     bind_inv_translation: Float[Array, "J 3"],
     corrective_hidden_weights: Float[Array, "input hidden"],
     pose: Float[Array, "B 204"],
-    *,
-    xp: Any,
 ) -> deformation.SkinningPose:
     """Precompute pose-dependent MHR state for repeated forward passes."""
     if pose.ndim < 1 or pose.shape[-1] != 204:
         raise ValueError(f"pose must have shape [..., 204], got {tuple(pose.shape)}")
-    t_g, r_g, s_g, j_p = _forward_skeleton_core(
-        xp=xp,
+    world, j_p = _forward_skeleton_core(
+        runtime=runtime,
         pose=pose,
         joint_offsets=joint_offsets,
         joint_pre_rotations=joint_pre_rotations,
         parameter_transform=parameter_transform,
-        kinematic_fronts=kinematic_fronts,
+        tree=tree,
         num_joints=num_joints,
         shape_dim=shape_dim,
     )
+    xp = runtime.xp
     return {
-        "skeleton_transforms": _trs_to_transforms(xp, t_g * 0.01, r_g, s_g),
+        "skeleton_transforms": _scale_transform_translations(xp, world),
         "skinning_transforms": _skinning_transforms(
             xp,
-            joint_translations=t_g,
-            joint_rotations=r_g,
-            joint_scales=s_g,
+            world_transforms=world,
             bind_inv_linear=bind_inv_linear,
             bind_inv_translation=bind_inv_translation,
         ),
@@ -81,28 +79,27 @@ def prepare_pose(
 
 
 def prepare_skeleton(
+    runtime: ArrayRuntime,
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    kinematic_fronts: list[Front],
+    tree: common.KinematicTree,
     num_joints: int,
     shape_dim: int,
     pose: Float[Array, "B 204"],
-    *,
-    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed MHR joint transforms."""
-    translations, rotations, scales, _ = _forward_skeleton_core(
-        xp=xp,
+    world, _ = _forward_skeleton_core(
+        runtime=runtime,
         pose=pose,
         joint_offsets=joint_offsets,
         joint_pre_rotations=joint_pre_rotations,
         parameter_transform=parameter_transform,
-        kinematic_fronts=kinematic_fronts,
+        tree=tree,
         num_joints=num_joints,
         shape_dim=shape_dim,
     )
-    return _trs_to_transforms(xp, translations * 0.01, rotations, scales)
+    return _scale_transform_translations(runtime.xp, world)
 
 
 def prepare_identity(
@@ -127,28 +124,28 @@ def prepare_identity(
 def _skinning_transforms(
     xp,
     *,
-    joint_translations: Float[Array, "*batch J 3"],
-    joint_rotations: Float[Array, "*batch J 3 3"],
-    joint_scales: Float[Array, "*batch J 1"],
+    world_transforms: Float[Array, "*batch J 4 4"],
     bind_inv_linear: Float[Array, "J 3 3"],
     bind_inv_translation: Float[Array, "J 3"],
 ) -> Float[Array, "*batch J 4 4"]:
-    lin_g = joint_rotations * joint_scales[..., None]
+    lin_g = world_transforms[..., :3, :3]
+    joint_translations = world_transforms[..., :3, 3]
     lin = xp.einsum("...jik,jkl->...jil", lin_g, bind_inv_linear)
     t = xp.einsum("...jik,jk->...ji", lin_g, bind_inv_translation) + joint_translations
     return _transforms_from_linear_translation(xp, lin, t * 0.01)
 
 
 def _forward_skeleton_core(
-    xp,
+    runtime: ArrayRuntime,
     pose: Float[Array, "B 204"],
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    kinematic_fronts: list[Front],
+    tree: common.KinematicTree,
     num_joints: int,
     shape_dim: int,
-) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"], Float[Array, "B J 7"]]:
+) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 7"]]:
+    xp = runtime.xp
     j_p = _pose_to_joint_params(xp, pose, parameter_transform, num_joints, shape_dim)
 
     t_l = j_p[..., :3] + joint_offsets
@@ -163,10 +160,10 @@ def _forward_skeleton_core(
         SO3.multiply(joint_pre_rotations, q_local, convention="xyzw", xp=xp), convention="xyzw", xp=xp
     )
 
-    s_l = xp.exp(_LN2 * j_p[..., 6:7])
-    t_g, r_g, s_g = _compose_global_trs(xp, t_l, q_l, s_l, kinematic_fronts, num_joints)
-
-    return t_g, r_g, s_g, j_p
+    local_scale = xp.exp(_LN2 * j_p[..., 6:7])
+    local_rotation = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)
+    local_transforms = common.affine_transforms(local_rotation * local_scale[..., None], t_l, xp=xp)
+    return runtime._compose_kinematic_tree(local_transforms, tree), j_p
 
 
 def _pose_to_joint_params(
@@ -183,49 +180,12 @@ def _pose_to_joint_params(
     return j_p.reshape(*batch_shape, num_joints, 7)
 
 
-def _compose_global_trs(
-    xp,
-    t_l: Float[Array, "B J 3"],
-    q_l: Float[Array, "B J 4"],
-    s_l: Float[Array, "B J 1"],
-    kinematic_fronts: list[Front],
-    num_joints: int,
-) -> tuple[Float[Array, "B J 3"], Float[Array, "B J 3 3"], Float[Array, "B J 1"]]:
-    r_l = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)
-
-    t_results: list[Float[Array, "B 3"] | None] = [None] * num_joints
-    s_results: list[Float[Array, "B 1"] | None] = [None] * num_joints
-    r_results: list[Float[Array, "B 3 3"] | None] = [None] * num_joints
-
-    for joints, parents in kinematic_fronts:
-        if parents[0] < 0:
-            for j in joints:
-                t_results[j] = t_l[..., j, :]
-                s_results[j] = s_l[..., j, :]
-                r_results[j] = r_l[..., j, :, :]
-        else:
-            for j, p in zip(joints, parents):
-                r_results[j] = r_results[p] @ r_l[..., j, :, :]
-                s_results[j] = s_results[p] * s_l[..., j, :]
-                r_ps = r_results[p] * s_results[p][..., :, None]
-                t_ps = xp.squeeze(r_ps @ t_l[..., j, :, None], axis=-1)
-                t_results[j] = t_ps + t_results[p]
-
-    return (
-        xp.stack(t_results, axis=-2),
-        xp.stack(r_results, axis=-3),
-        xp.stack(s_results, axis=-2),
+def _scale_transform_translations(xp, transforms: Float[Array, "B J 4 4"]) -> Float[Array, "B J 4 4"]:
+    return common.affine_transforms(
+        transforms[..., :3, :3],
+        transforms[..., :3, 3] * 0.01,
+        xp=xp,
     )
-
-
-def _trs_to_transforms(
-    xp,
-    t: Float[Array, "B J 3"],
-    r: Float[Array, "B J 3 3"],
-    s: Float[Array, "B J 1"],
-) -> Float[Array, "B J 4 4"]:
-    R = r * s[..., None]
-    return common.affine_transforms(R, t, xp=xp)
 
 
 def _transforms_from_linear_translation(

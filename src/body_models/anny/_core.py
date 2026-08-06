@@ -7,10 +7,10 @@ from nanomanifold import SO3
 
 from body_models import _common as common
 from body_models._rotations import RotationType
+from body_models._runtime import ArrayRuntime
 from body_models.anny._io import PHENOTYPE_VARIATIONS
 
 Array = Any
-Front = tuple[list[int], list[int]]
 
 
 class AnnySkeletonIdentity(TypedDict):
@@ -52,24 +52,22 @@ def shape_vertices(
 
 
 def prepare_pose(
-    kinematic_fronts: list[Front],
+    runtime: ArrayRuntime,
+    tree: common.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
-    xp: Any,
 ) -> common.deformation.SkinningPose:
     """Prepare ANNY skeleton and bind-relative skinning transforms."""
+    xp = runtime.xp
     pose_transforms = _pose_to_transform(xp, pose, rotation_type)
     skeleton_transforms, skinning_transforms = _forward_core(
-        xp=xp,
-        kinematic_fronts=kinematic_fronts,
+        runtime=runtime,
+        tree=tree,
         rest_skeleton_transforms=rest_skeleton_transforms,
         pose_transforms=pose_transforms,
-        skip_skinning=False,
     )
-    if skinning_transforms is None:
-        raise RuntimeError("Skinning transforms were not computed.")
     return {
         "skeleton_transforms": skeleton_transforms,
         "skinning_transforms": skinning_transforms,
@@ -77,32 +75,32 @@ def prepare_pose(
 
 
 def prepare_skeleton(
-    kinematic_fronts: list[Front],
+    runtime: ArrayRuntime,
+    tree: common.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
-    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed ANNY joint transforms."""
+    xp = runtime.xp
     pose_transforms = _pose_to_transform(xp, pose, rotation_type)
     skeleton, _ = _forward_core(
-        xp=xp,
-        kinematic_fronts=kinematic_fronts,
+        runtime=runtime,
+        tree=tree,
         rest_skeleton_transforms=rest_skeleton_transforms,
         pose_transforms=pose_transforms,
-        skip_skinning=True,
     )
     return skeleton
 
 
 def _forward_core(
-    xp: Any,
-    kinematic_fronts: list[Front],
+    runtime: ArrayRuntime,
+    tree: common.KinematicTree,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
     pose_transforms: Float[Array, "*batch J 4 4"],
-    skip_skinning: bool,
-) -> tuple[Float[Array, "*batch J 4 4"], Float[Array, "*batch J 4 4"] | None]:
+) -> tuple[Float[Array, "*batch J 4 4"], Float[Array, "*batch J 4 4"]]:
+    xp = runtime.xp
     rest_poses = rest_skeleton_transforms
     root_rest = rest_poses[..., 0, :, :]
     base_transform = common.invert_rigid_transforms(root_rest, xp=xp)
@@ -130,14 +128,19 @@ def _forward_core(
         copy=True,
         xp=xp,
     )
-    return _forward_kinematics(
-        xp,
-        kinematic_fronts,
-        rest_poses,
-        delta_transforms,
-        base_transform,
-        skip_skinning=skip_skinning,
+    inverse_rest = common.invert_rigid_transforms(rest_poses, xp=xp)
+    local_skinning = rest_poses @ delta_transforms @ inverse_rest
+    roots = tree.fronts[0][0]
+    root_skinning = base_transform[..., None, :, :] @ local_skinning[..., roots, :, :]
+    local_skinning = common.at_set(
+        local_skinning,
+        (..., roots, slice(None), slice(None)),
+        root_skinning,
+        copy=False,
+        xp=xp,
     )
+    skinning_transforms = runtime._compose_kinematic_tree(local_skinning, tree)
+    return skinning_transforms @ rest_poses, skinning_transforms
 
 
 def prepare_identity(
@@ -324,46 +327,6 @@ def _skeleton_transforms_from_heads_tails(
     valid = (xp.abs(xp.sum(axis**2, axis=-1) - 1) < eps)[..., None, None]
     rotations = xp.where(valid, rotations, xp.broadcast_to(degenerate_rotation, rotations.shape)) @ rolls
     return common.affine_transforms(rotations, heads, xp=xp)
-
-
-def _forward_kinematics(
-    xp: Any,
-    fronts: list[Front],
-    rest_poses: Float[Array, "*batch J 4 4"],
-    delta_transforms: Float[Array, "*batch J 4 4"],
-    base_transform: Float[Array, "*batch 4 4"],
-    *,
-    skip_skinning: bool,
-) -> tuple[Float[Array, "*batch J 4 4"], Float[Array, "*batch J 4 4"] | None]:
-    num_joints = rest_poses.shape[-3]
-    local_transforms = rest_poses @ delta_transforms
-    inverse_rest = common.invert_rigid_transforms(rest_poses, xp=xp)
-    poses: list[Any] = [None] * num_joints
-    skinning_transforms: list[Any] = [None] * num_joints
-
-    for joint_ids, parent_ids in fronts:
-        roots = [(joint, parent) for joint, parent in zip(joint_ids, parent_ids) if parent == -1]
-        children = [(joint, parent) for joint, parent in zip(joint_ids, parent_ids) if parent >= 0]
-        if roots:
-            root_ids = [joint for joint, _ in roots]
-            root_poses = base_transform[..., None, :, :] @ local_transforms[..., root_ids, :, :]
-            root_skinning = root_poses @ inverse_rest[..., root_ids, :, :]
-            for index, joint in enumerate(root_ids):
-                poses[joint] = root_poses[..., index, :, :]
-                skinning_transforms[joint] = root_skinning[..., index, :, :]
-        if children:
-            child_ids = [joint for joint, _ in children]
-            parent_skinning = xp.stack([skinning_transforms[parent] for _, parent in children], axis=-3)
-            child_poses = parent_skinning @ local_transforms[..., child_ids, :, :]
-            child_inverse_rest = inverse_rest[..., child_ids, :, :][..., None, :, :]
-            child_skinning = xp.sum(child_poses[..., :, None] * child_inverse_rest, axis=-2)
-            for index, joint in enumerate(child_ids):
-                poses[joint] = child_poses[..., index, :, :]
-                skinning_transforms[joint] = child_skinning[..., index, :, :]
-
-    posed = xp.stack(poses, axis=-3)
-    skinned = None if skip_skinning else xp.stack(skinning_transforms, axis=-3)
-    return posed, skinned
 
 
 def _pose_to_transform(

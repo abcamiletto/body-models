@@ -144,13 +144,13 @@ class MANO(SmplFamilyModel):
             skeleton_identity = identity
 
         skeleton = core.prepare_skeleton(
-            self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             self._weights.hand_mean,
             hand_pose,
             wrist_rotation,
             self.rotation_type,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
-            xp=xp,
         )
         return self._transform_skeleton(
             skeleton,
@@ -202,7 +202,7 @@ class MANO(SmplFamilyModel):
             shapedirs=self._weights.shapedirs,
             j_template=self._weights.j_template,
             j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.parents,
+            parents=self._weights.kinematic_tree.parents,
             shape=shape,
         )
 
@@ -215,8 +215,8 @@ class MANO(SmplFamilyModel):
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
-            xp=self._runtime.xp,
-            kinematic_fronts=self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             hand_mean=self._weights.hand_mean,
             hand_pose=hand_pose,
             wrist_rotation=wrist_rotation,
@@ -233,7 +233,7 @@ class MANO(SmplFamilyModel):
             xp=self._runtime.xp,
             j_template=self._weights.j_template,
             j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.parents,
+            parents=self._weights.kinematic_tree.parents,
             shape=shape,
         )
 

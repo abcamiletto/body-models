@@ -8,7 +8,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import _config as config
-from body_models._common import compute_sparse_skin_weights, simplify_mesh
+from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -35,7 +35,7 @@ class SkelWeights:
     apose_t: Float[Array, "24 3"]
     per_joint_rot: Float[Array, "24 3 3"]
     parent: Int[Array, "23"]
-    parents: list[int]
+    kinematic_tree: kinematics.KinematicTree
     child: Int[Array, "24"]
     fixed_orientation_joints: Int[Array, "6"]
     non_leaf_joints: Int[Array, "N"]
@@ -125,7 +125,7 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
         apose_t=np.asarray(data["apose_rel_transfo"], dtype=np.float32)[:, :3, 3],
         per_joint_rot=np.asarray(data["per_joint_rot"], dtype=np.float32),
         parent=np.asarray(parent_list, dtype=np.int64),
-        parents=[-1, *parent_list],
+        kinematic_tree=kinematics.KinematicTree.from_parents([-1, *parent_list]),
         child=child,
         fixed_orientation_joints=np.asarray([0, 5, 10, 13, 18, 23], dtype=np.int64),
         non_leaf_joints=np.asarray(non_leaf, dtype=np.int64),
