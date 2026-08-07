@@ -107,7 +107,10 @@ Models imported from a `torch` module are `torch.nn.Module` instances, so
 `kernel_backend="warp"` for the optional Warp implementation. The array runtime
 remains Torch; kernel backends only replace shared operations they implement.
 Triton currently skins the full mesh before applying `vertex_indices`, keeping
-its reusable backward plan outside compiled calls.
+its reusable backward plan outside compiled calls. It also composes local
+affine transforms along the parent tree for every skinned model, independent of
+the model's rotation representation. Triton lowerings require CUDA float32
+inputs and provide first-order gradients.
 
 All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
 define its two public specializations. The shared contract includes `runtime`,
