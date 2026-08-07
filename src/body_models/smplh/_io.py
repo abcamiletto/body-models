@@ -8,7 +8,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._common import Front, compute_kinematic_fronts, compute_sparse_skin_weights, simplify_mesh
+from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
 from body_models._common.chumpy_fix import load_model_dict
 from body_models._common.skinning import CompactSkinning
 from body_models.smplh._constants import SMPLH_JOINT_NAMES
@@ -30,8 +30,7 @@ class SmplhWeights:
     j_template: Float[Array, "52 3"]
     j_shapedirs: Float[Array, "52 3 S"]
     hand_mean: Float[Array, "2 45"]
-    parents: list[int]
-    kinematic_fronts: list[Front]
+    kinematic_tree: kinematics.KinematicTree
     joint_names: list[str]
 
 
@@ -117,8 +116,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
         j_template=joint_regressor @ model_template,
         j_shapedirs=np.einsum("jv,vds->jds", joint_regressor, model_dirs),
         hand_mean=hand_mean,
-        parents=parents.tolist(),
-        kinematic_fronts=compute_kinematic_fronts(parents),
+        kinematic_tree=kinematics.KinematicTree.from_parents(parents),
         joint_names=get_joint_names(data),
     )
 

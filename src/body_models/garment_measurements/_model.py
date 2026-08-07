@@ -105,7 +105,7 @@ class GarmentMeasurements(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return [int(parent) for parent in self._weights.parents.tolist()]
+        return list(self._weights.kinematic_tree.parents)
 
     def forward_vertices(
         self,
@@ -182,12 +182,12 @@ class GarmentMeasurements(SkinnedModel):
             hand_pose,
         )
         skeleton = core.prepare_skeleton(
+            self._runtime,
             self._weights.bind_quats,
-            self._weights.kinematic_fronts,
+            self._weights.kinematic_tree,
             packed_pose,
             self.rotation_type,
             local_bind_translations=identity["local_bind_translations"],
-            xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
@@ -242,7 +242,7 @@ class GarmentMeasurements(SkinnedModel):
             eigenvalues=self._weights.eigenvalues,
             bind_quats=self._weights.bind_quats,
             mvc_weights=self._weights.mvc_weights,
-            kinematic_fronts=self._weights.kinematic_fronts,
+            kinematic_tree=self._weights.kinematic_tree,
             shape=shape,
         )
 
@@ -264,13 +264,13 @@ class GarmentMeasurements(SkinnedModel):
             hand_pose,
         )
         return core.prepare_pose(
+            self._runtime,
             self._weights.bind_quats,
-            self._weights.kinematic_fronts,
+            self._weights.kinematic_tree,
             packed_pose,
             self.rotation_type,
             bind_skeleton=identity["bind_skeleton"],
             local_bind_translations=identity["local_bind_translations"],
-            xp=self._runtime.xp,
         )
 
     def _resolve_pelvis_rotation(

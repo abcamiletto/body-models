@@ -18,7 +18,7 @@ from body_models._base import (
     SkinningPose,
     SparseCorrectiveBasis,
 )
-from body_models._common import skinning
+from body_models._common import kinematics, skinning
 from body_models._registry import create_model
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime, RuntimeLike, TorchRuntime
@@ -49,7 +49,7 @@ class SomaConfig:
     num_shape_coeffs: int
     num_scale_coeffs: int | None
     default_identity_value: float
-    parents: tuple[int, ...]
+    kinematic_tree: kinematics.KinematicTree
     joint_names: tuple[str, ...]
 
 
@@ -94,7 +94,7 @@ class SOMA(SkinnedModel):
             num_shape_coeffs=spec.num_shape_coeffs,
             num_scale_coeffs=spec.num_scale_coeffs,
             default_identity_value=spec.default_identity_value,
-            parents=tuple(parents),
+            kinematic_tree=kinematics.KinematicTree.from_parents(parents),
             joint_names=tuple(joint_names),
         )
         self._weights = runtime._materialize(weights)
@@ -168,7 +168,7 @@ class SOMA(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return list(self._config.parents)
+        return list(self._config.kinematic_tree.parents)
 
     @property
     def num_vertices(self) -> int:
@@ -266,11 +266,11 @@ class SOMA(SkinnedModel):
         )
         pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
+            self._runtime,
             self._weights,
             pose,
             self.rotation_type,
             local_joint_translations=skeleton_identity["local_joint_translations"],
-            xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
@@ -320,10 +320,10 @@ class SOMA(SkinnedModel):
         """Precompute identity-dependent state for repeated forward passes."""
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_identity_from_rest_shape(
+            self._runtime,
             data=self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            runtime=self._runtime,
             repose=repose,
             bind_pose=bind_pose,
         )
@@ -347,12 +347,12 @@ class SOMA(SkinnedModel):
         )
         pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
+            self._runtime,
             self._weights,
             pose,
             rotation_type=self.rotation_type,
             local_joint_translations=identity["local_joint_translations"],
             inverse_bind_transforms=identity["inverse_bind_transforms"],
-            xp=xp,
         )
 
     def _prepare_skeleton_identity(
@@ -363,10 +363,10 @@ class SOMA(SkinnedModel):
     ) -> core.SomaSkeletonIdentity:
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_skeleton_identity_from_rest_shape(
+            self._runtime,
             self._weights,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
-            runtime=self._runtime,
         )
 
     def _rest_shapes(
@@ -445,7 +445,7 @@ def _create_identity_model(model_type: str, runtime: ArrayRuntime) -> Any:
     spec = MODEL_TYPE_SPECS[model_type]
     kwargs = dict(spec.identity_model_kwargs) | {"simplify": 1.0}
     if isinstance(runtime, TorchRuntime):
-        kwargs["skinning_backend"] = runtime.skinning_backend
+        kwargs["kernel_backend"] = runtime.kernel_backend
     return create_model(model_type, runtime=runtime.name, **kwargs)
 
 

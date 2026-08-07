@@ -22,6 +22,7 @@ from body_models._rotations import RotationType
 from body_models._runtime import (
     ArrayRuntime,
     JaxRuntime,
+    KernelBackend,
     NumpyRuntime,
     RuntimeLike,
     RuntimeName,
@@ -59,6 +60,7 @@ __all__ = [
     "DenseCorrectiveBasis",
     "JaxRuntime",
     "Joint",
+    "KernelBackend",
     "LinearIdentity",
     "NumpyRuntime",
     "ParameterRole",

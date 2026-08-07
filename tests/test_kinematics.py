@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from body_models._common.kinematics import (
+    KinematicTree,
     affine_transforms,
     compute_kinematic_fronts,
     compute_sparse_skin_weights,
@@ -30,14 +31,22 @@ def test_smpl_parents_every_joint_appears_once_with_correct_parent() -> None:
         assert parent == expected
 
 
+def test_kinematic_tree_materializes_immutable_fronts() -> None:
+    tree = KinematicTree.from_parents(SMPL_PARENTS)
+
+    assert tree.parents == tuple(SMPL_PARENTS)
+    assert tree.fronts == tuple(compute_kinematic_fronts(SMPL_PARENTS))
+    hash(tree)
+
+
 def test_forest_with_two_roots() -> None:
     # Two independent chains: 0 -> 1 -> 2, and 3 -> 4.
     parents = [-1, 0, 1, -1, 3]
     fronts = compute_kinematic_fronts(parents)
 
-    assert fronts[0] == ([0, 3], [-1, -1])
-    assert fronts[1] == ([1, 4], [0, 3])
-    assert fronts[2] == ([2], [1])
+    assert fronts[0] == ((0, 3), (-1, -1))
+    assert fronts[1] == ((1, 4), (0, 3))
+    assert fronts[2] == ((2,), (1,))
 
 
 def test_parent_equal_joint_self_root() -> None:
@@ -45,9 +54,9 @@ def test_parent_equal_joint_self_root() -> None:
     parents = [0, 0, 1]
     fronts = compute_kinematic_fronts(parents)
 
-    assert fronts[0] == ([0], [-1])
-    assert fronts[1] == ([1], [0])
-    assert fronts[2] == ([2], [1])
+    assert fronts[0] == ((0,), (-1,))
+    assert fronts[1] == ((1,), (0,))
+    assert fronts[2] == ((2,), (1,))
 
 
 def test_cycle_raises_value_error() -> None:

@@ -7,18 +7,25 @@ execution is lowered by ``ArrayRuntime`` instead.
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from body_models._common.kinematics import KinematicTree
+
+if TYPE_CHECKING:
+    from body_models._runtime import KernelBackend
+
 _JAX_DATACLASSES: set[type] = set()
-_STATIC_LEAF_TYPES = (type(None), bool, int, float, str, bytes, np.generic)
+_STATIC_LEAF_TYPES = (type(None), bool, int, float, str, bytes, np.generic, KinematicTree)
 
 
 def numpy_state(value: Any) -> Any:
     """Materialize model data for NumPy."""
     from body_models._common import sparse
 
+    if isinstance(value, _STATIC_LEAF_TYPES):
+        return value
     if isinstance(value, sparse.SparseMatrix):
         from body_models._common import sparse_numpy
 
@@ -38,7 +45,7 @@ def numpy_state(value: Any) -> Any:
     return _static_leaf(value)
 
 
-def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
+def torch_state(value: Any, *, kernel_backend: KernelBackend = "torch") -> Any:
     """Recursively register model arrays as PyTorch buffers."""
     import torch
     from torch import nn
@@ -46,11 +53,13 @@ def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
     from body_models._common import skinning, sparse
     from body_models._torch_state import StateMapping, StateSequence
 
-    if isinstance(value, skinning.CompactSkinning) and skinning_backend == "warp":
+    if isinstance(value, _STATIC_LEAF_TYPES):
+        return value
+    if isinstance(value, skinning.CompactSkinning) and kernel_backend == "warp":
         try:
             from body_models._common import warp
         except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError("Install body-models[warp] to use skinning_backend='warp'.") from exc
+            raise ModuleNotFoundError("Install body-models[warp] to use kernel_backend='warp'.") from exc
         return warp.prepare_compact_skinning(value)
 
     if isinstance(value, sparse.SparseMatrix):
@@ -63,25 +72,25 @@ def torch_state(value: Any, *, skinning_backend: str = "torch") -> Any:
         for field in fields(value):
             converted = torch_state(
                 getattr(value, field.name),
-                skinning_backend=skinning_backend,
+                kernel_backend=kernel_backend,
             )
             setattr(module, field.name, converted)
         return module
 
     if isinstance(value, dict):
-        converted = {key: torch_state(item, skinning_backend=skinning_backend) for key, item in value.items()}
+        converted = {key: torch_state(item, kernel_backend=kernel_backend) for key, item in value.items()}
         if any(isinstance(item, torch.Tensor | nn.Module) for item in converted.values()):
             return StateMapping(converted)
         return converted
 
     if isinstance(value, list):
-        converted = [torch_state(item, skinning_backend=skinning_backend) for item in value]
+        converted = [torch_state(item, kernel_backend=kernel_backend) for item in value]
         if any(isinstance(item, torch.Tensor | nn.Module) for item in converted):
             return StateSequence(converted)
         return converted
 
     if isinstance(value, tuple):
-        converted = tuple(torch_state(item, skinning_backend=skinning_backend) for item in value)
+        converted = tuple(torch_state(item, kernel_backend=kernel_backend) for item in value)
         if any(isinstance(item, torch.Tensor | nn.Module) for item in converted):
             return StateSequence(converted)
         return converted
@@ -100,6 +109,8 @@ def jax_state(value: Any) -> Any:
 
     from body_models._common import sparse
 
+    if isinstance(value, _STATIC_LEAF_TYPES):
+        return value
     if isinstance(value, sparse.SparseMatrix):
         from body_models._common import sparse_jax
 
@@ -140,6 +151,8 @@ def register_jax_state(value: Any) -> None:
 
 
 def _register_jax_state(value: Any, jax: Any) -> None:
+    if isinstance(value, _STATIC_LEAF_TYPES):
+        return
     if is_dataclass(value):
         _register_jax_dataclass(type(value), jax)
         for field in fields(value):
