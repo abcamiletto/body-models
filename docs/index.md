@@ -1,7 +1,7 @@
 # body-models
 
 `body-models` provides a shared interface for parametric and rigid articulated
-models with NumPy, PyTorch, and JAX runtimes plus optional Warp acceleration.
+models with NumPy, PyTorch, and JAX runtimes plus optional GPU acceleration.
 
 ## Install
 
@@ -13,6 +13,7 @@ Install optional framework runtimes when needed:
 
 ```bash
 uv add "body-models[torch]"
+uv add "body-models[triton]"  # Linux CUDA
 uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
 ```
@@ -102,9 +103,11 @@ skeleton = model.forward_skeleton(**params)
 
 Models imported from a `torch` module are `torch.nn.Module` instances, so
 `.to()`, `.cuda()`, and `state_dict()` work directly. Torch models accept
-`kernel_backend="warp"` when Warp operation lowerings are desired. The array
-runtime remains Torch; kernel backends only replace shared operations they
-implement.
+`kernel_backend="triton"` for compiled CUDA float32 skinning and
+`kernel_backend="warp"` for the optional Warp implementation. The array runtime
+remains Torch; kernel backends only replace shared operations they implement.
+Triton currently skins the full mesh before applying `vertex_indices`, keeping
+its reusable backward plan outside compiled calls.
 
 All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
 define its two public specializations. The shared contract includes `runtime`,

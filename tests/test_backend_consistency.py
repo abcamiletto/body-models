@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from trimesh import Trimesh
 
-from body_models._runtime import NumpyRuntime, TorchRuntime
+from body_models._runtime import NumpyRuntime
 from body_models.garment_measurements import GarmentMeasurements
 from body_models.myofullbody import MyoFullBody
 
@@ -148,18 +148,17 @@ def test_rigid_body_joint_name_spaces(name, model_class, kwargs) -> None:
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
-def test_kernel_backends_match_default(name, model_class, kwargs) -> None:
+def test_warp_kernel_backend_matches_default(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
     torch_class = model_cases.backend_model_class(name, "torch")
     torch_instance = torch_class(**kwargs)
-    for kernel_backend in TorchRuntime.KERNEL_BACKENDS[1:]:
-        params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
-        vertex_indices = list(range(min(8, torch_instance.num_vertices)))
-        with torch.no_grad():
-            expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
-            model = torch_class(**kwargs, kernel_backend=kernel_backend)
-            actual = model.forward_vertices(**params, vertex_indices=vertex_indices)
-        np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
+    params = torch_instance.get_rest_pose(batch_dims=(2, 2), dtype=torch.float32)
+    vertex_indices = list(range(min(8, torch_instance.num_vertices)))
+    with torch.no_grad():
+        expected = torch_instance.forward_vertices(**params, vertex_indices=vertex_indices)
+        model = torch_class(**kwargs, kernel_backend="warp")
+        actual = model.forward_vertices(**params, vertex_indices=vertex_indices)
+    np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)

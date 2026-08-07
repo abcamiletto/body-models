@@ -55,12 +55,22 @@ def torch_state(value: Any, *, kernel_backend: KernelBackend = "torch") -> Any:
 
     if isinstance(value, _STATIC_LEAF_TYPES):
         return value
-    if isinstance(value, skinning.CompactSkinning) and kernel_backend == "warp":
-        try:
-            from body_models._common import warp
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError("Install body-models[warp] to use kernel_backend='warp'.") from exc
-        return warp.prepare_compact_skinning(value)
+    if isinstance(value, skinning.CompactSkinning):
+        if kernel_backend == "triton":
+            install_error = "Install body-models[triton] to use kernel_backend='triton'."
+            if not hasattr(torch.library, "triton_op"):
+                raise ModuleNotFoundError(install_error)
+            try:
+                from body_models._common import triton_skinning
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError(install_error) from exc
+            return triton_skinning.prepare_compact_skinning(value)
+        if kernel_backend == "warp":
+            try:
+                from body_models._common import warp
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError("Install body-models[warp] to use kernel_backend='warp'.") from exc
+            return warp.prepare_compact_skinning(value)
 
     if isinstance(value, sparse.SparseMatrix):
         from body_models._common import sparse_torch

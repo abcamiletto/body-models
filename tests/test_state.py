@@ -62,3 +62,47 @@ def test_warp_plan_is_rebuilt_after_loading_state() -> None:
 
     torch.testing.assert_close(first._plan_permutation, second._plan_permutation)
     torch.testing.assert_close(first._plan_chunk_joints, second._plan_chunk_joints)
+
+
+@pytest.mark.fast
+def test_triton_plan_is_rebuilt_after_loading_state() -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("triton")
+    from body_models._common import skinning, triton_skinning
+
+    first = triton_skinning.prepare_compact_skinning(
+        skinning.CompactSkinning(
+            torch.tensor([[0, -1], [1, 0]]),
+            torch.tensor([[0.7, 0.0], [0.2, 0.8]]),
+        )
+    )
+    second = triton_skinning.prepare_compact_skinning(
+        skinning.CompactSkinning(
+            torch.tensor([[1, -1], [0, 1]]),
+            torch.tensor([[0.6, 0.0], [0.3, 0.7]]),
+        )
+    )
+
+    first.load_state_dict(second.state_dict())
+
+    torch.testing.assert_close(first._plan_vertex_indices, second._plan_vertex_indices)
+    torch.testing.assert_close(first._plan_weights, second._plan_weights)
+    torch.testing.assert_close(first._plan_offsets, second._plan_offsets)
+
+
+@pytest.mark.fast
+def test_triton_plan_accepts_no_influences() -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("triton")
+    from body_models._common import skinning, triton_skinning
+
+    state = triton_skinning.prepare_compact_skinning(
+        skinning.CompactSkinning(
+            torch.full((2, 2), -1),
+            torch.zeros((2, 2)),
+        )
+    )
+
+    assert state._plan_vertex_indices.numel() == 0
+    assert state._plan_weights.numel() == 0
+    torch.testing.assert_close(state._plan_offsets, torch.zeros(1, dtype=torch.int32))

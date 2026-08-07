@@ -131,6 +131,45 @@ def test_compact_and_warp_skinning_gradients_match_dense_on_cpu() -> None:
 
 
 @pytest.mark.slow
+def test_triton_skinning_gradients_match_dense_under_compile() -> None:
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required")
+
+    from body_models._common import skinning
+
+    torch.manual_seed(42)
+    num_batches, num_vertices, num_joints, num_slots = 2, 257, 31, 6
+    joint_indices = torch.randint(num_joints - 1, (num_vertices, num_slots), dtype=torch.int32, device="cuda")
+    joint_weights = torch.rand(num_vertices, num_slots, device="cuda")
+    joint_indices[:, -1] = -1
+    joint_weights[:, -1] = 0
+    joint_weights /= joint_weights.sum(dim=-1, keepdim=True)
+    dense_weights = torch.zeros(num_vertices, num_joints, device="cuda")
+    dense_weights.scatter_add_(1, joint_indices.clamp_min(0).long(), joint_weights)
+    vertices = torch.randn(1, num_vertices, 3, device="cuda", requires_grad=True)
+    transforms = torch.randn(num_batches, num_joints, 4, 4, device="cuda", requires_grad=True)
+    grad_output = torch.randn(num_batches, num_vertices, 3, device="cuda")
+
+    expected = skinning.linear_blend_skinning(vertices, transforms, dense_weights, xp=torch)
+    expected_gradients = torch.autograd.grad(expected, (vertices, transforms), grad_output)
+    runtime = TorchRuntime(kernel_backend="triton")
+    state = runtime._materialize(skinning.CompactSkinning(joint_indices, joint_weights))
+    with pytest.raises(TypeError, match="all tensors on CUDA"):
+        runtime._skin_vertices(vertices.cpu(), transforms.cpu(), skinning=state.cpu())
+    state.cuda()
+    with pytest.raises(TypeError, match="float32"):
+        runtime._skin_vertices(vertices.double(), transforms.double(), skinning=state)
+    forward = torch.compile(lambda v, t: runtime._skin_vertices(v, t, skinning=state), fullgraph=True)
+    actual = forward(vertices, transforms)
+    actual_gradients = torch.autograd.grad(actual, (vertices, transforms), grad_output)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+    for actual_gradient, expected_gradient in zip(actual_gradients, expected_gradients, strict=True):
+        torch.testing.assert_close(actual_gradient, expected_gradient, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.slow
 def test_soma_warp_forward_and_gradients_match_torch() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
@@ -162,9 +201,10 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
 
 @pytest.mark.parametrize(
     ("name", "model_class", "kwargs"),
-    [case for case in model_cases.SKINNED_MODELS if case[0] == "garment_measurements"],
+    model_cases.SKINNED_MODELS,
 )
-def test_torch_kernel_backend_gradients_match_default(
+@pytest.mark.slow
+def test_triton_model_gradients_match_default(
     name,
     model_class,
     kwargs,
@@ -183,16 +223,17 @@ def test_torch_kernel_backend_gradients_match_default(
         for key, value in params.items()
     }
 
-    def forward_and_grad(model):
+    def forward_and_grad(model, forward=None):
         model_params = {key: value.detach().clone().requires_grad_() for key, value in params.items()}
-        vertices = model.forward_vertices(**model_params, vertex_indices=vertex_indices)
+        forward = model.forward_vertices if forward is None else forward
+        vertices = forward(**model_params, vertex_indices=vertex_indices)
         gradients = torch.autograd.grad(vertices.square().sum(), tuple(model_params.values()))
         return vertices, gradients
 
     expected_vertices, expected_gradients = forward_and_grad(default_model)
-    for kernel_backend in TorchRuntime.KERNEL_BACKENDS[1:]:
-        model = torch_class(**kwargs, kernel_backend=kernel_backend).cuda()
-        actual_vertices, actual_gradients = forward_and_grad(model)
-        torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
-        for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
-            torch.testing.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+    model = torch_class(**kwargs, kernel_backend="triton").cuda()
+    compiled_forward = torch.compile(model.forward_vertices, backend="eager")
+    actual_vertices, actual_gradients = forward_and_grad(model, forward=compiled_forward)
+    torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
+    for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
+        torch.testing.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
