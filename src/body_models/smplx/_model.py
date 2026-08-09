@@ -39,7 +39,7 @@ class SMPLX(SmplFamilyModel):
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
     NUM_HEAD_JOINTS = 3
-    NUM_SHAPE_COEFFS = 10
+    NUM_SHAPE_COEFFS = 300
     NUM_EXPR_COEFFS = 10
     _COMMON_JOINTS = SMPLX_JOINTS
 
@@ -99,7 +99,7 @@ class SMPLX(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
+        shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch 10"] | None = None,
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
@@ -139,7 +139,7 @@ class SMPLX(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
+        shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch 10"] | None = None,
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
@@ -185,7 +185,7 @@ class SMPLX(SmplFamilyModel):
         *,
         point_regressor: PointRegressor,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
+        shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch 10"] | None = None,
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
@@ -227,7 +227,7 @@ class SMPLX(SmplFamilyModel):
 
     def prepare_identity(
         self,
-        shape: Float[Array, "*batch 10"],
+        shape: Float[Array, "*batch S"],
         expression: Float[Array, "*batch 10"],
     ) -> LinearIdentity:
         """Precompute shape- and expression-dependent state."""
