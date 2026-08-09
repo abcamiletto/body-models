@@ -137,6 +137,7 @@ class BrainCoHand(RigidBodyModel):
         params = super().get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         if hands != "default":
             hand_pose = self._runtime.asarray(BRAINCO_HAND_PRESETS[self.side][hands], like=params["hand_pose"])
+            hand_pose = hand_pose.reshape(self.num_dofs)
             params["hand_pose"] = self._runtime.xp.broadcast_to(hand_pose, (*batch_dims, self.num_dofs))
         return params
 
