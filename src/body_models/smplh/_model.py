@@ -37,7 +37,7 @@ class SMPLH(SmplFamilyModel):
     NUM_JOINTS = 52
     NUM_BODY_JOINTS = 21
     NUM_HAND_JOINTS = 30
-    NUM_SHAPE_COEFFS = 10
+    NUM_SHAPE_COEFFS = 16
     _COMMON_JOINTS = SMPLH_JOINTS
 
     def __init__(
@@ -93,7 +93,7 @@ class SMPLH(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
+        shape: Float[Array, "*batch S"] | None = None,
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
@@ -124,7 +124,7 @@ class SMPLH(SmplFamilyModel):
         hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
         *,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
+        shape: Float[Array, "*batch S"] | None = None,
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
@@ -166,7 +166,7 @@ class SMPLH(SmplFamilyModel):
         *,
         point_regressor: PointRegressor,
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        shape: Float[Array, "*batch 10"] | None = None,
+        shape: Float[Array, "*batch S"] | None = None,
         identity: LinearIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
@@ -204,7 +204,7 @@ class SMPLH(SmplFamilyModel):
 
     def prepare_identity(
         self,
-        shape: Float[Array, "*batch 10"],
+        shape: Float[Array, "*batch S"],
     ) -> LinearIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
