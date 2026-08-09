@@ -134,12 +134,12 @@ class FLAME(SmplFamilyModel):
             skeleton_identity = identity
 
         skeleton = core.prepare_skeleton(
-            self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             head_pose,
             head_rotation,
             self.rotation_type,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
-            xp=xp,
         )
         return self._transform_skeleton(
             skeleton,
@@ -196,7 +196,7 @@ class FLAME(SmplFamilyModel):
             j_template=self._weights.j_template,
             j_shapedirs=self._weights.j_shapedirs,
             j_exprdirs=self._weights.j_exprdirs,
-            parents=self._weights.parents,
+            parents=self._weights.kinematic_tree.parents,
             shape=shape,
             expression=expression,
         )
@@ -210,8 +210,8 @@ class FLAME(SmplFamilyModel):
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
-            xp=self._runtime.xp,
-            kinematic_fronts=self._weights.kinematic_fronts,
+            self._runtime,
+            self._weights.kinematic_tree,
             head_pose=head_pose,
             head_rotation=head_rotation,
             rotation_type=self.rotation_type,
@@ -229,7 +229,7 @@ class FLAME(SmplFamilyModel):
             j_template=self._weights.j_template,
             j_shapedirs=self._weights.j_shapedirs,
             j_exprdirs=self._weights.j_exprdirs,
-            parents=self._weights.parents,
+            parents=self._weights.kinematic_tree.parents,
             shape=shape,
             expression=expression,
         )

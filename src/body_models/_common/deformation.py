@@ -1,5 +1,6 @@
 """Backend-agnostic linear deformation primitives."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, NotRequired, TypeAlias, TypedDict
 
@@ -94,7 +95,7 @@ def prepare_linear_identity(
     vertex_directions: Float[Array, "V 3 C"],
     joint_template: Float[Array, "J 3"],
     joint_directions: Float[Array, "J 3 C"],
-    parents: list[int],
+    parents: Sequence[int],
     coefficients: Float[Array, "*batch C"],
     xp: Any,
 ) -> LinearIdentity:
@@ -122,7 +123,7 @@ def prepare_linear_skeleton(
     *,
     joint_template: Float[Array, "J 3"],
     joint_directions: Float[Array, "J 3 C"],
-    parents: list[int],
+    parents: Sequence[int],
     coefficients: Float[Array, "*batch C"],
     xp: Any,
 ) -> SkeletonIdentity:

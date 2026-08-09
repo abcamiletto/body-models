@@ -20,7 +20,8 @@ from body_models import _state as state
 from body_models._common import skinning as skinning_ops
 
 Array = Any
-RuntimeName = Literal["numpy", "torch", "jax"]
+RuntimeName: TypeAlias = Literal["numpy", "torch", "jax"]
+KernelBackend: TypeAlias = Literal["torch", "warp"]
 
 
 class ArrayRuntime(ABC):
@@ -109,6 +110,14 @@ class ArrayRuntime(ABC):
             xp=self.xp,
         )
 
+    def _compose_kinematic_tree(
+        self,
+        local_transforms: Float[Array, "*batch J 4 4"],
+        tree: common.KinematicTree,
+    ) -> Float[Array, "*batch J 4 4"]:
+        """Compose local transforms along a materialized kinematic tree."""
+        return common.compose_kinematic_fronts(local_transforms, tree.fronts, xp=self.xp)
+
 
 @dataclass(frozen=True)
 class NumpyRuntime(ArrayRuntime):
@@ -132,15 +141,15 @@ class NumpyRuntime(ArrayRuntime):
 
 @dataclass(frozen=True, kw_only=True)
 class TorchRuntime(ArrayRuntime):
-    """Torch model runtime with optional Warp operation lowerings."""
+    """Torch array runtime with optional compiled operation lowerings."""
 
     name = "torch"
-    SKINNING_BACKENDS = ("torch", "warp")
-    skinning_backend: Literal["torch", "warp"] = "torch"
+    KERNEL_BACKENDS: ClassVar[tuple[KernelBackend, ...]] = ("torch", "warp")
+    kernel_backend: KernelBackend = "torch"
 
     def __post_init__(self) -> None:
-        if self.skinning_backend not in self.SKINNING_BACKENDS:
-            raise ValueError(f"Invalid Torch skinning backend: {self.skinning_backend!r}")
+        if self.kernel_backend not in self.KERNEL_BACKENDS:
+            raise ValueError(f"Invalid Torch kernel backend: {self.kernel_backend!r}")
 
     @property
     def xp(self) -> Any:
@@ -160,7 +169,7 @@ class TorchRuntime(ArrayRuntime):
         return self.xp.as_tensor(value, device=like.device, dtype=dtype)
 
     def _materialize(self, value: Any) -> Any:
-        return state.torch_state(value, skinning_backend=self.skinning_backend)
+        return state.torch_state(value, kernel_backend=self.kernel_backend)
 
     def stop_gradient(self, value: Num[Array, "..."]) -> Num[Array, "..."]:
         return value.detach()
@@ -175,7 +184,7 @@ class TorchRuntime(ArrayRuntime):
         *,
         skinning: skinning_ops.CompactSkinningState,
     ) -> Float[Array, "*batch V 3"]:
-        if self.skinning_backend == "torch":
+        if self.kernel_backend == "torch":
             return super()._compact_linear_blend_skinning(
                 vertices,
                 transforms,
@@ -185,7 +194,7 @@ class TorchRuntime(ArrayRuntime):
         try:
             from body_models._common import warp
         except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError("Install body-models[warp] to use skinning_backend='warp'.") from exc
+            raise ModuleNotFoundError("Install body-models[warp] to use kernel_backend='warp'.") from exc
         return warp.compact_linear_blend_skinning(
             vertices,
             transforms,
@@ -253,6 +262,7 @@ def resolve_runtime(runtime: RuntimeLike) -> ArrayRuntime:
 __all__ = [
     "ArrayRuntime",
     "JaxRuntime",
+    "KernelBackend",
     "NumpyRuntime",
     "RuntimeLike",
     "RuntimeName",
