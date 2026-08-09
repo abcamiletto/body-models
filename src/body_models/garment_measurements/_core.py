@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, TypedDict
 
 from jaxtyping import Float
@@ -9,9 +10,9 @@ from nanomanifold import SE3, SO3
 
 from body_models import _common as common
 from body_models._rotations import RotationType, rotation_ndim
+from body_models._runtime import ArrayRuntime
 
 Array = Any
-Front = tuple[list[int], list[int]]
 
 
 class GarmentMeasurementsIdentity(TypedDict):
@@ -23,16 +24,17 @@ class GarmentMeasurementsIdentity(TypedDict):
 
 
 def prepare_pose(
+    runtime: ArrayRuntime,
     bind_quats: Float[Array, "J 4"],
-    kinematic_fronts: list[Front],
+    tree: common.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
     bind_skeleton: Float[Array, "*batch J 7"],
     local_bind_translations: Float[Array, "*batch J 3"],
-    xp: Any,
 ) -> common.deformation.SkinningPose:
     """Prepare posed skeleton and bind-relative skinning transforms."""
+    xp = runtime.xp
     num_rot_dims = rotation_ndim(rotation_type)
     batch_shape = tuple(pose.shape[: -(num_rot_dims + 1)])
     bind_skeleton = xp.broadcast_to(bind_skeleton, (*batch_shape, *bind_skeleton.shape[-2:]))
@@ -40,45 +42,46 @@ def prepare_pose(
         local_bind_translations,
         (*batch_shape, *local_bind_translations.shape[-2:]),
     )
-    skeleton = _forward_skeleton_se3(
+    skeleton = _forward_skeleton(
         bind_quats=bind_quats,
         local_bind_translations=local_bind_translations,
-        kinematic_fronts=kinematic_fronts,
+        tree=tree,
         pose=pose,
         rotation_type=rotation_type,
-        xp=xp,
+        runtime=runtime,
     )
-    skinning = SE3.multiply(skeleton, SE3.inverse(bind_skeleton, xp=xp), xp=xp)
+    bind_matrices = SE3.to_matrix(bind_skeleton, xp=xp)
+    skinning_transforms = skeleton @ common.invert_rigid_transforms(bind_matrices, xp=xp)
     return {
-        "skeleton_transforms": SE3.to_matrix(skeleton, xp=xp),
-        "skinning_transforms": SE3.to_matrix(skinning, xp=xp),
+        "skeleton_transforms": skeleton,
+        "skinning_transforms": skinning_transforms,
     }
 
 
 def prepare_skeleton(
+    runtime: ArrayRuntime,
     bind_quats: Float[Array, "J 4"],
-    kinematic_fronts: list[Front],
+    tree: common.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
     local_bind_translations: Float[Array, "*batch J 3"],
-    xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed GarmentMeasurements joint transforms."""
+    xp = runtime.xp
     batch_shape = pose.shape[: -(rotation_ndim(rotation_type) + 1)]
     local_bind_translations = xp.broadcast_to(
         local_bind_translations,
         (*batch_shape, *local_bind_translations.shape[-2:]),
     )
-    skeleton = _forward_skeleton_se3(
+    return _forward_skeleton(
         bind_quats=bind_quats,
         local_bind_translations=local_bind_translations,
-        kinematic_fronts=kinematic_fronts,
+        tree=tree,
         pose=pose,
         rotation_type=rotation_type,
-        xp=xp,
+        runtime=runtime,
     )
-    return SE3.to_matrix(skeleton, xp=xp)
 
 
 def prepare_identity(
@@ -89,7 +92,7 @@ def prepare_identity(
     eigenvalues: Float[Array, "C"],
     bind_quats: Float[Array, "J 4"],
     mvc_weights: Float[Array, "V J"],
-    kinematic_fronts: list[Front],
+    kinematic_tree: common.KinematicTree,
     shape: Float[Array, "*batch C"],
 ) -> GarmentMeasurementsIdentity:
     """Prepare shape-dependent surface and bind skeleton."""
@@ -99,11 +102,11 @@ def prepare_identity(
     rest_vertices = mean_vertices + xp.einsum("...c,vdc->...vd", scaled_shape, components)
     joint_positions = xp.einsum("vj,...vd->...jd", mvc_weights, rest_vertices)
     bind_quats = xp.broadcast_to(bind_quats, (*rest_vertices.shape[:-2], *bind_quats.shape))
-    bind_global_quats = _propagate_quats(bind_quats, kinematic_fronts, xp=xp)
+    bind_global_quats = _propagate_quats(bind_quats, kinematic_tree.fronts, xp=xp)
     local_translations = _local_translations_from_positions(
         joint_positions,
         bind_global_quats,
-        kinematic_fronts,
+        kinematic_tree.fronts,
         xp=xp,
     )
     return {
@@ -113,32 +116,34 @@ def prepare_identity(
     }
 
 
-def _forward_skeleton_se3(
+def _forward_skeleton(
+    runtime: ArrayRuntime,
     *,
     bind_quats: Float[Array, "J 4"],
     local_bind_translations: Float[Array, "*batch J 3"],
-    kinematic_fronts: list[Front],
+    tree: common.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
-    xp: Any,
-) -> Float[Array, "*batch J 7"]:
+) -> Float[Array, "*batch J 4 4"]:
+    xp = runtime.xp
     batch_shape = local_bind_translations.shape[:-2]
     bind_quats = xp.broadcast_to(bind_quats, (*batch_shape, *bind_quats.shape))
     pose_quats = SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
     posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
-    local_transforms = SE3.from_rt(posed_quats, local_bind_translations, xp=xp)
-    return _propagate_se3(local_transforms, kinematic_fronts, xp=xp)
+    local_rotations = SO3.convert(posed_quats, src="quat", dst="rotmat", xp=xp)
+    local_transforms = common.affine_transforms(local_rotations, local_bind_translations, xp=xp)
+    return runtime._compose_kinematic_tree(local_transforms, tree)
 
 
 def _local_translations_from_positions(
     positions: Float[Array, "*batch J 3"],
     bind_global_quats: Float[Array, "*batch J 4"],
-    kinematic_fronts: list[Front],
+    fronts: Sequence[common.Front],
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 3"]:
     translations = xp.zeros_like(positions)
-    for joints, parents in kinematic_fronts:
+    for joints, parents in fronts:
         if parents[0] < 0:
             front = positions[..., joints, :]
         else:
@@ -157,12 +162,12 @@ def _local_translations_from_positions(
 
 def _propagate_quats(
     quaternions: Float[Array, "*batch J 4"],
-    kinematic_fronts: list[Front],
+    fronts: Sequence[common.Front],
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 4"]:
     global_quaternions = xp.zeros_like(quaternions)
-    for joints, parents in kinematic_fronts:
+    for joints, parents in fronts:
         if parents[0] < 0:
             front = quaternions[..., joints, :]
         else:
@@ -179,32 +184,6 @@ def _propagate_quats(
             xp=xp,
         )
     return global_quaternions
-
-
-def _propagate_se3(
-    transforms: Float[Array, "*batch J 7"],
-    kinematic_fronts: list[Front],
-    *,
-    xp: Any,
-) -> Float[Array, "*batch J 7"]:
-    global_transforms = xp.zeros_like(transforms)
-    for joints, parents in kinematic_fronts:
-        if parents[0] < 0:
-            front = transforms[..., joints, :]
-        else:
-            front = SE3.multiply(
-                global_transforms[..., parents, :],
-                transforms[..., joints, :],
-                xp=xp,
-            )
-        global_transforms = common.at_set(
-            global_transforms,
-            (..., joints, slice(None)),
-            front,
-            copy=False,
-            xp=xp,
-        )
-    return global_transforms
 
 
 __all__ = [

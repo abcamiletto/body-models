@@ -13,7 +13,7 @@ from ptloader import load as load_pytorch_checkpoint
 
 from body_models import _config as config
 from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
-from body_models._common import Front, compute_kinematic_fronts, simplify_mesh, sparse
+from body_models._common import kinematics, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -33,7 +33,6 @@ _MHR_DEFAULT_ASSETS = (
 __all__ = [
     "MhrCorrectives",
     "MhrWeights",
-    "compute_kinematic_fronts",
     "download_model",
     "get_model_path",
     "load_model_data",
@@ -61,8 +60,7 @@ class MhrWeights:
     bind_inv_linear: Float[np.ndarray, "J 3 3"]
     bind_inv_translation: Float[np.ndarray, "J 3"]
     correctives: MhrCorrectives
-    parents: list[int]
-    kinematic_fronts: list[Front]
+    kinematic_tree: kinematics.KinematicTree
     joint_names: list[str]
 
 
@@ -151,8 +149,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
         bind_inv_linear=np.array(SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s[..., None], copy=True),
         bind_inv_translation=np.array(t, copy=True),
         correctives=correctives,
-        parents=joint_parents.tolist(),
-        kinematic_fronts=compute_kinematic_fronts(joint_parents),
+        kinematic_tree=kinematics.KinematicTree.from_parents(joint_parents),
         joint_names=list(data["joint_names"]),
     )
 

@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 from body_models._common.kinematics import (
+    KinematicTree,
     affine_transforms,
-    compute_kinematic_fronts,
     compute_sparse_skin_weights,
     invert_rigid_transforms,
     local_joint_offsets,
@@ -16,7 +16,7 @@ SMPL_PARENTS = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17
 
 
 def test_smpl_parents_every_joint_appears_once_with_correct_parent() -> None:
-    fronts = compute_kinematic_fronts(SMPL_PARENTS)
+    fronts = KinematicTree.from_parents(SMPL_PARENTS).fronts
 
     seen: dict[int, int] = {}
     for joints, parents in fronts:
@@ -30,30 +30,38 @@ def test_smpl_parents_every_joint_appears_once_with_correct_parent() -> None:
         assert parent == expected
 
 
+def test_kinematic_tree_materializes_immutable_fronts() -> None:
+    tree = KinematicTree.from_parents(SMPL_PARENTS)
+
+    assert tree.parents == tuple(SMPL_PARENTS)
+    assert tree.roots == (0,)
+    hash(tree)
+
+
 def test_forest_with_two_roots() -> None:
     # Two independent chains: 0 -> 1 -> 2, and 3 -> 4.
     parents = [-1, 0, 1, -1, 3]
-    fronts = compute_kinematic_fronts(parents)
+    fronts = KinematicTree.from_parents(parents).fronts
 
-    assert fronts[0] == ([0, 3], [-1, -1])
-    assert fronts[1] == ([1, 4], [0, 3])
-    assert fronts[2] == ([2], [1])
+    assert fronts[0] == ((0, 3), (-1, -1))
+    assert fronts[1] == ((1, 4), (0, 3))
+    assert fronts[2] == ((2,), (1,))
 
 
 def test_parent_equal_joint_self_root() -> None:
     # SOMA convention: a root joint can be its own parent instead of -1.
     parents = [0, 0, 1]
-    fronts = compute_kinematic_fronts(parents)
+    fronts = KinematicTree.from_parents(parents).fronts
 
-    assert fronts[0] == ([0], [-1])
-    assert fronts[1] == ([1], [0])
-    assert fronts[2] == ([2], [1])
+    assert fronts[0] == ((0,), (-1,))
+    assert fronts[1] == ((1,), (0,))
+    assert fronts[2] == ((2,), (1,))
 
 
 def test_cycle_raises_value_error() -> None:
     parents = [1, 0]
     with pytest.raises(ValueError, match="Invalid parent chain"):
-        compute_kinematic_fronts(parents)
+        KinematicTree.from_parents(parents)
 
 
 def test_compute_sparse_skin_weights_reconstructs_dense_matrix() -> None:

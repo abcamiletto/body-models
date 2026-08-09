@@ -74,22 +74,23 @@ relaxed hands.
 ## Runtime boundary
 
 `ArrayRuntime` owns the array namespace, device- and dtype-aware construction,
-state materialization, and lowerings of stable shared operations such as
-compact linear blend skinning. Materialization delegates to the recursive
-converters in `_state.py`, which accept loader data rather than model objects;
-models composed inside another model remain models. Callers therefore cannot
-pair a runtime with the wrong framework state. Materialized weights are private
-because their container types are runtime-specific; stable model properties
-provide public access to meshes, skeletons, and deformation bases. The runtime
-does not own model semantics.
+state materialization, and lowerings of stable shared operations. These include
+compact linear blend skinning and skinned pose-tree composition.
+Materialization delegates to the recursive converters in `_state.py`, which
+accept loader data rather than model objects; models composed inside another
+model remain models. Callers therefore cannot pair a runtime with the wrong
+framework state. Materialized weights are private because their container
+types are runtime-specific; stable model properties provide public access to
+meshes, skeletons, and deformation bases. The runtime does not own model
+semantics.
 
-The public backend modules bind each model to one runtime. Warp remains a Torch
-operation lowering and is selected directly on the Torch model:
+The public backend modules bind each model to one array runtime. Torch models
+can additionally select a kernel backend without changing their tensor API:
 
 ```python
 from body_models.smpl.torch import SMPL
 
-model = SMPL(skinning_backend="warp")
+model = SMPL(kernel_backend="warp")
 ```
 
 The shared model implementation still receives an internal `ArrayRuntime`.
@@ -98,13 +99,19 @@ backend dynamically.
 
 Kernel dispatch follows the lifetime of the work. Operation execution is
 lowered by the runtime; reusable derived inputs are created during state
-materialization. Compact skinning illustrates the boundary: every runtime
-executes the same call contract, while Torch/Warp materialization augments the
-compact weights with a transform-gradient plan. A vertex subset chosen during a
-call gets a short-lived subset plan instead. Sparse corrective bases similarly
-own their prepared representation as materialized state. This
-keeps `ArrayRuntime` independent of model semantics without hiding persistent
-work in global caches.
+materialization. Skinned pose programs construct local affine transforms but
+delegate their parent-tree composition to the runtime, independent of pose
+layout or rotation representation. Core entry points that execute a lowered
+operation receive the runtime; pure numerical helpers receive only its array
+namespace. Compact skinning follows the same boundary: every runtime executes
+the same call contract, while Torch/Warp materialization augments the compact
+weights with a transform-gradient plan. A vertex subset chosen during a call
+gets a short-lived subset plan instead. Sparse corrective bases similarly own
+their prepared representation as materialized state. Kernel backends are
+additive operation lowerings; a selected lowering must execute or raise for an
+unsupported input, never silently switch implementations. This keeps
+`ArrayRuntime` independent of model semantics without hiding persistent work in
+global caches.
 
 Torch backend models inherit `torch.nn.Module`, and their materialized state is
 registered directly as modules and persistent buffers. Source numeric model
@@ -131,9 +138,10 @@ Rigid robots and anatomical models do not implement the skinning protocol.
 They derive from `RigidBodyModel`, which shares metadata, link attachment, mesh
 projection, link-local mesh access, and zero-control construction. A
 `link_meshes[i]` surface is transformed by `forward_links(...)[i]`; packed
-vertex and face ranges remain private storage details. Their kinematics remain local:
-BrainCo retains coupled-joint polynomials, G1 retains hinge axes, SmplHumanoid
-retains its Euler convention, and MyoFullBody retains mixed hinge/slide joints.
+vertex and face ranges remain private storage details. Their kinematics remain
+local: BrainCo retains coupled-joint polynomials, G1 retains hinge axes,
+SmplHumanoid retains its Euler convention, and MyoFullBody retains mixed
+hinge/slide joints.
 
 ## Specialized operations
 

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from inspect import Parameter, Signature, signature
-from typing import Any, Literal
+from typing import Any
 
 from body_models._base import SkinnedModel
-from body_models._runtime import RuntimeName, TorchRuntime
+from body_models._runtime import KernelBackend, RuntimeName, TorchRuntime
 
 
 def model_for_backend(
@@ -16,25 +16,25 @@ def model_for_backend(
     module: str,
 ) -> type[Any]:
     """Bind a model class to one array backend."""
-    has_skinning_backend = backend == "torch" and issubclass(model_class, SkinnedModel)
+    has_kernel_backend = backend == "torch" and issubclass(model_class, SkinnedModel)
     backend_base: Any = model_class
     if backend == "torch":
         from torch import nn
 
         torch_base: Any = nn.Module
 
-    if has_skinning_backend:
+    if has_kernel_backend:
 
         class BackendModel(backend_base, torch_base):
             def __init__(
                 self,
                 *args: Any,
-                skinning_backend: Literal["torch", "warp"] = "torch",
+                kernel_backend: KernelBackend = "torch",
                 **kwargs: Any,
             ) -> None:
                 _reject_runtime(kwargs, model_class)
                 nn.Module.__init__(self)
-                runtime = TorchRuntime(skinning_backend=skinning_backend)
+                runtime = TorchRuntime(kernel_backend=kernel_backend)
                 super().__init__(*args, runtime=runtime, **kwargs)
 
     elif backend == "torch":
@@ -56,25 +56,23 @@ def model_for_backend(
     BackendModel.__qualname__ = model_class.__qualname__
     BackendModel.__module__ = module
     BackendModel.__doc__ = model_class.__doc__
-    BackendModel.__signature__ = _backend_signature(model_class, has_skinning_backend)
+    BackendModel.__signature__ = _backend_signature(model_class, has_kernel_backend)
     return BackendModel
 
 
-def _backend_signature(model_class: type[Any], has_skinning_backend: bool) -> Signature:
+def _backend_signature(model_class: type[Any], has_kernel_backend: bool) -> Signature:
     model_signature = signature(model_class)
     parameters = list(model_signature.parameters.values())
     runtime_index = next(index for index, parameter in enumerate(parameters) if parameter.name == "runtime")
     parameters.pop(runtime_index)
-    if has_skinning_backend:
-        parameters.insert(
-            runtime_index,
-            Parameter(
-                "skinning_backend",
-                kind=Parameter.KEYWORD_ONLY,
-                default="torch",
-                annotation=Literal["torch", "warp"],
-            ),
+    if has_kernel_backend:
+        kernel_backend = Parameter(
+            "kernel_backend",
+            kind=Parameter.KEYWORD_ONLY,
+            default="torch",
+            annotation=KernelBackend,
         )
+        parameters.insert(runtime_index, kernel_backend)
     return model_signature.replace(parameters=parameters)
 
 

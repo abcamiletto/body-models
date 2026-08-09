@@ -98,7 +98,7 @@ class SKEL(SkinnedModel):
 
     @property
     def parents(self) -> list[int]:
-        return list(self._weights.parents)
+        return list(self._weights.kinematic_tree.parents)
 
     @property
     def _corrective_basis(self) -> CorrectiveBasis:
@@ -174,6 +174,7 @@ class SKEL(SkinnedModel):
 
         packed_pose = pack_pose(xp, body_pose, head_pose)
         skeleton = core.prepare_skeleton(
+            runtime=self._runtime,
             all_axes=self._weights.all_axes,
             rotation_indices=self._weights.rotation_indices,
             apose_R=self._weights.apose_R,
@@ -184,11 +185,10 @@ class SKEL(SkinnedModel):
             scapula_r_axes=self._weights.scapula_r_axes,
             scapula_l_axes=self._weights.scapula_l_axes,
             spine_axes=self._weights.spine_axes,
-            parents=self._weights.parents,
+            tree=self._weights.kinematic_tree,
             pose=packed_pose,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
             rest_joints=skeleton_identity["rest_joints"],
-            xp=xp,
         )
         return skinning.transform_skeleton(
             skeleton,
@@ -267,6 +267,7 @@ class SKEL(SkinnedModel):
         """Precompute pose-dependent state for repeated forward passes."""
         packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
         return core.prepare_pose(
+            runtime=self._runtime,
             all_axes=self._weights.all_axes,
             rotation_indices=self._weights.rotation_indices,
             apose_R=self._weights.apose_R,
@@ -277,12 +278,11 @@ class SKEL(SkinnedModel):
             scapula_r_axes=self._weights.scapula_r_axes,
             scapula_l_axes=self._weights.scapula_l_axes,
             spine_axes=self._weights.spine_axes,
-            parents=self._weights.parents,
+            tree=self._weights.kinematic_tree,
             num_joints_smpl=self._weights.num_joints_smpl,
             pose=packed_pose,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
-            xp=self._runtime.xp,
         )
 
     def _prepare_skeleton_identity(

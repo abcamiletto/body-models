@@ -97,9 +97,9 @@ def test_compact_skinning_ignores_padding_slots() -> None:
 
 @pytest.mark.fast
 def test_runtime_is_serializable() -> None:
-    runtime = pickle.loads(pickle.dumps(TorchRuntime(skinning_backend="warp")))
+    runtime = pickle.loads(pickle.dumps(TorchRuntime(kernel_backend="warp")))
 
-    assert runtime.skinning_backend == "warp"
+    assert runtime.kernel_backend == "warp"
     assert runtime.xp.__name__ == "torch"
 
 

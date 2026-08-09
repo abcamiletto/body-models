@@ -1,6 +1,9 @@
 """Shared skeleton utilities."""
 
+from __future__ import annotations
+
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -10,7 +13,25 @@ from body_models._common import ops
 
 Array = Any
 
-Front = tuple[list[int], list[int]]  # One FK depth level: (joint_indices, parent_indices).
+Front = tuple[tuple[int, ...], tuple[int, ...]]
+
+
+@dataclass(frozen=True)
+class KinematicTree:
+    """Immutable parent tree and its depth-parallel traversal."""
+
+    parents: tuple[int, ...]
+    fronts: tuple[Front, ...]
+
+    @property
+    def roots(self) -> tuple[int, ...]:
+        """Root joint indices."""
+        return self.fronts[0][0]
+
+    @classmethod
+    def from_parents(cls, parents: Int[np.ndarray, "J"] | Sequence[int]) -> KinematicTree:
+        parent_tuple = tuple(int(parent) for parent in parents)
+        return cls(parent_tuple, tuple(_compute_kinematic_fronts(parent_tuple)))
 
 
 def affine_transforms(
@@ -47,7 +68,7 @@ def invert_rigid_transforms(
 
 def local_joint_offsets(
     joints: Float[Array, "*batch J 3"],
-    parents: list[int],
+    parents: Sequence[int],
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 3"]:
@@ -63,23 +84,9 @@ def local_joint_offsets(
     return offsets
 
 
-def forward_kinematics(
-    rotations: Float[Array, "*batch J 3 3"],
-    translations: Float[Array, "*batch J 3"],
-    fronts: list[Front],
-    joint_indices: Sequence[int] | None = None,
-    *,
-    xp: Any,
-) -> Float[Array, "*batch J 4 4"]:
-    """Compose local joint transforms into world-space transforms."""
-    local_transforms = affine_transforms(rotations, translations, xp=xp)
-    return compose_local_transforms(local_transforms, fronts, joint_indices, xp=xp)
-
-
-def compose_local_transforms(
+def compose_kinematic_fronts(
     local_transforms: Float[Array, "*batch J 4 4"],
-    fronts: list[Front],
-    joint_indices: Sequence[int] | None = None,
+    fronts: Sequence[Front],
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 4 4"]:
@@ -98,12 +105,10 @@ def compose_local_transforms(
         for index, joint in enumerate(joints):
             world_transforms[joint] = front_transforms[..., index, :, :]
 
-    if joint_indices is None:
-        return xp.stack(world_transforms, axis=-3)
-    return xp.stack([world_transforms[joint] for joint in joint_indices], axis=-3)
+    return xp.stack(world_transforms, axis=-3)
 
 
-def compute_kinematic_fronts(parents: Int[np.ndarray, "J"] | list[int]) -> list[Front]:
+def _compute_kinematic_fronts(parents: Int[np.ndarray, "J"] | Sequence[int]) -> list[Front]:
     """Group joints by depth for parallel forward kinematics.
 
     Roots are joints with ``parent < 0`` or ``parent == joint``; they are
@@ -123,7 +128,7 @@ def compute_kinematic_fronts(parents: Int[np.ndarray, "J"] | list[int]) -> list[
                 joint_parents.append(-1 if parent < 0 or parent == j else parent)
         if not joints:
             raise ValueError(f"Invalid parent chain: {parents_list}")
-        fronts.append((joints, joint_parents))
+        fronts.append((tuple(joints), tuple(joint_parents)))
         processed.update(joints)
     return fronts
 
