@@ -15,7 +15,7 @@ from body_models._common import deformation, eye_as, point_regression, skinning,
 from body_models._common import rigid as rigid_ops
 from body_models._constants import Joint
 from body_models._rotations import RotationType, rotation_ndim, rotation_shape
-from body_models._runtime import ArrayRuntime, RuntimeLike, resolve_runtime
+from body_models._runtime import ArrayRuntime
 
 Array = Any
 ParameterRole = Literal["identity", "pose", "transform"]
@@ -77,12 +77,11 @@ class ArticulatedModel(ABC):
         """Array runtime used by this model."""
         return self._runtime
 
-    def _set_runtime(self, runtime: RuntimeLike) -> ArrayRuntime:
-        resolved = resolve_runtime(runtime)
-        self._runtime = resolved
-        if resolved.name == "jax":
+    def _set_runtime(self, runtime: ArrayRuntime) -> ArrayRuntime:
+        self._runtime = runtime
+        if runtime.name == "jax":
             _register_jax_model(type(self))
-        return resolved
+        return runtime
 
     def __setstate__(self, values: dict[str, Any]) -> None:
         self.__dict__.update(values)

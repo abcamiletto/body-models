@@ -46,9 +46,9 @@ then pass it to the model's explicit `forward_points()` method:
 import numpy as np
 import torch
 
-from body_models.smplx import SMPLX
+from body_models.smplx.torch import SMPLX
 
-model = SMPLX(gender="neutral", runtime="torch").as_module().cuda()
+model = SMPLX(gender="neutral").cuda()
 mapping = np.load("captury_J_regressor.npz")["J_regressor"]
 regressor = model.prepare_point_regressor(mapping)
 params = model.get_rest_pose(batch_dims=(2048,))
@@ -83,8 +83,7 @@ SO(3) rotation.
 
 ## Runtimes
 
-`RuntimeName` is the runtime-name literal (`"numpy"`, `"torch"`, or `"jax"`), and
-`RuntimeLike` accepts either one of those names or an `ArrayRuntime` instance.
+`RuntimeName` is the runtime-name literal (`"numpy"`, `"torch"`, or `"jax"`).
 `KernelBackend` selects the Torch operation lowering (`"torch"` or `"warp"`).
 
 ::: body_models.ArrayRuntime

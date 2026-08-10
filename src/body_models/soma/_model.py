@@ -21,7 +21,7 @@ from body_models._base import (
 from body_models._common import skinning
 from body_models._registry import create_model
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import ArrayRuntime, RuntimeLike, TorchRuntime
+from body_models._runtime import ArrayRuntime, TorchRuntime
 from body_models.soma import _core as core
 from body_models.soma import _identities as identities
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
@@ -69,7 +69,7 @@ class SOMA(SkinnedModel):
         lod: Literal["mid", "low", "xlo"] = "mid",
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if model_type not in MODEL_TYPE_SPECS:
             supported = ", ".join(MODEL_TYPE_SPECS)

@@ -20,4 +20,4 @@ The original MHR license is included with the hosted assets.
 
 ## API
 
-::: body_models.mhr.MHR
+::: body_models.mhr.numpy.MHR

@@ -6,7 +6,7 @@ from inspect import Parameter, Signature, signature
 from typing import Any
 
 from body_models._base import SkinnedModel
-from body_models._runtime import KernelBackend, RuntimeName, TorchRuntime
+from body_models._runtime import JaxRuntime, KernelBackend, NumpyRuntime, RuntimeName, TorchRuntime
 
 
 def model_for_backend(
@@ -50,7 +50,8 @@ def model_for_backend(
         class BackendModel(backend_base):
             def __init__(self, *args: Any, **kwargs: Any) -> None:
                 _reject_runtime(kwargs, model_class)
-                super().__init__(*args, runtime=backend, **kwargs)
+                runtime = NumpyRuntime() if backend == "numpy" else JaxRuntime()
+                super().__init__(*args, runtime=runtime, **kwargs)
 
     BackendModel.__name__ = model_class.__name__
     BackendModel.__qualname__ = model_class.__qualname__

@@ -13,7 +13,7 @@ from trimesh import Trimesh
 
 from body_models import _common as common
 from body_models._base import ParameterSpec, RigidBodyModel
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.smpl_humanoid import _core as core
 from body_models.smpl_humanoid._constants import BODY_JOINTS, SMPL_BODY_PRESETS, SMPL_HUMANOID_JOINTS
 from body_models.smpl_humanoid._io import load_model_data
@@ -37,7 +37,7 @@ class SmplHumanoid(RigidBodyModel):
         *,
         model_path: Path | str | None = None,
         variant: Literal["humenv", "phc", "smplsim"] = "humenv",
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         runtime = self._set_runtime(runtime)
         self._config = SmplHumanoidConfig(model_path, variant)

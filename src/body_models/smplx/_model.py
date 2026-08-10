@@ -12,7 +12,7 @@ from nanomanifold import SO3
 
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models._smpl_family import SmplFamilyModel
 from body_models.smplx import _core as core
 from body_models.smplx._constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
@@ -51,7 +51,7 @@ class SMPLX(SmplFamilyModel):
         flat_hand_mean: bool = False,
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if gender is not None and gender not in ("neutral", "male", "female"):
             raise ValueError(f"Invalid gender: {gender!r}")

@@ -5,9 +5,9 @@ import pytest
 from nanomanifold import SO3
 
 from body_models import RigidBodyModel, create_model
-from body_models.smpl_humanoid import SmplHumanoid
 from body_models.smpl_humanoid._constants import BODY_JOINTS, JOINT_NAMES, PARENTS, SMPL_HUMANOID_VARIANTS
 from body_models.smpl_humanoid._io import SMPL_HUMANOID_SOURCES, get_model_path
+from body_models.smpl_humanoid.numpy import SmplHumanoid
 
 
 @pytest.fixture

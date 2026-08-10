@@ -19,4 +19,4 @@ body-models set mano-left /path/to/MANO_LEFT.pkl
 
 ## API
 
-::: body_models.mano.MANO
+::: body_models.mano.numpy.MANO

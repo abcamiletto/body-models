@@ -4,11 +4,11 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models.flame import FLAME
-from body_models.mano import MANO
-from body_models.smpl import SMPL
-from body_models.smplh import SMPLH
-from body_models.smplx import SMPLX
+from body_models.flame.numpy import FLAME
+from body_models.mano.numpy import MANO
+from body_models.smpl.numpy import SMPL
+from body_models.smplh.numpy import SMPLH
+from body_models.smplx.numpy import SMPLX
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
@@ -103,7 +103,9 @@ def test_point_backends_match_numpy() -> None:
     )
 
     torch = pytest.importorskip("torch")
-    torch_model = SMPLX(gender="neutral", runtime="torch")
+    from body_models.smplx.torch import SMPLX as TorchSMPLX
+
+    torch_model = TorchSMPLX(gender="neutral")
     torch_params = torch_model.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
     actual = torch_model.forward_points(
         **torch_params,
@@ -115,7 +117,9 @@ def test_point_backends_match_numpy() -> None:
     pytest.importorskip("flax")
     import jax.numpy as jnp
 
-    jax_model = SMPLX(gender="neutral", runtime="jax")
+    from body_models.smplx.jax import SMPLX as JaxSMPLX
+
+    jax_model = JaxSMPLX(gender="neutral")
     jax_params = jax_model.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     actual = jax_model.forward_points(
         **jax_params,

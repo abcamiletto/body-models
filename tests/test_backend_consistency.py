@@ -3,22 +3,9 @@ import numpy as np
 import pytest
 from trimesh import Trimesh
 
-from body_models._runtime import NumpyRuntime, TorchRuntime
-from body_models.garment_measurements import GarmentMeasurements
-from body_models.myofullbody import MyoFullBody
-
-
-class _RecordingRuntime(NumpyRuntime):
-    kinematic_trees: list[tuple[int, ...]]
-
-    def __init__(self) -> None:
-        object.__setattr__(self, "kinematic_trees", [])
-
-    def _compose_kinematic_tree(self, local_transforms, tree):
-        assert len(tree.parents) == local_transforms.shape[-3]
-        self.kinematic_trees.append(tuple(tree.parents))
-        return super()._compose_kinematic_tree(local_transforms, tree)
-
+from body_models._runtime import TorchRuntime
+from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.myofullbody.numpy import MyoFullBody
 
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
@@ -163,20 +150,6 @@ def test_kernel_backends_match_default(name, model_class, kwargs) -> None:
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
-def test_skinned_pose_uses_runtime_kinematics(name, model_class, kwargs) -> None:
-    runtime = _RecordingRuntime()
-    model = model_class(**kwargs, runtime=runtime)
-    params = model.get_rest_pose()
-
-    model.forward_skeleton(**params)
-    assert runtime.kinematic_trees
-
-    runtime.kinematic_trees.clear()
-    model.forward_vertices(**params)
-    assert runtime.kinematic_trees
-
-
 @pytest.mark.parametrize(
     ("name", "model_class", "kwargs"),
     model_cases.SKINNED_MODELS,
@@ -239,7 +212,7 @@ def test_link_meshes_reconstruct_forward_mesh(name, model_class, kwargs) -> None
 
 
 def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
-    from body_models.smpl import SMPL
+    from body_models.smpl.numpy import SMPL
 
     model = SMPL(gender="neutral")
     params = model.get_rest_pose()

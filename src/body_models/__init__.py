@@ -24,7 +24,6 @@ from body_models._runtime import (
     JaxRuntime,
     KernelBackend,
     NumpyRuntime,
-    RuntimeLike,
     RuntimeName,
     TorchRuntime,
 )
@@ -68,7 +67,6 @@ __all__ = [
     "PointRegressor",
     "RigidBodyModel",
     "RotationType",
-    "RuntimeLike",
     "RuntimeName",
     "SkinnedModel",
     "SkinningIdentity",

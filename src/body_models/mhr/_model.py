@@ -19,7 +19,7 @@ from body_models._base import (
     SparseCorrectiveBasis,
 )
 from body_models._common import skinning
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.mhr import _core as core
 from body_models.mhr._constants import (
     MHR_BODY_POSE_COEFFS,
@@ -55,7 +55,7 @@ class MHR(SkinnedModel):
         model_path: Path | str | None = None,
         lod: Literal[0, 1, 2, 3, 4, 5, 6] = 1,
         simplify: float = 1.0,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         weights = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
         runtime = self._set_runtime(runtime)
