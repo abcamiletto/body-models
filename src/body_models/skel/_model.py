@@ -18,7 +18,7 @@ from body_models._base import (
     SkinningPose,
 )
 from body_models._common import skinning
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.skel import _core as core
 from body_models.skel._constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 from body_models.skel._io import get_model_path, load_model_data
@@ -56,7 +56,7 @@ class SKEL(SkinnedModel):
         model_path: Path | str | None = None,
         gender: Literal["male", "female"] = "male",
         simplify: float = 1.0,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if gender not in ("male", "female"):
             raise ValueError(f"Invalid gender: {gender!r}")

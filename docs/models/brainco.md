@@ -34,4 +34,4 @@ Passive distal joints are included in the skeleton and meshes.
 
 ## API
 
-::: body_models.brainco.BrainCoHand
+::: body_models.brainco.numpy.BrainCoHand

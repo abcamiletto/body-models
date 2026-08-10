@@ -13,7 +13,7 @@ from trimesh import Trimesh
 from body_models._base import ParameterSpec, RigidBodyModel
 from body_models._common import coordinates
 from body_models._constants import Joint
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.brainco import _core as core
 from body_models.brainco._constants import BRAINCO_HAND_PRESETS, LEFT_BRAINCO_JOINTS, RIGHT_BRAINCO_JOINTS
 from body_models.brainco._io import Side, load_model_data
@@ -36,7 +36,7 @@ class BrainCoHand(RigidBodyModel):
         *,
         model_path: Path | str | None = None,
         side: Side = "right",
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if side not in ("left", "right"):
             raise ValueError(f"Invalid side: {side!r}")

@@ -20,4 +20,4 @@ body-models set smpl-female /path/to/SMPL_FEMALE.pkl
 
 ## API
 
-::: body_models.smpl.SMPL
+::: body_models.smpl.numpy.SMPL

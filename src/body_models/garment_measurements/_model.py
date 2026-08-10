@@ -14,7 +14,7 @@ from nanomanifold import SO3
 from body_models._base import ParameterSpec, PointRegressor, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.garment_measurements import _core as core
 from body_models.garment_measurements._constants import (
     GARMENT_BODY_PRESETS,
@@ -52,7 +52,7 @@ class GarmentMeasurements(SkinnedModel):
         *,
         model_path: Path | str | None = None,
         rotation_type: RotationType = "axis_angle",
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")

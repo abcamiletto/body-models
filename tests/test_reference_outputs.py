@@ -11,9 +11,9 @@ from body_models._common import skinning
 from body_models.anny import _pose as anny_pose
 from body_models.mhr import _pose as mhr_pose
 from body_models.skel import _pose as skel_pose
-from body_models.soma import SOMA
 from body_models.soma import _pose as soma_pose
 from body_models.soma._generate_asset import generate_asset as generate_soma_asset
+from body_models.soma.numpy import SOMA
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.REFERENCE_MODELS)

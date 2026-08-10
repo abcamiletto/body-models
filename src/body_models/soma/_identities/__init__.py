@@ -14,10 +14,10 @@ from ...mhr import _pose as mhr_pose
 from .. import _core as core
 
 if TYPE_CHECKING:
-    from body_models.anny import ANNY
-    from body_models.mhr import MHR
-    from body_models.smpl import SMPL
-    from body_models.smplx import SMPLX
+    from body_models.anny._model import ANNY
+    from body_models.mhr._model import MHR
+    from body_models.smpl._model import SMPL
+    from body_models.smplx._model import SMPLX
 
 
 @dataclass(frozen=True)
