@@ -110,7 +110,7 @@ All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
 define its two public specializations. The shared contract includes `runtime`,
 `has_face`, `has_hands`, `parameter_spec`, `get_rest_pose`, `faces`,
 `num_vertices`, `num_joints`, `joint_names`, `parents`, `common_joints`,
-`joint_index`, and `forward_skeleton`.
+`joint_index`, `pose_joint_indices`, and `forward_skeleton`.
 `has_face` indicates facial-expression controls; `has_hands` indicates
 articulated hand controls. Neither describes mesh geometry. Skinned models
 additionally share `skin_weights`, `skinning_spec`, `rest_vertices`,

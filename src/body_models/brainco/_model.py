@@ -57,6 +57,17 @@ class BrainCoHand(RigidBodyModel):
         return ["hinge"] * self.num_dofs
 
     @property
+    def _pose_control_joints(self) -> tuple[tuple[int, ...], ...]:
+        joints = [{joint} for joint in self._weights.actuated_joint_indices]
+        for joint, driver in zip(
+            self._weights.coupled_joint_indices,
+            self._weights.coupled_driver_indices,
+            strict=True,
+        ):
+            joints[driver].add(joint)
+        return tuple(tuple(sorted(control_joints)) for control_joints in joints)
+
+    @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
             "hand_pose": ParameterSpec((self.num_dofs,), "pose"),

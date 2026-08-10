@@ -9,6 +9,7 @@ from typing import Any
 
 from jaxtyping import Float
 
+from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
@@ -36,6 +37,7 @@ class FLAME(SmplFamilyModel):
     NUM_SHAPE_COEFFS = 300
     NUM_EXPR_COEFFS = 100
     _COMMON_JOINTS = FLAME_JOINTS
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("head_rotation", 1), ("head_pose", NUM_HEAD_JOINTS))
 
     def __init__(
         self,

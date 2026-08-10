@@ -20,14 +20,9 @@ from body_models._base import (
 from body_models._common import skinning
 from body_models._runtime import ArrayRuntime
 from body_models.skel import _core as core
+from body_models.skel import _pose as pose_utils
 from body_models.skel._constants import SKEL_BODY_PRESETS, SKEL_JOINTS
 from body_models.skel._io import get_model_path, load_model_data
-from body_models.skel._pose import (
-    SKEL_BODY_POSE_COEFFS,
-    SKEL_HEAD_POSE_COEFFS,
-    pack_pose,
-    unpack_pose,
-)
 
 Array = Any
 SkelIdentity = core.SkelIdentity
@@ -45,10 +40,11 @@ class SKEL(SkinnedModel):
 
     NUM_JOINTS = 24
     NUM_SHAPE_COEFFS = 10
-    NUM_BODY_POSE_COEFFS = SKEL_BODY_POSE_COEFFS
-    NUM_HEAD_POSE_COEFFS = SKEL_HEAD_POSE_COEFFS
+    NUM_BODY_POSE_COEFFS = pose_utils.SKEL_BODY_POSE_COEFFS
+    NUM_HEAD_POSE_COEFFS = pose_utils.SKEL_HEAD_POSE_COEFFS
     NUM_POSE_COEFFS = NUM_BODY_POSE_COEFFS + NUM_HEAD_POSE_COEFFS
     _COMMON_JOINTS = SKEL_JOINTS
+    _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
     def __init__(
         self,
@@ -172,7 +168,7 @@ class SKEL(SkinnedModel):
         else:
             skeleton_identity = identity
 
-        packed_pose = pack_pose(xp, body_pose, head_pose)
+        packed_pose = pose_utils.pack_pose(xp, body_pose, head_pose)
         skeleton = core.prepare_skeleton(
             runtime=self._runtime,
             all_axes=self._weights.all_axes,
@@ -265,7 +261,7 @@ class SKEL(SkinnedModel):
         identity: SkelIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        packed_pose = pack_pose(self._runtime.xp, body_pose, head_pose)
+        packed_pose = pose_utils.pack_pose(self._runtime.xp, body_pose, head_pose)
         return core.prepare_pose(
             runtime=self._runtime,
             all_axes=self._weights.all_axes,
@@ -316,7 +312,7 @@ class SKEL(SkinnedModel):
         params = self.get_rest_pose(batch_dims=batch_dims, dtype=dtype)
         pose = self._runtime.asarray(SKEL_BODY_PRESETS["a_pose"], like=params["body_pose"])
         pose = self._runtime.xp.broadcast_to(pose, (*batch_dims, *pose.shape))
-        params["body_pose"], params["head_pose"] = unpack_pose(self._runtime.xp, pose)
+        params["body_pose"], params["head_pose"] = pose_utils.unpack_pose(self._runtime.xp, pose)
         return params
 
 
