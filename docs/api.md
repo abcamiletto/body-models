@@ -87,11 +87,8 @@ overlap for coupled parameterizations and need not include fixed joints.
 Because the output contains world transforms, changing one pose parameter can
 also move descendants outside its local joint group.
 
-For rotational pose parameters, tuple entries follow the logical rotations in
-the parameter. Thus, `pose_joint_indices[name][i]` is the joint whose local
-rotation is given by `parameters[name][..., i, :]` for vector encodings, or by
-`parameters[name][..., i, :, :]` for matrix encodings. A parameter containing a
-single rotation has no joint axis and maps to a one-element tuple.
+For rotational parameters, indices follow rotation order (`[..., i, :]` for
+vectors and `[..., i, :, :]` for matrices); a single rotation maps to one index.
 
 ::: body_models.ParameterSpec
     options:
