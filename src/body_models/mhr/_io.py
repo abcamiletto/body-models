@@ -15,6 +15,7 @@ from body_models import _config as config
 from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
 from body_models._common import kinematics, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
+from body_models.mhr import _pose as pose_utils
 
 PathLike = Path | str
 SUPPORTED_LODS = tuple(range(7))
@@ -57,6 +58,7 @@ class MhrWeights:
     joint_offsets: Float[np.ndarray, "J 3"]
     joint_pre_rotations: Float[np.ndarray, "J 4"]
     parameter_transform: Float[np.ndarray, "D N"]
+    pose_control_joints: tuple[tuple[int, ...], ...]
     bind_inv_linear: Float[np.ndarray, "J 3 3"]
     bind_inv_translation: Float[np.ndarray, "J 3"]
     correctives: MhrCorrectives
@@ -146,6 +148,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
         joint_offsets=np.array(data["joint_offsets"], copy=True),
         joint_pre_rotations=np.array(data["joint_pre_rotations"], copy=True),
         parameter_transform=np.array(data["parameter_transform"], copy=True),
+        pose_control_joints=_pose_control_joints(data["parameter_transform"], len(joint_parents)),
         bind_inv_linear=np.array(SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s[..., None], copy=True),
         bind_inv_translation=np.array(t, copy=True),
         correctives=correctives,
@@ -165,6 +168,16 @@ def _expand_skinning_weights(
     dense = np.zeros((num_vertices, num_joints), dtype=joint_weights.dtype)
     np.add.at(dense, (rows[valid], joint_indices[valid]), joint_weights[valid])
     return dense
+
+
+def _pose_control_joints(
+    parameter_transform: Float[np.ndarray, "D N"],
+    num_joints: int,
+) -> tuple[tuple[int, ...], ...]:
+    num_controls = pose_utils.POSE_LAYOUT.num_controls
+    pose_transform = parameter_transform[:, :num_controls].reshape(num_joints, 7, num_controls)
+    dependencies = np.any(pose_transform != 0, axis=1).T
+    return tuple(tuple(np.flatnonzero(control).tolist()) for control in dependencies)
 
 
 def _load_raw_model_data(asset_dir: Path) -> dict[str, Any]:

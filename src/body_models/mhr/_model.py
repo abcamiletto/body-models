@@ -9,6 +9,7 @@ from typing import Any, Literal
 from jaxtyping import Float, Int
 
 from body_models import _common as common
+from body_models import _pose_layout as pose_layout
 from body_models._base import (
     CorrectiveBasis,
     ParameterSpec,
@@ -21,6 +22,7 @@ from body_models._base import (
 from body_models._common import skinning
 from body_models._runtime import ArrayRuntime
 from body_models.mhr import _core as core
+from body_models.mhr import _pose as pose_utils
 from body_models.mhr._constants import (
     MHR_BODY_POSE_COEFFS,
     MHR_BODY_PRESETS,
@@ -30,7 +32,6 @@ from body_models.mhr._constants import (
     MHR_JOINTS,
 )
 from body_models.mhr._io import get_model_path, load_model_data
-from body_models.mhr._pose import pack_pose, unpack_pose
 
 Array = Any
 
@@ -99,6 +100,10 @@ class MHR(SkinnedModel):
         return list(self._weights.kinematic_tree.parents)
 
     @property
+    def _pose_layout(self) -> pose_layout.PoseLayout:
+        return pose_utils.POSE_LAYOUT.with_control_joints(self._weights.pose_control_joints)
+
+    @property
     def _corrective_basis(self) -> CorrectiveBasis:
         return SparseCorrectiveBasis(self._weights.correctives.basis)
 
@@ -156,7 +161,7 @@ class MHR(SkinnedModel):
         """Compute posed joint transforms, which are independent of identity."""
         self._validate_identity_arguments(identity, shape=shape, expression=expression)
         xp = self._runtime.xp
-        pose = pack_pose(xp, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(xp, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
             runtime=self._runtime,
             joint_offsets=self._weights.joint_offsets,
@@ -226,7 +231,7 @@ class MHR(SkinnedModel):
         identity: SkinningIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent MHR state."""
-        pose = pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(self._runtime.xp, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
             runtime=self._runtime,
             joint_offsets=self._weights.joint_offsets,
@@ -282,7 +287,7 @@ class MHR(SkinnedModel):
             dtype=pose.dtype,
         )
         pose = common.at_set(pose, (..., slice(None, 100)), preset, xp=self._runtime.xp)
-        params["body_pose"], params["head_pose"], _ = unpack_pose(self._runtime.xp, pose)
+        params["body_pose"], params["head_pose"], _ = pose_utils.unpack_pose(self._runtime.xp, pose)
         return params
 
     def get_apose(

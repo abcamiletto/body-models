@@ -10,6 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from nanomanifold import SO3
 
+from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._constants import Joint
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
@@ -38,6 +39,7 @@ class MANO(SmplFamilyModel):
     NUM_JOINTS = 16
     NUM_HAND_JOINTS = 15
     NUM_SHAPE_COEFFS = 10
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("wrist_rotation", 1), ("hand_pose", NUM_HAND_JOINTS))
 
     def __init__(
         self,

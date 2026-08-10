@@ -24,6 +24,7 @@ from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_
 from body_models._runtime import ArrayRuntime, TorchRuntime
 from body_models.soma import _core as core
 from body_models.soma import _identities as identities
+from body_models.soma import _pose as pose_utils
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
 from body_models.soma._io import (
     MODEL_TYPE_SPECS,
@@ -31,7 +32,6 @@ from body_models.soma._io import (
     load_identity_transfer_data,
     load_model_data_for_lod,
 )
-from body_models.soma._pose import pack_pose
 
 Array = Any
 PathLike = Path | str
@@ -60,6 +60,7 @@ class SOMA(SkinnedModel):
     NUM_HAND_JOINTS = 48
     NUM_HEAD_JOINTS = 5
     _COMMON_JOINTS = SOMA_JOINTS
+    _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
     def __init__(
         self,
@@ -259,7 +260,7 @@ class SOMA(SkinnedModel):
             rotation_type=self.rotation_type,
             xp=xp,
         )
-        pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
             self._runtime,
             self._weights,
@@ -340,7 +341,7 @@ class SOMA(SkinnedModel):
             rotation_type=self.rotation_type,
             xp=xp,
         )
-        pose = pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
+        pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
             self._runtime,
             self._weights,

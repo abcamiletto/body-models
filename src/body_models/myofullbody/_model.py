@@ -44,6 +44,10 @@ class MyoFullBody(RigidBodyModel):
         return self._weights.actuated_joint_types
 
     @property
+    def _pose_control_joints(self) -> tuple[tuple[int, ...], ...]:
+        return tuple((joint,) for joint, count in enumerate(self._weights.body_actuated_counts) for _ in range(count))
+
+    @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
         return {
             "body_pose": ParameterSpec((self.num_dofs,), "pose"),
