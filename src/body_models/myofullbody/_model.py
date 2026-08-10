@@ -35,7 +35,7 @@ class MyoFullBody(RigidBodyModel):
         model_path: Path | str | None = None,
         runtime: ArrayRuntime,
     ) -> None:
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = MyoFullBodyConfig()
         self._weights = runtime._materialize(load_model_data(model_path))
 

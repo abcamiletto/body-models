@@ -52,7 +52,7 @@ class FLAME(SmplFamilyModel):
 
         resolved_path = get_model_path(model_path)
         weights = load_model_data(resolved_path, simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = FlameConfig(rotation_type=rotation_type)
         self._weights = runtime._materialize(weights)
 

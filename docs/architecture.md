@@ -25,7 +25,7 @@ Each model family follows the same file roles:
 | `_core.py` | Model-specific mathematics with an explicit array namespace. |
 | `_model.py` | Define the model class, validation, state preparation, and forward orchestration. |
 | `numpy.py`, `torch.py`, `jax.py` | Bind the shared model class to one public array backend. |
-| `__init__.py` | Export shared model-specific types and helpers. |
+| `__init__.py` | Optionally export shared model-specific types and helpers. |
 
 Every model derives from the public `ArticulatedModel` base through either
 `SkinnedModel` or `RigidBodyModel`. Models are self-contained in

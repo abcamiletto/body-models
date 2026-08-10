@@ -40,7 +40,7 @@ class G1(RigidBodyModel):
     ) -> None:
         if convention not in ("soma", "mujoco"):
             raise ValueError(f"Invalid G1 convention: {convention!r}")
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = G1Config(convention)
         self._weights = runtime._materialize(load_model_data(model_path, convention=convention))
 

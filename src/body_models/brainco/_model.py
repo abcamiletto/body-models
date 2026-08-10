@@ -40,7 +40,7 @@ class BrainCoHand(RigidBodyModel):
     ) -> None:
         if side not in ("left", "right"):
             raise ValueError(f"Invalid side: {side!r}")
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = BrainCoConfig(side)
         self._weights = runtime._materialize(load_model_data(model_path, side=side))
 

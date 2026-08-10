@@ -90,18 +90,6 @@ SO(3) rotation.
     options:
       show_source: false
 
-::: body_models.NumpyRuntime
-    options:
-      show_source: false
-
-::: body_models.TorchRuntime
-    options:
-      show_source: false
-
-::: body_models.JaxRuntime
-    options:
-      show_source: false
-
 ## Prepared skinning
 
 `SkinningIdentity` is a `TypedDict` containing identity-dependent

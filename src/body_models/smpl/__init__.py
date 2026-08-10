@@ -1,1 +1,1 @@
-"""Public SMPL API."""
+"""SMPL models. Import a class from the NumPy, Torch, or JAX module."""

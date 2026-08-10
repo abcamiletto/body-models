@@ -64,7 +64,7 @@ class SKEL(SkinnedModel):
             raise ValueError("simplify must be >= 1.0")
 
         weights = load_model_data(get_model_path(model_path, gender), simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = SkelConfig(gender=gender)
         self._weights = runtime._materialize(weights)
 
