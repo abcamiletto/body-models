@@ -39,7 +39,7 @@ class SmplHumanoid(RigidBodyModel):
         variant: Literal["humenv", "phc", "smplsim"] = "humenv",
         runtime: ArrayRuntime,
     ) -> None:
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = SmplHumanoidConfig(model_path, variant)
         source = variant if model_path is None else model_path
         self._weights = runtime._materialize(load_model_data(source))

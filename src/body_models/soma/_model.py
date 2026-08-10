@@ -82,7 +82,7 @@ class SOMA(SkinnedModel):
 
         resolved_path, weights = load_model_data_for_lod(model_path, lod, simplify=simplify)
         spec = MODEL_TYPE_SPECS[model_type]
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = SomaConfig(
             model_type=model_type,
             lod=lod,

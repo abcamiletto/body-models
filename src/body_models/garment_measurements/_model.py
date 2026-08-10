@@ -58,7 +58,7 @@ class GarmentMeasurements(SkinnedModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
         weights = load_model_data(get_model_path(model_path), dtype=np.float32)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = GarmentMeasurementsConfig(rotation_type=rotation_type)
         self._weights = runtime._materialize(weights)
 

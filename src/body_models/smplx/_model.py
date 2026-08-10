@@ -62,7 +62,7 @@ class SMPLX(SmplFamilyModel):
 
         resolved_path = get_model_path(model_path, gender)
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = SmplxConfig(gender=gender or "neutral", rotation_type=rotation_type)
         self._weights = runtime._materialize(weights)
 

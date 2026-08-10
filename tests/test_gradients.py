@@ -2,7 +2,8 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models import RigidBodyModel, TorchRuntime
+from body_models import RigidBodyModel
+from body_models._runtime import TorchRuntime
 
 
 def surface_loss(model, params):

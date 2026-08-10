@@ -58,7 +58,7 @@ class MHR(SkinnedModel):
         runtime: ArrayRuntime,
     ) -> None:
         weights = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = None
         self._weights = runtime._materialize(weights)
 

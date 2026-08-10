@@ -65,7 +65,7 @@ class ANNY(SkinnedModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
         weights = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = AnnyConfig(
             all_phenotypes=all_phenotypes,
             extrapolate_phenotypes=extrapolate_phenotypes,
