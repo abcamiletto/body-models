@@ -10,6 +10,7 @@ from nanomanifold import SO3
 from body_models import _config as config
 from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
 from body_models._common.skinning import CompactSkinning
+from body_models.skel._pose import JOINT_DOFS
 
 PathLike = Path | str
 Array = Any
@@ -187,7 +188,7 @@ def _compute_joint_axes() -> Float[np.ndarray, "47 3"]:
 def _compute_rotation_indices() -> Int[np.ndarray, "24 3"]:
     indices = []
     dof_idx = 0
-    for dofs in [3, 3, 1, 1, 1, 1, 3, 1, 1, 1, 1, 3, 3, 3, 3, 3, 1, 1, 2, 3, 3, 1, 1, 2]:
+    for dofs in JOINT_DOFS:
         identity_idx = 46
         if dofs == 1:
             indices.append([dof_idx, identity_idx, identity_idx])

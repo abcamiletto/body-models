@@ -4,7 +4,20 @@ from typing import Any
 
 from jaxtyping import Float
 
+from body_models import _pose_layout as pose_layout
+
 Array = Any
+
+POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
+    (None, 1),
+    ("body_pose", 5),
+    ("head_pose", 5),
+    ("body_pose", 4),
+    ("hand_pose", 24),
+    ("body_pose", 4),
+    ("hand_pose", 24),
+    ("body_pose", 10),
+)
 
 
 def _joint_axis(pose: Float[Array, "..."]) -> int:
@@ -23,17 +36,14 @@ def pack_pose(
     rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
     root = global_rotation[(..., None, *rotation_dims)]
 
-    return xp.concat(
-        [
-            root,
-            body_pose[(..., slice(None, 5), *rotation_dims)],
-            head_pose,
-            body_pose[(..., slice(5, 9), *rotation_dims)],
-            hand_pose[(..., slice(None, 24), *rotation_dims)],
-            body_pose[(..., slice(9, 13), *rotation_dims)],
-            hand_pose[(..., slice(24, None), *rotation_dims)],
-            body_pose[(..., slice(13, None), *rotation_dims)],
-        ],
+    return POSE_LAYOUT.pack(
+        xp,
+        {
+            None: root,
+            "body_pose": body_pose,
+            "head_pose": head_pose,
+            "hand_pose": hand_pose,
+        },
         axis=joint_axis,
     )
 
@@ -49,22 +59,9 @@ def unpack_pose(
 ]:
     """Split the canonical SOMA pose into global rotation, body, head, and hands."""
     joint_axis = _joint_axis(pose)
-    rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
-    global_rotation = pose[(..., 0, *rotation_dims)]
-    body_parts = [
-        pose[(..., slice(1, 6), *rotation_dims)],
-        pose[(..., slice(11, 15), *rotation_dims)],
-        pose[(..., slice(39, 43), *rotation_dims)],
-        pose[(..., slice(67, 77), *rotation_dims)],
-    ]
-    hand_parts = [
-        pose[(..., slice(15, 39), *rotation_dims)],
-        pose[(..., slice(43, 67), *rotation_dims)],
-    ]
-    body_pose = xp.concat(body_parts, axis=joint_axis)
-    head_pose = pose[(..., slice(6, 11), *rotation_dims)]
-    hand_pose = xp.concat(hand_parts, axis=joint_axis)
-    return global_rotation, body_pose, head_pose, hand_pose
+    unpacked = POSE_LAYOUT.unpack(xp, pose, axis=joint_axis)
+    global_rotation = xp.squeeze(unpacked[None], axis=joint_axis)
+    return global_rotation, unpacked["body_pose"], unpacked["head_pose"], unpacked["hand_pose"]
 
 
-__all__ = ["pack_pose", "unpack_pose"]
+__all__ = ["POSE_LAYOUT", "pack_pose", "unpack_pose"]

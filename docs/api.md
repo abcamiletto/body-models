@@ -73,6 +73,23 @@ the model's native rigid transforms. A prepared regressor does not follow later
 `"rotmat"`. `matrix` is an arbitrary 3×3 transform; `rotmat` is a proper
 SO(3) rotation.
 
+`model.pose_joint_indices` maps each pose parameter to the distinct canonical
+joints whose local transforms it drives. The tuples can be passed directly to
+`forward_skeleton()`:
+
+```python
+hand_indices = model.pose_joint_indices["hand_pose"]
+hand_skeleton = model.forward_skeleton(**params, joint_indices=hand_indices)
+```
+
+The indices always describe the complete, unfiltered skeleton. Groups can
+overlap for coupled parameterizations and need not include fixed joints.
+Because the output contains world transforms, changing one pose parameter can
+also move descendants outside its local joint group.
+
+For rotational parameters, indices follow rotation order (`[..., i, :]` for
+vectors and `[..., i, :, :]` for matrices); a single rotation maps to one index.
+
 ::: body_models.ParameterSpec
     options:
       show_source: false
