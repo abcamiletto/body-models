@@ -25,7 +25,7 @@ Each model family follows the same file roles:
 | `_core.py` | Model-specific mathematics with an explicit array namespace. |
 | `_model.py` | Define the model class, validation, state preparation, and forward orchestration. |
 | `numpy.py`, `torch.py`, `jax.py` | Bind the shared model class to one public array backend. |
-| `__init__.py` | Export shared model-specific types and the dynamic-construction class. |
+| `__init__.py` | Optionally export shared model-specific types and helpers. |
 
 Every model derives from the public `ArticulatedModel` base through either
 `SkinnedModel` or `RigidBodyModel`. Models are self-contained in
@@ -157,9 +157,9 @@ leaky abstraction.
 1. Add asset loading and validation in `_io.py`.
 2. Put model-specific numerical functions in `_core.py` and pass the array
    namespace explicitly.
-3. Define the public class in `_model.py` using `ArrayRuntime` and the
+3. Define the shared implementation class in `_model.py` using `ArrayRuntime` and the
    appropriate model base.
-4. Export the class from the model package.
+4. Bind and export the class from the NumPy, Torch, and JAX backend modules.
 5. Add its factory and asset metadata to `_catalog.py`.
 6. Add cross-runtime, arbitrary-batch, compile, gradient, and reference tests
    in proportion to the operations it supports.

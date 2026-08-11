@@ -37,4 +37,4 @@ fit, or `bind_pose="canonical"` to use the canonical bind pose.
 
 ## API
 
-::: body_models.soma.SOMA
+::: body_models.soma.numpy.SOMA

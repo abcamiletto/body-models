@@ -44,4 +44,4 @@ transforms and `forward_meshes()` for renderable meshes.
 
 ## API
 
-::: body_models.myofullbody.MyoFullBody
+::: body_models.myofullbody.numpy.MyoFullBody

@@ -1,7 +1,7 @@
 """JAX FLAME model."""
 
 from body_models._backend import model_for_backend
-from body_models.flame import FLAME as _FLAME
+from body_models.flame._model import FLAME as _FLAME
 
 FLAME = model_for_backend(_FLAME, "jax", module=__name__)
 

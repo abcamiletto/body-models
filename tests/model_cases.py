@@ -4,20 +4,20 @@ from importlib import import_module
 from pathlib import Path
 
 from body_models import RigidBodyModel, SkinnedModel
-from body_models.anny import ANNY
-from body_models.brainco import BrainCoHand
-from body_models.flame import FLAME
-from body_models.g1 import G1
-from body_models.garment_measurements import GarmentMeasurements
-from body_models.mano import MANO
-from body_models.mhr import MHR
-from body_models.myofullbody import MyoFullBody
-from body_models.skel import SKEL
-from body_models.smpl import SMPL
-from body_models.smpl_humanoid import SmplHumanoid
-from body_models.smplh import SMPLH
-from body_models.smplx import SMPLX
-from body_models.soma import SOMA
+from body_models.anny.numpy import ANNY
+from body_models.brainco.numpy import BrainCoHand
+from body_models.flame.numpy import FLAME
+from body_models.g1.numpy import G1
+from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.mano.numpy import MANO
+from body_models.mhr.numpy import MHR
+from body_models.myofullbody.numpy import MyoFullBody
+from body_models.skel.numpy import SKEL
+from body_models.smpl.numpy import SMPL
+from body_models.smpl_humanoid.numpy import SmplHumanoid
+from body_models.smplh.numpy import SMPLH
+from body_models.smplx.numpy import SMPLX
+from body_models.soma.numpy import SOMA
 
 ASSETS = Path(__file__).parent / "assets"
 

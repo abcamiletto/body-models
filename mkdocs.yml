@@ -26,6 +26,7 @@ plugins:
         python:
           options:
             show_source: true
+            force_inspection: true
             docstring_style: google
             show_root_heading: true
             show_if_no_docstring: false

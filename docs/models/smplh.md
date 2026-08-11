@@ -24,4 +24,4 @@ The downloader uses the "Extended SMPL+H model (used in AMASS project)" archive.
 
 ## API
 
-::: body_models.smplh.SMPLH
+::: body_models.smplh.numpy.SMPLH

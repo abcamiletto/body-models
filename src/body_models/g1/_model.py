@@ -13,7 +13,7 @@ from trimesh import Trimesh
 
 from body_models._base import ParameterSpec, RigidBodyModel
 from body_models._common import coordinates
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.g1 import _core as core
 from body_models.g1._constants import G1_BODY_PRESETS, G1_JOINTS
 from body_models.g1._io import load_model_data
@@ -36,11 +36,11 @@ class G1(RigidBodyModel):
         *,
         model_path: Path | str | None = None,
         convention: core.Convention = "soma",
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if convention not in ("soma", "mujoco"):
             raise ValueError(f"Invalid G1 convention: {convention!r}")
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = G1Config(convention)
         self._weights = runtime._materialize(load_model_data(model_path, convention=convention))
 

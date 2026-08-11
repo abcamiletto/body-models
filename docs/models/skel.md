@@ -23,4 +23,4 @@ SKEL supports `male` and `female` genders.
 
 ## API
 
-::: body_models.skel.SKEL
+::: body_models.skel.numpy.SKEL

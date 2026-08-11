@@ -24,4 +24,4 @@ model = body_models.create_model("smpl-humanoid", variant="phc")
 
 ## API
 
-::: body_models.smpl_humanoid.SmplHumanoid
+::: body_models.smpl_humanoid.numpy.SmplHumanoid
