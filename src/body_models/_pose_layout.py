@@ -11,11 +11,11 @@ from typing import Any
 class PoseLayout:
     """Canonical runs of pose controls and the local joints they drive."""
 
-    runs: tuple[tuple[str, int], ...]
+    runs: tuple[tuple[str | None, int], ...]
     control_joints: tuple[tuple[int, ...], ...] = ()
 
     @classmethod
-    def per_joint(cls, *runs: tuple[str, int]) -> PoseLayout:
+    def per_joint(cls, *runs: tuple[str | None, int]) -> PoseLayout:
         count = sum(size for _, size in runs)
         return cls(runs, tuple((index,) for index in range(count)))
 
@@ -30,17 +30,18 @@ class PoseLayout:
     def joint_indices(self) -> Mapping[str, tuple[int, ...]]:
         if len(self.control_joints) != self.num_controls:
             raise ValueError("Pose layout has no joint mapping")
-        grouped: dict[str, set[int]] = {}
+        grouped: dict[str, list[int]] = {}
         offset = 0
         for name, count in self.runs:
-            joints = grouped.setdefault(name, set())
-            for control_joints in self.control_joints[offset : offset + count]:
-                joints.update(control_joints)
+            if name is not None:
+                joints = grouped.setdefault(name, [])
+                for control_joints in self.control_joints[offset : offset + count]:
+                    joints.extend(control_joints)
             offset += count
-        return {name: tuple(sorted(joints)) for name, joints in grouped.items()}
+        return {name: tuple(dict.fromkeys(joints)) for name, joints in grouped.items()}
 
-    def pack(self, xp: Any, values: Mapping[str, Any], *, axis: int) -> Any:
-        offsets: dict[str, int] = {}
+    def pack(self, xp: Any, values: Mapping[str | None, Any], *, axis: int) -> Any:
+        offsets: dict[str | None, int] = {}
         parts = []
         for name, count in self.runs:
             start = offsets.get(name, 0)
@@ -51,8 +52,8 @@ class PoseLayout:
             offsets[name] = stop
         return xp.concat(parts, axis=axis)
 
-    def unpack(self, xp: Any, pose: Any, *, axis: int) -> dict[str, Any]:
-        parts: dict[str, list[Any]] = {}
+    def unpack(self, xp: Any, pose: Any, *, axis: int) -> dict[str | None, Any]:
+        parts: dict[str | None, list[Any]] = {}
         offset = 0
         for name, count in self.runs:
             index = [slice(None)] * pose.ndim

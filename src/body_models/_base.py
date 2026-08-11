@@ -128,7 +128,10 @@ class ArticulatedModel(ABC):
         if layout is None:
             return {}
         pose_parameters = {name for name, spec in self.parameter_spec.items() if spec.role == "pose"}
-        return {name: joints for name, joints in layout.joint_indices.items() if name in pose_parameters}
+        joint_indices = layout.joint_indices
+        if set(joint_indices) != pose_parameters:
+            raise ValueError("Pose layout does not match pose parameters")
+        return joint_indices
 
     @property
     def _pose_layout(self) -> pose_layout.PoseLayout | None:

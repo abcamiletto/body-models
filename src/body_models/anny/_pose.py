@@ -12,7 +12,7 @@ from body_models import _rotations as rotations
 Array = Any
 
 POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
-    ("root_rotation", 1),
+    (None, 1),
     ("body_pose", 54),
     ("hand_pose", 19),
     ("body_pose", 7),
@@ -56,7 +56,7 @@ def pack_pose(
     return POSE_LAYOUT.pack(
         xp,
         {
-            "root_rotation": root,
+            None: root,
             "body_pose": body_pose,
             "head_pose": head_pose,
             "hand_pose": hand_pose,
@@ -77,7 +77,7 @@ def unpack_pose(
     """Split the canonical ANNY pose into global rotation, body, head, and hands."""
     joint_axis = _joint_axis(pose)
     unpacked = POSE_LAYOUT.unpack(xp, pose, axis=joint_axis)
-    global_rotation = xp.squeeze(unpacked["root_rotation"], axis=joint_axis)
+    global_rotation = xp.squeeze(unpacked[None], axis=joint_axis)
     return global_rotation, unpacked["body_pose"], unpacked["head_pose"], unpacked["hand_pose"]
 
 

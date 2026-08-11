@@ -74,8 +74,8 @@ the model's native rigid transforms. A prepared regressor does not follow later
 SO(3) rotation.
 
 `model.pose_joint_indices` maps each pose parameter to the distinct canonical
-joints whose local transforms it drives. The tuples follow `joint_names` order
-and can be passed directly to `forward_skeleton()`:
+joints whose local transforms it drives. The tuples can be passed directly to
+`forward_skeleton()`:
 
 ```python
 hand_indices = model.pose_joint_indices["hand_pose"]
