@@ -164,12 +164,12 @@ def test_torch_model_manages_module_state() -> None:
     model.double()
 
     assert isinstance(model, torch.nn.Module)
-    assert "_weights.vertices" in model.state_dict()
-    assert model._weights.vertices.dtype == torch.float64
+    assert "_weights.v_template" in model.state_dict()
+    assert model._weights.v_template.dtype == torch.float64
 
     restored = pickle.loads(pickle.dumps(model))
     assert isinstance(restored, SMPL)
-    assert "_weights.vertices" in restored.state_dict()
+    assert "_weights.v_template" in restored.state_dict()
 
 
 @pytest.mark.parametrize("model_type", ["soma", "smpl"])
