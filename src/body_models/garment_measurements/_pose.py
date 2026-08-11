@@ -4,7 +4,20 @@ from typing import Any
 
 from jaxtyping import Float
 
+from body_models import _pose_layout as pose_layout
+
 Array = Any
+
+POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
+    ("pelvis_rotation", 1),
+    ("body_pose", 5),
+    ("head_pose", 3),
+    ("body_pose", 6),
+    ("hand_pose", 15),
+    ("body_pose", 6),
+    ("hand_pose", 15),
+    ("body_pose", 8),
+)
 
 
 def _joint_axis(pose: Float[Array, "..."]) -> int:
@@ -21,17 +34,17 @@ def pack_pose(
     """Pack separated GarmentMeasurements pose groups into the canonical 59-joint pose."""
     joint_axis = _joint_axis(body_pose)
     rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
-    pose_parts = [
-        pelvis_rotation[(..., None, *rotation_dims)],
-        body_pose[(..., slice(None, 5), *rotation_dims)],
-        head_pose,
-        body_pose[(..., slice(5, 11), *rotation_dims)],
-        hand_pose[(..., slice(None, 15), *rotation_dims)],
-        body_pose[(..., slice(11, 17), *rotation_dims)],
-        hand_pose[(..., slice(15, None), *rotation_dims)],
-        body_pose[(..., slice(17, None), *rotation_dims)],
-    ]
-    return xp.concat(pose_parts, axis=joint_axis)
+    root = pelvis_rotation[(..., None, *rotation_dims)]
+    return POSE_LAYOUT.pack(
+        xp,
+        {
+            "pelvis_rotation": root,
+            "body_pose": body_pose,
+            "head_pose": head_pose,
+            "hand_pose": hand_pose,
+        },
+        axis=joint_axis,
+    )
 
 
 def unpack_pose(
@@ -45,22 +58,9 @@ def unpack_pose(
 ]:
     """Split the canonical GarmentMeasurements pose into pelvis, body, head, and hands."""
     joint_axis = _joint_axis(pose)
-    rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
-    pelvis_rotation = pose[(..., 0, *rotation_dims)]
-    body_parts = [
-        pose[(..., slice(1, 6), *rotation_dims)],
-        pose[(..., slice(9, 15), *rotation_dims)],
-        pose[(..., slice(30, 36), *rotation_dims)],
-        pose[(..., slice(51, 59), *rotation_dims)],
-    ]
-    hand_parts = [
-        pose[(..., slice(15, 30), *rotation_dims)],
-        pose[(..., slice(36, 51), *rotation_dims)],
-    ]
-    body_pose = xp.concat(body_parts, axis=joint_axis)
-    head_pose = pose[(..., slice(6, 9), *rotation_dims)]
-    hand_pose = xp.concat(hand_parts, axis=joint_axis)
-    return pelvis_rotation, body_pose, head_pose, hand_pose
+    unpacked = POSE_LAYOUT.unpack(xp, pose, axis=joint_axis)
+    pelvis_rotation = xp.squeeze(unpacked["pelvis_rotation"], axis=joint_axis)
+    return pelvis_rotation, unpacked["body_pose"], unpacked["head_pose"], unpacked["hand_pose"]
 
 
-__all__ = ["pack_pose", "unpack_pose"]
+__all__ = ["POSE_LAYOUT", "pack_pose", "unpack_pose"]

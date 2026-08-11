@@ -10,6 +10,7 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 from trimesh import Trimesh
 
+from body_models import _pose_layout as pose_layout
 from body_models import _state as state
 from body_models._common import deformation, eye_as, point_regression, skinning, zeros_as
 from body_models._common import rigid as rigid_ops
@@ -66,6 +67,7 @@ class ArticulatedModel(ABC):
     """Base class for all articulated models."""
 
     _COMMON_JOINTS: ClassVar[Mapping[Joint, str]] = {}
+    _POSE_LAYOUT: ClassVar[pose_layout.PoseLayout | None] = None
     _state_fields: ClassVar[tuple[str, ...]] = ("_weights",)
     _config: Any
     _runtime: ArrayRuntime
@@ -118,6 +120,22 @@ class ArticulatedModel(ABC):
     def common_joints(self) -> Mapping[Joint, str]:
         """Common anatomical joints mapped to this model's native joint names."""
         return self._COMMON_JOINTS
+
+    @property
+    def pose_joint_indices(self) -> Mapping[str, tuple[int, ...]]:
+        """Canonical joints whose local transforms are driven by each pose parameter."""
+        layout = self._pose_layout
+        if layout is None:
+            return {}
+        pose_parameters = {name for name, spec in self.parameter_spec.items() if spec.role == "pose"}
+        joint_indices = layout.joint_indices
+        if set(joint_indices) != pose_parameters:
+            raise ValueError("Pose layout does not match pose parameters")
+        return joint_indices
+
+    @property
+    def _pose_layout(self) -> pose_layout.PoseLayout | None:
+        return self._POSE_LAYOUT
 
     def joint_index(self, joint: Joint) -> int:
         """Resolve a common joint to this model's native joint index."""
@@ -396,6 +414,16 @@ class RigidBodyModel(ArticulatedModel):
     def num_dofs(self) -> int:
         """Number of scalar pose degrees of freedom."""
         return len(self.actuated_joint_names)
+
+    @property
+    def _pose_layout(self) -> pose_layout.PoseLayout:
+        (pose_parameter,) = (name for name, spec in self.parameter_spec.items() if spec.role == "pose")
+        return pose_layout.PoseLayout(((pose_parameter, self.num_dofs),), self._pose_control_joints)
+
+    @property
+    def _pose_control_joints(self) -> tuple[tuple[int, ...], ...]:
+        joint_indices = {name: index for index, name in enumerate(self.joint_names)}
+        return tuple((joint_indices[name],) for name in self.actuated_joint_names)
 
     @property
     def actuated_joint_slices(self) -> Mapping[str, slice]:

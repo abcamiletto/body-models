@@ -16,13 +16,13 @@ from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime
 from body_models.garment_measurements import _core as core
+from body_models.garment_measurements import _pose as pose_utils
 from body_models.garment_measurements._constants import (
     GARMENT_BODY_PRESETS,
     GARMENT_HAND_PRESETS,
     GARMENT_JOINTS,
 )
 from body_models.garment_measurements._io import get_model_path, load_model_data
-from body_models.garment_measurements._pose import pack_pose
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -46,6 +46,7 @@ class GarmentMeasurements(SkinnedModel):
     NUM_HEAD_JOINTS = 3
     NUM_SHAPE_COEFFS = 15
     _COMMON_JOINTS = GARMENT_JOINTS
+    _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
     def __init__(
         self,
@@ -174,7 +175,7 @@ class GarmentMeasurements(SkinnedModel):
             shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
             identity = self.prepare_identity(shape)
 
-        packed_pose = pack_pose(
+        packed_pose = pose_utils.pack_pose(
             xp,
             self._resolve_pelvis_rotation(body_pose, pelvis_rotation),
             body_pose,
@@ -256,7 +257,7 @@ class GarmentMeasurements(SkinnedModel):
         pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        packed_pose = pack_pose(
+        packed_pose = pose_utils.pack_pose(
             self._runtime.xp,
             self._resolve_pelvis_rotation(body_pose, pelvis_rotation),
             body_pose,

@@ -10,6 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from nanomanifold import SO3
 
+from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
@@ -36,6 +37,7 @@ class SMPL(SmplFamilyModel):
     NUM_BODY_JOINTS = 23
     NUM_SHAPE_COEFFS = 10
     _COMMON_JOINTS = SMPL_JOINTS
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("pelvis_rotation", 1), ("body_pose", NUM_BODY_JOINTS))
 
     def __init__(
         self,
