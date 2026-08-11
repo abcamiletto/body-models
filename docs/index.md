@@ -1,7 +1,7 @@
 # body-models
 
-`body-models` provides a shared interface for parametric and rigid articulated
-models with NumPy, PyTorch, and JAX runtimes plus optional Warp acceleration.
+`body-models` provides a shared interface for parametric body models with
+NumPy, PyTorch, and JAX runtimes plus optional Warp acceleration.
 
 ## Install
 
@@ -56,7 +56,6 @@ prompts for those credentials and stores the resulting private-cache path.
 | Model | Scope | Setup |
 | --- | --- | --- |
 | [SKEL](models/skel.md) | body with anatomical skeleton | registration required |
-| [MyoFullBody](models/myofullbody.md) | MuJoCo-derived musculoskeletal full body | auto-download |
 
 ### Heads
 
@@ -69,14 +68,6 @@ prompts for those credentials and stores the resulting private-cache path.
 | Model | Scope | Setup |
 | --- | --- | --- |
 | [MANO](models/mano.md) | hand | registration required |
-
-### Robots and Humanoids
-
-| Model | Scope | Setup |
-| --- | --- | --- |
-| [BrainCo](models/brainco.md) | BrainCo Revo 2 robotic hand | auto-download |
-| [G1](models/g1.md) | Unitree G1 rigid links | auto-download |
-| [SmplHumanoid](models/smpl-humanoid.md) | SMPL-compatible humanoid MJCF variants | auto-download |
 
 ## Common Usage
 
@@ -106,8 +97,7 @@ Models imported from a `torch` module are `torch.nn.Module` instances, so
 runtime remains Torch; kernel backends only replace shared operations they
 implement.
 
-All models derive from `ArticulatedModel`; `SkinnedModel` and `RigidBodyModel`
-define its two public specializations. The shared contract includes `runtime`,
+All models derive from `SkinnedModel`. The shared contract includes `runtime`,
 `has_face`, `has_hands`, `parameter_spec`, `get_rest_pose`, `faces`,
 `num_vertices`, `num_joints`, `joint_names`, `parents`, `common_joints`,
 `joint_index`, `pose_joint_indices`, and `forward_skeleton`.
@@ -116,9 +106,7 @@ articulated hand controls. Neither describes mesh geometry. Skinned models
 additionally share `skin_weights`, `skinning_spec`, `rest_vertices`,
 `apply_pose_correctives`, and `forward_vertices`. `skin_weights` follows the
 public skeleton; `skinning_spec.skinning_weights` follows the complete render
-rig and its prepared skinning transforms. Rigid articulated models expose link
-metadata, cached link-local `link_meshes`, `forward_links`, and `forward_meshes`
-instead of skinning weights.
+rig and its prepared skinning transforms.
 
 `joint_names` and `parents` describe the complete native skeleton in joint
 index order. The `Joint` enum names anatomical joints shared across models;

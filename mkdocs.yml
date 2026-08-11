@@ -69,13 +69,8 @@ nav:
           - GarmentMeasurements: models/garment-measurements.md
       - Anatomicals:
           - SKEL: models/skel.md
-          - MyoFullBody: models/myofullbody.md
       - Heads:
           - FLAME: models/flame.md
       - Hands:
           - MANO: models/mano.md
-      - Robots and Humanoids:
-          - BrainCo: models/brainco.md
-          - G1: models/g1.md
-          - SmplHumanoid: models/smpl-humanoid.md
 strict: true

@@ -20,15 +20,7 @@ Model-specific classes and helpers are documented on their
 Every model provides `get_rest_pose()`. Models expose `get_tpose()` and
 `get_apose()` only when those whole-body presets are meaningful.
 
-::: body_models.ArticulatedModel
-    options:
-      show_source: false
-
 ::: body_models.SkinnedModel
-    options:
-      show_source: false
-
-::: body_models.RigidBodyModel
     options:
       show_source: false
 
