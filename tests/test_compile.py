@@ -50,7 +50,7 @@ def test_points_torch_compile_and_jax_jit() -> None:
     assert points.shape == (2, 2, 3)
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_skinned_torch_compile_and_jax_jit(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
     torch_class = model_cases.backend_model_class(name, "torch")

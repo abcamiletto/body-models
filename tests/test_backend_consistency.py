@@ -23,7 +23,7 @@ class _RecordingRuntime(NumpyRuntime):
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_torch_and_jax_match_numpy(name, model_class, kwargs) -> None:
     numpy_instance = model_cases.backend_model_class(name, "numpy")(**kwargs)
     numpy_params = numpy_instance.get_rest_pose(batch_dims=(2,), dtype=np.float32)
@@ -61,7 +61,7 @@ def test_garment_pelvis_rotation_defaults_to_identity() -> None:
     np.testing.assert_array_equal(skeleton, expected_skeleton)
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_kernel_backends_match_default(name, model_class, kwargs) -> None:
     torch = pytest.importorskip("torch")
     torch_class = model_cases.backend_model_class(name, "torch")
@@ -76,7 +76,7 @@ def test_kernel_backends_match_default(name, model_class, kwargs) -> None:
         np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_skinned_pose_uses_runtime_kinematics(name, model_class, kwargs) -> None:
     implementation_module = import_module(f"body_models.{name}._model")
     implementation_class = getattr(implementation_module, model_class.__name__)
@@ -94,7 +94,7 @@ def test_skinned_pose_uses_runtime_kinematics(name, model_class, kwargs) -> None
 
 @pytest.mark.parametrize(
     ("name", "model_class", "kwargs"),
-    model_cases.SKINNED_MODELS,
+    model_cases.MODELS,
 )
 def test_prepared_deformation_matches_forward(name, model_class, kwargs) -> None:
     from body_models._common import skinning
@@ -143,7 +143,7 @@ def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
         model.forward_vertices(**params, identity=identity)
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_skinned_forward_accepts_arbitrary_leading_dimensions(
     name,
     model_class,
@@ -183,7 +183,7 @@ def test_skinned_forward_accepts_arbitrary_leading_dimensions(
             )
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_prepared_identity_broadcasts_across_pose_batch(
     name,
     model_class,
