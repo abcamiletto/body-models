@@ -15,7 +15,7 @@ from body_models._common import deformation, eye_as, point_regression, skinning,
 from body_models._common import rigid as rigid_ops
 from body_models._constants import Joint
 from body_models._rotations import RotationType, rotation_ndim, rotation_shape
-from body_models._runtime import ArrayRuntime, RuntimeLike, resolve_runtime
+from body_models._runtime import ArrayRuntime
 
 Array = Any
 ParameterRole = Literal["identity", "pose", "transform"]
@@ -77,12 +77,10 @@ class ArticulatedModel(ABC):
         """Array runtime used by this model."""
         return self._runtime
 
-    def _set_runtime(self, runtime: RuntimeLike) -> ArrayRuntime:
-        resolved = resolve_runtime(runtime)
-        self._runtime = resolved
-        if resolved.name == "jax":
+    def _attach_runtime(self, runtime: ArrayRuntime) -> None:
+        self._runtime = runtime
+        if runtime.name == "jax":
             _register_jax_model(type(self))
-        return resolved
 
     def __setstate__(self, values: dict[str, Any]) -> None:
         self.__dict__.update(values)
@@ -278,7 +276,7 @@ class SkinnedModel(ArticulatedModel):
     ) -> PointRegressor:
         """Preproject a vertex mapping for repeated point forwards.
 
-        For Torch, call this after moving :meth:`as_module` to its target device.
+        For Torch, call this after moving the model to its target device.
         """
         if mapping.ndim != 2 or mapping.shape[0] < 1 or mapping.shape[1] != self.num_vertices:
             raise ValueError(

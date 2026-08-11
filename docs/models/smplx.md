@@ -24,4 +24,4 @@ Like every skinned model, SMPL-X supports arbitrary vertex mappings through
 
 ## API
 
-::: body_models.smplx.SMPLX
+::: body_models.smplx.numpy.SMPLX

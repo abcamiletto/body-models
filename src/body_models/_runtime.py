@@ -243,29 +243,11 @@ class JaxRuntime(ArrayRuntime):
         return np.asarray(jax.device_get(value))
 
 
-RuntimeLike: TypeAlias = RuntimeName | ArrayRuntime
-
-
-def resolve_runtime(runtime: RuntimeLike) -> ArrayRuntime:
-    """Resolve a runtime name while preserving explicitly configured runtimes."""
-    if isinstance(runtime, ArrayRuntime):
-        return runtime
-    if runtime == "numpy":
-        return NumpyRuntime()
-    if runtime == "torch":
-        return TorchRuntime()
-    if runtime == "jax":
-        return JaxRuntime()
-    raise ValueError(f"Unknown runtime {runtime!r}. Expected numpy, torch, or jax.")
-
-
 __all__ = [
     "ArrayRuntime",
     "JaxRuntime",
     "KernelBackend",
     "NumpyRuntime",
-    "RuntimeLike",
     "RuntimeName",
     "TorchRuntime",
-    "resolve_runtime",
 ]

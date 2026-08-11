@@ -1,7 +1,7 @@
 """JAX SMPL-X model."""
 
 from body_models._backend import model_for_backend
-from body_models.smplx import SMPLX as _SMPLX
+from body_models.smplx._model import SMPLX as _SMPLX
 
 SMPLX = model_for_backend(_SMPLX, "jax", module=__name__)
 

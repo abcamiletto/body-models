@@ -1,7 +1,1 @@
-"""Public SMPL API."""
-
-from body_models.smpl._model import SMPL
-
-SMPL.__module__ = __name__
-
-__all__ = ["SMPL"]
+"""SMPL models. Import a class from the NumPy, Torch, or JAX module."""

@@ -11,7 +11,7 @@ from jaxtyping import Float
 from trimesh import Trimesh
 
 from body_models._base import ParameterSpec, RigidBodyModel
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.myofullbody import _constants as constants
 from body_models.myofullbody import _core as core
 from body_models.myofullbody._io import load_model_data
@@ -33,9 +33,9 @@ class MyoFullBody(RigidBodyModel):
         self,
         *,
         model_path: Path | str | None = None,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = MyoFullBodyConfig()
         self._weights = runtime._materialize(load_model_data(model_path))
 

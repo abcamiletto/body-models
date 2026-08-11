@@ -13,7 +13,7 @@ from nanomanifold import SO3
 from body_models._base import ParameterSpec, PointRegressor, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models.anny import _core as core
 from body_models.anny import _pose as pose_utils
 from body_models.anny._constants import ANNY_BODY_PRESETS, ANNY_HAND_PRESETS, ANNY_JOINTS
@@ -53,7 +53,7 @@ class ANNY(SkinnedModel):
         extrapolate_phenotypes: bool = False,
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if rig not in ("default", "default_no_toes", "cmu_mb", "game_engine", "mixamo"):
             raise ValueError(f"Invalid rig: {rig!r}")
@@ -65,7 +65,7 @@ class ANNY(SkinnedModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
         weights = load_model_data_numpy(model_path, rig=rig, topology=topology, simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = AnnyConfig(
             all_phenotypes=all_phenotypes,
             extrapolate_phenotypes=extrapolate_phenotypes,

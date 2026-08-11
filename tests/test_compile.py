@@ -18,10 +18,10 @@ def test_anny_torch_compile_on_cuda() -> None:
 
 
 def test_points_torch_compile_and_jax_jit() -> None:
-    from body_models.smplx import SMPLX
-
     torch = pytest.importorskip("torch")
-    torch_model = SMPLX(gender="neutral", runtime="torch")
+    from body_models.smplx.torch import SMPLX as TorchSMPLX
+
+    torch_model = TorchSMPLX(gender="neutral")
     mapping = np.zeros((2, torch_model.num_vertices), dtype=np.float32)
     mapping[0, 0] = 1.0
     mapping[1, 100] = 1.0
@@ -38,7 +38,9 @@ def test_points_torch_compile_and_jax_jit() -> None:
     pytest.importorskip("flax")
     import jax.numpy as jnp
 
-    jax_model = SMPLX(gender="neutral", runtime="jax")
+    from body_models.smplx.jax import SMPLX as JaxSMPLX
+
+    jax_model = JaxSMPLX(gender="neutral")
     jax_params = jax_model.get_rest_pose(batch_dims=(2,), dtype=jnp.float32)
     jax_regressor = jax_model.prepare_point_regressor(mapping)
     points = jax.jit(jax_model.forward_points)(

@@ -11,7 +11,7 @@ from jaxtyping import Float
 
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models._smpl_family import SmplFamilyModel
 from body_models.flame import _core as core
 from body_models.flame._constants import FLAME_JOINT_NAMES, FLAME_JOINTS
@@ -43,7 +43,7 @@ class FLAME(SmplFamilyModel):
         model_path: Path | str | None = None,
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
@@ -52,7 +52,7 @@ class FLAME(SmplFamilyModel):
 
         resolved_path = get_model_path(model_path)
         weights = load_model_data(resolved_path, simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = FlameConfig(rotation_type=rotation_type)
         self._weights = runtime._materialize(weights)
 

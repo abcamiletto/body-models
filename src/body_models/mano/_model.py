@@ -13,7 +13,7 @@ from nanomanifold import SO3
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._constants import Joint
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
-from body_models._runtime import RuntimeLike
+from body_models._runtime import ArrayRuntime
 from body_models._smpl_family import SmplFamilyModel
 from body_models.mano import _core as core
 from body_models.mano._constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
@@ -47,7 +47,7 @@ class MANO(SmplFamilyModel):
         flat_hand_mean: bool = False,
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
-        runtime: RuntimeLike = "numpy",
+        runtime: ArrayRuntime,
     ) -> None:
         if side is not None and side not in ("right", "left"):
             raise ValueError(f"Invalid side: {side!r}")
@@ -58,7 +58,7 @@ class MANO(SmplFamilyModel):
 
         resolved_path = get_model_path(model_path, side)
         weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
-        runtime = self._set_runtime(runtime)
+        self._attach_runtime(runtime)
         self._config = ManoConfig(side=side or "right", rotation_type=rotation_type)
         self._weights = runtime._materialize(weights)
 

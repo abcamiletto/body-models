@@ -1,11 +1,13 @@
+from importlib import import_module
+
 import model_cases
 import numpy as np
 import pytest
 from trimesh import Trimesh
 
 from body_models._runtime import NumpyRuntime, TorchRuntime
-from body_models.garment_measurements import GarmentMeasurements
-from body_models.myofullbody import MyoFullBody
+from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.myofullbody.numpy import MyoFullBody
 
 
 class _RecordingRuntime(NumpyRuntime):
@@ -165,8 +167,10 @@ def test_kernel_backends_match_default(name, model_class, kwargs) -> None:
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
 def test_skinned_pose_uses_runtime_kinematics(name, model_class, kwargs) -> None:
+    implementation_module = import_module(f"body_models.{name}._model")
+    implementation_class = getattr(implementation_module, model_class.__name__)
     runtime = _RecordingRuntime()
-    model = model_class(**kwargs, runtime=runtime)
+    model = implementation_class(**kwargs, runtime=runtime)
     params = model.get_rest_pose()
 
     model.forward_skeleton(**params)
@@ -239,7 +243,7 @@ def test_link_meshes_reconstruct_forward_mesh(name, model_class, kwargs) -> None
 
 
 def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
-    from body_models.smpl import SMPL
+    from body_models.smpl.numpy import SMPL
 
     model = SMPL(gender="neutral")
     params = model.get_rest_pose()
