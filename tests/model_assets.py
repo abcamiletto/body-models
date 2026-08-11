@@ -8,13 +8,10 @@ ASSET_DIR = Path(__file__).parent / "assets" / "models_hub"
 
 TEST_ASSET_PATHS = {
     "anny": Path("anny"),
-    "brainco": Path("brainco"),
     "flame": Path("flame"),
-    "g1": Path("g1"),
     "garment_measurements": Path("garment_measurements"),
     "mano": Path("mano-right"),
     "mhr": Path("mhr"),
-    "myofullbody": Path("myofullbody"),
     "skel": Path("skel-male"),
     "smpl": Path("smpl-neutral"),
     "smplh": Path("smplh-neutral"),
@@ -34,13 +31,10 @@ TEST_MODEL_FILES = TEST_ASSET_PATHS | {
 
 CONFIG_KEYS = {
     "anny": "anny",
-    "brainco": "brainco",
     "flame": "flame",
-    "g1": "g1",
     "garment_measurements": "garment-measurements",
     "mano": "mano-right",
     "mhr": "mhr",
-    "myofullbody": "myofullbody",
     "skel": "skel-male",
     "smpl": "smpl-neutral",
     "smplh": "smplh-neutral",
@@ -54,13 +48,10 @@ SOMA_NESTED_MODEL_TYPES = {"anny", "mhr", "smpl", "smplx"}
 
 CLASS_NAMES = {
     "anny": "ANNY",
-    "brainco": "BrainCoHand",
     "flame": "FLAME",
-    "g1": "G1",
     "garment_measurements": "GarmentMeasurements",
     "mano": "MANO",
     "mhr": "MHR",
-    "myofullbody": "MyoFullBody",
     "skel": "SKEL",
     "smpl": "SMPL",
     "smplh": "SMPLH",

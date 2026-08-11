@@ -2,15 +2,11 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models import RigidBodyModel
 from body_models._runtime import TorchRuntime
 
 
 def surface_loss(model, params):
-    if isinstance(model, RigidBodyModel):
-        values = model.forward_links(**params)[..., :3, 3]
-    else:
-        values = model.forward_vertices(**params)
+    values = model.forward_vertices(**params)
     return (values**2).sum()
 
 

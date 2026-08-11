@@ -6,7 +6,7 @@ from fnmatch import fnmatchcase
 from importlib import import_module
 from typing import Any
 
-from body_models._base import ArticulatedModel
+from body_models._base import SkinnedModel
 from body_models._catalog import MODEL_SPECS
 from body_models._runtime import RuntimeName
 
@@ -16,7 +16,7 @@ def create_model(
     *,
     runtime: RuntimeName = "numpy",
     **kwargs: Any,
-) -> ArticulatedModel:
+) -> SkinnedModel:
     """
     Create a model from its public catalog name.
 

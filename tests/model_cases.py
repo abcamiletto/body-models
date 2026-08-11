@@ -3,18 +3,14 @@
 from importlib import import_module
 from pathlib import Path
 
-from body_models import RigidBodyModel, SkinnedModel
+from body_models import SkinnedModel
 from body_models.anny.numpy import ANNY
-from body_models.brainco.numpy import BrainCoHand
 from body_models.flame.numpy import FLAME
-from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
 from body_models.mano.numpy import MANO
 from body_models.mhr.numpy import MHR
-from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
-from body_models.smpl_humanoid.numpy import SmplHumanoid
 from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 from body_models.soma.numpy import SOMA
@@ -23,22 +19,16 @@ ASSETS = Path(__file__).parent / "assets"
 
 MODELS = [
     ("anny", ANNY, {}),
-    ("brainco", BrainCoHand, {}),
     ("flame", FLAME, {}),
-    ("g1", G1, {}),
     ("garment_measurements", GarmentMeasurements, {}),
     ("mano", MANO, {"side": "right"}),
     ("mhr", MHR, {}),
-    ("myofullbody", MyoFullBody, {}),
     ("skel", SKEL, {}),
     ("smpl", SMPL, {"gender": "neutral"}),
-    ("smpl_humanoid", SmplHumanoid, {}),
     ("smplh", SMPLH, {"gender": "neutral"}),
     ("smplx", SMPLX, {"gender": "neutral"}),
     ("soma", SOMA, {}),
 ]
-
-RIGID_BODY_MODELS = [model for model in MODELS if issubclass(model[1], RigidBodyModel)]
 
 SKINNED_MODELS = [model for model in MODELS if issubclass(model[1], SkinnedModel)]
 

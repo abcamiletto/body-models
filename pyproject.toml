@@ -43,7 +43,6 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
-    "mujoco>=3.3.7",
     "ruff>=0.16.0",
     "ty>=0.0.1a13",
     # Include optional runtimes for type checking
@@ -77,7 +76,6 @@ exclude = [
     "tests/",
     "scripts/render_teaser.py",
     "scripts/visualize_bodies.py",
-    "scripts/visualize_robots.py",
 ]
 
 [tool.ruff]

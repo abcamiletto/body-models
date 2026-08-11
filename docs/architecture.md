@@ -27,8 +27,7 @@ Each model family follows the same file roles:
 | `numpy.py`, `torch.py`, `jax.py` | Bind the shared model class to one public array backend. |
 | `__init__.py` | Optionally export shared model-specific types and helpers. |
 
-Every model derives from the public `ArticulatedModel` base through either
-`SkinnedModel` or `RigidBodyModel`. Models are self-contained in
+Every model derives from the public `SkinnedModel` base. Models are self-contained in
 `body_models/<name>/`; descriptive categories do not create a second package
 tree. Thin public subclasses bind that implementation to each runtime. On skinned models,
 identity preparation returns identity-dependent vertices and joints, while
@@ -131,17 +130,6 @@ linear blend shapes and dense or sparse corrective bases; `_common.kinematics`
 owns affine transform assembly, rigid inversion, parent-relative offsets, and
 generic forward kinematics. These functions operate on explicit arrays and do
 not know model names, parameter layouts, or asset formats.
-
-## Rigid articulated models
-
-Rigid robots and anatomical models do not implement the skinning protocol.
-They derive from `RigidBodyModel`, which shares metadata, link attachment, mesh
-projection, link-local mesh access, and zero-control construction. A
-`link_meshes[i]` surface is transformed by `forward_links(...)[i]`; packed
-vertex and face ranges remain private storage details. Their kinematics remain
-local: BrainCo retains coupled-joint polynomials, G1 retains hinge axes,
-SmplHumanoid retains its Euler convention, and MyoFullBody retains mixed
-hinge/slide joints.
 
 ## Specialized operations
 

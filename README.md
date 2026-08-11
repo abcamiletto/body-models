@@ -1,15 +1,13 @@
-![Body model lineup](assets/readme/body-model-lineup.png)
-
 # body-models
 
 `body-models` provides a shared interface for parametric human body, head, hand,
-anatomical, measurement, and robot models across NumPy, PyTorch, and JAX.
+anatomical, and measurement models across NumPy, PyTorch, and JAX.
 
 Documentation: https://abcamiletto.github.io/body-models/
 
 ## Features
 
-- Shared API across human, anatomical, hand, head, measurement, and robot models
+- Shared API across human, anatomical, hand, head, and measurement models
 - NumPy, PyTorch, and JAX runtimes
 - Separate mesh and skeleton forwards with `forward_vertices()` and `forward_skeleton()`
 - Prepared identities for repeated poses with fixed shape/expression parameters
@@ -68,10 +66,9 @@ both identity controls to `prepare_identity(shape, expression)`.
 ## Supported Models
 
 - Full bodies: SMPL, SMPL-H, SMPL-X, ANNY, MHR, SOMA, GarmentMeasurements
-- Anatomicals: SKEL, MyoFullBody
+- Anatomicals: SKEL
 - Heads: FLAME
 - Hands: MANO
-- Robots and humanoids: BrainCo, G1, SmplHumanoid
 
 See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)
 for setup, supported runtimes, inputs, and model-specific behavior.
