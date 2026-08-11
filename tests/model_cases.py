@@ -3,7 +3,6 @@
 from importlib import import_module
 from pathlib import Path
 
-from body_models import SkinnedModel
 from body_models.anny.numpy import ANNY
 from body_models.flame.numpy import FLAME
 from body_models.garment_measurements.numpy import GarmentMeasurements
@@ -29,8 +28,6 @@ MODELS = [
     ("smplx", SMPLX, {"gender": "neutral"}),
     ("soma", SOMA, {}),
 ]
-
-SKINNED_MODELS = [model for model in MODELS if issubclass(model[1], SkinnedModel)]
 
 REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" / "0.json").exists()]
 

@@ -11,7 +11,7 @@ from body_models.smplh.numpy import SMPLH
 from body_models.smplx.numpy import SMPLX
 
 
-@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.SKINNED_MODELS)
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_points_match_mapped_vertices(name, model_class, kwargs) -> None:
     model = model_class(**kwargs)
     mapping = np.zeros((2, model.num_vertices), dtype=np.float32)
