@@ -315,7 +315,7 @@ def preprocess_model(upstream_dir: PathLike, output_dir: PathLike) -> Path:
     if uv is None:
         raise RuntimeError("SOMA preprocessing requires `uv` on PATH.")
 
-    script = Path(__file__).with_name("_generate_asset.py")
+    script = Path(__file__).parent / "_tools" / "generate_asset.py"
     command = [uv, "run", "--no-project", str(script), str(upstream_dir), str(output_dir)]
     print("SOMA: preprocessing upstream 0.2.1 assets with usd-core via uv.")
     print(f"SOMA: running {' '.join(command)}")
