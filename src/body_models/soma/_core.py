@@ -14,7 +14,7 @@ from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
 
 if TYPE_CHECKING:
-    from body_models.soma._io import SomaWeights
+    from body_models.soma._schema import SomaWeights
 
 Array = Any
 BindPoseMode = Literal["fit", "fit_detached", "canonical"]
