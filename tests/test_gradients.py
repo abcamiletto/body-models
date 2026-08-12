@@ -19,7 +19,6 @@ def test_torch_and_jax_gradients_match_finite_difference(name, model_class, kwar
     torch_rest = {key: value + 0.03 for key, value in torch_rest.items()}
 
     jax = pytest.importorskip("jax")
-    pytest.importorskip("flax")
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
 
