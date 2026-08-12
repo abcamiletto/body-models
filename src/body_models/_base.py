@@ -331,6 +331,25 @@ class SkinnedModel(ABC):
             points = points + global_translation[..., None, :] * point_regressor["weight_sums"][..., None]
         return points
 
+    def _resolve_identity_coefficients(
+        self,
+        identity: Any | None,
+        batch_shape: tuple[int, ...],
+        /,
+        **coefficients: Any | None,
+    ) -> tuple[Float[Array, "*batch C"], ...] | None:
+        """Validate raw identity coefficients and broadcast them to the pose batch shape."""
+        self._validate_identity_arguments(identity, **coefficients)
+        if identity is not None:
+            return None
+        values = [value for value in coefficients.values() if value is not None]
+        if len(values) != len(coefficients):
+            names = " and ".join(coefficients)
+            verb = "is" if len(coefficients) == 1 else "are"
+            raise ValueError(f"{names} {verb} required when identity is not provided")
+        xp = self._runtime.xp
+        return tuple(xp.broadcast_to(value, (*batch_shape, value.shape[-1])) for value in values)
+
     @staticmethod
     def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:
         if identity is None:
