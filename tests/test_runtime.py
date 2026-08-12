@@ -107,31 +107,35 @@ def test_factory_returns_backend_specific_model() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("jax")
     from body_models import create_model
-    from body_models.g1.jax import G1 as JaxG1
-    from body_models.g1.numpy import G1 as NumpyG1
-    from body_models.g1.torch import G1 as TorchG1
+    from body_models.smpl.jax import SMPL as JaxSMPL
+    from body_models.smpl.numpy import SMPL as NumpySMPL
+    from body_models.smpl.torch import SMPL as TorchSMPL
 
-    models = [create_model("g1"), create_model("g1", runtime="torch"), create_model("g1", runtime="jax")]
+    models = [
+        create_model("smpl", gender="neutral"),
+        create_model("smpl", runtime="torch", gender="neutral"),
+        create_model("smpl", runtime="jax", gender="neutral"),
+    ]
 
-    assert [type(model) for model in models] == [NumpyG1, TorchG1, JaxG1]
+    assert [type(model) for model in models] == [NumpySMPL, TorchSMPL, JaxSMPL]
     assert [model.runtime.name for model in models] == ["numpy", "torch", "jax"]
     assert isinstance(models[1], torch.nn.Module)
 
 
 def test_model_pickle_uses_public_class_identity() -> None:
-    from body_models.g1.numpy import G1
+    from body_models.smpl.numpy import SMPL
 
-    model = pickle.loads(pickle.dumps(G1()))
+    model = pickle.loads(pickle.dumps(SMPL(gender="neutral")))
 
-    assert type(model) is G1
-    assert type(model).__module__ == "body_models.g1.numpy"
+    assert type(model) is SMPL
+    assert type(model).__module__ == "body_models.smpl.numpy"
 
 
 def test_pickled_jax_model_jits_in_a_fresh_process() -> None:
     pytest.importorskip("jax")
-    from body_models.g1.jax import G1
+    from body_models.smpl.jax import SMPL
 
-    model = G1()
+    model = SMPL(gender="neutral")
     program = """
 import pickle
 import sys
@@ -154,18 +158,18 @@ print(jax.jit(lambda value: value.num_vertices)(model))
 
 def test_torch_model_manages_module_state() -> None:
     torch = pytest.importorskip("torch")
-    from body_models.g1.torch import G1
+    from body_models.smpl.torch import SMPL
 
-    model = G1()
+    model = SMPL(gender="neutral")
     model.double()
 
     assert isinstance(model, torch.nn.Module)
-    assert "_weights.vertices" in model.state_dict()
-    assert model._weights.vertices.dtype == torch.float64
+    assert "_weights.v_template" in model.state_dict()
+    assert model._weights.v_template.dtype == torch.float64
 
     restored = pickle.loads(pickle.dumps(model))
-    assert isinstance(restored, G1)
-    assert "_weights.vertices" in restored.state_dict()
+    assert isinstance(restored, SMPL)
+    assert "_weights.v_template" in restored.state_dict()
 
 
 @pytest.mark.parametrize("model_type", ["soma", "smpl"])

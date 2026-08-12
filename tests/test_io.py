@@ -1,8 +1,6 @@
 import numpy as np
 import pytest
 
-import body_models.brainco._io as brainco_io
-from body_models import _config as config
 from body_models.mhr import _io as mhr_io
 from body_models.soma._io import validate_path
 
@@ -23,59 +21,6 @@ def test_soma_upstream_021_asset_layout_requires_preprocessing(tmp_path) -> None
 
     with pytest.raises(FileNotFoundError, match="body-models preprocess-soma"):
         validate_path(tmp_path)
-
-
-@pytest.mark.fast
-def test_brainco_get_model_path_uses_cache_without_downloading(tmp_path, monkeypatch) -> None:
-    cache_dir = tmp_path / "brainco"
-    (cache_dir / "meshes" / "left").mkdir(parents=True)
-    (cache_dir / "meshes" / "right").mkdir(parents=True)
-    (cache_dir / "left.xml").touch()
-    (cache_dir / "right.xml").touch()
-
-    # Override the test-suite-wide fixture that redirects config lookups to bundled
-    # test assets, so this test exercises the real cache-hit path in get_model_path().
-    monkeypatch.setattr(brainco_io.config, "get_model_path", lambda name: None)
-    monkeypatch.setattr(brainco_io, "get_cache_dir", lambda: tmp_path)
-
-    def _fail_download(*args, **kwargs):
-        raise AssertionError("download_hf_archive should not be called on a cache hit")
-
-    monkeypatch.setattr(brainco_io, "download_hf_archive", _fail_download)
-
-    assert brainco_io.get_model_path() == cache_dir
-
-
-@pytest.mark.fast
-def test_validate_model_path_myofullbody(tmp_path) -> None:
-    xml_path = tmp_path / "body" / "myofullbody.xml"
-    xml_path.parent.mkdir(parents=True)
-    xml_path.touch()
-
-    assert config.validate_model_path("myofullbody", tmp_path) == tmp_path
-
-    missing_dir = tmp_path / "missing"
-    with pytest.raises(FileNotFoundError):
-        config.validate_model_path("myofullbody", missing_dir)
-
-
-@pytest.mark.fast
-def test_g1_get_model_path_uses_cache(tmp_path, monkeypatch) -> None:
-    from body_models.g1 import _io as g1_io
-
-    monkeypatch.setattr("body_models.g1._io.get_cache_dir", lambda: tmp_path)
-    monkeypatch.setattr(g1_io.config, "get_model_path", lambda model: None)
-
-    def _raise(*args, **kwargs):
-        raise AssertionError("download_hf_archive should not be called when cache is populated")
-
-    monkeypatch.setattr("body_models.g1._io.download_hf_archive", _raise)
-
-    cache_xml = tmp_path / "g1" / "g1.xml"
-    cache_xml.parent.mkdir(parents=True)
-    cache_xml.touch()
-
-    assert g1_io.get_model_path() == cache_xml
 
 
 @pytest.mark.fast

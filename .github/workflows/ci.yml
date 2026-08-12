@@ -68,6 +68,5 @@ jobs:
             tests/test_point_regression.py \
             tests/test_runtime.py \
             tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
-            tests/test_backend_consistency.py::test_rigid_body_meshes_match_numpy \
             tests/test_backend_consistency.py::test_kernel_backends_match_default \
             tests/test_backend_consistency.py::test_raw_and_prepared_identity_are_mutually_exclusive
