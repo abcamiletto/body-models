@@ -7,6 +7,8 @@ from nanomanifold import SO3
 from body_models import _smpl_family as family
 from body_models._rotations import VALID_ROTATION_TYPES
 
+pytestmark = pytest.mark.fast
+
 
 @pytest.mark.parametrize("rotation_type", VALID_ROTATION_TYPES)
 def test_pose_blocks_compose_across_rotation_representations(rotation_type) -> None:
