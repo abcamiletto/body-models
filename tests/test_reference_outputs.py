@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from body_models import RigidBodyModel
 from body_models._common import skinning
 from body_models.anny import _pose as anny_pose
 from body_models.mhr import _pose as mhr_pose
@@ -20,10 +19,7 @@ from body_models.soma.numpy import SOMA
 def test_numpy_reference_vertices(name, model_class, kwargs) -> None:
     model = model_class(**kwargs)
     inputs = reference_inputs(name)
-    if isinstance(model, RigidBodyModel):
-        vertices = np.stack([mesh.vertices for mesh in model.forward_meshes(**inputs)], axis=0)
-    else:
-        vertices = model.forward_vertices(**inputs)
+    vertices = model.forward_vertices(**inputs)
     if name == "mhr":
         vertices = vertices * 100
     expected = np.load(model_cases.ASSETS / name / "outputs/0/vertices.npy")

@@ -1,30 +1,23 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from functools import cached_property, partial
+from functools import partial
 from typing import Any, ClassVar, Literal
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
-from trimesh import Trimesh
 
 from body_models import _pose_layout as pose_layout
 from body_models import _state as state
-from body_models._common import deformation, eye_as, point_regression, skinning, zeros_as
-from body_models._common import rigid as rigid_ops
+from body_models._common import deformation, point_regression, skinning
 from body_models._constants import Joint
 from body_models._rotations import RotationType, rotation_ndim, rotation_shape
 from body_models._runtime import ArrayRuntime
 
 Array = Any
 ParameterRole = Literal["identity", "pose", "transform"]
-MUJOCO_TO_MODEL = (
-    (1.0, 0.0, 0.0),
-    (0.0, 1.0, 0.0),
-    (0.0, 0.0, 1.0),
-)
 
 
 @dataclass(frozen=True)
@@ -63,8 +56,8 @@ SkinningPose = deformation.SkinningPose
 SparseCorrectiveBasis = deformation.SparseCorrectiveBasis
 
 
-class ArticulatedModel(ABC):
-    """Base class for all articulated models."""
+class SkinnedModel(ABC):
+    """Base class for skinned body models."""
 
     _COMMON_JOINTS: ClassVar[Mapping[Joint, str]] = {}
     _POSE_LAYOUT: ClassVar[pose_layout.PoseLayout | None] = None
@@ -209,14 +202,6 @@ class ArticulatedModel(ABC):
         value = runtime.zeros((*batch_dims, *spec.shape), like=reference, dtype=dtype)
         return value if spec.default == 0.0 else value + spec.default
 
-
-class SkinnedModel(ArticulatedModel):
-    """Base class for models that expose one skinned mesh.
-
-    Concrete models provide explicit ``prepare_identity(...)`` and
-    ``prepare_pose(..., identity=...)`` signatures for renderer integration.
-    """
-
     @property
     @abstractmethod
     def skin_weights(self) -> Float[Array, "V J"]:
@@ -356,198 +341,6 @@ class SkinnedModel(ArticulatedModel):
             raise ValueError(f"identity cannot be combined with raw identity parameters: {names}")
 
 
-class RigidBodyModel(ArticulatedModel):
-    """Base class for rigid articulated models."""
-
-    _weights: Any
-
-    @property
-    def faces(self) -> Int[Array, "F 3"]:
-        return self._weights.faces
-
-    @property
-    def joint_names(self) -> list[str]:
-        return list(self._weights.joint_names)
-
-    @property
-    def parents(self) -> list[int]:
-        return list(self._weights.parents)
-
-    @property
-    def actuated_joint_names(self) -> list[str]:
-        return list(self._weights.actuated_joint_names)
-
-    @property
-    def actuated_joint_limits(self) -> Float[Array, "Q 2"]:
-        return self._weights.actuated_joint_limits
-
-    @property
-    def link_names(self) -> list[str]:
-        return list(self._weights.link_names)
-
-    @property
-    def link_joint_indices(self) -> list[int]:
-        return list(self._weights.link_joint_indices)
-
-    @cached_property
-    def link_meshes(self) -> Sequence[Trimesh]:
-        """Link-local meshes aligned with :attr:`link_names` and ``forward_links()``."""
-        return rigid_ops.link_meshes(
-            self._weights.vertices,
-            self._weights.faces,
-            self._weights.link_vertex_starts,
-            self._weights.link_vertex_counts,
-            self._weights.link_face_starts,
-            self._weights.link_face_counts,
-            to_numpy=self._runtime.to_numpy,
-        )
-
-    @property
-    def num_vertices(self) -> int:
-        return self._weights.vertices.shape[0]
-
-    @property
-    def _parameter_reference(self) -> Float[Array, "V 3"]:
-        return self._weights.vertices
-
-    @property
-    def num_dofs(self) -> int:
-        """Number of scalar pose degrees of freedom."""
-        return len(self.actuated_joint_names)
-
-    @property
-    def _pose_layout(self) -> pose_layout.PoseLayout:
-        (pose_parameter,) = (name for name, spec in self.parameter_spec.items() if spec.role == "pose")
-        return pose_layout.PoseLayout(((pose_parameter, self.num_dofs),), self._pose_control_joints)
-
-    @property
-    def _pose_control_joints(self) -> tuple[tuple[int, ...], ...]:
-        joint_indices = {name: index for index, name in enumerate(self.joint_names)}
-        return tuple((joint_indices[name],) for name in self.actuated_joint_names)
-
-    @property
-    def actuated_joint_slices(self) -> Mapping[str, slice]:
-        """Consecutive scalar coordinate slices keyed by actuated joint name."""
-        slices = {}
-        seen = set()
-        start = 0
-        names = self.actuated_joint_names
-        while start < len(names):
-            name = names[start]
-            if name in seen:
-                raise ValueError(f"Actuated joint name {name!r} is repeated in non-consecutive groups.")
-            seen.add(name)
-            stop = start + 1
-            while stop < len(names) and names[stop] == name:
-                stop += 1
-            slices[name] = slice(start, stop)
-            start = stop
-        return slices
-
-    def unpack_pose(self, pose: Float[Array, "*batch Q"]) -> dict[str, Float[Array, "*batch dof"]]:
-        """Unpack a flattened pose ``[..., Q]`` into ``name -> [..., dof]`` arrays."""
-        if pose.shape[-1] != self.num_dofs:
-            raise ValueError(f"pose must have shape [..., {self.num_dofs}], got {tuple(pose.shape)}")
-        return {name: pose[..., joint_slice] for name, joint_slice in self.actuated_joint_slices.items()}
-
-    def pack_pose(self, pose_by_joint: Mapping[str, Float[Array, "*batch dof"]]) -> Float[Array, "*batch Q"]:
-        """Pack ``name -> [..., dof]`` arrays into a flattened pose ``[..., Q]``."""
-        pieces = []
-        expected_names = set(self.actuated_joint_slices)
-        extra_names = set(pose_by_joint) - expected_names
-        if extra_names:
-            raise KeyError(f"Unknown actuated joint names: {sorted(extra_names)}")
-        for name, joint_slice in self.actuated_joint_slices.items():
-            if name not in pose_by_joint:
-                raise KeyError(f"Missing actuated joint name: {name!r}")
-            value = pose_by_joint[name]
-            dof = joint_slice.stop - joint_slice.start
-            if value.shape[-1] != dof:
-                raise ValueError(f"{name!r} must have shape [..., {dof}], got {tuple(value.shape)}")
-            pieces.append(value)
-        return self._runtime.xp.concat(pieces, axis=-1)
-
-    def to_qpos(
-        self,
-        body_pose: Float[Array, "*batch Q"],
-        *,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-        clamp_to_limits: bool = False,
-    ) -> Float[Array, "*batch qpos"]:
-        """Build full MuJoCo ``qpos`` as ``[root_xyz, root_wxyz, body_pose]``.
-
-        ``body_pose`` is the model's flattened scalar coordinate vector ``[..., Q]``.
-        ``global_rotation`` is an axis-angle vector ``[..., 3]``.
-        The root prefix is converted from the model coordinate frame to MuJoCo's
-        coordinate frame.
-        """
-        if body_pose.shape[-1] != self.num_dofs:
-            raise ValueError(f"body_pose must have shape [..., {self.num_dofs}], got {tuple(body_pose.shape)}")
-
-        xp = self._runtime.xp
-        batch_shape = tuple(body_pose.shape[:-1])
-        if global_translation is None:
-            global_translation = zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)
-        if global_rotation is None:
-            root_ref = zeros_as(body_pose, shape=(*batch_shape, 3), xp=xp)
-            root_rot = eye_as(root_ref, batch_dims=batch_shape, xp=xp)
-        else:
-            root_rot = SO3.convert(global_rotation, src="axis_angle", dst="rotmat", xp=xp)
-
-        coord = xp.asarray(self._mujoco_to_model(), dtype=body_pose.dtype)
-        model_to_mujoco = coord.mT
-        root_t = xp.squeeze(model_to_mujoco @ global_translation[..., None], axis=-1)
-        root_rot_mujoco = model_to_mujoco @ root_rot @ coord
-        root_quat = SO3.conversions.from_rotmat_to_quat(root_rot_mujoco, convention="wxyz", xp=xp)
-
-        if clamp_to_limits:
-            limits = xp.asarray(self.actuated_joint_limits, dtype=body_pose.dtype)
-            body_pose = xp.clip(body_pose, limits[:, 0], limits[:, 1])
-        return xp.concat([root_t, root_quat, body_pose], axis=-1)
-
-    def _mujoco_to_model(self):
-        return MUJOCO_TO_MODEL
-
-    @property
-    @abstractmethod
-    def actuated_joint_types(self) -> list[str]:
-        """Actuated pose coordinate types in ``actuated_joint_names`` order."""
-
-    @abstractmethod
-    def forward_links(self, *args, **kwargs) -> Float[Array, "*batch L 4 4"]:
-        """Compute world-space 4x4 link transforms as the array/autograd primitive."""
-
-    @abstractmethod
-    def forward_meshes(self, *args, **kwargs) -> Sequence[Trimesh]:
-        """Build one renderer-facing mesh per batch element from link transforms."""
-
-    def _link_transforms(
-        self,
-        skeleton: Float[Array, "*batch J 4 4"],
-    ) -> Float[Array, "*batch L 4 4"]:
-        return rigid_ops.forward_link_transforms(
-            skeleton,
-            self._weights.link_joint_indices,
-            self._weights.link_geom_positions,
-            self._weights.link_geom_rotations,
-            xp=self._runtime.xp,
-        )
-
-    def _meshes_from_links(self, links: Float[Array, "*batch L 4 4"]) -> list[Trimesh]:
-        return rigid_ops.forward_meshes_from_links(
-            links,
-            self._weights.vertices,
-            self._weights.faces,
-            self._weights.link_vertex_starts,
-            self._weights.link_vertex_counts,
-            self._weights.link_face_starts,
-            self._weights.link_face_counts,
-            to_numpy=self._runtime.to_numpy,
-            xp=self._runtime.xp,
-        )
-
-
 _JAX_MODELS: set[type] = set()
 
 
@@ -564,16 +357,16 @@ def _register_jax_model(model_type: type) -> None:
     _JAX_MODELS.add(model_type)
 
 
-def _flatten_model(model: ArticulatedModel) -> tuple[tuple[Any, ...], tuple[Any, ArrayRuntime]]:
+def _flatten_model(model: SkinnedModel) -> tuple[tuple[Any, ...], tuple[Any, ArrayRuntime]]:
     children = tuple(getattr(model, name) for name in model._state_fields)
     return children, (model._config, model._runtime)
 
 
 def _unflatten_model(
-    model_type: type[ArticulatedModel],
+    model_type: type[SkinnedModel],
     auxiliary: tuple[Any, ArrayRuntime],
     children: tuple[Any, ...],
-) -> ArticulatedModel:
+) -> SkinnedModel:
     config, runtime = auxiliary
     model = model_type.__new__(model_type)
     model._runtime = runtime

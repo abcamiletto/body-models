@@ -1,14 +1,12 @@
 """Public API for multi-runtime parametric and articulated body models."""
 
 from body_models._base import (
-    ArticulatedModel,
     CorrectiveBasis,
     DenseCorrectiveBasis,
     LinearIdentity,
     ParameterRole,
     ParameterSpec,
     PointRegressor,
-    RigidBodyModel,
     SkinnedModel,
     SkinningIdentity,
     SkinningPose,
@@ -27,7 +25,6 @@ from body_models._runtime import (
 
 __all__ = [
     "ArrayRuntime",
-    "ArticulatedModel",
     "CorrectiveBasis",
     "DenseCorrectiveBasis",
     "Joint",
@@ -36,7 +33,6 @@ __all__ = [
     "ParameterRole",
     "ParameterSpec",
     "PointRegressor",
-    "RigidBodyModel",
     "RotationType",
     "RuntimeName",
     "SkinnedModel",

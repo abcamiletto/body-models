@@ -2,15 +2,11 @@ import model_cases
 import numpy as np
 import pytest
 
-from body_models import RigidBodyModel
 from body_models._runtime import TorchRuntime
 
 
 def surface_loss(model, params):
-    if isinstance(model, RigidBodyModel):
-        values = model.forward_links(**params)[..., :3, 3]
-    else:
-        values = model.forward_vertices(**params)
+    values = model.forward_vertices(**params)
     return (values**2).sum()
 
 
@@ -163,7 +159,7 @@ def test_soma_warp_forward_and_gradients_match_torch() -> None:
 
 @pytest.mark.parametrize(
     ("name", "model_class", "kwargs"),
-    [case for case in model_cases.SKINNED_MODELS if case[0] == "garment_measurements"],
+    [case for case in model_cases.MODELS if case[0] == "garment_measurements"],
 )
 def test_torch_kernel_backend_gradients_match_default(
     name,

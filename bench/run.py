@@ -43,11 +43,11 @@ class BenchmarkSpec:
 
     @property
     def vertices_method(self) -> str:
-        return "forward_links" if catalog.MODEL_SPECS[self.model_name].kind == "rigid" else "forward_vertices"
+        return "forward_vertices"
 
     @property
     def supports_warp(self) -> bool:
-        return catalog.MODEL_SPECS[self.model_name].kind == "skinned"
+        return True
 
 
 @dataclass(frozen=True)

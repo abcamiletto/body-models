@@ -27,14 +27,11 @@ import numpy as np
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-from body_models import RigidBodyModel
 from body_models.anny.numpy import ANNY
 from body_models.flame.numpy import FLAME
-from body_models.g1.numpy import G1
 from body_models.garment_measurements.numpy import GarmentMeasurements
 from body_models.mano.numpy import MANO
 from body_models.mhr.numpy import MHR
-from body_models.myofullbody.numpy import MyoFullBody
 from body_models.skel.numpy import SKEL
 from body_models.smpl.numpy import SMPL
 from body_models.smplh.numpy import SMPLH
@@ -57,12 +54,9 @@ PASTELS = {
     "flame": (0.99, 0.93, 0.62, 1.0),  # butter
     "garment_measurements": (0.69, 0.86, 0.93, 1.0),  # powder
     "soma": (0.97, 0.78, 0.78, 1.0),  # coral
-    "g1": (0.78, 0.78, 0.86, 1.0),  # steel
-    "myofullbody": (0.94, 0.78, 0.78, 1.0),  # blush
 }
 LABELS = {f: f.upper() for f in PASTELS} | {
     "garment_measurements": "GARMENT\nMEASUREMENTS",
-    "myofullbody": "MYO\nFULLBODY",
 }
 # FLAME is head-only: half-size keeps it in scale with the row.
 SCALES = {"flame": 0.5, "mano": 2.0}
@@ -75,8 +69,6 @@ TPOSE_FAMILIES = {
     "anny",
     "garment_measurements",
     "soma",
-    "g1",
-    "myofullbody",
 }
 
 LOADERS = {
@@ -90,8 +82,6 @@ LOADERS = {
     "flame": FLAME,
     "garment_measurements": GarmentMeasurements,
     "soma": lambda: SOMA(),
-    "g1": G1,
-    "myofullbody": MyoFullBody,
 }
 
 ANNY_DISPLAY_ROTATION_X = -np.pi / 2 + 0.08
@@ -138,12 +128,7 @@ def parse_args() -> argparse.Namespace:
 # ── Per-family canonical mesh ────────────────────────────────────────────────
 def canonical_mesh(family: str) -> tuple[np.ndarray, np.ndarray]:
     model = LOADERS[family]()
-    if isinstance(model, RigidBodyModel):
-        params = model.get_tpose() if family in TPOSE_FAMILIES else model.get_rest_pose()
-        mesh = model.forward_meshes(**params)[0]
-        verts = np.asarray(mesh.vertices, dtype=np.float32)
-        face_array = np.asarray(mesh.faces, dtype=np.int32)
-    elif family in TPOSE_FAMILIES:
+    if family in TPOSE_FAMILIES:
         params = model.get_tpose()
         if family == "anny":
             params["global_rotation"][0] = ANNY_DISPLAY_ROTATION_X
