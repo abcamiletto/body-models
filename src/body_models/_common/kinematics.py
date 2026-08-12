@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
+from nanomanifold import SO3
 
 from body_models._common import ops
 
@@ -64,6 +65,44 @@ def invert_rigid_transforms(
     inverse_rotations = rotations.mT
     inverse_translations = -xp.squeeze(inverse_rotations @ translations[..., None], axis=-1)
     return affine_transforms(inverse_rotations, inverse_translations, xp=xp)
+
+
+def rotation_between_vectors(
+    source: Float[Array, "*batch 3"],
+    target: Float[Array, "*batch 3"],
+    *,
+    xp: Any,
+) -> Float[Array, "*batch 3 3"]:
+    """Shortest rotation taking ``source`` to ``target``, so that ``R @ source ~ target``.
+
+    Inputs need not be normalized. Antiparallel inputs give a half turn about an
+    arbitrary perpendicular axis rather than the degenerate identity.
+    """
+    source_unit = _normalize(source, xp=xp)
+    target_unit = _normalize(target, xp=xp)
+
+    cross = xp.linalg.cross(source_unit, target_unit)
+    cross_norm = xp.linalg.vector_norm(cross, axis=-1, keepdims=True)
+    dot = xp.clip(xp.sum(source_unit * target_unit, axis=-1, keepdims=True), -1.0, 1.0)
+
+    # The cross product vanishes at the antiparallel pole, so pick any perpendicular axis.
+    basis = ops.eye_as(source, batch_dims=source.shape[:-1], xp=xp)
+    helper = xp.where(xp.abs(source_unit[..., 0:1]) > 0.6, basis[..., 1, :], basis[..., 0, :])
+    antiparallel = dot < -1.0 + 1e-6
+
+    axis = _normalize(xp.where(antiparallel, xp.linalg.cross(source_unit, helper), cross), xp=xp)
+    angle = xp.where(
+        antiparallel[..., 0],
+        xp.asarray(np.pi, dtype=source.dtype),
+        xp.atan2(cross_norm[..., 0], dot[..., 0]),
+    )
+    return SO3.conversions.from_axis_angle_to_rotmat(angle[..., None] * axis, xp=xp)
+
+
+def _normalize(vectors: Float[Array, "*batch 3"], *, xp: Any) -> Float[Array, "*batch 3"]:
+    """Scale vectors to unit length, leaving near-zero vectors untouched."""
+    norm = xp.linalg.vector_norm(vectors, axis=-1, keepdims=True)
+    return vectors / xp.where(norm > 1e-8, norm, xp.ones_like(norm))
 
 
 def local_joint_offsets(
