@@ -94,10 +94,7 @@ def extract_archive(archive_path: Path, dest: Path) -> None:
             with tarfile.open(archive_path) as archive:
                 members = archive.getmembers()
                 _validate_paths(member.name for member in members)
-                try:
-                    archive.extractall(contents, members=members, filter="data")
-                except TypeError:
-                    archive.extractall(contents, members=members)
+                archive.extractall(contents, members=members, filter="data")
         else:
             raise ValueError(f"Unsupported archive: {archive_path}")
 
