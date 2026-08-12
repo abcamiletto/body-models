@@ -549,7 +549,10 @@ def _simplify_mesh(
     faces: Int[np.ndarray, "F 3"],
     target_faces: int,
 ) -> tuple[Float[np.ndarray, "Vs 3"], Int[np.ndarray, "Fs 3"], Int[np.ndarray, "Vs"]]:
-    import pyfqmr
+    try:
+        import pyfqmr
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[simplify] to use simplify < 1.0.") from exc
     from scipy.spatial import KDTree
 
     simplifier = pyfqmr.Simplify()
