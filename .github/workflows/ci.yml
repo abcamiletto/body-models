@@ -69,4 +69,5 @@ jobs:
             tests/test_runtime.py \
             tests/test_backend_consistency.py \
             tests/test_reference_outputs.py \
-            tests/test_gradients.py
+            tests/test_gradients.py \
+            tests/test_public_api.py
