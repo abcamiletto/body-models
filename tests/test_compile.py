@@ -35,7 +35,6 @@ def test_points_torch_compile_and_jax_jit() -> None:
     assert points.shape == (2, 2, 3)
 
     jax = pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     from body_models.smplx.jax import SMPLX as JaxSMPLX
@@ -61,7 +60,6 @@ def test_skinned_torch_compile_and_jax_jit(name, model_class, kwargs) -> None:
     assert torch_vertices.shape[-1] == 3
 
     jax = pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     jax_class = model_cases.backend_model_class(name, "jax")
