@@ -64,9 +64,9 @@ jobs:
       - run: uv sync --group dev --all-extras --frozen
       - name: Run cross-runtime functional tests
         run: |
-          uv run pytest -q \
+          uv run pytest -q -m "not slow" \
             tests/test_point_regression.py \
             tests/test_runtime.py \
-            tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
-            tests/test_backend_consistency.py::test_kernel_backends_match_default \
-            tests/test_backend_consistency.py::test_raw_and_prepared_identity_are_mutually_exclusive
+            tests/test_backend_consistency.py \
+            tests/test_reference_outputs.py \
+            tests/test_gradients.py
