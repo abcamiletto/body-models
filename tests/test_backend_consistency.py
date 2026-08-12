@@ -37,7 +37,6 @@ def test_torch_and_jax_match_numpy(name, model_class, kwargs) -> None:
     np.testing.assert_allclose(torch_vertices.numpy(), expected, rtol=1e-4, atol=1e-4)
 
     pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
@@ -124,7 +123,6 @@ def test_prepared_deformation_matches_forward(name, model_class, kwargs) -> None
         assert_compatible(torch_instance, torch_params, torch)
 
     pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
@@ -217,7 +215,6 @@ def test_prepared_identity_broadcasts_across_pose_batch(
         assert_broadcasts(torch_instance, torch_params)
 
     pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)

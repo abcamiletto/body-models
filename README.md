@@ -27,6 +27,7 @@ Install optional extras when needed:
 uv add "body-models[torch]"
 uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
+uv add "body-models[simplify]"
 ```
 
 Public model assets download automatically on first use. Licensed assets use
