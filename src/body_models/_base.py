@@ -333,15 +333,11 @@ class SkinnedModel(ABC):
 
     def _resolve_identity_coefficients(
         self,
-        identity: Any | None,
         batch_shape: tuple[int, ...],
         /,
         **coefficients: Any | None,
-    ) -> tuple[Float[Array, "*batch C"], ...] | None:
-        """Validate raw identity coefficients and broadcast them to the pose batch shape."""
-        self._validate_identity_arguments(identity, **coefficients)
-        if identity is not None:
-            return None
+    ) -> tuple[Float[Array, "*batch C"], ...]:
+        """Require raw identity coefficients and broadcast them to the pose batch shape."""
         values = [value for value in coefficients.values() if value is not None]
         if len(values) != len(coefficients):
             names = " and ".join(coefficients)

@@ -99,11 +99,10 @@ class SMPL(SmplFamilyModel):
         vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
-        resolved = self._resolve_identity_coefficients(
-            identity, body_pose.shape[: -(self._num_rot_dims + 1)], shape=shape
-        )
-        if resolved is not None:
-            identity = self.prepare_identity(*resolved)
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
 
         pose = self.prepare_pose(body_pose, pelvis_rotation=pelvis_rotation, identity=identity)
         return self._deform_vertices(
@@ -126,10 +125,13 @@ class SMPL(SmplFamilyModel):
         joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed joint transforms."""
-        resolved = self._resolve_identity_coefficients(
-            identity, body_pose.shape[: -(self._num_rot_dims + 1)], shape=shape
-        )
-        skeleton_identity = identity if resolved is None else self._prepare_skeleton_identity(*resolved)
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is None:
+            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
+            skeleton_identity = self._prepare_skeleton_identity(*resolved)
+        else:
+            skeleton_identity = identity
 
         skeleton = core.prepare_skeleton(
             self._runtime,
@@ -158,13 +160,13 @@ class SMPL(SmplFamilyModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        resolved = self._resolve_identity_coefficients(
-            identity, body_pose.shape[: -(self._num_rot_dims + 1)], shape=shape
-        )
-        if resolved is None:
+        self._validate_identity_arguments(identity, shape=shape)
+        if identity is not None:
             pose = self.prepare_pose(body_pose, pelvis_rotation=pelvis_rotation, identity=identity)
             return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
+        resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
         skeleton_identity = self._prepare_skeleton_identity(*resolved)
         pose = self.prepare_pose(body_pose, pelvis_rotation=pelvis_rotation, identity=skeleton_identity)
         return self._deform_linear_points(

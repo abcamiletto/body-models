@@ -152,11 +152,8 @@ class ANNY(SkinnedModel):
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
@@ -188,16 +185,13 @@ class ANNY(SkinnedModel):
         """Compute posed ANNY joint transforms."""
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
+        batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape)
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
+            skeleton_identity = self._prepare_skeleton_identity(*resolved)
         else:
             skeleton_identity = identity
 
-        batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
@@ -234,14 +228,10 @@ class ANNY(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)

@@ -125,11 +125,7 @@ class SKEL(SkinnedModel):
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape))
 
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
@@ -160,11 +156,8 @@ class SKEL(SkinnedModel):
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape)
+            resolved = self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape)
+            skeleton_identity = self._prepare_skeleton_identity(*resolved)
         else:
             skeleton_identity = identity
 
@@ -206,14 +199,9 @@ class SKEL(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[:-1]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape))
 
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
