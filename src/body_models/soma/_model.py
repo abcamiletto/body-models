@@ -26,12 +26,9 @@ from body_models.soma import _core as core
 from body_models.soma import _identities as identities
 from body_models.soma import _pose as pose_utils
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
-from body_models.soma._io import (
-    MODEL_TYPE_SPECS,
-    SOMA_LODS,
-    load_identity_transfer_data,
-    load_model_data_for_lod,
-)
+from body_models.soma._derive import load_identity_transfer_data
+from body_models.soma._io import load_model_data_for_lod
+from body_models.soma._schema import MODEL_TYPE_SPECS, SOMA_LODS
 
 Array = Any
 PathLike = Path | str
