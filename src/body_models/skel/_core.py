@@ -296,10 +296,7 @@ def _compute_bone_orientation(
     Gk_learned = xp.broadcast_to(per_joint_rot, (*batch_shape, NUM_JOINTS, 3, 3))
     apose_corrected = xp.squeeze(Gk_learned @ apose_vec[..., None], axis=-1)
 
-    Gk = _rotation_between_vectors(xp, apose_corrected, bone_vec)
-
-    # Replace NaN values with zeros
-    Gk = xp.where(xp.isnan(Gk), xp.zeros_like(Gk), Gk)
+    Gk = common.rotation_between_vectors(apose_corrected, bone_vec, xp=xp)
 
     # Set identity for fixed orientation joints
     eye3 = common.eye_as(per_joint_rot, batch_dims=(*batch_shape, NUM_JOINTS), xp=xp)
@@ -397,37 +394,6 @@ def _homog_matrix(
     pad = common.zeros_as(R, shape=(*batch_shape, J, 1, 4), xp=xp)
     pad = common.at_set(pad, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return xp.concat([xp.concat([R, t], axis=-1), pad], axis=-2)
-
-
-def _skew(xp, v: Float[Array, "B N 3"]) -> Float[Array, "B N 3 3"]:
-    """Skew-symmetric matrix from vector: [B, N, 3] -> [B, N, 3, 3]."""
-    z = xp.zeros_like(v[..., :1])
-    row0 = xp.concat([z, -v[..., 2:3], v[..., 1:2]], axis=-1)
-    row1 = xp.concat([v[..., 2:3], z, -v[..., 0:1]], axis=-1)
-    row2 = xp.concat([-v[..., 1:2], v[..., 0:1], z], axis=-1)
-    return xp.stack([row0, row1, row2], axis=-2)
-
-
-def _rotation_between_vectors(
-    xp,
-    a: Float[Array, "B N 3"],
-    b: Float[Array, "B N 3"],
-) -> Float[Array, "B N 3 3"]:
-    """Rotation matrix that rotates normalized vectors a to b."""
-    a_norm = xp.linalg.vector_norm(a, axis=-1, keepdims=True)
-    b_norm = xp.linalg.vector_norm(b, axis=-1, keepdims=True)
-    a = a / xp.where(a_norm > 1e-8, a_norm, xp.ones_like(a_norm))
-    b = b / xp.where(b_norm > 1e-8, b_norm, xp.ones_like(b_norm))
-
-    v = xp.linalg.cross(a, b)
-    c = xp.sum(a * b, axis=-1)
-    s = xp.linalg.vector_norm(v, axis=-1) + 1e-7
-
-    K = _skew(xp, v)
-    eye3 = common.eye_as(a, batch_dims=a.shape[:-1], xp=xp)
-    I = xp.broadcast_to(eye3, (*a.shape[:-1], 3, 3))
-    scale = ((1 - c) / (s**2))[..., None, None]
-    return I + K + (K @ K) * scale
 
 
 __all__ = ["SkelIdentity", "prepare_identity", "prepare_pose"]
