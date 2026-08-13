@@ -21,7 +21,7 @@ from body_models._common import skinning as skinning_ops
 
 Array = Any
 RuntimeName: TypeAlias = Literal["numpy", "torch", "jax"]
-KernelBackend: TypeAlias = Literal["torch", "warp"]
+KernelBackend: TypeAlias = Literal["torch", "triton", "warp"]
 
 
 class ArrayRuntime(ABC):
@@ -144,7 +144,7 @@ class TorchRuntime(ArrayRuntime):
     """Torch array runtime with optional compiled operation lowerings."""
 
     name = "torch"
-    KERNEL_BACKENDS: ClassVar[tuple[KernelBackend, ...]] = ("torch", "warp")
+    KERNEL_BACKENDS: ClassVar[tuple[KernelBackend, ...]] = ("torch", "triton", "warp")
     kernel_backend: KernelBackend = "torch"
 
     def __post_init__(self) -> None:
@@ -177,6 +177,27 @@ class TorchRuntime(ArrayRuntime):
     def to_numpy(self, value: Num[Array, "..."]) -> Num[np.ndarray, "..."]:
         return value.detach().cpu().numpy()
 
+    def _skin_vertices(
+        self,
+        vertices: Float[Array, "*batch V 3"],
+        transforms: Float[Array, "*batch J 4 4"],
+        *,
+        skinning: skinning_ops.CompactSkinningState,
+        vertex_indices: Sequence[int] | None = None,
+    ) -> Float[Array, "*batch selected 3"]:
+        if self.kernel_backend != "triton" or vertex_indices is None:
+            return super()._skin_vertices(
+                vertices,
+                transforms,
+                skinning=skinning,
+                vertex_indices=vertex_indices,
+            )
+
+        # A subset would need a new joint-major backward plan inside the compiled call.
+        output = self._compact_linear_blend_skinning(vertices, transforms, skinning=skinning)
+        indices = self.asarray(vertex_indices, like=skinning.joint_indices, dtype=skinning.joint_indices.dtype)
+        return output[..., indices, :]
+
     def _compact_linear_blend_skinning(
         self,
         vertices: Float[Array, "*batch V 3"],
@@ -184,8 +205,20 @@ class TorchRuntime(ArrayRuntime):
         *,
         skinning: skinning_ops.CompactSkinningState,
     ) -> Float[Array, "*batch V 3"]:
-        if self.kernel_backend == "torch":
+        backend = self.kernel_backend
+        if backend == "torch":
             return super()._compact_linear_blend_skinning(
+                vertices,
+                transforms,
+                skinning=skinning,
+            )
+
+        if backend == "triton":
+            from body_models._common import triton_skinning
+
+            if not isinstance(skinning, triton_skinning.TritonSkinningState):
+                raise TypeError("Triton skinning state must be materialized before use")
+            return triton_skinning.compact_linear_blend_skinning(
                 vertices,
                 transforms,
                 skinning=skinning,
