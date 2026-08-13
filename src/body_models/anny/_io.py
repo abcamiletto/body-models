@@ -213,12 +213,12 @@ def _cache_file_stem(data_dir: Path, rig: str, eyes: bool, tongue: bool) -> str:
     rig_file, weights_file = _RIG_CONFIGS[rig]
     rig_dir = mpfb2 / "rigs" / "standard"
     key = derived_cache_key(
-        "anny-data-v3",
+        "anny-data-v4",
         sources=(
             mpfb2 / "3dobjs" / "base.obj",
             rig_dir / rig_file,
             rig_dir / weights_file,
-            mpfb2 / "targets" / "target.json",
+            *_blendshape_source_files(data_dir),
         ),
         parameters=(rig, eyes, tongue),
     )
@@ -359,6 +359,36 @@ def _load_obj(
     return np.asarray(verts, dtype=dtype), uv_arr, groups
 
 
+def _blendshape_targets(data_dir: Path) -> tuple[tuple[tuple[str, ...], str, Path], ...]:
+    """Enumerate (phenotype key, age, file) for every blendshape target present on disk."""
+    pv = PHENOTYPE_VARIATIONS
+    macro = data_dir / "data" / "mpfb2" / "targets" / "macrodetails"
+    breast = data_dir / "data" / "mpfb2" / "targets" / "breast"
+
+    def age_file(age: str) -> str:
+        return "baby" if age == "newborn" else age
+
+    candidates: list[tuple[tuple[str, ...], str, Path]] = []
+    for g, a, m, w in itertools.product(pv["gender"], pv["age"], pv["muscle"], pv["weight"]):
+        candidates.append(((g, a, m, w), a, macro / f"universal-{g}-{age_file(a)}-{m}-{w}.target.gz"))
+    for r, g, a in itertools.product(pv["race"], pv["gender"], pv["age"]):
+        candidates.append(((r, g, a), a, macro / f"{r}-{g}-{age_file(a)}.target.gz"))
+    for g, a, m, w, h in itertools.product(pv["gender"], pv["age"], pv["muscle"], pv["weight"], pv["height"]):
+        candidates.append(((g, a, m, w, h), a, macro / "height" / f"{g}-{age_file(a)}-{m}-{w}-{h}.target.gz"))
+    for g, a, m, w, p in itertools.product(pv["gender"], pv["age"], pv["muscle"], pv["weight"], pv["proportions"]):
+        if a not in ("newborn", "baby"):
+            candidates.append(((g, a, m, w, p), a, macro / "proportions" / f"{g}-{a}-{m}-{w}-{p}.target.gz"))
+    for a, m, w, c, f in itertools.product(pv["age"], pv["muscle"], pv["weight"], pv["cupsize"], pv["firmness"]):
+        candidates.append((("female", a, m, w, c, f), a, breast / f"female-{a}-{m}-{w}-{c}-{f}.target.gz"))
+
+    return tuple(entry for entry in candidates if entry[2].is_file())
+
+
+def _blendshape_source_files(data_dir: Path) -> tuple[Path, ...]:
+    """Blendshape target files consumed by the loader, in load order."""
+    return tuple(path for _, _, path in _blendshape_targets(data_dir))
+
+
 def _load_blendshapes(
     data_dir: Path,
     template: Float[np.ndarray, "V 3"],
@@ -366,9 +396,6 @@ def _load_blendshapes(
     dtype: np.dtype,
 ) -> dict[tuple[str, ...], Float[np.ndarray, "V 3"]]:
     n = len(template)
-    pv = PHENOTYPE_VARIATIONS
-    macro = data_dir / "data" / "mpfb2" / "targets" / "macrodetails"
-    breast = data_dir / "data" / "mpfb2" / "targets" / "breast"
     newborn_scale = np.asarray([0.922, 0.922, 0.75], dtype=dtype)
 
     def load(path: Path, age: str) -> Float[np.ndarray, "V 3"]:
@@ -382,25 +409,7 @@ def _load_blendshapes(
             bs = newborn_scale * bs + ((newborn_scale - 1) / 3) * template
         return bs
 
-    def age_file(age: str) -> str:
-        return "baby" if age == "newborn" else age
-
-    shapes = {}
-    for g, a, m, w in itertools.product(pv["gender"], pv["age"], pv["muscle"], pv["weight"]):
-        shapes[(g, a, m, w)] = load(macro / f"universal-{g}-{age_file(a)}-{m}-{w}.target.gz", a)
-    for r, g, a in itertools.product(pv["race"], pv["gender"], pv["age"]):
-        shapes[(r, g, a)] = load(macro / f"{r}-{g}-{age_file(a)}.target.gz", a)
-    for g, a, m, w, h in itertools.product(pv["gender"], pv["age"], pv["muscle"], pv["weight"], pv["height"]):
-        shapes[(g, a, m, w, h)] = load(macro / "height" / f"{g}-{age_file(a)}-{m}-{w}-{h}.target.gz", a)
-    for g, a, m, w, p in itertools.product(pv["gender"], pv["age"], pv["muscle"], pv["weight"], pv["proportions"]):
-        if a not in ("newborn", "baby"):
-            shapes[(g, a, m, w, p)] = load(macro / "proportions" / f"{g}-{a}-{m}-{w}-{p}.target.gz", a)
-    for a, m, w, c, f in itertools.product(pv["age"], pv["muscle"], pv["weight"], pv["cupsize"], pv["firmness"]):
-        path = breast / f"female-{a}-{m}-{w}-{c}-{f}.target.gz"
-        if path.exists():
-            shapes[("female", a, m, w, c, f)] = load(path, a)
-
-    return shapes
+    return {key: load(path, age) for key, age, path in _blendshape_targets(data_dir)}
 
 
 def _stack_blendshapes(
@@ -549,7 +558,10 @@ def _simplify_mesh(
     faces: Int[np.ndarray, "F 3"],
     target_faces: int,
 ) -> tuple[Float[np.ndarray, "Vs 3"], Int[np.ndarray, "Fs 3"], Int[np.ndarray, "Vs"]]:
-    import pyfqmr
+    try:
+        import pyfqmr
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[simplify] to use simplify < 1.0.") from exc
     from scipy.spatial import KDTree
 
     simplifier = pyfqmr.Simplify()

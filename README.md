@@ -27,6 +27,7 @@ Install optional extras when needed:
 uv add "body-models[torch]"
 uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
+uv add "body-models[simplify]"
 ```
 
 Public model assets download automatically on first use. Licensed assets use
@@ -83,5 +84,6 @@ uv run ty check
 
 ## License
 
-See the documentation and upstream model projects for model-specific license
-terms.
+The code is licensed under the Apache License 2.0 (see `LICENSE`). Model assets
+are licensed separately by their upstream projects — see the documentation and
+upstream model pages for model-specific terms.

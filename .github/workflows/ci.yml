@@ -30,13 +30,16 @@ jobs:
 
   fast-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
     env:
-      UV_PYTHON: "3.12"
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
       - run: uv run --group dev --extra torch --extra warp pytest -q -m fast
 
@@ -64,9 +67,10 @@ jobs:
       - run: uv sync --group dev --all-extras --frozen
       - name: Run cross-runtime functional tests
         run: |
-          uv run pytest -q \
+          uv run pytest -q -m "not slow" \
             tests/test_point_regression.py \
             tests/test_runtime.py \
-            tests/test_backend_consistency.py::test_torch_and_jax_match_numpy \
-            tests/test_backend_consistency.py::test_kernel_backends_match_default \
-            tests/test_backend_consistency.py::test_raw_and_prepared_identity_are_mutually_exclusive
+            tests/test_backend_consistency.py \
+            tests/test_reference_outputs.py \
+            tests/test_gradients.py \
+            tests/test_public_api.py

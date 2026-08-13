@@ -9,6 +9,7 @@ from body_models._common.kinematics import (
     compute_sparse_skin_weights,
     invert_rigid_transforms,
     local_joint_offsets,
+    rotation_between_vectors,
 )
 from body_models._common.ops import Array, at_set, eye_as, take_along_axis, zeros_as
 from body_models._common.simplify_mesh import simplify_mesh
@@ -25,6 +26,7 @@ __all__ = [
     "eye_as",
     "invert_rigid_transforms",
     "local_joint_offsets",
+    "rotation_between_vectors",
     "simplify_mesh",
     "sparse",
     "take_along_axis",

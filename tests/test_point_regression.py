@@ -114,7 +114,6 @@ def test_point_backends_match_numpy() -> None:
     np.testing.assert_allclose(actual.numpy(), expected, rtol=1e-5, atol=1e-5)
 
     pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     from body_models.smplx.jax import SMPLX as JaxSMPLX

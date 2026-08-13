@@ -114,15 +114,11 @@ class SMPLX(SmplFamilyModel):
         vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is None:
-            if shape is None or expression is None:
-                raise ValueError("shape and expression are required when identity is not provided")
             batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-            identity = self.prepare_identity(shape, expression)
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape, expression=expression)
+            identity = self.prepare_identity(*resolved)
 
         pose = self.prepare_pose(
             body_pose,
@@ -154,15 +150,11 @@ class SMPLX(SmplFamilyModel):
         joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 55 4 4"]:
         """Compute posed joint transforms."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is None:
-            if shape is None or expression is None:
-                raise ValueError("shape and expression are required when identity is not provided")
             batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape, expression)
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape, expression=expression)
+            skeleton_identity = self._prepare_skeleton_identity(*resolved)
         else:
             skeleton_identity = identity
 
@@ -199,7 +191,6 @@ class SMPLX(SmplFamilyModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape, expression=expression)
         if identity is not None:
             pose = self.prepare_pose(
@@ -210,13 +201,10 @@ class SMPLX(SmplFamilyModel):
                 identity=identity,
             )
             return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
-        if shape is None or expression is None:
-            raise ValueError("shape and expression are required when identity is not provided")
 
         batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        expression = xp.broadcast_to(expression, (*batch_shape, expression.shape[-1]))
-        skeleton_identity = self._prepare_skeleton_identity(shape, expression)
+        resolved = self._resolve_identity_coefficients(batch_shape, shape=shape, expression=expression)
+        skeleton_identity = self._prepare_skeleton_identity(*resolved)
         pose = self.prepare_pose(
             body_pose,
             head_pose,
@@ -226,7 +214,7 @@ class SMPLX(SmplFamilyModel):
         )
         return self._deform_linear_points(
             point_regressor,
-            (shape, expression),
+            resolved,
             pose,
             global_rotation,
             global_translation,
