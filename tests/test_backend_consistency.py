@@ -22,6 +22,21 @@ class _RecordingRuntime(NumpyRuntime):
 
 LEADING_DIM_BATCH_SHAPES = [(), (2,), (2, 2, 2)]
 
+_SHAPE_REQUIRED = "shape is required when identity is not provided"
+_SHAPE_AND_EXPRESSION_REQUIRED = "shape and expression are required when identity is not provided"
+MISSING_IDENTITY_ERRORS = {
+    "anny": _SHAPE_REQUIRED,
+    "flame": _SHAPE_AND_EXPRESSION_REQUIRED,
+    "garment_measurements": _SHAPE_REQUIRED,
+    "mano": _SHAPE_REQUIRED,
+    "mhr": _SHAPE_AND_EXPRESSION_REQUIRED,
+    "skel": _SHAPE_REQUIRED,
+    "smpl": _SHAPE_REQUIRED,
+    "smplh": _SHAPE_REQUIRED,
+    "smplx": _SHAPE_AND_EXPRESSION_REQUIRED,
+    "soma": _SHAPE_REQUIRED,
+}
+
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_torch_and_jax_match_numpy(name, model_class, kwargs) -> None:
@@ -37,7 +52,6 @@ def test_torch_and_jax_match_numpy(name, model_class, kwargs) -> None:
     np.testing.assert_allclose(torch_vertices.numpy(), expected, rtol=1e-4, atol=1e-4)
 
     pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
@@ -124,7 +138,6 @@ def test_prepared_deformation_matches_forward(name, model_class, kwargs) -> None
         assert_compatible(torch_instance, torch_params, torch)
 
     pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)
@@ -141,6 +154,16 @@ def test_raw_and_prepared_identity_are_mutually_exclusive() -> None:
 
     with pytest.raises(ValueError, match="cannot be combined"):
         model.forward_vertices(**params, identity=identity)
+
+
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
+def test_raw_identity_coefficients_are_required(name, model_class, kwargs) -> None:
+    model = model_class(**kwargs)
+    params = model.get_rest_pose()
+    pose_params = {key: value for key, value in params.items() if model.parameter_spec[key].role != "identity"}
+
+    with pytest.raises(ValueError, match=MISSING_IDENTITY_ERRORS[name]):
+        model.forward_vertices(**pose_params)
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
@@ -217,7 +240,6 @@ def test_prepared_identity_broadcasts_across_pose_batch(
         assert_broadcasts(torch_instance, torch_params)
 
     pytest.importorskip("jax")
-    pytest.importorskip("flax")
     import jax.numpy as jnp
 
     jax_instance = model_cases.backend_model_class(name, "jax")(**kwargs)

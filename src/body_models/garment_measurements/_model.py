@@ -125,11 +125,8 @@ class GarmentMeasurements(SkinnedModel):
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
 
         pose = self.prepare_pose(
             body_pose,
@@ -169,11 +166,8 @@ class GarmentMeasurements(SkinnedModel):
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
 
         packed_pose = pose_utils.pack_pose(
             xp,
@@ -213,14 +207,10 @@ class GarmentMeasurements(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
             batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
 
         pose = self.prepare_pose(
             body_pose,

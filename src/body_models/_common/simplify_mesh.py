@@ -12,7 +12,10 @@ def simplify_mesh(
     target_faces: int,
 ) -> tuple[Float[np.ndarray, "V2 3"], Int[np.ndarray, "F2 3"], Int[np.ndarray, "V2"]]:
     """Simplify mesh using quadric decimation."""
-    import pyfqmr
+    try:
+        import pyfqmr
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Install body-models[simplify] to use simplify < 1.0.") from exc
     from scipy.spatial import KDTree
 
     simplifier = pyfqmr.Simplify()

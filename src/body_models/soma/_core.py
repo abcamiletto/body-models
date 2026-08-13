@@ -14,7 +14,7 @@ from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
 
 if TYPE_CHECKING:
-    from body_models.soma._io import SomaWeights
+    from body_models.soma._schema import SomaWeights
 
 Array = Any
 BindPoseMode = Literal["fit", "fit_detached", "canonical"]
@@ -696,7 +696,7 @@ def _align_vectors(
     source: Float[Array, "B N 3"],
 ) -> Float[Array, "B 3 3"]:
     if target.shape[-2] == 1:
-        return _rotation_between_vectors(xp, target[..., 0, :], source[..., 0, :])
+        return common.rotation_between_vectors(source[..., 0, :], target[..., 0, :], xp=xp)
 
     covariance = xp.einsum("...ni,...nj->...ij", target, source)
     return _kabsch(xp, covariance)
@@ -709,40 +709,6 @@ def _kabsch(xp, H: Float[Array, "B 3 3"]) -> Float[Array, "B 3 3"]:
     D = common.eye_as(H, batch_dims=H.shape[:-2], xp=xp)
     D = common.at_set(D, (..., 2, 2), det_sign, xp=xp)
     return U @ D @ Vh
-
-
-def _rotation_between_vectors(
-    xp,
-    target: Float[Array, "B 3"],
-    source: Float[Array, "B 3"],
-) -> Float[Array, "B 3 3"]:
-    target_norm = xp.linalg.vector_norm(target, axis=-1, keepdims=True)
-    source_norm = xp.linalg.vector_norm(source, axis=-1, keepdims=True)
-    target_unit = target / xp.where(target_norm > 1e-8, target_norm, xp.ones_like(target_norm))
-    source_unit = source / xp.where(source_norm > 1e-8, source_norm, xp.ones_like(source_norm))
-
-    dot = xp.sum(target_unit * source_unit, axis=-1, keepdims=True)
-    dot = xp.clip(dot, -1.0, 1.0)
-    cross = xp.linalg.cross(source_unit, target_unit)
-    cross_norm = xp.linalg.vector_norm(cross, axis=-1, keepdims=True)
-    axis = cross / xp.where(cross_norm > 1e-8, cross_norm, xp.ones_like(cross_norm))
-
-    antiparallel = dot[..., 0] < -1.0 + 1e-6
-    basis = common.eye_as(target, batch_dims=target.shape[:-1], xp=xp)
-    x_vec = basis[..., 0, :]
-    y_vec = basis[..., 1, :]
-    w = xp.where(xp.abs(source_unit[..., 0:1]) > 0.6, y_vec, x_vec)
-    antiparallel_axis = xp.linalg.cross(source_unit, w)
-    antiparallel_axis_norm = xp.linalg.vector_norm(antiparallel_axis, axis=-1, keepdims=True)
-    fallback_norm = xp.ones_like(antiparallel_axis_norm)
-    antiparallel_axis_norm = xp.where(antiparallel_axis_norm > 1e-8, antiparallel_axis_norm, fallback_norm)
-    antiparallel_axis = antiparallel_axis / antiparallel_axis_norm
-    axis = xp.where(antiparallel[..., None], antiparallel_axis, axis)
-
-    angle = xp.atan2(cross_norm[..., 0], dot[..., 0])
-    pi = xp.asarray(3.141592653589793, dtype=target.dtype)
-    angle = xp.where(antiparallel, pi, angle)
-    return SO3.conversions.from_axis_angle_to_rotmat(angle[..., None] * axis, xp=xp)
 
 
 def _det3(M: Float[Array, "B 3 3"]) -> Float[Array, "B"]:

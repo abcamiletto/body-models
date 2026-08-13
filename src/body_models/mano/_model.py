@@ -104,14 +104,10 @@ class MANO(SmplFamilyModel):
         vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed hand vertices."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
             batch_shape = hand_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            identity = self.prepare_identity(shape)
+            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
 
         pose = self.prepare_pose(hand_pose, wrist_rotation=wrist_rotation, identity=identity)
         return self._deform_vertices(
@@ -134,14 +130,11 @@ class MANO(SmplFamilyModel):
         joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 16 4 4"]:
         """Compute posed hand joint transforms."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
             batch_shape = hand_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape)
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
+            skeleton_identity = self._prepare_skeleton_identity(*resolved)
         else:
             skeleton_identity = identity
 
@@ -173,21 +166,18 @@ class MANO(SmplFamilyModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape)
         if identity is not None:
             pose = self.prepare_pose(hand_pose, wrist_rotation=wrist_rotation, identity=identity)
             return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
-        if shape is None:
-            raise ValueError("shape is required when identity is not provided")
 
         batch_shape = hand_pose.shape[: -(self._num_rot_dims + 1)]
-        shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
-        skeleton_identity = self._prepare_skeleton_identity(shape)
+        resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
+        skeleton_identity = self._prepare_skeleton_identity(*resolved)
         pose = self.prepare_pose(hand_pose, wrist_rotation=wrist_rotation, identity=skeleton_identity)
         return self._deform_linear_points(
             point_regressor,
-            (shape,),
+            resolved,
             pose,
             global_rotation,
             global_translation,

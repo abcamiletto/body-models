@@ -26,12 +26,9 @@ from body_models.soma import _core as core
 from body_models.soma import _identities as identities
 from body_models.soma import _pose as pose_utils
 from body_models.soma._constants import SOMA_BODY_PRESETS, SOMA_HAND_PRESETS, SOMA_JOINTS
-from body_models.soma._io import (
-    MODEL_TYPE_SPECS,
-    SOMA_LODS,
-    load_identity_transfer_data,
-    load_model_data_for_lod,
-)
+from body_models.soma._derive import load_identity_transfer_data
+from body_models.soma._io import load_model_data_for_lod
+from body_models.soma._schema import MODEL_TYPE_SPECS, SOMA_LODS
 
 Array = Any
 PathLike = Path | str
@@ -202,14 +199,12 @@ class SOMA(SkinnedModel):
         """Compute posed mesh vertices in meters."""
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
             if scale_params is not None:
                 scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            identity = self.prepare_identity(shape, scale_params=scale_params)
+            identity = self.prepare_identity(*resolved, scale_params=scale_params)
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
@@ -242,18 +237,15 @@ class SOMA(SkinnedModel):
         """Compute posed public-joint transforms in meters."""
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
             if scale_params is not None:
                 scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(shape, scale_params=scale_params)
+            skeleton_identity = self._prepare_skeleton_identity(*resolved, scale_params=scale_params)
         else:
             skeleton_identity = identity
 
-        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
@@ -293,14 +285,12 @@ class SOMA(SkinnedModel):
         """Compute positions defined by a prepared vertex mapping."""
         xp = self._runtime.xp
         self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
+        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
         if identity is None:
-            if shape is None:
-                raise ValueError("shape is required when identity is not provided")
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            shape = xp.broadcast_to(shape, (*batch_shape, shape.shape[-1]))
+            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
             if scale_params is not None:
                 scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            identity = self.prepare_identity(shape, scale_params=scale_params)
+            identity = self.prepare_identity(*resolved, scale_params=scale_params)
 
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)

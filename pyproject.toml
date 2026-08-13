@@ -6,6 +6,8 @@ readme = "README.md"
 authors = [
     { name = "Andrea Boscolo Camiletto", email = "abcamiletto@gmail.com" }
 ]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "array-api-compat>=1.14.0",
@@ -15,7 +17,6 @@ dependencies = [
     "numpy>=2.0.0",
     "platformdirs>=4.6",
     "ptloader==0.3.0",
-    "pyfqmr>=0.3.0",
     "scipy>=1.13.0",
     "trimesh>=4.0.0",
     "typer>=0.9.0",
@@ -26,14 +27,16 @@ body-models = "body_models._cli:main"
 
 [project.optional-dependencies]
 torch = [
-    "torch>=2.3.0",
+    "torch>=2.5.0",
 ]
 jax = [
     "jax>=0.4.33",
-    "flax>=0.10.0",
 ]
 warp = [
     "warp-lang>=1.12.0",
+]
+simplify = [
+    "pyfqmr>=0.3.0",
 ]
 
 [build-system]
@@ -46,10 +49,10 @@ dev = [
     "ruff>=0.16.0",
     "ty>=0.0.1a13",
     # Include optional runtimes for type checking
-    "torch>=2.3.0",
+    "torch>=2.5.0",
     "jax>=0.4.33",
-    "flax>=0.10.0",
     "warp-lang>=1.12.0",
+    "pyfqmr>=0.3.0",
     "py-soma-x>=0.2.1",
     "anny>=0.3.1",
     "smplx>=0.1.28",
@@ -98,6 +101,7 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 markers = [
     "fast: tests included in pull request CI",
     "slow: exhaustive or compiler-heavy tests excluded from fast CI",
