@@ -84,5 +84,6 @@ uv run ty check
 
 ## License
 
-See the documentation and upstream model projects for model-specific license
-terms.
+The code is licensed under the Apache License 2.0 (see `LICENSE`). Model assets
+are licensed separately by their upstream projects — see the documentation and
+upstream model pages for model-specific terms.
