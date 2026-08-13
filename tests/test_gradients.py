@@ -2,6 +2,7 @@ import model_cases
 import numpy as np
 import pytest
 
+from body_models._rotations import VALID_ROTATION_TYPES
 from body_models._runtime import TorchRuntime
 
 
@@ -166,6 +167,100 @@ def test_triton_skinning_gradients_match_dense_under_compile() -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize(
+    ("num_joints", "batch_size", "multiple_roots"),
+    [(8, 2, True), (163, 129, False)],
+)
+def test_triton_kinematics_matches_torch_under_compile(num_joints, batch_size, multiple_roots) -> None:
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required")
+
+    from body_models._common import kinematics, triton_kinematics
+
+    torch.manual_seed(7)
+    parents = [0] + [(joint - 1) // 2 for joint in range(1, num_joints)]
+    if multiple_roots:
+        parents[num_joints // 2] = -1
+    tree = kinematics.KinematicTree.from_parents(parents)
+    triton_tree = triton_kinematics.prepare_kinematic_tree(tree).cuda()
+    linear = torch.eye(3, device="cuda").expand(batch_size, num_joints, 3, 3)
+    linear = linear + 0.01 * torch.randn_like(linear)
+    translation = torch.randn(batch_size, num_joints, 3, 1, device="cuda")
+    upper = torch.cat((linear, translation), dim=-1).requires_grad_()
+    reference_upper = upper.detach().double().cpu().requires_grad_()
+
+    def affine(value):
+        bottom = torch.zeros(*value.shape[:-2], 1, 4, dtype=value.dtype, device=value.device)
+        bottom[..., 0, 3] = 1
+        return torch.cat((value, bottom), dim=-2)
+
+    expected = kinematics.compose_kinematic_fronts(affine(reference_upper), tree.fronts, xp=torch)
+    forward = torch.compile(
+        lambda value: triton_kinematics.compose_parent_tree(affine(value), triton_tree.parent_indices),
+        fullgraph=True,
+    )
+    actual = forward(upper)
+    grad_output = torch.randn_like(actual)
+    actual_gradient = torch.autograd.grad(actual, upper, grad_output)[0]
+    expected_gradient = torch.autograd.grad(expected, reference_upper, grad_output.double().cpu())[0]
+
+    torch.testing.assert_close(actual.double().cpu(), expected, rtol=1e-5, atol=2e-5)
+    torch.testing.assert_close(actual_gradient.double().cpu(), expected_gradient, rtol=1e-5, atol=2e-5)
+
+
+@pytest.mark.parametrize(
+    ("device", "dtype_name", "error"),
+    [
+        ("cpu", "float32", "CUDA"),
+        ("cpu", "float64", "CUDA"),
+        ("cuda", "float64", "float32"),
+    ],
+)
+def test_triton_model_rejects_unsupported_kinematics(device, dtype_name, error) -> None:
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("triton")
+    from body_models.smpl.torch import SMPL
+
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("CUDA is required")
+    dtype = getattr(torch, dtype_name)
+    model = SMPL(gender="neutral", kernel_backend="triton").to(device=device, dtype=dtype)
+    params = model.get_rest_pose(batch_dims=(2,), dtype=dtype)
+
+    with pytest.raises(TypeError, match=error):
+        model.forward_skeleton(**params)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("rotation_type", VALID_ROTATION_TYPES)
+def test_triton_kinematics_supports_all_rotation_representations(rotation_type) -> None:
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required")
+
+    from body_models.smpl.torch import SMPL
+
+    torch.manual_seed(11)
+    reference = SMPL(gender="neutral", rotation_type=rotation_type).cuda()
+    accelerated = SMPL(gender="neutral", rotation_type=rotation_type, kernel_backend="triton").cuda()
+    params = reference.get_rest_pose(batch_dims=(2,), dtype=torch.float32)
+    params = {key: value + 0.02 * torch.randn_like(value) for key, value in params.items()}
+
+    def evaluate(model):
+        inputs = {key: value.detach().clone().requires_grad_() for key, value in params.items()}
+        output = model.forward_skeleton(**inputs)
+        gradients = torch.autograd.grad(output.square().mean(), tuple(inputs.values()))
+        return output, gradients
+
+    expected_output, expected_gradients = evaluate(reference)
+    actual_output, actual_gradients = evaluate(accelerated)
+    torch.testing.assert_close(actual_output, expected_output, rtol=2e-4, atol=2e-4)
+    for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
+        torch.testing.assert_close(actual, expected, rtol=2e-3, atol=2e-4)
+
+
+@pytest.mark.slow
 def test_soma_warp_forward_and_gradients_match_torch() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("warp")
@@ -219,17 +314,29 @@ def test_triton_model_gradients_match_default(
         for key, value in params.items()
     }
 
-    def forward_and_grad(model, forward=None):
+    def forward_and_grad(model, method, forward=None):
         model_params = {key: value.detach().clone().requires_grad_() for key, value in params.items()}
-        forward = model.forward_vertices if forward is None else forward
-        vertices = forward(**model_params, vertex_indices=vertex_indices)
-        gradients = torch.autograd.grad(vertices.square().sum(), tuple(model_params.values()))
-        return vertices, gradients
+        if method == "vertices":
+            forward = model.forward_vertices if forward is None else forward
+            output = forward(**model_params, vertex_indices=vertex_indices)
+        else:
+            output = model.forward_skeleton(**model_params)
+        gradients = torch.autograd.grad(
+            output.square().sum(),
+            tuple(model_params.values()),
+            allow_unused=True,
+        )
+        return output, gradients
 
-    expected_vertices, expected_gradients = forward_and_grad(default_model)
     model = torch_class(**kwargs, kernel_backend="triton").cuda()
     compiled_forward = torch.compile(model.forward_vertices, backend="eager")
-    actual_vertices, actual_gradients = forward_and_grad(model, forward=compiled_forward)
-    torch.testing.assert_close(actual_vertices, expected_vertices, rtol=1e-4, atol=1e-4)
-    for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
-        torch.testing.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+    for method in ("skeleton", "vertices"):
+        expected_output, expected_gradients = forward_and_grad(default_model, method)
+        forward = compiled_forward if method == "vertices" else None
+        actual_output, actual_gradients = forward_and_grad(model, method, forward=forward)
+        torch.testing.assert_close(actual_output, expected_output, rtol=1e-4, atol=1e-4)
+        for actual, expected in zip(actual_gradients, expected_gradients, strict=True):
+            if actual is None or expected is None:
+                assert actual is expected
+            else:
+                torch.testing.assert_close(actual, expected, rtol=1e-3, atol=1e-3)

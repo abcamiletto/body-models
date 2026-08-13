@@ -53,6 +53,15 @@ def torch_state(value: Any, *, kernel_backend: KernelBackend = "torch") -> Any:
     from body_models._common import skinning, sparse
     from body_models._torch_state import StateMapping, StateSequence
 
+    if isinstance(value, kinematics.KinematicTree) and kernel_backend == "triton":
+        install_error = "Install body-models[triton] to use kernel_backend='triton'."
+        if not hasattr(torch.library, "triton_op"):
+            raise ModuleNotFoundError(install_error)
+        try:
+            from body_models._common import triton_kinematics
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(install_error) from exc
+        return triton_kinematics.prepare_kinematic_tree(value)
     if isinstance(value, _STATIC_LEAF_TYPES):
         return value
     if isinstance(value, skinning.CompactSkinning):

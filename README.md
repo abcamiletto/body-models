@@ -13,7 +13,7 @@ Documentation: https://abcamiletto.github.io/body-models/
 - Prepared identities for repeated poses with fixed shape/expression parameters
 - Mesh simplification and vertex-subset forwards for supported mesh models
 - Multiple rotation representations for supported pose models
-- Triton skinning with an analytic backward, plus optional Warp skinning
+- Triton kinematics and skinning with analytic backward passes, plus optional Warp skinning
 
 ## Install
 

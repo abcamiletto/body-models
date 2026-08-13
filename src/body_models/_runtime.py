@@ -177,6 +177,19 @@ class TorchRuntime(ArrayRuntime):
     def to_numpy(self, value: Num[Array, "..."]) -> Num[np.ndarray, "..."]:
         return value.detach().cpu().numpy()
 
+    def _compose_kinematic_tree(
+        self,
+        local_transforms: Float[Array, "*batch J 4 4"],
+        tree: common.KinematicTree,
+    ) -> Float[Array, "*batch J 4 4"]:
+        if self.kernel_backend == "triton":
+            from body_models._common import triton_kinematics
+
+            if not isinstance(tree, triton_kinematics.TritonKinematicTree):
+                raise TypeError("Triton kinematic tree must be materialized before use")
+            return triton_kinematics.compose_parent_tree(local_transforms, tree.parent_indices)
+        return super()._compose_kinematic_tree(local_transforms, tree)
+
     def _skin_vertices(
         self,
         vertices: Float[Array, "*batch V 3"],
