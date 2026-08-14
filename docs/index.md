@@ -113,12 +113,18 @@ index order. The `Joint` enum names anatomical joints shared across models;
 `common_joints` maps those names to the native skeleton, and
 `joint_index(Joint.LEFT_WRIST)` resolves the corresponding native index.
 
-Fixed public parameter dimensions use `NUM_*` class constants:
-`NUM_JOINTS`, `NUM_BODY_JOINTS`, `NUM_HAND_JOINTS`, `NUM_HEAD_JOINTS`,
+Fixed public dimensions use `NUM_*` class constants:
+`NUM_JOINTS`, `NUM_BODY_CONTROLS`, `NUM_HAND_CONTROLS`, `NUM_HEAD_CONTROLS`,
 `NUM_SHAPE_COEFFS`, `NUM_EXPR_COEFFS`, and, for compact pose controls,
-`NUM_POSE_COEFFS` and `NUM_*_POSE_COEFFS`. A class defines only the constants
-that apply to that model. A dimension fixed by the supported checkpoint schema
-is a class constant even when the checkpoint is loaded from a custom path.
+`NUM_POSE_COEFFS` and `NUM_*_POSE_COEFFS`. `NUM_JOINTS` sizes the skeleton
+returned by `forward_skeleton`, while the `NUM_*_CONTROLS` constants size the
+leading axis of their pose argument: one control is one entry along that axis
+(a rotation for the rotational parameterizations), and the count need not match
+the skeleton. SMPL, for example, has 24 joints but 23 `body_pose` controls
+because the root rotation is a separate parameter. A class defines only the
+constants that apply to that model. A dimension fixed by the supported
+checkpoint schema is a class constant even when the checkpoint is loaded from a
+custom path.
 Dimensions selected by a constructor option remain instance properties; for
 example, SOMA exposes `num_shape_coeffs` because it depends on `model_type`.
 

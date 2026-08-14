@@ -34,10 +34,10 @@ class SMPL(SmplFamilyModel):
     """Skinned human body model with shape and pose controls."""
 
     NUM_JOINTS = 24
-    NUM_BODY_JOINTS = 23
+    NUM_BODY_CONTROLS = 23
     NUM_SHAPE_COEFFS = 10
     _COMMON_JOINTS = SMPL_JOINTS
-    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("pelvis_rotation", 1), ("body_pose", NUM_BODY_JOINTS))
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("pelvis_rotation", 1), ("body_pose", NUM_BODY_CONTROLS))
 
     def __init__(
         self,
@@ -77,7 +77,7 @@ class SMPL(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_CONTROLS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),

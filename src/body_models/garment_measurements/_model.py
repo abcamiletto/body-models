@@ -41,9 +41,9 @@ class GarmentMeasurements(SkinnedModel):
 
     has_hands = True
     NUM_JOINTS = 59
-    NUM_BODY_JOINTS = 25
-    NUM_HAND_JOINTS = 30
-    NUM_HEAD_JOINTS = 3
+    NUM_BODY_CONTROLS = 25
+    NUM_HAND_CONTROLS = 30
+    NUM_HEAD_CONTROLS = 3
     NUM_SHAPE_COEFFS = 15
     _COMMON_JOINTS = GARMENT_JOINTS
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
@@ -76,9 +76,9 @@ class GarmentMeasurements(SkinnedModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
-            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_CONTROLS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_CONTROLS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),

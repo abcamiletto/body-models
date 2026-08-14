@@ -37,9 +37,9 @@ class MANO(SmplFamilyModel):
 
     has_hands = True
     NUM_JOINTS = 16
-    NUM_HAND_JOINTS = 15
+    NUM_HAND_CONTROLS = 15
     NUM_SHAPE_COEFFS = 10
-    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("wrist_rotation", 1), ("hand_pose", NUM_HAND_JOINTS))
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("wrist_rotation", 1), ("hand_pose", NUM_HAND_CONTROLS))
 
     def __init__(
         self,
@@ -77,7 +77,7 @@ class MANO(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
             "wrist_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -252,7 +252,7 @@ class MANO(SmplFamilyModel):
         hands: HandPreset,
     ) -> Float[Array, "*batch 15 N"]:
         axis_angle = self._runtime.asarray(MANO_HAND_PRESETS[self.side][hands], like=like).reshape(
-            self.NUM_HAND_JOINTS,
+            self.NUM_HAND_CONTROLS,
             3,
         )
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
