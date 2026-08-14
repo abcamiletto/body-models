@@ -185,7 +185,6 @@ class SKEL(SkinnedModel):
             skeleton,
             global_rotation,
             global_translation,
-            joint_indices=None,
             xp=xp,
         )
 

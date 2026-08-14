@@ -89,14 +89,14 @@ def prepare_skeleton(
     selection = None
     if joint_indices is not None:
         selection = tree.select(joint_indices)
-        joints = xp.asarray(selection.joints, dtype=xp.int32)
-        rest_skeleton_transforms = rest_skeleton_transforms[..., joints, :, :]
-        if not selection.joints:
+        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        rest_skeleton_transforms = rest_skeleton_transforms[..., cover_indices, :, :]
+        if not selection.cover_indices:
             return rest_skeleton_transforms
         if rotation_ndim(rotation_type) > 1:
-            pose = pose[..., joints, :, :]
+            pose = pose[..., cover_indices, :, :]
         else:
-            pose = pose[..., joints, :]
+            pose = pose[..., cover_indices, :]
         tree = selection.tree
     pose_transforms = _pose_to_transform(xp, pose, rotation_type)
     skeleton, _ = _forward_core(
@@ -107,7 +107,8 @@ def prepare_skeleton(
     )
     if selection is None:
         return skeleton
-    return skeleton[..., xp.asarray(selection.order, dtype=xp.int32), :, :]
+    output_indices = xp.asarray(selection.output_indices, dtype=xp.int32)
+    return skeleton[..., output_indices, :, :]
 
 
 def _forward_core(

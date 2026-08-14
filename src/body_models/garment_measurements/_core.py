@@ -134,13 +134,13 @@ def _forward_skeleton(
     selection = None
     if joint_indices is not None:
         selection = tree.select(joint_indices)
-        joints = xp.asarray(selection.joints, dtype=xp.int32)
+        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
         if rotation_ndim(rotation_type) > 1:
-            pose = pose[..., joints, :, :]
+            pose = pose[..., cover_indices, :, :]
         else:
-            pose = pose[..., joints, :]
-        bind_quats = bind_quats[..., joints, :]
-        local_bind_translations = local_bind_translations[..., joints, :]
+            pose = pose[..., cover_indices, :]
+        bind_quats = bind_quats[..., cover_indices, :]
+        local_bind_translations = local_bind_translations[..., cover_indices, :]
         tree = selection.tree
     pose_quats = SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
     posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
@@ -149,7 +149,8 @@ def _forward_skeleton(
     skeleton = runtime._compose_kinematic_tree(local_transforms, tree)
     if selection is None:
         return skeleton
-    return skeleton[..., xp.asarray(selection.order, dtype=xp.int32), :, :]
+    output_indices = xp.asarray(selection.output_indices, dtype=xp.int32)
+    return skeleton[..., output_indices, :, :]
 
 
 def _local_translations_from_positions(

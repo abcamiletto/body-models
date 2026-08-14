@@ -70,11 +70,13 @@ def test_kinematic_tree_select_prunes_to_ancestor_chains() -> None:
 
     selection = tree.select([22, 5])
 
-    assert selection.joints == (0, 2, 3, 5, 6, 9, 13, 16, 18, 20, 22)
-    assert selection.order == (10, 3)
+    assert selection.cover_indices == (0, 2, 3, 5, 6, 9, 13, 16, 18, 20, 22)
+    assert selection.output_indices == (10, 3)
     assert selection.tree.parents == (-1, 0, 0, 1, 2, 4, 5, 6, 7, 8, 9)
-    assert tree.select([0]).joints == (0,)
-    assert tree.select([]).joints == ()
+    assert tree.select([0]).cover_indices == (0,)
+    empty = tree.select([])
+    assert empty.cover_indices == ()
+    assert empty.tree.roots == ()
     with pytest.raises(IndexError, match="joint_indices"):
         tree.select([len(SMPL_PARENTS)])
 

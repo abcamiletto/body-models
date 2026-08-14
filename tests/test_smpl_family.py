@@ -20,7 +20,7 @@ def test_pose_blocks_compose_across_rotation_representations(rotation_type) -> N
     encoded_root = SO3.convert(root, src="axis_angle", dst=rotation_type, xp=np)
     encoded_body = SO3.convert(body, src="axis_angle", dst=rotation_type, xp=np)
     actual = family.assemble_pose_matrices(
-        [(encoded_body, rotation_type), (hands, "axis_angle")],
+        [family.PoseBlock(encoded_body, rotation_type), family.PoseBlock(hands, "axis_angle")],
         encoded_root,
         rotation_type,
         xp=np,
@@ -39,8 +39,8 @@ def test_pose_blocks_reject_different_batch_shapes() -> None:
     with pytest.raises(ValueError, match="same batch shape"):
         family.assemble_pose_matrices(
             [
-                (np.zeros((2, 3, 3), dtype=np.float32), "axis_angle"),
-                (np.zeros((3, 2, 3), dtype=np.float32), "axis_angle"),
+                family.PoseBlock(np.zeros((2, 3, 3), dtype=np.float32), "axis_angle"),
+                family.PoseBlock(np.zeros((3, 2, 3), dtype=np.float32), "axis_angle"),
             ],
             None,
             "axis_angle",

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, TypeAlias
+from dataclasses import dataclass
+from typing import Any
 
 from jaxtyping import Float, Int
 from nanomanifold import SO3
@@ -14,7 +15,15 @@ from body_models._common import deformation, kinematics, point_regression, skinn
 from body_models._rotations import RotationType, rotation_ndim
 
 Array = Any
-RotationBlock: TypeAlias = tuple[Float[Array, "..."], RotationType]
+
+
+@dataclass(frozen=True)
+class PoseBlock:
+    """One contiguous run of joint rotations and its optional axis-angle mean."""
+
+    pose: Float[Array, "..."]
+    rotation_type: RotationType
+    axis_angle_mean: Float[Array, "..."] | None = None
 
 
 class SmplFamilyModel(SkinnedModel):
@@ -124,35 +133,58 @@ class SmplFamilyModel(SkinnedModel):
         skeleton: Float[Array, "*batch J 4 4"],
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
         global_translation: Float[Array, "*batch 3"] | None,
-        joint_indices: Sequence[int] | None,
     ) -> Float[Array, "*batch selected 4 4"]:
         return skinning.transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
-            joint_indices,
             xp=self._runtime.xp,
         )
 
 
 def assemble_pose_matrices(
-    blocks: Sequence[RotationBlock],
+    blocks: Sequence[PoseBlock],
     root_rotation: Float[Array, "..."] | None,
     rotation_type: RotationType,
     *,
     xp: Any,
+    pose_positions: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 3 3"]:
     """Convert ordered pose blocks to matrices and prepend the root rotation."""
-    first_pose, first_type = blocks[0]
-    first_pose_ndim = rotation_ndim(first_type) + 1
-    batch_shape = tuple(first_pose.shape[:-first_pose_ndim])
+    first = blocks[0]
+    first_pose_ndim = rotation_ndim(first.rotation_type) + 1
+    batch_shape = tuple(first.pose.shape[:-first_pose_ndim])
 
     matrices = []
-    for pose, source_type in blocks:
-        pose_ndim = rotation_ndim(source_type) + 1
-        if tuple(pose.shape[:-pose_ndim]) != batch_shape:
+    offset = 0
+    for block in blocks:
+        pose_ndim = rotation_ndim(block.rotation_type) + 1
+        if tuple(block.pose.shape[:-pose_ndim]) != batch_shape:
             raise ValueError("pose blocks must have the same batch shape")
+
+        pose = block.pose
+        mean = block.axis_angle_mean
+        num_joints = pose.shape[-pose_ndim]
+        if pose_positions is not None:
+            block_positions = tuple(
+                position - offset for position in pose_positions if offset <= position < offset + num_joints
+            )
+            selector = xp.asarray(block_positions, dtype=xp.int32)
+            if rotation_ndim(block.rotation_type) > 1:
+                pose = pose[..., selector, :, :]
+            else:
+                pose = pose[..., selector, :]
+            if mean is not None:
+                mean = mean.reshape(-1, 3)[selector]
+        offset += num_joints
+
+        source_type = block.rotation_type
+        if mean is not None:
+            if source_type != "axis_angle":
+                pose = SO3.convert(pose, src=source_type, dst="axis_angle", xp=xp)
+            pose = pose + mean.reshape(-1, 3)
+            source_type = "axis_angle"
         matrices.append(SO3.convert(pose, src=source_type, dst="rotmat", xp=xp))
 
     if root_rotation is None:
@@ -172,73 +204,37 @@ def assemble_pose_matrices(
     return xp.concat([root_matrices, *matrices], axis=-3)
 
 
-def add_axis_angle_mean(
-    pose: Float[Array, "..."],
-    mean: Float[Array, "..."],
-    rotation_type: RotationType,
-    *,
-    xp: Any,
-) -> Float[Array, "*batch J 3"]:
-    """Add a model's axis-angle mean to an encoded rotation block."""
-    if rotation_type != "axis_angle":
-        pose = SO3.convert(pose, src=rotation_type, dst="axis_angle", xp=xp)
-    return pose + mean.reshape(-1, 3)
-
-
 def forward_skeleton(
     runtime: runtime_ops.ArrayRuntime,
     tree: kinematics.KinematicTree,
     pose_matrices: Float[Array, "*batch J 3 3"],
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
-    subtree: kinematics.JointSelection | None = None,
+    selection: kinematics.JointSelection | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
-    """Broadcast identity state and run family forward kinematics.
-
-    With ``subtree``, ``pose_matrices`` must already be compressed to
-    ``subtree.joints``; forward kinematics then runs only on the chains from
-    the roots to those joints and returns them in ``subtree.order``.
-    """
+    """Broadcast identity state and run family forward kinematics."""
     xp = runtime.xp
     batch_shape = tuple(pose_matrices.shape[:-3])
     offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
-    if subtree is not None:
-        joints = xp.asarray(subtree.joints, dtype=xp.int32)
-        offsets = offsets[..., joints, :]
-        tree = subtree.tree
+    if selection is not None:
+        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        offsets = offsets[..., cover_indices, :]
+        tree = selection.tree
     local_transforms = kinematics.affine_transforms(pose_matrices, offsets, xp=xp)
     world_transforms = runtime._compose_kinematic_tree(local_transforms, tree)
-    if subtree is None:
+    if selection is None:
         return world_transforms
-    return world_transforms[..., xp.asarray(subtree.order, dtype=xp.int32), :, :]
+    output_indices = xp.asarray(selection.output_indices, dtype=xp.int32)
+    return world_transforms[..., output_indices, :, :]
 
 
-def pose_joint_positions(
+def select_pose_joints(
     tree: kinematics.KinematicTree,
     joint_indices: Sequence[int],
 ) -> tuple[kinematics.JointSelection, tuple[int, ...]]:
-    """Resolve a joint selection to its chains and pose-block positions.
-
-    Positions index the concatenated pose blocks, which drive joints after
-    the root.
-    """
+    """Resolve output joints to their ancestor cover and non-root pose positions."""
     selection = tree.select(joint_indices)
-    return selection, tuple(joint - 1 for joint in selection.joints if joint > 0)
-
-
-def take_pose_joints(
-    pose: Float[Array, "... C N"] | Float[Array, "... C 3 3"],
-    positions: Sequence[int] | None,
-    rotation_type: RotationType,
-    *,
-    xp: Any,
-) -> Float[Array, "... selected N"] | Float[Array, "... selected 3 3"]:
-    """Slice one per-joint pose block down to ``positions``."""
-    if positions is None:
-        return pose
-    selector = xp.asarray(positions, dtype=xp.int32)
-    if rotation_ndim(rotation_type) > 1:
-        return pose[..., selector, :, :]
-    return pose[..., selector, :]
+    pose_positions = tuple(joint - 1 for joint in selection.cover_indices if joint > 0)
+    return selection, pose_positions
 
 
 def prepare_pose(
@@ -406,8 +402,8 @@ def _validate_coefficients(
 
 
 __all__ = [
+    "PoseBlock",
     "SmplFamilyModel",
-    "add_axis_angle_mean",
     "assemble_pose_matrices",
     "forward_skeleton",
     "prepare_pose",
@@ -415,4 +411,5 @@ __all__ = [
     "prepare_shape_expression_skeleton_identity",
     "prepare_shape_identity",
     "prepare_shape_skeleton_identity",
+    "select_pose_joints",
 ]

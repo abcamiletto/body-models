@@ -25,14 +25,14 @@ def _pose_matrices(
     rotation_type: RotationType,
     *,
     xp: Any,
-    positions: Sequence[int] | None = None,
+    pose_positions: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 5 3 3"]:
-    head_pose = family.take_pose_joints(head_pose, positions, rotation_type, xp=xp)
     return family.assemble_pose_matrices(
-        [(head_pose, rotation_type)],
+        [family.PoseBlock(head_pose, rotation_type)],
         head_rotation,
         rotation_type,
         xp=xp,
+        pose_positions=pose_positions,
     )
 
 
@@ -73,22 +73,22 @@ def prepare_skeleton(
     joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 5 4 4"]:
     """Prepare only posed FLAME joint transforms."""
-    subtree = positions = None
+    selection = pose_positions = None
     if joint_indices is not None:
-        subtree, positions = family.pose_joint_positions(tree, joint_indices)
+        selection, pose_positions = family.select_pose_joints(tree, joint_indices)
     pose_matrices = _pose_matrices(
         head_pose,
         head_rotation,
         rotation_type,
         xp=runtime.xp,
-        positions=positions,
+        pose_positions=pose_positions,
     )
     return family.forward_skeleton(
         runtime,
         tree,
         pose_matrices,
         local_joint_offsets,
-        subtree=subtree,
+        selection=selection,
     )
 
 

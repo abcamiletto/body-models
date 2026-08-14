@@ -27,7 +27,7 @@ class KinematicTree:
     @property
     def roots(self) -> tuple[int, ...]:
         """Root joint indices."""
-        return self.fronts[0][0]
+        return self.fronts[0][0] if self.fronts else ()
 
     @classmethod
     def from_parents(cls, parents: Int[np.ndarray, "J"] | Sequence[int]) -> KinematicTree:
@@ -57,23 +57,22 @@ class KinematicTree:
         cover_parents = tuple(
             -1 if (parent := self.parents[joint]) < 0 or parent == joint else positions[parent] for joint in joints
         )
-        tree = KinematicTree(cover_parents, tuple(_compute_kinematic_fronts(cover_parents)))
-        return JointSelection(tree, joints, tuple(positions[joint] for joint in selected))
+        tree = KinematicTree.from_parents(cover_parents)
+        output_indices = tuple(positions[joint] for joint in selected)
+        return JointSelection(tree, joints, output_indices)
 
 
 @dataclass(frozen=True)
 class JointSelection:
     """Ancestor-closed joint cover with a reindexed kinematic tree.
 
-    ``joints`` lists the original indices of the selected joints and every
-    ancestor, in sorted order; ``tree`` is that cover with compressed parent
-    indices; ``order`` holds the positions of the requested joints on the
-    compressed joint axis.
+    ``cover_indices`` lists the original indices of the selected joints and every
+    ancestor. ``output_indices`` gathers the requested joints from the cover.
     """
 
     tree: KinematicTree
-    joints: tuple[int, ...]
-    order: tuple[int, ...]
+    cover_indices: tuple[int, ...]
+    output_indices: tuple[int, ...]
 
 
 def affine_transforms(

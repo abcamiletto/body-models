@@ -191,7 +191,6 @@ class GarmentMeasurements(SkinnedModel):
             global_rotation,
             global_translation,
             self.rotation_type,
-            None,
             xp=xp,
         )
 
