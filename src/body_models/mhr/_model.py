@@ -49,6 +49,7 @@ class MHR(SkinnedModel):
     NUM_HAND_POSE_COEFFS = MHR_HAND_POSE_COEFFS
     NUM_POSE_COEFFS = NUM_BODY_POSE_COEFFS + NUM_HEAD_POSE_COEFFS + NUM_HAND_POSE_COEFFS
     _COMMON_JOINTS = MHR_JOINTS
+    _SIDE_AFFIXES = ("l_", "r_")
 
     def __init__(
         self,

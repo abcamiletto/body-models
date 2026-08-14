@@ -37,6 +37,7 @@ class FLAME(SmplFamilyModel):
     NUM_SHAPE_COEFFS = 300
     NUM_EXPR_COEFFS = 100
     _COMMON_JOINTS = FLAME_JOINTS
+    _SIDE_AFFIXES = ("left_", "right_")
     _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("head_rotation", 1), ("head_pose", NUM_HEAD_CONTROLS))
 
     def __init__(
