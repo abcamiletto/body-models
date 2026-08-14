@@ -44,6 +44,7 @@ class SKEL(SkinnedModel):
     NUM_HEAD_POSE_COEFFS = pose_utils.SKEL_HEAD_POSE_COEFFS
     NUM_POSE_COEFFS = NUM_BODY_POSE_COEFFS + NUM_HEAD_POSE_COEFFS
     _COMMON_JOINTS = SKEL_JOINTS
+    _SIDE_AFFIXES = ("_l", "_r")
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
     def __init__(

@@ -46,6 +46,7 @@ class GarmentMeasurements(SkinnedModel):
     NUM_HEAD_CONTROLS = 3
     NUM_SHAPE_COEFFS = 15
     _COMMON_JOINTS = GARMENT_JOINTS
+    _SIDE_AFFIXES = ("_L", "_R")
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
     def __init__(
