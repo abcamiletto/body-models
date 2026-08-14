@@ -21,7 +21,7 @@ PREPROCESSED_FILENAME = "garment_measurements.npz"
 
 
 @dataclass(frozen=True)
-class GarmentMeasurementsWeights:
+class GarmentMeasurementsAssets:
     mean_vertices: Float[Array, "V 3"]
     components: Float[Array, "V 3 C"]
     eigenvalues: Float[Array, "C"]
@@ -69,7 +69,7 @@ def download_model(output_dir: PathLike | None = None) -> Path:
     return validate_path(output_dir)
 
 
-def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32) -> GarmentMeasurementsWeights:
+def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32) -> GarmentMeasurementsAssets:
     """Load preprocessed model data as NumPy arrays."""
     resolved_path = get_model_path(model_path)
     model_file = _find_preprocessed_file(resolved_path)
@@ -103,7 +103,7 @@ def preprocess_model(upstream_data: PathLike, output_dir: PathLike) -> Path:
     raise RuntimeError(_preprocess_message(resolved_upstream, output_dir))
 
 
-def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> GarmentMeasurementsWeights:
+def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> GarmentMeasurementsAssets:
     """Load a preprocessed dependency-free GarmentMeasurements ``.npz`` asset."""
     path = Path(model_path)
     with np.load(path, allow_pickle=False) as data:
@@ -145,7 +145,7 @@ def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> Ga
     }
     _validate_preprocessed_model(path, data_dict)
     skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
-    return GarmentMeasurementsWeights(
+    return GarmentMeasurementsAssets(
         mean_vertices=mean_vertices,
         components=components,
         eigenvalues=eigenvalues,
@@ -219,7 +219,7 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
 
 __all__ = [
     "PREPROCESSED_FILENAME",
-    "GarmentMeasurementsWeights",
+    "GarmentMeasurementsAssets",
     "download_model",
     "get_model_path",
     "load_model_data",

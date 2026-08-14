@@ -17,7 +17,7 @@ __all__ = ["load_model_data"]
 
 
 @dataclass(frozen=True)
-class FlameWeights:
+class FlameAssets:
     v_template: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     lbs_weights: Float[Array, "V 5"]
@@ -55,7 +55,7 @@ def get_model_path(model_path: PathLike | None) -> Path:
     return validate_path(model_path)
 
 
-def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
+def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameAssets:
     """Load FLAME model data from a .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
@@ -85,7 +85,7 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameWeights:
 
     lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
 
-    return FlameWeights(
+    return FlameAssets(
         v_template=v_template,
         faces=faces,
         lbs_weights=lbs_weights,

@@ -20,7 +20,7 @@ __all__ = ["load_model_data"]
 
 
 @dataclass(frozen=True)
-class ManoWeights:
+class ManoAssets:
     v_template: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     lbs_weights: Float[Array, "V 16"]
@@ -66,7 +66,7 @@ def get_model_path(model_path: PathLike | None, side: Literal["right", "left"] |
     return validate_path(resolved_path)
 
 
-def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> ManoWeights:
+def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> ManoAssets:
     """Load MANO model data from .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
@@ -101,7 +101,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
 
     lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
 
-    return ManoWeights(
+    return ManoAssets(
         v_template=v_template,
         faces=faces,
         lbs_weights=lbs_weights,

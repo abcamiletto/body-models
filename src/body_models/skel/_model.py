@@ -59,10 +59,10 @@ class SKEL(SkinnedModel):
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
 
-        weights = load_model_data(get_model_path(model_path, gender), simplify=simplify)
+        assets = load_model_data(get_model_path(model_path, gender), simplify=simplify)
         self._attach_runtime(runtime)
         self._config = SkelConfig(gender=gender)
-        self._weights = runtime._materialize(weights)
+        self._assets = runtime._materialize(assets)
 
     @property
     def gender(self) -> Literal["male", "female"]:
@@ -70,35 +70,35 @@ class SKEL(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self._weights.faces
+        return self._assets.faces
 
     @property
     def skeleton_faces(self) -> Int[Array, "Fs 3"]:
-        return self._weights.skel_faces
+        return self._assets.skel_faces
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self._weights.joint_names)
+        return list(self._assets.joint_names)
 
     @property
     def num_vertices(self) -> int:
-        return self._weights.v_template.shape[0]
+        return self._assets.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V 24"]:
-        return self._weights.skin_weights
+        return self._assets.skin_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self._weights.v_template
+        return self._assets.v_template
 
     @property
     def parents(self) -> list[int]:
-        return list(self._weights.kinematic_tree.parents)
+        return list(self._assets.kinematic_tree.parents)
 
     @property
     def _corrective_basis(self) -> CorrectiveBasis:
-        return DenseCorrectiveBasis(self._weights.posedirs)
+        return DenseCorrectiveBasis(self._assets.posedirs)
 
     @property
     def parameter_spec(self) -> dict[str, ParameterSpec]:
@@ -131,7 +131,7 @@ class SKEL(SkinnedModel):
         vertices = self._runtime._skin_vertices(
             self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
-            skinning=self._weights.compact_skinning,
+            skinning=self._assets.compact_skinning,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -164,17 +164,17 @@ class SKEL(SkinnedModel):
         packed_pose = pose_utils.pack_pose(xp, body_pose, head_pose)
         skeleton = core.prepare_skeleton(
             runtime=self._runtime,
-            all_axes=self._weights.all_axes,
-            rotation_indices=self._weights.rotation_indices,
-            apose_R=self._weights.apose_R,
-            apose_t=self._weights.apose_t,
-            per_joint_rot=self._weights.per_joint_rot,
-            child=self._weights.child,
-            fixed_orientation_joints=self._weights.fixed_orientation_joints,
-            scapula_r_axes=self._weights.scapula_r_axes,
-            scapula_l_axes=self._weights.scapula_l_axes,
-            spine_axes=self._weights.spine_axes,
-            tree=self._weights.kinematic_tree,
+            all_axes=self._assets.all_axes,
+            rotation_indices=self._assets.rotation_indices,
+            apose_R=self._assets.apose_R,
+            apose_t=self._assets.apose_t,
+            per_joint_rot=self._assets.per_joint_rot,
+            child=self._assets.child,
+            fixed_orientation_joints=self._assets.fixed_orientation_joints,
+            scapula_r_axes=self._assets.scapula_r_axes,
+            scapula_l_axes=self._assets.scapula_l_axes,
+            spine_axes=self._assets.spine_axes,
+            tree=self._assets.kinematic_tree,
             pose=packed_pose,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
             rest_joints=skeleton_identity["rest_joints"],
@@ -232,11 +232,11 @@ class SKEL(SkinnedModel):
     ) -> SkelIdentity:
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
-            self._weights.v_template,
-            self._weights.shapedirs,
-            self._weights.j_template,
-            self._weights.j_shapedirs,
-            self._weights.parent,
+            self._assets.v_template,
+            self._assets.shapedirs,
+            self._assets.j_template,
+            self._assets.j_shapedirs,
+            self._assets.parent,
             shape,
             xp=self._runtime.xp,
         )
@@ -252,18 +252,18 @@ class SKEL(SkinnedModel):
         packed_pose = pose_utils.pack_pose(self._runtime.xp, body_pose, head_pose)
         return core.prepare_pose(
             runtime=self._runtime,
-            all_axes=self._weights.all_axes,
-            rotation_indices=self._weights.rotation_indices,
-            apose_R=self._weights.apose_R,
-            apose_t=self._weights.apose_t,
-            per_joint_rot=self._weights.per_joint_rot,
-            child=self._weights.child,
-            fixed_orientation_joints=self._weights.fixed_orientation_joints,
-            scapula_r_axes=self._weights.scapula_r_axes,
-            scapula_l_axes=self._weights.scapula_l_axes,
-            spine_axes=self._weights.spine_axes,
-            tree=self._weights.kinematic_tree,
-            num_joints_smpl=self._weights.num_joints_smpl,
+            all_axes=self._assets.all_axes,
+            rotation_indices=self._assets.rotation_indices,
+            apose_R=self._assets.apose_R,
+            apose_t=self._assets.apose_t,
+            per_joint_rot=self._assets.per_joint_rot,
+            child=self._assets.child,
+            fixed_orientation_joints=self._assets.fixed_orientation_joints,
+            scapula_r_axes=self._assets.scapula_r_axes,
+            scapula_l_axes=self._assets.scapula_l_axes,
+            spine_axes=self._assets.spine_axes,
+            tree=self._assets.kinematic_tree,
+            num_joints_smpl=self._assets.num_joints_smpl,
             pose=packed_pose,
             local_joint_offsets=identity["local_joint_offsets"],
             rest_joints=identity["rest_joints"],
@@ -274,9 +274,9 @@ class SKEL(SkinnedModel):
         shape: Float[Array, "*batch 10"],
     ) -> core.SkelSkeletonIdentity:
         return core.prepare_skeleton_identity(
-            self._weights.j_template,
-            self._weights.j_shapedirs,
-            self._weights.parent,
+            self._assets.j_template,
+            self._assets.j_shapedirs,
+            self._assets.parent,
             shape,
             xp=self._runtime.xp,
         )

@@ -37,9 +37,9 @@ class MANO(SmplFamilyModel):
 
     has_hands = True
     NUM_JOINTS = 16
-    NUM_HAND_JOINTS = 15
+    NUM_HAND_CONTROLS = 15
     NUM_SHAPE_COEFFS = 10
-    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("wrist_rotation", 1), ("hand_pose", NUM_HAND_JOINTS))
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("wrist_rotation", 1), ("hand_pose", NUM_HAND_CONTROLS))
 
     def __init__(
         self,
@@ -59,10 +59,10 @@ class MANO(SmplFamilyModel):
             raise ValueError("simplify must be >= 1.0")
 
         resolved_path = get_model_path(model_path, side)
-        weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        assets = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         self._attach_runtime(runtime)
         self._config = ManoConfig(side=side or "right", rotation_type=rotation_type)
-        self._weights = runtime._materialize(weights)
+        self._assets = runtime._materialize(assets)
 
     @property
     def side(self) -> Literal["right", "left"]:
@@ -77,7 +77,7 @@ class MANO(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
             "wrist_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -85,7 +85,7 @@ class MANO(SmplFamilyModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self._weights.joint_names)
+        return list(self._assets.joint_names)
 
     @property
     def common_joints(self) -> Mapping[Joint, str]:
@@ -140,8 +140,8 @@ class MANO(SmplFamilyModel):
 
         skeleton = core.prepare_skeleton(
             self._runtime,
-            self._weights.kinematic_tree,
-            self._weights.hand_mean,
+            self._assets.kinematic_tree,
+            self._assets.hand_mean,
             hand_pose,
             wrist_rotation,
             self.rotation_type,
@@ -190,11 +190,11 @@ class MANO(SmplFamilyModel):
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=self._weights.v_template,
-            shapedirs=self._weights.shapedirs,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.kinematic_tree.parents,
+            v_template=self._assets.v_template,
+            shapedirs=self._assets.shapedirs,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
         )
 
@@ -208,8 +208,8 @@ class MANO(SmplFamilyModel):
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             self._runtime,
-            self._weights.kinematic_tree,
-            hand_mean=self._weights.hand_mean,
+            self._assets.kinematic_tree,
+            hand_mean=self._assets.hand_mean,
             hand_pose=hand_pose,
             wrist_rotation=wrist_rotation,
             rotation_type=self.rotation_type,
@@ -223,9 +223,9 @@ class MANO(SmplFamilyModel):
     ) -> core.ManoSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.kinematic_tree.parents,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
         )
 
@@ -252,7 +252,7 @@ class MANO(SmplFamilyModel):
         hands: HandPreset,
     ) -> Float[Array, "*batch 15 N"]:
         axis_angle = self._runtime.asarray(MANO_HAND_PRESETS[self.side][hands], like=like).reshape(
-            self.NUM_HAND_JOINTS,
+            self.NUM_HAND_CONTROLS,
             3,
         )
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))

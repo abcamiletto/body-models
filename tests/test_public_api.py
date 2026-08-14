@@ -136,7 +136,7 @@ def test_backend_modules_export_model_class(backend) -> None:
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
 def test_parameter_spec_matches_snapshot(name, model_class, kwargs) -> None:
     model = model_class(**kwargs)
-    actual = {key: (tuple(spec.shape), spec.role, spec.rotation_type) for key, spec in model.parameter_spec.items()}
+    actual = {key: (tuple(spec.dims), spec.role, spec.rotation_type) for key, spec in model.parameter_spec.items()}
     expected = EXPECTED_PARAMETER_SPECS[name]
 
     assert list(actual) == list(expected)

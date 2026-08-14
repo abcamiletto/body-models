@@ -19,7 +19,7 @@ __all__ = ["load_model_data"]
 
 
 @dataclass(frozen=True)
-class SkelWeights:
+class SkelAssets:
     v_template: Float[Array, "V 3"]
     faces: Int[Array, "F 3"]
     shapedirs: Float[Array, "V 3 B"]
@@ -75,7 +75,7 @@ def get_model_path(model_path: PathLike | None, gender: Literal["male", "female"
     return validate_path(model_path)
 
 
-def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
+def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelAssets:
     if simplify < 1.0:
         raise ValueError(f"simplify must be at least 1.0, got {simplify}")
 
@@ -109,7 +109,7 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelWeights:
     non_leaf = [i for i, child_index in enumerate(child) if child_index != 0]
 
     skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
-    return SkelWeights(
+    return SkelAssets(
         v_template=v_template,
         faces=faces,
         shapedirs=shapedirs,

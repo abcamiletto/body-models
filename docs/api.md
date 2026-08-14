@@ -79,8 +79,8 @@ overlap for coupled parameterizations and need not include fixed joints.
 Because the output contains world transforms, changing one pose parameter can
 also move descendants outside its local joint group.
 
-For rotational parameters, indices follow rotation order (`[..., i, :]` for
-vectors and `[..., i, :, :]` for matrices); a single rotation maps to one index.
+For rotational parameters, indices follow control order (`[..., i, :]` for
+vectors and `[..., i, :, :]` for matrices); a single control maps to one index.
 
 ::: body_models.ParameterSpec
     options:

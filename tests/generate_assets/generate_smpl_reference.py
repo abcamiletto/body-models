@@ -33,7 +33,7 @@ def _prepare_input_data(batch_size: int = 1) -> dict[str, torch.Tensor]:
     """Generate random input parameters for SMPL."""
     return {
         "betas": 0.5 * torch.randn(batch_size, 10),
-        "body_pose": 0.2 * torch.randn(batch_size, 69),  # 23 joints * 3
+        "body_pose": 0.2 * torch.randn(batch_size, 69),  # 23 pose controls * 3
         "global_orient": 0.2 * torch.randn(batch_size, 3),
         "transl": 0.1 * torch.randn(batch_size, 3),
     }

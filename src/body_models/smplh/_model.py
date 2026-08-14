@@ -36,14 +36,14 @@ class SMPLH(SmplFamilyModel):
 
     has_hands = True
     NUM_JOINTS = 52
-    NUM_BODY_JOINTS = 21
-    NUM_HAND_JOINTS = 30
+    NUM_BODY_CONTROLS = 21
+    NUM_HAND_CONTROLS = 30
     NUM_SHAPE_COEFFS = 16
     _COMMON_JOINTS = SMPLH_JOINTS
     _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
         ("pelvis_rotation", 1),
-        ("body_pose", NUM_BODY_JOINTS),
-        ("hand_pose", NUM_HAND_JOINTS),
+        ("body_pose", NUM_BODY_CONTROLS),
+        ("hand_pose", NUM_HAND_CONTROLS),
     )
 
     def __init__(
@@ -64,10 +64,10 @@ class SMPLH(SmplFamilyModel):
             raise ValueError("simplify must be >= 1.0")
 
         resolved_path = get_model_path(model_path, gender)
-        weights = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        assets = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         self._attach_runtime(runtime)
         self._config = SmplhConfig(gender=gender or "neutral", rotation_type=rotation_type)
-        self._weights = runtime._materialize(weights)
+        self._assets = runtime._materialize(assets)
 
     @property
     def gender(self) -> Literal["neutral", "male", "female"]:
@@ -82,8 +82,8 @@ class SMPLH(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_CONTROLS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -91,7 +91,7 @@ class SMPLH(SmplFamilyModel):
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self._weights.joint_names)
+        return list(self._assets.joint_names)
 
     def forward_vertices(
         self,
@@ -143,8 +143,8 @@ class SMPLH(SmplFamilyModel):
 
         skeleton = core.prepare_skeleton(
             self._runtime,
-            self._weights.kinematic_tree,
-            self._weights.hand_mean,
+            self._assets.kinematic_tree,
+            self._assets.hand_mean,
             body_pose,
             hand_pose,
             pelvis_rotation,
@@ -205,11 +205,11 @@ class SMPLH(SmplFamilyModel):
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=self._weights.v_template,
-            shapedirs=self._weights.shapedirs,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.kinematic_tree.parents,
+            v_template=self._assets.v_template,
+            shapedirs=self._assets.shapedirs,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
         )
 
@@ -224,8 +224,8 @@ class SMPLH(SmplFamilyModel):
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             self._runtime,
-            self._weights.kinematic_tree,
-            hand_mean=self._weights.hand_mean,
+            self._assets.kinematic_tree,
+            hand_mean=self._assets.hand_mean,
             body_pose=body_pose,
             hand_pose=hand_pose,
             pelvis_rotation=pelvis_rotation,
@@ -240,9 +240,9 @@ class SMPLH(SmplFamilyModel):
     ) -> core.SmplhSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.kinematic_tree.parents,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
         )
 
@@ -268,7 +268,7 @@ class SMPLH(SmplFamilyModel):
         like: Float[Array, "..."],
         hands: HandPreset,
     ) -> Float[Array, "*batch 30 N"]:
-        axis_angle = self._runtime.asarray(SMPLH_HAND_PRESETS[hands], like=like).reshape(self.NUM_HAND_JOINTS, 3)
+        axis_angle = self._runtime.asarray(SMPLH_HAND_PRESETS[hands], like=like).reshape(self.NUM_HAND_CONTROLS, 3)
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=self._runtime.xp)
 
