@@ -34,6 +34,47 @@ class KinematicTree:
         parent_tuple = tuple(int(parent) for parent in parents)
         return cls(parent_tuple, tuple(_compute_kinematic_fronts(parent_tuple)))
 
+    def select(self, joint_indices: Sequence[int]) -> JointSelection:
+        """Cover ``joint_indices`` and their ancestor chains on a reindexed tree."""
+        selected = tuple(int(joint) for joint in joint_indices)
+        num_joints = len(self.parents)
+        if any(joint < 0 or joint >= num_joints for joint in selected):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+
+        required: set[int] = set()
+        pending = list(selected)
+        while pending:
+            joint = pending.pop()
+            if joint in required:
+                continue
+            required.add(joint)
+            parent = self.parents[joint]
+            if parent >= 0 and parent != joint:
+                pending.append(parent)
+
+        joints = tuple(sorted(required))
+        positions = {joint: position for position, joint in enumerate(joints)}
+        cover_parents = tuple(
+            -1 if (parent := self.parents[joint]) < 0 or parent == joint else positions[parent] for joint in joints
+        )
+        tree = KinematicTree(cover_parents, tuple(_compute_kinematic_fronts(cover_parents)))
+        return JointSelection(tree, joints, tuple(positions[joint] for joint in selected))
+
+
+@dataclass(frozen=True)
+class JointSelection:
+    """Ancestor-closed joint cover with a reindexed kinematic tree.
+
+    ``joints`` lists the original indices of the selected joints and every
+    ancestor, in sorted order; ``tree`` is that cover with compressed parent
+    indices; ``order`` holds the positions of the requested joints on the
+    compressed joint axis.
+    """
+
+    tree: KinematicTree
+    joints: tuple[int, ...]
+    order: tuple[int, ...]
+
 
 def affine_transforms(
     linear: Float[Array, "*batch 3 3"],
@@ -131,6 +172,8 @@ def compose_kinematic_fronts(
 ) -> Float[Array, "*batch J 4 4"]:
     """Compose local transforms into world-space transforms."""
     num_joints = local_transforms.shape[-3]
+    if num_joints == 0:
+        return local_transforms
 
     world_transforms: list[Float[Array, "*batch 4 4"] | None] = [None] * num_joints
     for joints, parents in fronts:

@@ -190,13 +190,55 @@ def forward_skeleton(
     tree: kinematics.KinematicTree,
     pose_matrices: Float[Array, "*batch J 3 3"],
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
+    subtree: kinematics.JointSelection | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
-    """Broadcast identity state and run family forward kinematics."""
+    """Broadcast identity state and run family forward kinematics.
+
+    With ``subtree``, ``pose_matrices`` must already be compressed to
+    ``subtree.joints``; forward kinematics then runs only on the chains from
+    the roots to those joints and returns them in ``subtree.order``.
+    """
     xp = runtime.xp
     batch_shape = tuple(pose_matrices.shape[:-3])
     offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
+    if subtree is not None:
+        joints = xp.asarray(subtree.joints, dtype=xp.int32)
+        offsets = offsets[..., joints, :]
+        tree = subtree.tree
     local_transforms = kinematics.affine_transforms(pose_matrices, offsets, xp=xp)
-    return runtime._compose_kinematic_tree(local_transforms, tree)
+    world_transforms = runtime._compose_kinematic_tree(local_transforms, tree)
+    if subtree is None:
+        return world_transforms
+    return world_transforms[..., xp.asarray(subtree.order, dtype=xp.int32), :, :]
+
+
+def pose_joint_positions(
+    tree: kinematics.KinematicTree,
+    joint_indices: Sequence[int],
+) -> tuple[kinematics.JointSelection, tuple[int, ...]]:
+    """Resolve a joint selection to its chains and pose-block positions.
+
+    Positions index the concatenated pose blocks, which drive joints after
+    the root.
+    """
+    selection = tree.select(joint_indices)
+    return selection, tuple(joint - 1 for joint in selection.joints if joint > 0)
+
+
+def take_pose_joints(
+    pose: Float[Array, "... C N"] | Float[Array, "... C 3 3"],
+    positions: Sequence[int] | None,
+    rotation_type: RotationType,
+    *,
+    xp: Any,
+) -> Float[Array, "... selected N"] | Float[Array, "... selected 3 3"]:
+    """Slice one per-joint pose block down to ``positions``."""
+    if positions is None:
+        return pose
+    selector = xp.asarray(positions, dtype=xp.int32)
+    if rotation_ndim(rotation_type) > 1:
+        return pose[..., selector, :, :]
+    return pose[..., selector, :]
 
 
 def prepare_pose(

@@ -286,16 +286,28 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SOMA public-joint transforms."""
+    subtree = None
+    if joint_indices is not None:
+        public_to_full = data.control_rig.procedural.control_joint_indices_full[1:]
+        selected = tuple(int(joint) for joint in joint_indices)
+        num_joints = len(public_to_full)
+        if any(joint < 0 or joint >= num_joints for joint in selected):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+        subtree = data.kinematics.kinematic_tree.select([int(public_to_full[joint]) for joint in selected])
     _, skeleton = _prepare_skeleton_state(
         runtime,
         data,
         pose,
         rotation_type,
         local_joint_translations=local_joint_translations,
+        subtree=subtree,
     )
-    return _control_joint_transforms(runtime.xp, data, skeleton)
+    if subtree is None:
+        return _control_joint_transforms(runtime.xp, data, skeleton)
+    return skeleton[..., runtime.xp.asarray(subtree.order, dtype=runtime.xp.int32), :, :]
 
 
 def _prepare_skeleton_state(
@@ -305,6 +317,7 @@ def _prepare_skeleton_state(
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
+    subtree: common.JointSelection | None = None,
 ) -> tuple[
     Float[Array, "*batch Jp 3 3"],
     Float[Array, "*batch Jf 4 4"],
@@ -312,10 +325,16 @@ def _prepare_skeleton_state(
     xp = runtime.xp
     pose_rot_control = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
     pose_rot_full, control_local_rotations = _expand_control_pose_rotations(runtime, data, pose_rot_control)
+    tree = data.kinematics.kinematic_tree
+    if subtree is not None:
+        joints = xp.asarray(subtree.joints, dtype=xp.int32)
+        pose_rot_full = pose_rot_full[..., joints, :, :]
+        local_joint_translations = local_joint_translations[..., joints, :]
+        tree = subtree.tree
     skeleton = _pose_skeleton(
         runtime,
         local_joint_translations,
-        data.kinematics.kinematic_tree,
+        tree,
         pose_rot_full,
     )
     return control_local_rotations, skeleton

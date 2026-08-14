@@ -1,6 +1,7 @@
 """MHR deformation computations."""
 
 import math
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -89,6 +90,7 @@ def prepare_skeleton(
     num_joints: int,
     shape_dim: int,
     pose: Float[Array, "B 204"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed MHR joint transforms."""
     world, _ = _forward_skeleton_core(
@@ -100,6 +102,7 @@ def prepare_skeleton(
         tree=tree,
         num_joints=num_joints,
         shape_dim=shape_dim,
+        joint_indices=joint_indices,
     )
     return _scale_transform_translations(runtime.xp, world)
 
@@ -146,9 +149,19 @@ def _forward_skeleton_core(
     tree: common.KinematicTree,
     num_joints: int,
     shape_dim: int,
+    joint_indices: Sequence[int] | None = None,
 ) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 7"]]:
     xp = runtime.xp
     j_p = _pose_to_joint_params(xp, pose, parameter_transform, num_joints, shape_dim)
+
+    selection = None
+    if joint_indices is not None:
+        selection = tree.select(joint_indices)
+        joints = xp.asarray(selection.joints, dtype=xp.int32)
+        j_p = j_p[..., joints, :]
+        joint_offsets = joint_offsets[joints]
+        joint_pre_rotations = joint_pre_rotations[joints]
+        tree = selection.tree
 
     t_l = j_p[..., :3] + joint_offsets
     euler = j_p[..., 3:6]
@@ -165,7 +178,10 @@ def _forward_skeleton_core(
     local_scale = xp.exp(_LN2 * j_p[..., 6:7])
     local_rotation = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)
     local_transforms = common.affine_transforms(local_rotation * local_scale[..., None], t_l, xp=xp)
-    return runtime._compose_kinematic_tree(local_transforms, tree), j_p
+    world = runtime._compose_kinematic_tree(local_transforms, tree)
+    if selection is not None:
+        world = world[..., xp.asarray(selection.order, dtype=xp.int32), :, :]
+    return world, j_p
 
 
 def _pose_to_joint_params(

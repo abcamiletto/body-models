@@ -1,12 +1,13 @@
 """Backend-independent ANNY pose and identity preparation."""
 
+from collections.abc import Sequence
 from typing import Any, TypedDict
 
 from jaxtyping import Float
 from nanomanifold import SO3
 
 from body_models import _common as common
-from body_models._rotations import RotationType
+from body_models._rotations import RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime
 from body_models.anny._io import PHENOTYPE_VARIATIONS
 
@@ -81,9 +82,22 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed ANNY joint transforms."""
     xp = runtime.xp
+    selection = None
+    if joint_indices is not None:
+        selection = tree.select(joint_indices)
+        joints = xp.asarray(selection.joints, dtype=xp.int32)
+        rest_skeleton_transforms = rest_skeleton_transforms[..., joints, :, :]
+        if not selection.joints:
+            return rest_skeleton_transforms
+        if rotation_ndim(rotation_type) > 1:
+            pose = pose[..., joints, :, :]
+        else:
+            pose = pose[..., joints, :]
+        tree = selection.tree
     pose_transforms = _pose_to_transform(xp, pose, rotation_type)
     skeleton, _ = _forward_core(
         runtime=runtime,
@@ -91,7 +105,9 @@ def prepare_skeleton(
         rest_skeleton_transforms=rest_skeleton_transforms,
         pose_transforms=pose_transforms,
     )
-    return skeleton
+    if selection is None:
+        return skeleton
+    return skeleton[..., xp.asarray(selection.order, dtype=xp.int32), :, :]
 
 
 def _forward_core(

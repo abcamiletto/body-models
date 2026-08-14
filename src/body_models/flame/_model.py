@@ -135,12 +135,13 @@ class FLAME(SmplFamilyModel):
             head_rotation,
             self.rotation_type,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
+            joint_indices=joint_indices,
         )
         return self._transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
-            joint_indices,
+            None,
         )
 
     def forward_points(

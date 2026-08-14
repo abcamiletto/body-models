@@ -1,5 +1,6 @@
 """SMPL deformation computations."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -51,8 +52,13 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SMPL joint transforms."""
+    subtree = positions = None
+    if joint_indices is not None:
+        subtree, positions = family.pose_joint_positions(tree, joint_indices)
+    body_pose = family.take_pose_joints(body_pose, positions, rotation_type, xp=runtime.xp)
     pose_matrices = family.assemble_pose_matrices(
         [(body_pose, rotation_type)],
         pelvis_rotation,
@@ -64,6 +70,7 @@ def prepare_skeleton(
         tree,
         pose_matrices,
         local_joint_offsets,
+        subtree=subtree,
     )
 
 
