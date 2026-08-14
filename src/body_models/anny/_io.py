@@ -88,7 +88,7 @@ def download_model(output_dir: PathLike | None = None) -> Path:
 
 
 @dataclass(frozen=True)
-class AnnyWeights:
+class AnnyAssets:
     template_vertices: Float[Array, "V 3"]
     blendshapes: Float[Array, "S V 3"]
     template_bone_heads: Float[Array, "J 3"]
@@ -128,7 +128,7 @@ def load_model_data_numpy(
     topology: str = "default",
     simplify: float = 1.0,
     dtype: Any = np.float32,
-) -> AnnyWeights:
+) -> AnnyAssets:
     """Load ANNY model data as numpy arrays."""
     resolved_path = get_model_path(model_path)
     cache_dir = get_cache_dir() / "anny" / "preprocessed"
@@ -178,7 +178,7 @@ def load_model_data_numpy(
     rows = np.arange(V)[:, None]
     lbs_weights[rows, data["vertex_bone_indices"]] = data["vertex_bone_weights"]
 
-    return AnnyWeights(
+    return AnnyAssets(
         template_vertices=data["template_vertices"].astype(dtype),
         blendshapes=data["blendshapes"].astype(dtype),
         template_bone_heads=data["template_bone_heads"].astype(dtype),

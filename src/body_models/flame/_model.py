@@ -33,11 +33,11 @@ class FLAME(SmplFamilyModel):
 
     has_face = True
     NUM_JOINTS = 5
-    NUM_HEAD_JOINTS = 4
+    NUM_HEAD_CONTROLS = 4
     NUM_SHAPE_COEFFS = 300
     NUM_EXPR_COEFFS = 100
     _COMMON_JOINTS = FLAME_JOINTS
-    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("head_rotation", 1), ("head_pose", NUM_HEAD_JOINTS))
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("head_rotation", 1), ("head_pose", NUM_HEAD_CONTROLS))
 
     def __init__(
         self,
@@ -53,10 +53,10 @@ class FLAME(SmplFamilyModel):
             raise ValueError("simplify must be >= 1.0")
 
         resolved_path = get_model_path(model_path)
-        weights = load_model_data(resolved_path, simplify=simplify)
+        assets = load_model_data(resolved_path, simplify=simplify)
         self._attach_runtime(runtime)
         self._config = FlameConfig(rotation_type=rotation_type)
-        self._weights = runtime._materialize(weights)
+        self._assets = runtime._materialize(assets)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -68,7 +68,7 @@ class FLAME(SmplFamilyModel):
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
-            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_CONTROLS),
             "head_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -129,7 +129,7 @@ class FLAME(SmplFamilyModel):
 
         skeleton = core.prepare_skeleton(
             self._runtime,
-            self._weights.kinematic_tree,
+            self._assets.kinematic_tree,
             head_pose,
             head_rotation,
             self.rotation_type,
@@ -180,13 +180,13 @@ class FLAME(SmplFamilyModel):
         """Precompute shape- and expression-dependent state."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=self._weights.v_template,
-            shapedirs=self._weights.shapedirs,
-            exprdirs=self._weights.exprdirs,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            j_exprdirs=self._weights.j_exprdirs,
-            parents=self._weights.kinematic_tree.parents,
+            v_template=self._assets.v_template,
+            shapedirs=self._assets.shapedirs,
+            exprdirs=self._assets.exprdirs,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            j_exprdirs=self._assets.j_exprdirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
             expression=expression,
         )
@@ -201,7 +201,7 @@ class FLAME(SmplFamilyModel):
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             self._runtime,
-            self._weights.kinematic_tree,
+            self._assets.kinematic_tree,
             head_pose=head_pose,
             head_rotation=head_rotation,
             rotation_type=self.rotation_type,
@@ -216,10 +216,10 @@ class FLAME(SmplFamilyModel):
     ) -> core.FlameSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            j_exprdirs=self._weights.j_exprdirs,
-            parents=self._weights.kinematic_tree.parents,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            j_exprdirs=self._assets.j_exprdirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
             expression=expression,
         )

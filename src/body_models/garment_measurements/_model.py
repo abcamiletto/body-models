@@ -41,9 +41,9 @@ class GarmentMeasurements(SkinnedModel):
 
     has_hands = True
     NUM_JOINTS = 59
-    NUM_BODY_JOINTS = 25
-    NUM_HAND_JOINTS = 30
-    NUM_HEAD_JOINTS = 3
+    NUM_BODY_CONTROLS = 25
+    NUM_HAND_CONTROLS = 30
+    NUM_HEAD_CONTROLS = 3
     NUM_SHAPE_COEFFS = 15
     _COMMON_JOINTS = GARMENT_JOINTS
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
@@ -58,10 +58,10 @@ class GarmentMeasurements(SkinnedModel):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
-        weights = load_model_data(get_model_path(model_path), dtype=np.float32)
+        assets = load_model_data(get_model_path(model_path), dtype=np.float32)
         self._attach_runtime(runtime)
         self._config = GarmentMeasurementsConfig(rotation_type=rotation_type)
-        self._weights = runtime._materialize(weights)
+        self._assets = runtime._materialize(assets)
 
     @property
     def rotation_type(self) -> RotationType:
@@ -76,9 +76,9 @@ class GarmentMeasurements(SkinnedModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
-            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_CONTROLS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_CONTROLS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -86,27 +86,27 @@ class GarmentMeasurements(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self._weights.faces
+        return self._assets.faces
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self._weights.joint_names)
+        return list(self._assets.joint_names)
 
     @property
     def num_vertices(self) -> int:
-        return self._weights.mean_vertices.shape[0]
+        return self._assets.mean_vertices.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        return self._weights.skin_weights
+        return self._assets.skin_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self._weights.mean_vertices
+        return self._assets.mean_vertices
 
     @property
     def parents(self) -> list[int]:
-        return list(self._weights.kinematic_tree.parents)
+        return list(self._assets.kinematic_tree.parents)
 
     def forward_vertices(
         self,
@@ -138,7 +138,7 @@ class GarmentMeasurements(SkinnedModel):
         vertices = self._runtime._skin_vertices(
             identity["rest_vertices"],
             pose["skinning_transforms"],
-            skinning=self._weights.compact_skinning,
+            skinning=self._assets.compact_skinning,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -178,8 +178,8 @@ class GarmentMeasurements(SkinnedModel):
         )
         skeleton = core.prepare_skeleton(
             self._runtime,
-            self._weights.bind_quats,
-            self._weights.kinematic_tree,
+            self._assets.bind_quats,
+            self._assets.kinematic_tree,
             packed_pose,
             self.rotation_type,
             local_bind_translations=identity["local_bind_translations"],
@@ -228,12 +228,12 @@ class GarmentMeasurements(SkinnedModel):
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            mean_vertices=self._weights.mean_vertices,
-            components=self._weights.components,
-            eigenvalues=self._weights.eigenvalues,
-            bind_quats=self._weights.bind_quats,
-            mvc_weights=self._weights.mvc_weights,
-            kinematic_tree=self._weights.kinematic_tree,
+            mean_vertices=self._assets.mean_vertices,
+            components=self._assets.components,
+            eigenvalues=self._assets.eigenvalues,
+            bind_quats=self._assets.bind_quats,
+            mvc_weights=self._assets.mvc_weights,
+            kinematic_tree=self._assets.kinematic_tree,
             shape=shape,
         )
 
@@ -256,8 +256,8 @@ class GarmentMeasurements(SkinnedModel):
         )
         return core.prepare_pose(
             self._runtime,
-            self._weights.bind_quats,
-            self._weights.kinematic_tree,
+            self._assets.bind_quats,
+            self._assets.kinematic_tree,
             packed_pose,
             self.rotation_type,
             bind_skeleton=identity["bind_skeleton"],

@@ -13,7 +13,7 @@ from body_models import _pose_layout as pose_layout
 from body_models import _state as state
 from body_models._common import deformation, point_regression, skinning
 from body_models._constants import Joint
-from body_models._rotations import RotationType, rotation_ndim, rotation_shape
+from body_models._rotations import RotationType, rotation_dims, rotation_ndim
 from body_models._runtime import ArrayRuntime
 
 Array = Any
@@ -22,9 +22,9 @@ ParameterRole = Literal["identity", "pose", "transform"]
 
 @dataclass(frozen=True)
 class ParameterSpec:
-    """Shape, role, and numeric default of one model parameter."""
+    """Array dims, role, and numeric default of one model parameter."""
 
-    shape: tuple[int, ...]
+    dims: tuple[int, ...]
     role: ParameterRole
     default: float = field(default=0.0, kw_only=True)
     rotation_type: RotationType | None = field(default=None, kw_only=True)
@@ -38,9 +38,9 @@ class ParameterSpec:
         role: ParameterRole = "pose",
     ) -> ParameterSpec:
         """Describe one rotation or a vector of rotations."""
-        leading_shape = () if count is None else (count,)
+        leading_dims = () if count is None else (count,)
         return cls(
-            shape=(*leading_shape, *rotation_shape(rotation_type)),
+            dims=(*leading_dims, *rotation_dims(rotation_type)),
             role=role,
             rotation_type=rotation_type,
         )
@@ -61,7 +61,7 @@ class SkinnedModel(ABC):
 
     _COMMON_JOINTS: ClassVar[Mapping[Joint, str]] = {}
     _POSE_LAYOUT: ClassVar[pose_layout.PoseLayout | None] = None
-    _state_fields: ClassVar[tuple[str, ...]] = ("_weights",)
+    _state_fields: ClassVar[tuple[str, ...]] = ("_assets",)
     _config: Any
     _runtime: ArrayRuntime
     has_face: ClassVar[bool] = False
@@ -190,7 +190,7 @@ class SkinnedModel(ABC):
         reference = self._parameter_reference
         if spec.rotation_type is not None:
             encoded_dims = rotation_ndim(spec.rotation_type)
-            rotation_batch = spec.shape[:-encoded_dims]
+            rotation_batch = spec.dims[:-encoded_dims]
             like = runtime.zeros(batch_dims, like=reference, dtype=dtype)
             return SO3.identity_as(
                 like,
@@ -199,7 +199,7 @@ class SkinnedModel(ABC):
                 xp=runtime.xp,
             )
 
-        value = runtime.zeros((*batch_dims, *spec.shape), like=reference, dtype=dtype)
+        value = runtime.zeros((*batch_dims, *spec.dims), like=reference, dtype=dtype)
         return value if spec.default == 0.0 else value + spec.default
 
     @property

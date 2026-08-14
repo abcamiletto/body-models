@@ -22,7 +22,7 @@ class SmplFamilyModel(SkinnedModel):
 
     NUM_SHAPE_COEFFS: int
     NUM_EXPR_COEFFS = 0
-    _weights: Any
+    _assets: Any
     rotation_type: RotationType
 
     @property
@@ -31,27 +31,27 @@ class SmplFamilyModel(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self._weights.faces
+        return self._assets.faces
 
     @property
     def num_vertices(self) -> int:
-        return self._weights.v_template.shape[0]
+        return self._assets.v_template.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        return self._weights.lbs_weights
+        return self._assets.lbs_weights
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self._weights.v_template
+        return self._assets.v_template
 
     @property
     def parents(self) -> list[int]:
-        return list(self._weights.kinematic_tree.parents)
+        return list(self._assets.kinematic_tree.parents)
 
     @property
     def _corrective_basis(self) -> CorrectiveBasis:
-        return DenseCorrectiveBasis(self._weights.posedirs)
+        return DenseCorrectiveBasis(self._assets.posedirs)
 
     def prepare_point_regressor(
         self,
@@ -72,8 +72,8 @@ class SmplFamilyModel(SkinnedModel):
 
     @property
     def _point_identity_bases(self) -> tuple[Float[Array, "V 3 C"], ...]:
-        bases = (self._weights.shapedirs,)
-        return bases if self.NUM_EXPR_COEFFS == 0 else (*bases, self._weights.exprdirs)
+        bases = (self._assets.shapedirs,)
+        return bases if self.NUM_EXPR_COEFFS == 0 else (*bases, self._assets.exprdirs)
 
     def _deform_linear_points(
         self,
@@ -108,7 +108,7 @@ class SmplFamilyModel(SkinnedModel):
         vertices = self._runtime._skin_vertices(
             self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
-            skinning=self._weights.compact_skinning,
+            skinning=self._assets.compact_skinning,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
