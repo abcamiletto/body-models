@@ -33,21 +33,21 @@ from body_models.soma._schema import (
     SOMA_RIG_FIELDS,
     SOMA_UPSTREAM_02_ASSETS,
     SOMA_XLO_FIELDS,
+    SomaAssets,
     SomaControlRig,
     SomaIdentityTransfer,
     SomaKinematics,
     SomaLodMesh,
     SomaProceduralRig,
-    SomaAssets,
 )
 
 PathLike = Path | str
 
 __all__ = [
+    "SomaAssets",
     "SomaControlRig",
     "SomaIdentityTransfer",
     "SomaProceduralRig",
-    "SomaAssets",
     "download_model",
     "get_model_path",
     "load_identity_transfer_data",
@@ -427,9 +427,7 @@ def load_model_data(model_path: Path) -> SomaAssets:
     return _load_model_data_cached(str(model_path))
 
 
-def load_model_data_for_lod(
-    model_path: PathLike | None, lod: str, *, simplify: float = 1.0
-) -> tuple[Path, SomaAssets]:
+def load_model_data_for_lod(model_path: PathLike | None, lod: str, *, simplify: float = 1.0) -> tuple[Path, SomaAssets]:
     """Resolve and load SOMA data for a requested LOD and simplification level."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
