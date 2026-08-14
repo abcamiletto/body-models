@@ -56,12 +56,12 @@ SkinningPose = deformation.SkinningPose
 SparseCorrectiveBasis = deformation.SparseCorrectiveBasis
 
 
-def _mirrored_name(name: str, left_affix: str, right_affix: str) -> str | None:
-    """Right-side counterpart of a joint name, or None when the name is not left-sided."""
-    if name.startswith(left_affix):
-        return right_affix + name[len(left_affix) :]
-    if name.endswith(left_affix):
-        return name[: -len(left_affix)] + right_affix
+def _sided_counterpart(name: str, affix: str, other_affix: str) -> str | None:
+    """Joint name with its side affix swapped, or None when the name lacks the affix."""
+    if name.startswith(affix):
+        return other_affix + name.removeprefix(affix)
+    if name.endswith(affix):
+        return name.removesuffix(affix) + other_affix
     return None
 
 
@@ -70,6 +70,7 @@ class SkinnedModel(ABC):
 
     _COMMON_JOINTS: ClassVar[Mapping[Joint, str]] = {}
     _POSE_LAYOUT: ClassVar[pose_layout.PoseLayout | None] = None
+    # Left and right joint-name affixes, matched as a prefix or a suffix.
     _SIDE_AFFIXES: ClassVar[tuple[str, str] | None] = None
     _state_fields: ClassVar[tuple[str, ...]] = ("_assets",)
     _config: Any
@@ -131,16 +132,8 @@ class SkinnedModel(ABC):
 
         Indices address the ``J`` axis of :meth:`forward_skeleton` outputs and
         cover the whole native skeleton, including joints outside the
-        :class:`Joint` vocabulary. Unpaired joints lie on the midline. To swap
-        sides in one gather::
-
-            order = list(range(model.num_joints))
-            for left, right in model.symmetric_joints:
-                order[left], order[right] = right, left
-            swapped = transforms[..., order, :, :]
-
-        This permutes indices only. Mirroring a pose also requires reflecting
-        the rotations, which depends on the model's parameterization and frame.
+        :class:`Joint` vocabulary. Unpaired joints lie on the midline. Pairs
+        describe index correspondence only, not how to mirror a pose.
 
         Returns:
             Symmetric joint index pairs, empty for one-sided skeletons.
@@ -151,15 +144,17 @@ class SkinnedModel(ABC):
         if self._SIDE_AFFIXES is None:
             return ()
         left_affix, right_affix = self._SIDE_AFFIXES
-        indices = {name: index for index, name in enumerate(self.joint_names)}
+        names = self.joint_names
+        indices = {name: index for index, name in enumerate(names)}
+
         pairs = []
-        for name, index in indices.items():
-            mirrored = _mirrored_name(name, left_affix, right_affix)
-            if mirrored is None:
-                continue
-            if mirrored not in indices:
-                raise ValueError(f"{type(self).__name__} joint {name!r} has no counterpart {mirrored!r}")
-            pairs.append((index, indices[mirrored]))
+        for index, name in enumerate(names):
+            right_name = _sided_counterpart(name, left_affix, right_affix)
+            counterpart = right_name or _sided_counterpart(name, right_affix, left_affix)
+            if counterpart is not None and counterpart not in indices:
+                raise ValueError(f"{type(self).__name__} joint {name!r} has no counterpart {counterpart!r}")
+            if right_name is not None:
+                pairs.append((index, indices[right_name]))
         return tuple(pairs)
 
     @property
