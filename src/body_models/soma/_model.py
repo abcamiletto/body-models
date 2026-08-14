@@ -53,9 +53,9 @@ class SOMA(SkinnedModel):
     _state_fields = ("_assets", "_identity_model", "_identity_transfer")
     has_hands = True
     NUM_JOINTS = 77
-    NUM_BODY_JOINTS = 23
-    NUM_HAND_JOINTS = 48
-    NUM_HEAD_JOINTS = 5
+    NUM_BODY_CONTROLS = 23
+    NUM_HAND_CONTROLS = 48
+    NUM_HEAD_CONTROLS = 5
     _COMMON_JOINTS = SOMA_JOINTS
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
@@ -141,9 +141,9 @@ class SOMA(SkinnedModel):
             parameters["scale_params"] = ParameterSpec((self.num_scale_coeffs,), "identity")
         parameters.update(
             {
-                "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
-                "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
-                "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+                "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_CONTROLS),
+                "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_CONTROLS),
+                "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
                 "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
                 "global_translation": ParameterSpec((3,), "transform"),
             }

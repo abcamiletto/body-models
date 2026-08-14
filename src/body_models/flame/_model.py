@@ -33,11 +33,11 @@ class FLAME(SmplFamilyModel):
 
     has_face = True
     NUM_JOINTS = 5
-    NUM_HEAD_JOINTS = 4
+    NUM_HEAD_CONTROLS = 4
     NUM_SHAPE_COEFFS = 300
     NUM_EXPR_COEFFS = 100
     _COMMON_JOINTS = FLAME_JOINTS
-    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("head_rotation", 1), ("head_pose", NUM_HEAD_JOINTS))
+    _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("head_rotation", 1), ("head_pose", NUM_HEAD_CONTROLS))
 
     def __init__(
         self,
@@ -68,7 +68,7 @@ class FLAME(SmplFamilyModel):
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
             "expression": ParameterSpec((self.NUM_EXPR_COEFFS,), "identity"),
-            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_CONTROLS),
             "head_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),

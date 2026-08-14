@@ -37,9 +37,9 @@ class ANNY(SkinnedModel):
     """Phenotype-driven skinned body model."""
 
     has_hands = True
-    NUM_BODY_JOINTS = 64
-    NUM_HAND_JOINTS = 38
-    NUM_HEAD_JOINTS = 60
+    NUM_BODY_CONTROLS = 64
+    NUM_HAND_CONTROLS = 38
+    NUM_HEAD_CONTROLS = 60
     NUM_SHAPE_COEFFS = 6
     _COMMON_JOINTS = ANNY_JOINTS
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
@@ -95,9 +95,9 @@ class ANNY(SkinnedModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity", default=0.5),
-            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
-            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_CONTROLS),
+            "head_pose": ParameterSpec.rotation(rotation, count=self.NUM_HEAD_CONTROLS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
         }

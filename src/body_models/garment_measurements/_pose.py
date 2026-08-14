@@ -20,7 +20,7 @@ POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
 )
 
 
-def _joint_axis(pose: Float[Array, "..."]) -> int:
+def _control_axis(pose: Float[Array, "..."]) -> int:
     return -3 if pose.shape[-2:] == (3, 3) else -2
 
 
@@ -31,9 +31,9 @@ def pack_pose(
     head_pose: Float[Array, "... 3 N"] | Float[Array, "... 3 3 3"],
     hand_pose: Float[Array, "... 30 N"] | Float[Array, "... 30 3 3"],
 ) -> Float[Array, "... 59 N"] | Float[Array, "... 59 3 3"]:
-    """Pack separated GarmentMeasurements pose groups into the canonical 59-joint pose."""
-    joint_axis = _joint_axis(body_pose)
-    rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
+    """Pack separated GarmentMeasurements pose groups into the canonical 59-control pose."""
+    control_axis = _control_axis(body_pose)
+    rotation_dims = (slice(None), slice(None)) if control_axis == -3 else (slice(None),)
     root = pelvis_rotation[(..., None, *rotation_dims)]
     return POSE_LAYOUT.pack(
         xp,
@@ -43,7 +43,7 @@ def pack_pose(
             "head_pose": head_pose,
             "hand_pose": hand_pose,
         },
-        axis=joint_axis,
+        axis=control_axis,
     )
 
 
@@ -57,9 +57,9 @@ def unpack_pose(
     Float[Array, "... 30 N"] | Float[Array, "... 30 3 3"],
 ]:
     """Split the canonical GarmentMeasurements pose into pelvis, body, head, and hands."""
-    joint_axis = _joint_axis(pose)
-    unpacked = POSE_LAYOUT.unpack(xp, pose, axis=joint_axis)
-    pelvis_rotation = xp.squeeze(unpacked["pelvis_rotation"], axis=joint_axis)
+    control_axis = _control_axis(pose)
+    unpacked = POSE_LAYOUT.unpack(xp, pose, axis=control_axis)
+    pelvis_rotation = xp.squeeze(unpacked["pelvis_rotation"], axis=control_axis)
     return pelvis_rotation, unpacked["body_pose"], unpacked["head_pose"], unpacked["hand_pose"]
 
 

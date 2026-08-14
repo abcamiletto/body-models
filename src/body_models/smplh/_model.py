@@ -36,14 +36,14 @@ class SMPLH(SmplFamilyModel):
 
     has_hands = True
     NUM_JOINTS = 52
-    NUM_BODY_JOINTS = 21
-    NUM_HAND_JOINTS = 30
+    NUM_BODY_CONTROLS = 21
+    NUM_HAND_CONTROLS = 30
     NUM_SHAPE_COEFFS = 16
     _COMMON_JOINTS = SMPLH_JOINTS
     _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
         ("pelvis_rotation", 1),
-        ("body_pose", NUM_BODY_JOINTS),
-        ("hand_pose", NUM_HAND_JOINTS),
+        ("body_pose", NUM_BODY_CONTROLS),
+        ("hand_pose", NUM_HAND_CONTROLS),
     )
 
     def __init__(
@@ -82,8 +82,8 @@ class SMPLH(SmplFamilyModel):
         rotation = self.rotation_type
         return {
             "shape": ParameterSpec((self.NUM_SHAPE_COEFFS,), "identity"),
-            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_JOINTS),
-            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_JOINTS),
+            "body_pose": ParameterSpec.rotation(rotation, count=self.NUM_BODY_CONTROLS),
+            "hand_pose": ParameterSpec.rotation(rotation, count=self.NUM_HAND_CONTROLS),
             "pelvis_rotation": ParameterSpec.rotation(rotation),
             "global_rotation": ParameterSpec.rotation(rotation, role="transform"),
             "global_translation": ParameterSpec((3,), "transform"),
@@ -268,7 +268,7 @@ class SMPLH(SmplFamilyModel):
         like: Float[Array, "..."],
         hands: HandPreset,
     ) -> Float[Array, "*batch 30 N"]:
-        axis_angle = self._runtime.asarray(SMPLH_HAND_PRESETS[hands], like=like).reshape(self.NUM_HAND_JOINTS, 3)
+        axis_angle = self._runtime.asarray(SMPLH_HAND_PRESETS[hands], like=like).reshape(self.NUM_HAND_CONTROLS, 3)
         axis_angle = self._runtime.xp.broadcast_to(axis_angle, (*batch_dims, *axis_angle.shape))
         return SO3.convert(axis_angle, src="axis_angle", dst=self.rotation_type, xp=self._runtime.xp)
 

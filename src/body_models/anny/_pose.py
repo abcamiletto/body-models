@@ -37,7 +37,7 @@ def convert_pose(
     return converted
 
 
-def _joint_axis(pose: Float[Array, "..."]) -> int:
+def _control_axis(pose: Float[Array, "..."]) -> int:
     return -3 if pose.shape[-2:] == (3, 3) else -2
 
 
@@ -48,9 +48,9 @@ def pack_pose(
     head_pose: Float[Array, "... 60 N"] | Float[Array, "... 60 3 3"],
     hand_pose: Float[Array, "... 38 N"] | Float[Array, "... 38 3 3"],
 ) -> Float[Array, "... 163 N"] | Float[Array, "... 163 3 3"]:
-    """Pack separated ANNY pose groups into the canonical 163-joint pose."""
-    joint_axis = _joint_axis(body_pose)
-    rotation_dims = (slice(None), slice(None)) if joint_axis == -3 else (slice(None),)
+    """Pack separated ANNY pose groups into the canonical 163-control pose."""
+    control_axis = _control_axis(body_pose)
+    rotation_dims = (slice(None), slice(None)) if control_axis == -3 else (slice(None),)
     root = global_rotation[(..., None, *rotation_dims)]
 
     return POSE_LAYOUT.pack(
@@ -61,7 +61,7 @@ def pack_pose(
             "head_pose": head_pose,
             "hand_pose": hand_pose,
         },
-        axis=joint_axis,
+        axis=control_axis,
     )
 
 
@@ -75,9 +75,9 @@ def unpack_pose(
     Float[Array, "... 38 N"] | Float[Array, "... 38 3 3"],
 ]:
     """Split the canonical ANNY pose into global rotation, body, head, and hands."""
-    joint_axis = _joint_axis(pose)
-    unpacked = POSE_LAYOUT.unpack(xp, pose, axis=joint_axis)
-    global_rotation = xp.squeeze(unpacked[None], axis=joint_axis)
+    control_axis = _control_axis(pose)
+    unpacked = POSE_LAYOUT.unpack(xp, pose, axis=control_axis)
+    global_rotation = xp.squeeze(unpacked[None], axis=control_axis)
     return global_rotation, unpacked["body_pose"], unpacked["head_pose"], unpacked["hand_pose"]
 
 
