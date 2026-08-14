@@ -61,7 +61,7 @@ shape-plus-expression paths remain separate so their signatures state their
 requirements without mode flags.
 
 Each instance exposes `parameter_spec`, an ordered mapping from public parameter
-names to `ParameterSpec`. A specification records the unbatched array shape,
+names to `ParameterSpec`. A specification records the unbatched array dims,
 semantic role (`identity`, `pose`, or `transform`), numeric default, and rotation
 representation where applicable. A rotation representation determines the
 corresponding identity rotation. Parameters are ordered by role: identity, then

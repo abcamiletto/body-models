@@ -21,8 +21,8 @@ def rotation_ndim(rotation_type: RotationType) -> int:
     return 2 if rotation_type in ("matrix", "rotmat") else 1
 
 
-def rotation_shape(rotation_type: RotationType) -> tuple[int, ...]:
-    """Return the array shape of one encoded rotation."""
+def rotation_dims(rotation_type: RotationType) -> tuple[int, ...]:
+    """Return the array dims of one encoded rotation."""
     if rotation_type == "axis_angle":
         return (3,)
     if rotation_type == "quat":
@@ -34,4 +34,4 @@ def rotation_shape(rotation_type: RotationType) -> tuple[int, ...]:
     raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
 
-__all__ = ["VALID_ROTATION_TYPES", "RotationType", "rotation_ndim", "rotation_shape"]
+__all__ = ["VALID_ROTATION_TYPES", "RotationType", "rotation_dims", "rotation_ndim"]
