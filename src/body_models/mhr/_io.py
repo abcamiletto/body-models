@@ -33,7 +33,7 @@ _MHR_DEFAULT_ASSETS = (
 
 __all__ = [
     "MhrCorrectives",
-    "MhrWeights",
+    "MhrAssets",
     "download_model",
     "get_model_path",
     "load_model_data",
@@ -49,7 +49,7 @@ class MhrCorrectives:
 
 
 @dataclass(frozen=True)
-class MhrWeights:
+class MhrAssets:
     base_vertices: Float[np.ndarray, "V 3"]
     blendshape_dirs: Float[np.ndarray, "117 V 3"]
     compact_skinning: CompactSkinning
@@ -102,7 +102,7 @@ def download_model(output_dir: PathLike | None = None) -> Path:
     return validate_path(output_dir)
 
 
-def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrWeights:
+def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrAssets:
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
     if lod not in SUPPORTED_LODS:
@@ -136,7 +136,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
     joint_parents = np.asarray(data["joint_parents"], dtype=np.int64)
     dense_skin_weights = _expand_skinning_weights(skin_indices, skin_weights, len(joint_parents))
 
-    return MhrWeights(
+    return MhrAssets(
         base_vertices=np.array(base_vertices, copy=True),
         blendshape_dirs=np.array(blendshape_dirs, copy=True),
         compact_skinning=CompactSkinning(

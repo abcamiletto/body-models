@@ -164,12 +164,12 @@ def test_torch_model_manages_module_state() -> None:
     model.double()
 
     assert isinstance(model, torch.nn.Module)
-    assert "_weights.v_template" in model.state_dict()
-    assert model._weights.v_template.dtype == torch.float64
+    assert "_assets.v_template" in model.state_dict()
+    assert model._assets.v_template.dtype == torch.float64
 
     restored = pickle.loads(pickle.dumps(model))
     assert isinstance(restored, SMPL)
-    assert "_weights.v_template" in restored.state_dict()
+    assert "_assets.v_template" in restored.state_dict()
 
 
 @pytest.mark.parametrize("model_type", ["soma", "smpl"])
@@ -192,14 +192,14 @@ def test_soma_torch_model_owns_external_identity_model() -> None:
     identity_model = model._identity_model
 
     assert isinstance(identity_model, SMPL)
-    assert any(name.startswith("_identity_model._weights.") for name in model.state_dict())
+    assert any(name.startswith("_identity_model._assets.") for name in model.state_dict())
 
     model.double()
     assert identity_model.rest_vertices.dtype == torch.float64
 
     restored = pickle.loads(pickle.dumps(model))
     assert isinstance(restored._identity_model, SMPL)
-    assert any(name.startswith("_identity_model._weights.") for name in restored.state_dict())
+    assert any(name.startswith("_identity_model._assets.") for name in restored.state_dict())
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)

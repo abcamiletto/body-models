@@ -61,7 +61,7 @@ class SkinnedModel(ABC):
 
     _COMMON_JOINTS: ClassVar[Mapping[Joint, str]] = {}
     _POSE_LAYOUT: ClassVar[pose_layout.PoseLayout | None] = None
-    _state_fields: ClassVar[tuple[str, ...]] = ("_weights",)
+    _state_fields: ClassVar[tuple[str, ...]] = ("_assets",)
     _config: Any
     _runtime: ArrayRuntime
     has_face: ClassVar[bool] = False

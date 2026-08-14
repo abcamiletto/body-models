@@ -14,7 +14,7 @@ from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
 
 if TYPE_CHECKING:
-    from body_models.soma._schema import SomaWeights
+    from body_models.soma._schema import SomaAssets
 
 Array = Any
 BindPoseMode = Literal["fit", "fit_detached", "canonical"]
@@ -33,13 +33,13 @@ class SomaIdentity(SomaSkeletonIdentity):
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"]
 
 
-def skinning_weights(data: SomaWeights) -> Float[Array, "Va Jf"]:
+def skinning_weights(data: SomaAssets) -> Float[Array, "Va Jf"]:
     return data.skin_weights_active[:, 1:]
 
 
 def prepare_identity_from_rest_shape(
     runtime: ArrayRuntime,
-    data: SomaWeights,
+    data: SomaAssets,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
@@ -60,7 +60,7 @@ def prepare_identity_from_rest_shape(
 
 def prepare_skeleton_identity_from_rest_shape(
     runtime: ArrayRuntime,
-    data: SomaWeights,
+    data: SomaAssets,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
@@ -81,7 +81,7 @@ def prepare_skeleton_identity_from_rest_shape(
 
 
 def _prepare_bind_state(
-    data: SomaWeights,
+    data: SomaAssets,
     *,
     rest_shape_full: Float[Array, "B Vf 3"],
     rest_shape_active: Float[Array, "B Va 3"],
@@ -217,7 +217,7 @@ def _bind_pose_for_rest_shape(
 
 def _expand_control_bind_pose(
     xp: Any,
-    data: SomaWeights,
+    data: SomaAssets,
     control_world_bind_pose: Float[Array, "*batch Jp 4 4"],
 ) -> Float[Array, "*batch Jf 4 4"]:
     control_indices = xp.asarray(data.control_rig.procedural.control_joint_indices_full)
@@ -231,7 +231,7 @@ def _expand_control_bind_pose(
 
 def prepare_pose(
     runtime: ArrayRuntime,
-    data: SomaWeights,
+    data: SomaAssets,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
@@ -281,7 +281,7 @@ def _corrective_hidden_activations(
 
 def prepare_skeleton(
     runtime: ArrayRuntime,
-    data: SomaWeights,
+    data: SomaAssets,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
@@ -300,7 +300,7 @@ def prepare_skeleton(
 
 def _prepare_skeleton_state(
     runtime: ArrayRuntime,
-    data: SomaWeights,
+    data: SomaAssets,
     pose: Float[Array, "B J N"] | Float[Array, "B J 3 3"],
     rotation_type: RotationType,
     *,
@@ -322,7 +322,7 @@ def _prepare_skeleton_state(
 
 
 def _control_joint_transforms(
-    xp, data: SomaWeights, transforms_full: Float[Array, "*batch Jf 4 4"]
+    xp, data: SomaAssets, transforms_full: Float[Array, "*batch Jf 4 4"]
 ) -> Float[Array, "*batch J 4 4"]:
     control_joint_indices = data.control_rig.procedural.control_joint_indices_full
     indices = xp.asarray(control_joint_indices[1:])
@@ -330,7 +330,7 @@ def _control_joint_transforms(
 
 
 def _expand_control_pose_rotations(
-    runtime: ArrayRuntime, data: SomaWeights, pose_rot: Float[Array, "*batch J 3 3"]
+    runtime: ArrayRuntime, data: SomaAssets, pose_rot: Float[Array, "*batch J 3 3"]
 ) -> tuple[Float[Array, "*batch Jf 3 3"], Float[Array, "*batch Jp 3 3"]]:
     xp = runtime.xp
     control_rig = data.control_rig
@@ -411,7 +411,7 @@ def _x_swing_twist_angles(xp, rotations: Float[Array, "... 3 3"]) -> Float[Array
 
 def _aligned_twist_channels_from_world(
     xp,
-    data: SomaWeights,
+    data: SomaAssets,
     control_world_rotations: Float[Array, "*batch Jp 3 3"],
 ) -> Float[Array, "*batch Jp"]:
     control_rig = data.control_rig
