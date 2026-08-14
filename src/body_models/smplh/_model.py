@@ -40,6 +40,7 @@ class SMPLH(SmplFamilyModel):
     NUM_HAND_CONTROLS = 30
     NUM_SHAPE_COEFFS = 16
     _COMMON_JOINTS = SMPLH_JOINTS
+    _SIDE_AFFIXES = ("left_", "right_")
     _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
         ("pelvis_rotation", 1),
         ("body_pose", NUM_BODY_CONTROLS),

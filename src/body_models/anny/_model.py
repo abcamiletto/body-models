@@ -42,6 +42,7 @@ class ANNY(SkinnedModel):
     NUM_HEAD_CONTROLS = 60
     NUM_SHAPE_COEFFS = 6
     _COMMON_JOINTS = ANNY_JOINTS
+    _SIDE_AFFIXES = (".L", ".R")
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
     def __init__(

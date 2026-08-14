@@ -57,6 +57,7 @@ class SOMA(SkinnedModel):
     NUM_HAND_CONTROLS = 48
     NUM_HEAD_CONTROLS = 5
     _COMMON_JOINTS = SOMA_JOINTS
+    _SIDE_AFFIXES = ("Left", "Right")
     _POSE_LAYOUT = pose_utils.POSE_LAYOUT
 
     def __init__(
