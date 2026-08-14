@@ -125,8 +125,8 @@ class SomaLodMesh:
 
 
 @dataclass(frozen=True)
-class SomaWeights:
-    """SOMA weights loaded from normalized assets."""
+class SomaAssets:
+    """SOMA assets loaded from the normalized schema."""
 
     mean_full: Float[np.ndarray, "Vf 3"]
     mean_active: Float[np.ndarray, "Va 3"]

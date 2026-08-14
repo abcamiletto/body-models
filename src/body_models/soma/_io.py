@@ -38,7 +38,7 @@ from body_models.soma._schema import (
     SomaKinematics,
     SomaLodMesh,
     SomaProceduralRig,
-    SomaWeights,
+    SomaAssets,
 )
 
 PathLike = Path | str
@@ -47,7 +47,7 @@ __all__ = [
     "SomaControlRig",
     "SomaIdentityTransfer",
     "SomaProceduralRig",
-    "SomaWeights",
+    "SomaAssets",
     "download_model",
     "get_model_path",
     "load_identity_transfer_data",
@@ -184,7 +184,7 @@ def _procedural_rig_data(data: Any) -> SomaProceduralRig:
 
 
 def with_active_mesh(
-    data: SomaWeights,
+    data: SomaAssets,
     *,
     mean_active: Float[np.ndarray, "Va 3"],
     shapedirs_active: Float[np.ndarray, "S Va 3"],
@@ -192,7 +192,7 @@ def with_active_mesh(
     faces: Int[np.ndarray, "F 3"],
     full_vertex_indices: Int[np.ndarray, "Va"] | None,
     active_vertex_indices: Int[np.ndarray, "Va"] | None,
-) -> SomaWeights:
+) -> SomaAssets:
     """Replace the active mesh using indices into the full and current meshes."""
     skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
     skin_joint_indices_active = np.maximum(skin_joint_indices_active - 1, -1)
@@ -218,7 +218,7 @@ def with_active_mesh(
     )
 
 
-def with_lod_mesh(data: SomaWeights, lod: str) -> SomaWeights:
+def with_lod_mesh(data: SomaAssets, lod: str) -> SomaAssets:
     normalized = lod.lower()
     if normalized not in SOMA_LODS:
         raise ValueError(f"SOMA lod must be one of {SOMA_LODS}, got {lod!r}")
@@ -245,7 +245,7 @@ def with_lod_mesh(data: SomaWeights, lod: str) -> SomaWeights:
 
 
 def _active_control_skin_weights(
-    data: SomaWeights,
+    data: SomaAssets,
     vertex_map: Int[np.ndarray, "Va"] | None,
 ) -> Float[np.ndarray, "Va Jp"]:
     if vertex_map is None:
@@ -295,7 +295,7 @@ def _missing_rig_fields_error(asset_dir: Path, missing_fields: list[str]) -> Fil
 
 
 @cache
-def _load_model_data_cached(model_dir: str) -> SomaWeights:
+def _load_model_data_cached(model_dir: str) -> SomaAssets:
     asset_dir = Path(model_dir)
     correctives = _load_pose_correctives_weights(asset_dir)
     with np.load(asset_dir / SOMA_CORE_ASSET, allow_pickle=False) as data:
@@ -360,7 +360,7 @@ def _load_model_data_cached(model_dir: str) -> SomaWeights:
     parents_full = joint_parents_full.astype(np.int64).tolist()
     skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
     skin_joint_indices = np.maximum(skin_joint_indices - 1, -1)
-    return SomaWeights(
+    return SomaAssets(
         mean_full=mean,
         mean_active=mean,
         shapedirs_full=shapedirs,
@@ -421,7 +421,7 @@ def _load_xlo_skin_weights(data: Any) -> Float[np.ndarray, "Va Jf"]:
     return _dense_skin_weights(rig_data)
 
 
-def load_model_data(model_path: Path) -> SomaWeights:
+def load_model_data(model_path: Path) -> SomaAssets:
     """Load SOMA model data from disk."""
     model_path = Path(model_path).resolve()
     return _load_model_data_cached(str(model_path))
@@ -429,7 +429,7 @@ def load_model_data(model_path: Path) -> SomaWeights:
 
 def load_model_data_for_lod(
     model_path: PathLike | None, lod: str, *, simplify: float = 1.0
-) -> tuple[Path, SomaWeights]:
+) -> tuple[Path, SomaAssets]:
     """Resolve and load SOMA data for a requested LOD and simplification level."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")

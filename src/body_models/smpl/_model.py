@@ -56,13 +56,13 @@ class SMPL(SmplFamilyModel):
             raise ValueError("simplify must be >= 1.0")
 
         resolved_path = get_model_path(model_path, gender)
-        weights = load_model_data(resolved_path, simplify=simplify)
+        assets = load_model_data(resolved_path, simplify=simplify)
         self._attach_runtime(runtime)
         self._config = SmplConfig(
             gender=gender or "neutral",
             rotation_type=rotation_type,
         )
-        self._weights = runtime._materialize(weights)
+        self._assets = runtime._materialize(assets)
 
     @property
     def gender(self) -> Literal["neutral", "male", "female"]:
@@ -135,7 +135,7 @@ class SMPL(SmplFamilyModel):
 
         skeleton = core.prepare_skeleton(
             self._runtime,
-            self._weights.kinematic_tree,
+            self._assets.kinematic_tree,
             body_pose,
             pelvis_rotation,
             self.rotation_type,
@@ -184,11 +184,11 @@ class SMPL(SmplFamilyModel):
         """Precompute shape-dependent state for repeated forward passes."""
         return core.prepare_identity(
             xp=self._runtime.xp,
-            v_template=self._weights.v_template,
-            shapedirs=self._weights.shapedirs,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.kinematic_tree.parents,
+            v_template=self._assets.v_template,
+            shapedirs=self._assets.shapedirs,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
         )
 
@@ -202,7 +202,7 @@ class SMPL(SmplFamilyModel):
         """Precompute pose-dependent state for repeated forward passes."""
         return core.prepare_pose(
             self._runtime,
-            self._weights.kinematic_tree,
+            self._assets.kinematic_tree,
             body_pose=body_pose,
             pelvis_rotation=pelvis_rotation,
             rotation_type=self.rotation_type,
@@ -216,9 +216,9 @@ class SMPL(SmplFamilyModel):
     ) -> core.SmplSkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
-            j_template=self._weights.j_template,
-            j_shapedirs=self._weights.j_shapedirs,
-            parents=self._weights.kinematic_tree.parents,
+            j_template=self._assets.j_template,
+            j_shapedirs=self._assets.j_shapedirs,
+            parents=self._assets.kinematic_tree.parents,
             shape=shape,
         )
 

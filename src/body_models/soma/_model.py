@@ -50,7 +50,7 @@ class SomaConfig:
 class SOMA(SkinnedModel):
     """Native SOMA-X model with identity, pose, and corrective controls."""
 
-    _state_fields = ("_weights", "_identity_model", "_identity_transfer")
+    _state_fields = ("_assets", "_identity_model", "_identity_transfer")
     has_hands = True
     NUM_JOINTS = 77
     NUM_BODY_JOINTS = 23
@@ -78,7 +78,7 @@ class SOMA(SkinnedModel):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
-        resolved_path, weights = load_model_data_for_lod(model_path, lod, simplify=simplify)
+        resolved_path, assets = load_model_data_for_lod(model_path, lod, simplify=simplify)
         spec = MODEL_TYPE_SPECS[model_type]
         self._attach_runtime(runtime)
         self._config = SomaConfig(
@@ -89,7 +89,7 @@ class SOMA(SkinnedModel):
             num_scale_coeffs=spec.num_scale_coeffs,
             default_identity_value=spec.default_identity_value,
         )
-        self._weights = runtime._materialize(weights)
+        self._assets = runtime._materialize(assets)
         self._identity_model = None
         self._identity_transfer = None
         if spec.asset_dir is not None:
@@ -152,36 +152,36 @@ class SOMA(SkinnedModel):
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
-        return self._weights.faces
+        return self._assets.faces
 
     @property
     def joint_names(self) -> list[str]:
-        return list(self._weights.control_rig.joint_names_full[1:])
+        return list(self._assets.control_rig.joint_names_full[1:])
 
     @property
     def parents(self) -> list[int]:
-        parents = self._weights.control_rig.kinematics.kinematic_tree.parents
+        parents = self._assets.control_rig.kinematics.kinematic_tree.parents
         return [parent - 1 for parent in parents[1:]]
 
     @property
     def num_vertices(self) -> int:
-        return self._weights.mean_active.shape[0]
+        return self._assets.mean_active.shape[0]
 
     @property
     def skin_weights(self) -> Float[Array, "V J"]:
-        return self._weights.control_rig.skin_weights_active[:, 1:]
+        return self._assets.control_rig.skin_weights_active[:, 1:]
 
     @property
     def rest_vertices(self) -> Float[Array, "V 3"]:
-        return self._weights.mean_active * 0.01
+        return self._assets.mean_active * 0.01
 
     @property
     def _skinning_weights(self) -> Float[Array, "V J"]:
-        return self._weights.skin_weights_active[:, 1:]
+        return self._assets.skin_weights_active[:, 1:]
 
     @property
     def _corrective_basis(self) -> CorrectiveBasis:
-        return SparseCorrectiveBasis(self._weights.correctives.basis)
+        return SparseCorrectiveBasis(self._assets.correctives.basis)
 
     def forward_vertices(
         self,
@@ -210,7 +210,7 @@ class SOMA(SkinnedModel):
         vertices = self._runtime._skin_vertices(
             self.apply_pose_correctives(identity=identity, pose=pose),
             pose["skinning_transforms"],
-            skinning=self._weights.compact_skinning,
+            skinning=self._assets.compact_skinning,
             vertex_indices=vertex_indices,
         )
         return skinning.apply_global_transform(
@@ -255,7 +255,7 @@ class SOMA(SkinnedModel):
         pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
             self._runtime,
-            self._weights,
+            self._assets,
             pose,
             self.rotation_type,
             local_joint_translations=skeleton_identity["local_joint_translations"],
@@ -307,7 +307,7 @@ class SOMA(SkinnedModel):
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_identity_from_rest_shape(
             self._runtime,
-            data=self._weights,
+            data=self._assets,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
             repose=repose,
@@ -334,7 +334,7 @@ class SOMA(SkinnedModel):
         pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
         return core.prepare_pose(
             self._runtime,
-            self._weights,
+            self._assets,
             pose,
             rotation_type=self.rotation_type,
             local_joint_translations=identity["local_joint_translations"],
@@ -350,7 +350,7 @@ class SOMA(SkinnedModel):
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_skeleton_identity_from_rest_shape(
             self._runtime,
-            self._weights,
+            self._assets,
             rest_shape_full=rest_shape_full,
             rest_shape_active=rest_shape_active,
         )
@@ -368,7 +368,7 @@ class SOMA(SkinnedModel):
                 like=shape,
             )
         return identities.rest_shapes(
-            data=self._weights,
+            data=self._assets,
             model_type=self.model_type,
             identity_model=self._identity_model,
             identity_transfer=self._identity_transfer,
