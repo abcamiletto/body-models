@@ -1,5 +1,6 @@
 """Backend-independent FLAME pose and identity preparation."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -24,7 +25,9 @@ def _pose_matrices(
     rotation_type: RotationType,
     *,
     xp: Any,
+    positions: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 5 3 3"]:
+    head_pose = family.take_pose_joints(head_pose, positions, rotation_type, xp=xp)
     return family.assemble_pose_matrices(
         [(head_pose, rotation_type)],
         head_rotation,
@@ -67,19 +70,25 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 5 4 4"]:
     """Prepare only posed FLAME joint transforms."""
+    subtree = positions = None
+    if joint_indices is not None:
+        subtree, positions = family.pose_joint_positions(tree, joint_indices)
     pose_matrices = _pose_matrices(
         head_pose,
         head_rotation,
         rotation_type,
         xp=runtime.xp,
+        positions=positions,
     )
     return family.forward_skeleton(
         runtime,
         tree,
         pose_matrices,
         local_joint_offsets,
+        subtree=subtree,
     )
 
 

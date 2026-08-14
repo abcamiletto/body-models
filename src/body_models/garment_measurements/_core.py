@@ -66,6 +66,7 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_bind_translations: Float[Array, "*batch J 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed GarmentMeasurements joint transforms."""
     xp = runtime.xp
@@ -81,6 +82,7 @@ def prepare_skeleton(
         pose=pose,
         rotation_type=rotation_type,
         runtime=runtime,
+        joint_indices=joint_indices,
     )
 
 
@@ -124,15 +126,30 @@ def _forward_skeleton(
     tree: common.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     xp = runtime.xp
     batch_shape = local_bind_translations.shape[:-2]
     bind_quats = xp.broadcast_to(bind_quats, (*batch_shape, *bind_quats.shape))
+    selection = None
+    if joint_indices is not None:
+        selection = tree.select(joint_indices)
+        joints = xp.asarray(selection.joints, dtype=xp.int32)
+        if rotation_ndim(rotation_type) > 1:
+            pose = pose[..., joints, :, :]
+        else:
+            pose = pose[..., joints, :]
+        bind_quats = bind_quats[..., joints, :]
+        local_bind_translations = local_bind_translations[..., joints, :]
+        tree = selection.tree
     pose_quats = SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
     posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
     local_rotations = SO3.convert(posed_quats, src="quat", dst="rotmat", xp=xp)
     local_transforms = common.affine_transforms(local_rotations, local_bind_translations, xp=xp)
-    return runtime._compose_kinematic_tree(local_transforms, tree)
+    skeleton = runtime._compose_kinematic_tree(local_transforms, tree)
+    if selection is None:
+        return skeleton
+    return skeleton[..., xp.asarray(selection.order, dtype=xp.int32), :, :]
 
 
 def _local_translations_from_positions(

@@ -1,6 +1,7 @@
 """Backend-independent SKEL identity and pose preparation."""
 
 import math
+from collections.abc import Sequence
 from typing import Any, TypedDict
 
 from jaxtyping import Float, Int
@@ -106,6 +107,7 @@ def prepare_skeleton(
     *,
     local_joint_offsets: Float[Array, "*batch 24 3"],
     rest_joints: Float[Array, "*batch 24 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 24 4 4"]:
     """Prepare only posed SKEL joint transforms."""
     if pose.ndim < 1 or pose.shape[-1] != NUM_POSE_PARAMS:
@@ -127,7 +129,16 @@ def prepare_skeleton(
         scapula_l_axes=scapula_l_axes,
         spine_axes=spine_axes,
     )
-    return runtime._compose_kinematic_tree(local, tree)
+    selection = None
+    if joint_indices is not None:
+        selection = tree.select(joint_indices)
+        joints = xp.asarray(selection.joints, dtype=xp.int32)
+        local = local[..., joints, :, :]
+        tree = selection.tree
+    skeleton = runtime._compose_kinematic_tree(local, tree)
+    if selection is None:
+        return skeleton
+    return skeleton[..., xp.asarray(selection.order, dtype=xp.int32), :, :]
 
 
 def prepare_identity(

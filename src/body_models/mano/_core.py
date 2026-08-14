@@ -1,5 +1,6 @@
 """Backend-independent MANO pose and identity preparation."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -25,7 +26,11 @@ def _pose_matrices(
     rotation_type: RotationType,
     *,
     xp: Any,
+    positions: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 16 3 3"]:
+    hand_pose = family.take_pose_joints(hand_pose, positions, rotation_type, xp=xp)
+    if positions is not None:
+        hand_mean = hand_mean.reshape(-1, 3)[xp.asarray(positions, dtype=xp.int32)]
     hand_axis_angle = family.add_axis_angle_mean(
         hand_pose,
         hand_mean,
@@ -77,20 +82,26 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed MANO joint transforms."""
+    subtree = positions = None
+    if joint_indices is not None:
+        subtree, positions = family.pose_joint_positions(tree, joint_indices)
     pose_matrices = _pose_matrices(
         hand_mean,
         hand_pose,
         wrist_rotation,
         rotation_type,
         xp=runtime.xp,
+        positions=positions,
     )
     return family.forward_skeleton(
         runtime,
         tree,
         pose_matrices,
         local_joint_offsets,
+        subtree=subtree,
     )
 
 

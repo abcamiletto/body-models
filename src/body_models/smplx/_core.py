@@ -1,5 +1,6 @@
 """Backend-independent SMPL-X pose and identity preparation."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -27,7 +28,18 @@ def _pose_matrices(
     rotation_type: RotationType,
     *,
     xp: Any,
+    positions: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 55 3 3"]:
+    body_positions = head_positions = hand_positions = None
+    if positions is not None:
+        body_positions = tuple(position for position in positions if position < 21)
+        head_positions = tuple(position - 21 for position in positions if 21 <= position < 24)
+        hand_positions = tuple(position - 24 for position in positions if position >= 24)
+    body_pose = family.take_pose_joints(body_pose, body_positions, rotation_type, xp=xp)
+    head_pose = family.take_pose_joints(head_pose, head_positions, rotation_type, xp=xp)
+    hand_pose = family.take_pose_joints(hand_pose, hand_positions, rotation_type, xp=xp)
+    if hand_positions is not None:
+        hand_mean = hand_mean.reshape(-1, 3)[xp.asarray(hand_positions, dtype=xp.int32)]
     hand_axis_angle = family.add_axis_angle_mean(
         hand_pose,
         hand_mean,
@@ -89,8 +101,12 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SMPL-X joint transforms."""
+    subtree = positions = None
+    if joint_indices is not None:
+        subtree, positions = family.pose_joint_positions(tree, joint_indices)
     pose_matrices = _pose_matrices(
         hand_mean,
         body_pose,
@@ -99,12 +115,14 @@ def prepare_skeleton(
         pelvis_rotation,
         rotation_type,
         xp=runtime.xp,
+        positions=positions,
     )
     return family.forward_skeleton(
         runtime,
         tree,
         pose_matrices,
         local_joint_offsets,
+        subtree=subtree,
     )
 
 
