@@ -132,13 +132,14 @@ def prepare_skeleton(
     selection = None
     if joint_indices is not None:
         selection = tree.select(joint_indices)
-        joints = xp.asarray(selection.joints, dtype=xp.int32)
-        local = local[..., joints, :, :]
+        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        local = local[..., cover_indices, :, :]
         tree = selection.tree
     skeleton = runtime._compose_kinematic_tree(local, tree)
     if selection is None:
         return skeleton
-    return skeleton[..., xp.asarray(selection.order, dtype=xp.int32), :, :]
+    output_indices = xp.asarray(selection.output_indices, dtype=xp.int32)
+    return skeleton[..., output_indices, :, :]
 
 
 def prepare_identity(

@@ -175,7 +175,6 @@ class MHR(SkinnedModel):
             global_rotation,
             global_translation,
             "axis_angle",
-            None,
             xp=xp,
         )
 

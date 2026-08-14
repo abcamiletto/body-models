@@ -27,27 +27,17 @@ def _pose_matrices(
     rotation_type: RotationType,
     *,
     xp: Any,
-    positions: Sequence[int] | None = None,
+    pose_positions: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 52 3 3"]:
-    body_positions = hand_positions = None
-    if positions is not None:
-        body_positions = tuple(position for position in positions if position < 21)
-        hand_positions = tuple(position - 21 for position in positions if position >= 21)
-    body_pose = family.take_pose_joints(body_pose, body_positions, rotation_type, xp=xp)
-    hand_pose = family.take_pose_joints(hand_pose, hand_positions, rotation_type, xp=xp)
-    if hand_positions is not None:
-        hand_mean = hand_mean.reshape(-1, 3)[xp.asarray(hand_positions, dtype=xp.int32)]
-    hand_axis_angle = family.add_axis_angle_mean(
-        hand_pose,
-        hand_mean,
-        rotation_type,
-        xp=xp,
-    )
     return family.assemble_pose_matrices(
-        [(body_pose, rotation_type), (hand_axis_angle, "axis_angle")],
+        [
+            family.PoseBlock(body_pose, rotation_type),
+            family.PoseBlock(hand_pose, rotation_type, axis_angle_mean=hand_mean),
+        ],
         pelvis_rotation,
         rotation_type,
         xp=xp,
+        pose_positions=pose_positions,
     )
 
 
@@ -94,9 +84,9 @@ def prepare_skeleton(
     joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SMPL-H joint transforms."""
-    subtree = positions = None
+    selection = pose_positions = None
     if joint_indices is not None:
-        subtree, positions = family.pose_joint_positions(tree, joint_indices)
+        selection, pose_positions = family.select_pose_joints(tree, joint_indices)
     pose_matrices = _pose_matrices(
         hand_mean,
         body_pose,
@@ -104,14 +94,14 @@ def prepare_skeleton(
         pelvis_rotation,
         rotation_type,
         xp=runtime.xp,
-        positions=positions,
+        pose_positions=pose_positions,
     )
     return family.forward_skeleton(
         runtime,
         tree,
         pose_matrices,
         local_joint_offsets,
-        subtree=subtree,
+        selection=selection,
     )
 
 

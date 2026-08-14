@@ -141,7 +141,6 @@ class FLAME(SmplFamilyModel):
             skeleton,
             global_rotation,
             global_translation,
-            None,
         )
 
     def forward_points(
