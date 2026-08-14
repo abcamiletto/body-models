@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.24.0"
+version = "0.24.1"
 description = "Parametric and articulated body models for NumPy, PyTorch, and JAX with optional Warp acceleration"
 readme = "README.md"
 authors = [

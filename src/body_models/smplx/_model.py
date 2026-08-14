@@ -43,6 +43,7 @@ class SMPLX(SmplFamilyModel):
     NUM_SHAPE_COEFFS = 300
     NUM_EXPR_COEFFS = 10
     _COMMON_JOINTS = SMPLX_JOINTS
+    _SIDE_AFFIXES = ("L_", "R_")
     _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(
         ("pelvis_rotation", 1),
         ("body_pose", NUM_BODY_CONTROLS),

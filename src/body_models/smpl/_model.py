@@ -37,6 +37,7 @@ class SMPL(SmplFamilyModel):
     NUM_BODY_CONTROLS = 23
     NUM_SHAPE_COEFFS = 10
     _COMMON_JOINTS = SMPL_JOINTS
+    _SIDE_AFFIXES = ("left_", "right_")
     _POSE_LAYOUT = pose_layout.PoseLayout.per_joint(("pelvis_rotation", 1), ("body_pose", NUM_BODY_CONTROLS))
 
     def __init__(

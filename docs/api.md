@@ -82,6 +82,23 @@ also move descendants outside its local joint group.
 For rotational parameters, indices follow control order (`[..., i, :]` for
 vectors and `[..., i, :, :]` for matrices); a single control maps to one index.
 
+`model.symmetric_joints` lists the skeleton's left/right joints as
+`(left_index, right_index)` pairs, for symmetry losses, left/right swaps, and
+flip augmentation:
+
+```python
+order = list(range(model.num_joints))
+for left, right in model.symmetric_joints:
+    order[left], order[right] = right, left
+swapped = model.forward_skeleton(**params)[..., order, :, :]
+```
+
+Unlike `common_joints`, the pairs cover the whole native skeleton, including
+joints with no `Joint` member such as SMPL's collars. Joints missing from the
+pairs lie on the midline. Reordering swaps *which* joint each index holds;
+mirroring a pose additionally requires reflecting the rotations, which depends
+on the model's parameterization and coordinate frame and is left to the caller.
+
 ::: body_models.ParameterSpec
     options:
       show_source: false

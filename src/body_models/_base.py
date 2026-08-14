@@ -56,11 +56,21 @@ SkinningPose = deformation.SkinningPose
 SparseCorrectiveBasis = deformation.SparseCorrectiveBasis
 
 
+def _mirrored_name(name: str, left_affix: str, right_affix: str) -> str | None:
+    """Right-side counterpart of a joint name, or None when the name is not left-sided."""
+    if name.startswith(left_affix):
+        return right_affix + name[len(left_affix) :]
+    if name.endswith(left_affix):
+        return name[: -len(left_affix)] + right_affix
+    return None
+
+
 class SkinnedModel(ABC):
     """Base class for skinned body models."""
 
     _COMMON_JOINTS: ClassVar[Mapping[Joint, str]] = {}
     _POSE_LAYOUT: ClassVar[pose_layout.PoseLayout | None] = None
+    _SIDE_AFFIXES: ClassVar[tuple[str, str] | None] = None
     _state_fields: ClassVar[tuple[str, ...]] = ("_assets",)
     _config: Any
     _runtime: ArrayRuntime
@@ -113,6 +123,44 @@ class SkinnedModel(ABC):
     def common_joints(self) -> Mapping[Joint, str]:
         """Common anatomical joints mapped to this model's native joint names."""
         return self._COMMON_JOINTS
+
+    @property
+    def symmetric_joints(self) -> tuple[tuple[int, int], ...]:
+        """
+        Left/right joint pairs as ``(left_index, right_index)``, in joint order.
+
+        Indices address the ``J`` axis of :meth:`forward_skeleton` outputs and
+        cover the whole native skeleton, including joints outside the
+        :class:`Joint` vocabulary. Unpaired joints lie on the midline. To swap
+        sides in one gather::
+
+            order = list(range(model.num_joints))
+            for left, right in model.symmetric_joints:
+                order[left], order[right] = right, left
+            swapped = transforms[..., order, :, :]
+
+        This permutes indices only. Mirroring a pose also requires reflecting
+        the rotations, which depends on the model's parameterization and frame.
+
+        Returns:
+            Symmetric joint index pairs, empty for one-sided skeletons.
+
+        Raises:
+            ValueError: If a sided joint name has no counterpart.
+        """
+        if self._SIDE_AFFIXES is None:
+            return ()
+        left_affix, right_affix = self._SIDE_AFFIXES
+        indices = {name: index for index, name in enumerate(self.joint_names)}
+        pairs = []
+        for name, index in indices.items():
+            mirrored = _mirrored_name(name, left_affix, right_affix)
+            if mirrored is None:
+                continue
+            if mirrored not in indices:
+                raise ValueError(f"{type(self).__name__} joint {name!r} has no counterpart {mirrored!r}")
+            pairs.append((index, indices[mirrored]))
+        return tuple(pairs)
 
     @property
     def pose_joint_indices(self) -> Mapping[str, tuple[int, ...]]:
