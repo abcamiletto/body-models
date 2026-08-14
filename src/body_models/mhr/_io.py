@@ -32,8 +32,8 @@ _MHR_DEFAULT_ASSETS = (
 )
 
 __all__ = [
-    "MhrCorrectives",
     "MhrAssets",
+    "MhrCorrectives",
     "download_model",
     "get_model_path",
     "load_model_data",
