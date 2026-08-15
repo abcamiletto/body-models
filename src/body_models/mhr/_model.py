@@ -168,13 +168,13 @@ class MHR(SkinnedModel):
             num_joints=self.num_joints,
             shape_dim=self.NUM_SHAPE_COEFFS,
             pose=pose,
+            joint_indices=joint_indices,
         )
         return skinning.transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
             "axis_angle",
-            joint_indices,
             xp=xp,
         )
 

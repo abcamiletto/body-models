@@ -179,12 +179,12 @@ class SKEL(SkinnedModel):
             pose=packed_pose,
             local_joint_offsets=skeleton_identity["local_joint_offsets"],
             rest_joints=skeleton_identity["rest_joints"],
+            joint_indices=joint_indices,
         )
         return skinning.transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
-            joint_indices=joint_indices,
             xp=xp,
         )
 

@@ -3,6 +3,7 @@
 from body_models._common import deformation, sparse
 from body_models._common.kinematics import (
     Front,
+    JointSelection,
     KinematicTree,
     affine_transforms,
     compose_kinematic_fronts,
@@ -17,6 +18,7 @@ from body_models._common.simplify_mesh import simplify_mesh
 __all__ = [
     "Array",
     "Front",
+    "JointSelection",
     "KinematicTree",
     "affine_transforms",
     "at_set",

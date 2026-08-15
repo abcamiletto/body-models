@@ -206,13 +206,13 @@ class ANNY(SkinnedModel):
             packed_pose,
             self.rotation_type,
             rest_skeleton_transforms=skeleton_identity["rest_skeleton_transforms"],
+            joint_indices=joint_indices,
         )
         return skinning.transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
-            joint_indices,
             xp=xp,
         )
 

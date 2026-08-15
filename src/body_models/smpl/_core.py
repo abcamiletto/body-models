@@ -1,5 +1,6 @@
 """SMPL deformation computations."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -29,10 +30,10 @@ def prepare_pose(
 ) -> deformation.SkinningPose:
     """Prepare SMPL transforms and pose-corrective coefficients."""
     pose_matrices = family.assemble_pose_matrices(
-        [(body_pose, rotation_type)],
+        runtime,
+        [family.PoseBlock(body_pose, rotation_type)],
         pelvis_rotation,
         rotation_type,
-        xp=runtime.xp,
     )
     return family.prepare_pose(
         runtime,
@@ -51,19 +52,23 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SMPL joint transforms."""
+    selection = None if joint_indices is None else tree.select(joint_indices)
     pose_matrices = family.assemble_pose_matrices(
-        [(body_pose, rotation_type)],
+        runtime,
+        [family.PoseBlock(body_pose, rotation_type)],
         pelvis_rotation,
         rotation_type,
-        xp=runtime.xp,
+        selection,
     )
     return family.forward_skeleton(
         runtime,
         tree,
         pose_matrices,
         local_joint_offsets,
+        selection=selection,
     )
 
 

@@ -1,6 +1,7 @@
 """MHR deformation computations."""
 
 import math
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -89,8 +90,10 @@ def prepare_skeleton(
     num_joints: int,
     shape_dim: int,
     pose: Float[Array, "B 204"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed MHR joint transforms."""
+    selection = None if joint_indices is None else tree.select(joint_indices)
     world, _ = _forward_skeleton_core(
         runtime=runtime,
         pose=pose,
@@ -100,7 +103,11 @@ def prepare_skeleton(
         tree=tree,
         num_joints=num_joints,
         shape_dim=shape_dim,
+        selection=selection,
     )
+    if selection is not None:
+        output_indices = runtime.asarray(selection.output_indices, like=world, dtype=runtime.xp.int32)
+        world = world[..., output_indices, :, :]
     return _scale_transform_translations(runtime.xp, world)
 
 
@@ -146,9 +153,17 @@ def _forward_skeleton_core(
     tree: common.KinematicTree,
     num_joints: int,
     shape_dim: int,
+    selection: common.JointSelection | None = None,
 ) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 7"]]:
     xp = runtime.xp
     j_p = _pose_to_joint_params(xp, pose, parameter_transform, num_joints, shape_dim)
+
+    if selection is not None:
+        cover_indices = runtime.asarray(selection.cover_indices, like=j_p, dtype=xp.int32)
+        j_p = j_p[..., cover_indices, :]
+        joint_offsets = joint_offsets[cover_indices]
+        joint_pre_rotations = joint_pre_rotations[cover_indices]
+        tree = selection.tree
 
     t_l = j_p[..., :3] + joint_offsets
     euler = j_p[..., 3:6]
@@ -165,7 +180,8 @@ def _forward_skeleton_core(
     local_scale = xp.exp(_LN2 * j_p[..., 6:7])
     local_rotation = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)
     local_transforms = common.affine_transforms(local_rotation * local_scale[..., None], t_l, xp=xp)
-    return runtime._compose_kinematic_tree(local_transforms, tree), j_p
+    world = runtime._compose_kinematic_tree(local_transforms, tree)
+    return world, j_p
 
 
 def _pose_to_joint_params(

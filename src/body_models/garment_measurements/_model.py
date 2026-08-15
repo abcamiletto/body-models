@@ -184,13 +184,13 @@ class GarmentMeasurements(SkinnedModel):
             packed_pose,
             self.rotation_type,
             local_bind_translations=identity["local_bind_translations"],
+            joint_indices=joint_indices,
         )
         return skinning.transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
-            joint_indices,
             xp=xp,
         )
 

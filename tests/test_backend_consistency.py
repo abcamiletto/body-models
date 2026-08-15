@@ -106,6 +106,48 @@ def test_skinned_pose_uses_runtime_kinematics(name, model_class, kwargs) -> None
     assert runtime.kinematic_trees
 
 
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
+def test_skeleton_joint_indices_match_full_skeleton_selection(name, model_class, kwargs) -> None:
+    rng = np.random.default_rng(7)
+    model = model_class(**kwargs)
+    params = model.get_rest_pose(batch_dims=(2,))
+    for key, value in params.items():
+        if model.parameter_spec[key].role == "pose":
+            params[key] = rng.normal(scale=0.2, size=value.shape).astype(value.dtype)
+
+    full = np.asarray(model.forward_skeleton(**params))
+    num_joints = full.shape[-3]
+    joint_indices = [num_joints - 1, 0, num_joints - 1, num_joints // 2]
+    selected = np.asarray(model.forward_skeleton(**params, joint_indices=joint_indices))
+
+    assert selected.shape == (2, len(joint_indices), 4, 4)
+    np.testing.assert_allclose(selected, full[..., joint_indices, :, :], atol=1e-6, rtol=1e-6)
+
+    empty = np.asarray(model.forward_skeleton(**params, joint_indices=[]))
+    assert empty.shape == (2, 0, 4, 4)
+
+    with pytest.raises(IndexError):
+        model.forward_skeleton(**params, joint_indices=[num_joints])
+
+
+@pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)
+def test_skeleton_joint_indices_prune_kinematic_chains(name, model_class, kwargs) -> None:
+    implementation_module = import_module(f"body_models.{name}._model")
+    implementation_class = getattr(implementation_module, model_class.__name__)
+    runtime = _RecordingRuntime()
+    model = implementation_class(**kwargs, runtime=runtime)
+    params = model.get_rest_pose()
+
+    model.forward_skeleton(**params)
+    full_joint_count = sum(len(parents) for parents in runtime.kinematic_trees)
+
+    runtime.kinematic_trees.clear()
+    model.forward_skeleton(**params, joint_indices=[1])
+    selected_joint_count = sum(len(parents) for parents in runtime.kinematic_trees)
+
+    assert 0 < selected_joint_count < full_joint_count
+
+
 @pytest.mark.parametrize(
     ("name", "model_class", "kwargs"),
     model_cases.MODELS,
