@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from typing import Any, TypedDict
 
+import numpy as np
 from jaxtyping import Float
 from nanomanifold import SO3
 
@@ -89,10 +90,12 @@ def prepare_skeleton(
     selection = None
     if joint_indices is not None:
         selection = tree.select(joint_indices)
-        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        cover_indices = runtime.asarray(selection.cover_indices, like=rest_skeleton_transforms, dtype=xp.int32)
         rest_skeleton_transforms = rest_skeleton_transforms[..., cover_indices, :, :]
         if not selection.cover_indices:
-            return rest_skeleton_transforms
+            pose_ndim = rotation_ndim(rotation_type) + 1
+            batch_shape = np.broadcast_shapes(rest_skeleton_transforms.shape[:-3], pose.shape[:-pose_ndim])
+            return xp.broadcast_to(rest_skeleton_transforms, (*batch_shape, 0, 4, 4))
         if rotation_ndim(rotation_type) > 1:
             pose = pose[..., cover_indices, :, :]
         else:
@@ -107,7 +110,7 @@ def prepare_skeleton(
     )
     if selection is None:
         return skeleton
-    output_indices = xp.asarray(selection.output_indices, dtype=xp.int32)
+    output_indices = runtime.asarray(selection.output_indices, like=skeleton, dtype=xp.int32)
     return skeleton[..., output_indices, :, :]
 
 

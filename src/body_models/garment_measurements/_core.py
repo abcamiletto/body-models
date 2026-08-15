@@ -134,7 +134,7 @@ def _forward_skeleton(
     selection = None
     if joint_indices is not None:
         selection = tree.select(joint_indices)
-        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        cover_indices = runtime.asarray(selection.cover_indices, like=pose, dtype=xp.int32)
         if rotation_ndim(rotation_type) > 1:
             pose = pose[..., cover_indices, :, :]
         else:
@@ -149,7 +149,7 @@ def _forward_skeleton(
     skeleton = runtime._compose_kinematic_tree(local_transforms, tree)
     if selection is None:
         return skeleton
-    output_indices = xp.asarray(selection.output_indices, dtype=xp.int32)
+    output_indices = runtime.asarray(selection.output_indices, like=skeleton, dtype=xp.int32)
     return skeleton[..., output_indices, :, :]
 
 

@@ -106,7 +106,7 @@ def prepare_skeleton(
         selection=selection,
     )
     if selection is not None:
-        output_indices = runtime.xp.asarray(selection.output_indices, dtype=runtime.xp.int32)
+        output_indices = runtime.asarray(selection.output_indices, like=world, dtype=runtime.xp.int32)
         world = world[..., output_indices, :, :]
     return _scale_transform_translations(runtime.xp, world)
 
@@ -159,7 +159,7 @@ def _forward_skeleton_core(
     j_p = _pose_to_joint_params(xp, pose, parameter_transform, num_joints, shape_dim)
 
     if selection is not None:
-        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        cover_indices = runtime.asarray(selection.cover_indices, like=j_p, dtype=xp.int32)
         j_p = j_p[..., cover_indices, :]
         joint_offsets = joint_offsets[cover_indices]
         joint_pre_rotations = joint_pre_rotations[cover_indices]
