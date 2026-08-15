@@ -1,5 +1,6 @@
 """Backend-independent FLAME pose and identity preparation."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from jaxtyping import Float
@@ -19,17 +20,18 @@ prepare_skeleton_identity = family.prepare_shape_expression_skeleton_identity
 
 
 def _pose_matrices(
+    runtime: ArrayRuntime,
     head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
     head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     rotation_type: RotationType,
-    *,
-    xp: Any,
+    selection: common.JointSelection | None = None,
 ) -> Float[Array, "*batch 5 3 3"]:
     return family.assemble_pose_matrices(
-        [(head_pose, rotation_type)],
+        runtime,
+        [family.PoseBlock(head_pose, rotation_type)],
         head_rotation,
         rotation_type,
-        xp=xp,
+        selection,
     )
 
 
@@ -45,10 +47,10 @@ def prepare_pose(
 ) -> deformation.SkinningPose:
     """Prepare FLAME transforms and pose-corrective coefficients."""
     pose_matrices = _pose_matrices(
+        runtime,
         head_pose,
         head_rotation,
         rotation_type,
-        xp=runtime.xp,
     )
     return family.prepare_pose(
         runtime,
@@ -67,19 +69,23 @@ def prepare_skeleton(
     rotation_type: RotationType,
     *,
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
+    joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch 5 4 4"]:
     """Prepare only posed FLAME joint transforms."""
+    selection = None if joint_indices is None else tree.select(joint_indices)
     pose_matrices = _pose_matrices(
+        runtime,
         head_pose,
         head_rotation,
         rotation_type,
-        xp=runtime.xp,
+        selection,
     )
     return family.forward_skeleton(
         runtime,
         tree,
         pose_matrices,
         local_joint_offsets,
+        selection=selection,
     )
 
 

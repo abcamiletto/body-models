@@ -260,13 +260,13 @@ class SOMA(SkinnedModel):
             pose,
             self.rotation_type,
             local_joint_translations=skeleton_identity["local_joint_translations"],
+            joint_indices=joint_indices,
         )
         return skinning.transform_skeleton(
             skeleton,
             global_rotation,
             global_translation,
             self.rotation_type,
-            joint_indices,
             xp=xp,
         )
 

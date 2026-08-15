@@ -27,12 +27,52 @@ class KinematicTree:
     @property
     def roots(self) -> tuple[int, ...]:
         """Root joint indices."""
-        return self.fronts[0][0]
+        return self.fronts[0][0] if self.fronts else ()
 
     @classmethod
     def from_parents(cls, parents: Int[np.ndarray, "J"] | Sequence[int]) -> KinematicTree:
         parent_tuple = tuple(int(parent) for parent in parents)
         return cls(parent_tuple, tuple(_compute_kinematic_fronts(parent_tuple)))
+
+    def select(self, joint_indices: Sequence[int]) -> JointSelection:
+        """Cover ``joint_indices`` and their ancestor chains on a reindexed tree."""
+        selected = tuple(int(joint) for joint in joint_indices)
+        num_joints = len(self.parents)
+        if any(joint < 0 or joint >= num_joints for joint in selected):
+            raise IndexError(f"joint_indices must be in [0, {num_joints})")
+
+        required: set[int] = set()
+        pending = list(selected)
+        while pending:
+            joint = pending.pop()
+            if joint in required:
+                continue
+            required.add(joint)
+            parent = self.parents[joint]
+            if parent >= 0 and parent != joint:
+                pending.append(parent)
+
+        joints = tuple(sorted(required))
+        positions = {joint: position for position, joint in enumerate(joints)}
+        cover_parents = tuple(
+            -1 if (parent := self.parents[joint]) < 0 or parent == joint else positions[parent] for joint in joints
+        )
+        tree = KinematicTree.from_parents(cover_parents)
+        output_indices = tuple(positions[joint] for joint in selected)
+        return JointSelection(tree, joints, output_indices)
+
+
+@dataclass(frozen=True)
+class JointSelection:
+    """Ancestor-closed joint cover with a reindexed kinematic tree.
+
+    ``cover_indices`` lists the original indices of the selected joints and every
+    ancestor. ``output_indices`` gathers the requested joints from the cover.
+    """
+
+    tree: KinematicTree
+    cover_indices: tuple[int, ...]
+    output_indices: tuple[int, ...]
 
 
 def affine_transforms(
@@ -131,6 +171,8 @@ def compose_kinematic_fronts(
 ) -> Float[Array, "*batch J 4 4"]:
     """Compose local transforms into world-space transforms."""
     num_joints = local_transforms.shape[-3]
+    if num_joints == 0:
+        return local_transforms
 
     world_transforms: list[Float[Array, "*batch 4 4"] | None] = [None] * num_joints
     for joints, parents in fronts:
