@@ -30,10 +30,10 @@ def prepare_pose(
 ) -> deformation.SkinningPose:
     """Prepare SMPL transforms and pose-corrective coefficients."""
     pose_matrices = family.assemble_pose_matrices(
+        runtime,
         [family.PoseBlock(body_pose, rotation_type)],
         pelvis_rotation,
         rotation_type,
-        xp=runtime.xp,
     )
     return family.prepare_pose(
         runtime,
@@ -55,15 +55,13 @@ def prepare_skeleton(
     joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SMPL joint transforms."""
-    selection = pose_positions = None
-    if joint_indices is not None:
-        selection, pose_positions = family.select_pose_joints(tree, joint_indices)
+    selection = None if joint_indices is None else tree.select(joint_indices)
     pose_matrices = family.assemble_pose_matrices(
+        runtime,
         [family.PoseBlock(body_pose, rotation_type)],
         pelvis_rotation,
         rotation_type,
-        xp=runtime.xp,
-        pose_positions=pose_positions,
+        selection,
     )
     return family.forward_skeleton(
         runtime,

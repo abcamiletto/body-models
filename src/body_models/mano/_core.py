@@ -20,20 +20,19 @@ prepare_skeleton_identity = family.prepare_shape_skeleton_identity
 
 
 def _pose_matrices(
+    runtime: ArrayRuntime,
     hand_mean: Float[Array, "45"],
     hand_pose: Float[Array, "*batch 15 N"] | Float[Array, "*batch 15 3 3"],
     wrist_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     rotation_type: RotationType,
-    *,
-    xp: Any,
-    pose_positions: Sequence[int] | None = None,
+    selection: common.JointSelection | None = None,
 ) -> Float[Array, "*batch 16 3 3"]:
     return family.assemble_pose_matrices(
+        runtime,
         [family.PoseBlock(hand_pose, rotation_type, axis_angle_mean=hand_mean)],
         wrist_rotation,
         rotation_type,
-        xp=xp,
-        pose_positions=pose_positions,
+        selection,
     )
 
 
@@ -50,11 +49,11 @@ def prepare_pose(
 ) -> deformation.SkinningPose:
     """Prepare MANO transforms and pose-corrective coefficients."""
     pose_matrices = _pose_matrices(
+        runtime,
         hand_mean,
         hand_pose,
         wrist_rotation,
         rotation_type,
-        xp=runtime.xp,
     )
     return family.prepare_pose(
         runtime,
@@ -77,16 +76,14 @@ def prepare_skeleton(
     joint_indices: Sequence[int] | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed MANO joint transforms."""
-    selection = pose_positions = None
-    if joint_indices is not None:
-        selection, pose_positions = family.select_pose_joints(tree, joint_indices)
+    selection = None if joint_indices is None else tree.select(joint_indices)
     pose_matrices = _pose_matrices(
+        runtime,
         hand_mean,
         hand_pose,
         wrist_rotation,
         rotation_type,
-        xp=runtime.xp,
-        pose_positions=pose_positions,
+        selection,
     )
     return family.forward_skeleton(
         runtime,

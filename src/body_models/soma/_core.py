@@ -307,7 +307,7 @@ def prepare_skeleton(
     )
     if selection is None:
         return _control_joint_transforms(runtime.xp, data, skeleton)
-    output_indices = runtime.xp.asarray(selection.output_indices, dtype=runtime.xp.int32)
+    output_indices = runtime.asarray(selection.output_indices, like=skeleton, dtype=runtime.xp.int32)
     return skeleton[..., output_indices, :, :]
 
 
@@ -328,7 +328,7 @@ def _prepare_skeleton_state(
     pose_rot_full, control_local_rotations = _expand_control_pose_rotations(runtime, data, pose_rot_control)
     tree = data.kinematics.kinematic_tree
     if selection is not None:
-        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        cover_indices = runtime.asarray(selection.cover_indices, like=pose_rot_full, dtype=xp.int32)
         pose_rot_full = pose_rot_full[..., cover_indices, :, :]
         local_joint_translations = local_joint_translations[..., cover_indices, :]
         tree = selection.tree

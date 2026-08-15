@@ -144,17 +144,20 @@ class SmplFamilyModel(SkinnedModel):
 
 
 def assemble_pose_matrices(
+    runtime: runtime_ops.ArrayRuntime,
     blocks: Sequence[PoseBlock],
     root_rotation: Float[Array, "..."] | None,
     rotation_type: RotationType,
-    *,
-    xp: Any,
-    pose_positions: Sequence[int] | None = None,
+    selection: kinematics.JointSelection | None = None,
 ) -> Float[Array, "*batch J 3 3"]:
     """Convert ordered pose blocks to matrices and prepend the root rotation."""
+    xp = runtime.xp
     first = blocks[0]
     first_pose_ndim = rotation_ndim(first.rotation_type) + 1
     batch_shape = tuple(first.pose.shape[:-first_pose_ndim])
+    pose_positions = None
+    if selection is not None:
+        pose_positions = tuple(joint - 1 for joint in selection.cover_indices if joint > 0)
 
     matrices = []
     offset = 0
@@ -170,7 +173,7 @@ def assemble_pose_matrices(
             block_positions = tuple(
                 position - offset for position in pose_positions if offset <= position < offset + num_joints
             )
-            selector = xp.asarray(block_positions, dtype=xp.int32)
+            selector = runtime.asarray(block_positions, like=pose, dtype=xp.int32)
             if rotation_ndim(block.rotation_type) > 1:
                 pose = pose[..., selector, :, :]
             else:
@@ -201,6 +204,8 @@ def assemble_pose_matrices(
             dst="rotmat",
             xp=xp,
         )[..., None, :, :]
+    if selection is not None and not selection.cover_indices:
+        return xp.concat(matrices, axis=-3)
     return xp.concat([root_matrices, *matrices], axis=-3)
 
 
@@ -216,25 +221,15 @@ def forward_skeleton(
     batch_shape = tuple(pose_matrices.shape[:-3])
     offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
     if selection is not None:
-        cover_indices = xp.asarray(selection.cover_indices, dtype=xp.int32)
+        cover_indices = runtime.asarray(selection.cover_indices, like=offsets, dtype=xp.int32)
         offsets = offsets[..., cover_indices, :]
         tree = selection.tree
     local_transforms = kinematics.affine_transforms(pose_matrices, offsets, xp=xp)
     world_transforms = runtime._compose_kinematic_tree(local_transforms, tree)
     if selection is None:
         return world_transforms
-    output_indices = xp.asarray(selection.output_indices, dtype=xp.int32)
+    output_indices = runtime.asarray(selection.output_indices, like=world_transforms, dtype=xp.int32)
     return world_transforms[..., output_indices, :, :]
-
-
-def select_pose_joints(
-    tree: kinematics.KinematicTree,
-    joint_indices: Sequence[int],
-) -> tuple[kinematics.JointSelection, tuple[int, ...]]:
-    """Resolve output joints to their ancestor cover and non-root pose positions."""
-    selection = tree.select(joint_indices)
-    pose_positions = tuple(joint - 1 for joint in selection.cover_indices if joint > 0)
-    return selection, pose_positions
 
 
 def prepare_pose(
@@ -411,5 +406,4 @@ __all__ = [
     "prepare_shape_expression_skeleton_identity",
     "prepare_shape_identity",
     "prepare_shape_skeleton_identity",
-    "select_pose_joints",
 ]
