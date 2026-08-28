@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import array_api_compat
 from jaxtyping import Float, Int, Num
 
 Array = Any
@@ -20,11 +19,11 @@ def at_set(
     xp: Any,
 ) -> Num[Array, "..."]:
     """Set elements of an array in a backend-independent way."""
-    if array_api_compat.is_jax_array(array):
+    if xp.__name__ == "jax.numpy":
         return array.at[slices].set(values)
 
     if copy:
-        array = array.clone() if array_api_compat.is_torch_array(array) else xp.asarray(array, copy=True)
+        array = array.clone() if xp.__name__ == "torch" else xp.asarray(array, copy=True)
 
     array[slices] = values
     return array
@@ -38,7 +37,7 @@ def take_along_axis(
     xp: Any,
 ) -> Num[Array, "..."]:
     """Select values along one axis using backend-native naming."""
-    if array_api_compat.is_torch_array(array):
+    if xp.__name__ == "torch":
         return xp.take_along_dim(array, indices, dim=axis)
     return xp.take_along_axis(array, indices, axis=axis)
 
