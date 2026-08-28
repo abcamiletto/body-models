@@ -135,9 +135,6 @@ class SkinnedModel(ABC):
         :class:`Joint` vocabulary. Unpaired joints lie on the midline. Pairs
         describe index correspondence only, not how to mirror a pose.
 
-        Returns:
-            Symmetric joint index pairs, empty for one-sided skeletons.
-
         Raises:
             ValueError: If a sided joint name has no counterpart.
         """
