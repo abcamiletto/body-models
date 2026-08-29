@@ -6,7 +6,7 @@ from typing import Any
 from jaxtyping import Float
 
 from body_models import _common as common
-from body_models import _smpl_family as family
+from body_models import _linear_blendshape as linear
 from body_models._common import deformation
 from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
@@ -15,8 +15,8 @@ Array = Any
 
 SmplhSkeletonIdentity = deformation.SkeletonIdentity
 
-prepare_identity = family.prepare_shape_identity
-prepare_skeleton_identity = family.prepare_shape_skeleton_identity
+prepare_identity = linear.prepare_shape_identity
+prepare_skeleton_identity = linear.prepare_shape_skeleton_identity
 
 
 def _pose_matrices(
@@ -28,11 +28,11 @@ def _pose_matrices(
     rotation_type: RotationType,
     selection: common.JointSelection | None = None,
 ) -> Float[Array, "*batch 52 3 3"]:
-    return family.assemble_pose_matrices(
+    return linear.assemble_pose_matrices(
         runtime,
         [
-            family.PoseBlock(body_pose, rotation_type),
-            family.PoseBlock(hand_pose, rotation_type, axis_angle_mean=hand_mean),
+            linear.PoseBlock(body_pose, rotation_type),
+            linear.PoseBlock(hand_pose, rotation_type, axis_angle_mean=hand_mean),
         ],
         pelvis_rotation,
         rotation_type,
@@ -61,7 +61,7 @@ def prepare_pose(
         pelvis_rotation,
         rotation_type,
     )
-    return family.prepare_pose(
+    return linear.prepare_pose(
         runtime,
         tree,
         pose_matrices,
@@ -93,7 +93,7 @@ def prepare_skeleton(
         rotation_type,
         selection,
     )
-    return family.forward_skeleton(
+    return linear.forward_skeleton(
         runtime,
         tree,
         pose_matrices,

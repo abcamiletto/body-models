@@ -30,6 +30,7 @@ from mathutils import Vector
 from body_models.anny.numpy import ANNY
 from body_models.flame.numpy import FLAME
 from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.gnm.numpy import GNM
 from body_models.mano.numpy import MANO
 from body_models.mhr.numpy import MHR
 from body_models.skel.numpy import SKEL
@@ -52,14 +53,15 @@ PASTELS = {
     "mhr": (0.99, 0.73, 0.54, 1.0),  # peach
     "anny": (0.76, 0.68, 0.98, 1.0),  # lavender
     "flame": (0.99, 0.93, 0.62, 1.0),  # butter
+    "gnm": (0.72, 0.88, 0.78, 1.0),  # sage
     "garment_measurements": (0.69, 0.86, 0.93, 1.0),  # powder
     "soma": (0.97, 0.78, 0.78, 1.0),  # coral
 }
 LABELS = {f: f.upper() for f in PASTELS} | {
     "garment_measurements": "GARMENT\nMEASUREMENTS",
 }
-# FLAME is head-only: half-size keeps it in scale with the row.
-SCALES = {"flame": 0.5, "mano": 2.0}
+# Head-only models are half-size to keep them in scale with the row.
+SCALES = {"flame": 0.5, "gnm": 0.5, "mano": 2.0}
 TPOSE_FAMILIES = {
     "smpl",
     "smplh",
@@ -80,6 +82,7 @@ LOADERS = {
     "mhr": MHR,
     "anny": ANNY,
     "flame": FLAME,
+    "gnm": GNM,
     "garment_measurements": GarmentMeasurements,
     "soma": lambda: SOMA(),
 }

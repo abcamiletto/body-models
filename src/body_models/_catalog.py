@@ -50,6 +50,7 @@ MODEL_SPECS: Mapping[str, ModelSpec] = MappingProxyType(
     {
         "anny": _model("body_models.anny", "ANNY"),
         "flame": _model("body_models.flame", "FLAME"),
+        "gnm": _model("body_models.gnm", "GNM"),
         "garment-measurements": _model(
             "body_models.garment_measurements",
             "GarmentMeasurements",
@@ -79,6 +80,7 @@ ASSET_SPECS: Mapping[str, AssetSpec] = MappingProxyType(
         **_assets("body_models.anny._io", "anny"),
         **_assets("body_models.mhr._io", "mhr"),
         **_assets("body_models.flame._io", "flame"),
+        **_assets("body_models.gnm._io", "gnm"),
         **_assets("body_models.soma._io", "soma"),
         **_assets("body_models.garment_measurements._io", "garment-measurements"),
     }
@@ -122,6 +124,7 @@ DOWNLOAD_SPECS: Mapping[str, DownloadSpec] = MappingProxyType(
             output_key="flame",
             credentials=_credentials("FLAME", "https://flame.is.tue.mpg.de/"),
         ),
+        "gnm": DownloadSpec("body_models.gnm._io", "download_model", output_key="gnm"),
         "anny": DownloadSpec("body_models.anny._io", "download_model", output_key="anny"),
         "mhr": DownloadSpec("body_models.mhr._io", "download_model", output_key="mhr"),
         "soma": DownloadSpec("body_models.soma._io", "download_model", output_key="soma"),

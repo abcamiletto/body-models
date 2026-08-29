@@ -6,7 +6,7 @@ from typing import Any
 from jaxtyping import Float
 
 from body_models import _common as common
-from body_models import _smpl_family as family
+from body_models import _linear_blendshape as linear
 from body_models._common import deformation
 from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
@@ -14,8 +14,8 @@ from body_models._runtime import ArrayRuntime
 Array = Any
 SmplSkeletonIdentity = deformation.SkeletonIdentity
 
-prepare_identity = family.prepare_shape_identity
-prepare_skeleton_identity = family.prepare_shape_skeleton_identity
+prepare_identity = linear.prepare_shape_identity
+prepare_skeleton_identity = linear.prepare_shape_skeleton_identity
 
 
 def prepare_pose(
@@ -29,13 +29,13 @@ def prepare_pose(
     rest_joints: Float[Array, "*identity_batch J 3"],
 ) -> deformation.SkinningPose:
     """Prepare SMPL transforms and pose-corrective coefficients."""
-    pose_matrices = family.assemble_pose_matrices(
+    pose_matrices = linear.assemble_pose_matrices(
         runtime,
-        [family.PoseBlock(body_pose, rotation_type)],
+        [linear.PoseBlock(body_pose, rotation_type)],
         pelvis_rotation,
         rotation_type,
     )
-    return family.prepare_pose(
+    return linear.prepare_pose(
         runtime,
         tree,
         pose_matrices,
@@ -56,14 +56,14 @@ def prepare_skeleton(
 ) -> Float[Array, "*batch J 4 4"]:
     """Prepare only posed SMPL joint transforms."""
     selection = None if joint_indices is None else tree.select(joint_indices)
-    pose_matrices = family.assemble_pose_matrices(
+    pose_matrices = linear.assemble_pose_matrices(
         runtime,
-        [family.PoseBlock(body_pose, rotation_type)],
+        [linear.PoseBlock(body_pose, rotation_type)],
         pelvis_rotation,
         rotation_type,
         selection,
     )
-    return family.forward_skeleton(
+    return linear.forward_skeleton(
         runtime,
         tree,
         pose_matrices,

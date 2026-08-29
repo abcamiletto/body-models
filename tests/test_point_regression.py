@@ -74,7 +74,7 @@ def test_dense_point_mapping_matches_vertices() -> None:
         pytest.param(FLAME, {}, {"shape": 11, "expression": 13}, id="flame"),
     ],
 )
-def test_smpl_family_points_accept_arbitrary_identity_widths(model_class, kwargs, identity_widths) -> None:
+def test_linear_blendshape_points_accept_arbitrary_identity_widths(model_class, kwargs, identity_widths) -> None:
     model = model_class(**kwargs)
     mapping = np.zeros((2, model.num_vertices), dtype=np.float32)
     mapping[0, 0] = 1.0

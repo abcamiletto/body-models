@@ -28,6 +28,7 @@ MISSING_IDENTITY_ERRORS = {
     "anny": _SHAPE_REQUIRED,
     "flame": _SHAPE_AND_EXPRESSION_REQUIRED,
     "garment_measurements": _SHAPE_REQUIRED,
+    "gnm": _SHAPE_AND_EXPRESSION_REQUIRED,
     "mano": _SHAPE_REQUIRED,
     "mhr": _SHAPE_AND_EXPRESSION_REQUIRED,
     "skel": _SHAPE_REQUIRED,
@@ -36,6 +37,58 @@ MISSING_IDENTITY_ERRORS = {
     "smplx": _SHAPE_AND_EXPRESSION_REQUIRED,
     "soma": _SHAPE_REQUIRED,
 }
+
+
+def test_gnm_matches_upstream_v3_reference() -> None:
+    """Reference values generated with google/GNM's NumPy implementation."""
+    from body_models.gnm.numpy import GNM
+
+    rng = np.random.default_rng(2026)
+    shape = rng.normal(0.0, 0.2, 253).astype(np.float32)
+    expression = rng.normal(0.0, 0.2, 383).astype(np.float32)
+    head_pose = rng.normal(0.0, 0.1, (3, 3)).astype(np.float32)
+    head_rotation = rng.normal(0.0, 0.1, 3).astype(np.float32)
+    model = GNM()
+
+    vertex_indices = [0, 17, 911, 4096, 8192, 12000, 16000, 17820]
+    vertices = model.forward_vertices(
+        head_pose,
+        head_rotation=head_rotation,
+        shape=shape,
+        expression=expression,
+        vertex_indices=vertex_indices,
+    )
+    expected_vertices = np.array(
+        [
+            [0.059456896, 0.162234351, 0.015991837],
+            [0.070640020, 0.144165382, 0.010144094],
+            [0.027146481, 0.402254343, -0.009495255],
+            [0.017547006, 0.275936842, 0.110547513],
+            [-0.039716914, 0.399231076, -0.027254954],
+            [-0.015547985, 0.319207191, 0.085181579],
+            [-0.025292234, 0.257098615, 0.068270676],
+            [-0.033876877, 0.318514466, 0.063700624],
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(vertices, expected_vertices, rtol=1e-6, atol=1e-7)
+
+    skeleton = model.forward_skeleton(
+        head_pose,
+        head_rotation=head_rotation,
+        shape=shape,
+        expression=expression,
+    )
+    expected_joint_positions = np.array(
+        [
+            [-0.000086498, 0.133604288, -0.008341997],
+            [0.001278969, 0.212104231, 0.005712177],
+            [0.035696629, 0.319374859, 0.067932554],
+            [-0.025672812, 0.316609144, 0.075584300],
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(skeleton[..., :3, 3], expected_joint_positions, rtol=1e-6, atol=1e-7)
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)

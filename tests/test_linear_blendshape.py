@@ -1,10 +1,10 @@
-"""Behavioral tests for the shared SMPL-family engine."""
+"""Behavioral tests for the shared linear blendshape engine."""
 
 import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from body_models import _smpl_family as family
+from body_models import _linear_blendshape as linear
 from body_models._rotations import VALID_ROTATION_TYPES
 from body_models._runtime import NumpyRuntime
 
@@ -20,9 +20,9 @@ def test_pose_blocks_compose_across_rotation_representations(rotation_type) -> N
 
     encoded_root = SO3.convert(root, src="axis_angle", dst=rotation_type, xp=np)
     encoded_body = SO3.convert(body, src="axis_angle", dst=rotation_type, xp=np)
-    actual = family.assemble_pose_matrices(
+    actual = linear.assemble_pose_matrices(
         NumpyRuntime(),
-        [family.PoseBlock(encoded_body, rotation_type), family.PoseBlock(hands, "axis_angle")],
+        [linear.PoseBlock(encoded_body, rotation_type), linear.PoseBlock(hands, "axis_angle")],
         encoded_root,
         rotation_type,
     )
@@ -38,11 +38,11 @@ def test_pose_blocks_compose_across_rotation_representations(rotation_type) -> N
 
 def test_pose_blocks_reject_different_batch_shapes() -> None:
     with pytest.raises(ValueError, match="same batch shape"):
-        family.assemble_pose_matrices(
+        linear.assemble_pose_matrices(
             NumpyRuntime(),
             [
-                family.PoseBlock(np.zeros((2, 3, 3), dtype=np.float32), "axis_angle"),
-                family.PoseBlock(np.zeros((3, 2, 3), dtype=np.float32), "axis_angle"),
+                linear.PoseBlock(np.zeros((2, 3, 3), dtype=np.float32), "axis_angle"),
+                linear.PoseBlock(np.zeros((3, 2, 3), dtype=np.float32), "axis_angle"),
             ],
             None,
             "axis_angle",

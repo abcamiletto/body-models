@@ -6,6 +6,7 @@ from pathlib import Path
 from body_models.anny.numpy import ANNY
 from body_models.flame.numpy import FLAME
 from body_models.garment_measurements.numpy import GarmentMeasurements
+from body_models.gnm.numpy import GNM
 from body_models.mano.numpy import MANO
 from body_models.mhr.numpy import MHR
 from body_models.skel.numpy import SKEL
@@ -20,6 +21,7 @@ MODELS = [
     ("anny", ANNY, {}),
     ("flame", FLAME, {}),
     ("garment_measurements", GarmentMeasurements, {}),
+    ("gnm", GNM, {}),
     ("mano", MANO, {"side": "right"}),
     ("mhr", MHR, {}),
     ("skel", SKEL, {}),
