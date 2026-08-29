@@ -12,9 +12,9 @@ from nanomanifold import SO3
 
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
+from body_models._linear_blendshape import LinearBlendshapeModel
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
-from body_models._smpl_family import SmplFamilyModel
 from body_models.smplh import _core as core
 from body_models.smplh._constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
 from body_models.smplh._io import get_model_path, load_model_data
@@ -31,7 +31,7 @@ class SmplhConfig:
     rotation_type: RotationType
 
 
-class SMPLH(SmplFamilyModel):
+class SMPLH(LinearBlendshapeModel):
     """Skinned human body model with articulated hands."""
 
     has_hands = True

@@ -13,9 +13,9 @@ from nanomanifold import SO3
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._constants import Joint
+from body_models._linear_blendshape import LinearBlendshapeModel
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
-from body_models._smpl_family import SmplFamilyModel
 from body_models.mano import _core as core
 from body_models.mano._constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
 from body_models.mano._io import get_model_path, load_model_data
@@ -32,7 +32,7 @@ class ManoConfig:
     rotation_type: RotationType
 
 
-class MANO(SmplFamilyModel):
+class MANO(LinearBlendshapeModel):
     """Skinned hand model with shape and finger-pose controls."""
 
     has_hands = True

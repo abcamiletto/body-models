@@ -1,89 +1,48 @@
 # body-models
 
-`body-models` provides a shared interface for parametric human body, head, hand,
-anatomical, and measurement models across NumPy, PyTorch, and JAX.
+Parametric human models for NumPy, PyTorch, and JAX behind a consistent Python
+API.
 
-Documentation: https://abcamiletto.github.io/body-models/
+## Installation
 
-## Features
-
-- Shared API across human, anatomical, hand, head, and measurement models
-- NumPy, PyTorch, and JAX runtimes
-- Separate mesh and skeleton forwards with `forward_vertices()` and `forward_skeleton()`
-- Prepared identities for repeated poses with fixed shape/expression parameters
-- Mesh simplification and vertex-subset forwards for supported mesh models
-- Multiple rotation representations for supported pose models
-- Optional Warp-accelerated skinning for Torch models
-
-## Install
+`body-models` requires Python 3.11 or newer. NumPy support is included by
+default. Install an extra for PyTorch or JAX.
 
 ```bash
-uv add body-models
+pip install body-models
+pip install "body-models[torch]"
+pip install "body-models[jax]"
 ```
 
-Install optional extras when needed:
-
-```bash
-uv add "body-models[torch]"
-uv add "body-models[jax]"
-uv add "body-models[torch,warp]"
-uv add "body-models[simplify]"
-```
-
-Public model assets download automatically on first use. Licensed assets use
-`body-models download MODEL`, which prompts for credentials.
-
-## Quick Start
+## Example
 
 ```python
-from body_models.smpl.torch import SMPL
+from body_models.gnm.numpy import GNM
 
-model = SMPL(gender="neutral")
+model = GNM()
 params = model.get_rest_pose(batch_dims=(1,))
 
 vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
-The equivalent NumPy and JAX classes live in `body_models.smpl.numpy` and
-`body_models.smpl.jax`. Torch models are `torch.nn.Module` instances, so
-`.to()`, `.cuda()`, and `state_dict()` work directly.
+Public assets such as GNM Head download on first use. Models with restricted
+assets require registration with their upstream project.
 
-When shape-dependent identity parameters stay fixed across many poses, prepare
-them once and pass the returned dictionary back through `identity`. This avoids
-recomputing rest joints, local offsets, and rest vertices on every forward pass.
+## Models
 
-```python
-shape = params.pop("shape")
-identity = model.prepare_identity(shape)
+| Category | Models |
+| --- | --- |
+| Bodies | SMPL, SMPL-H, SMPL-X, ANNY, MHR, SOMA |
+| Heads | FLAME, GNM Head |
+| Hands | MANO |
+| Anatomy | SKEL |
+| Measurements | GarmentMeasurements |
 
-vertices = model.forward_vertices(**params, identity=identity)
-skeleton = model.forward_skeleton(**params, identity=identity)
-```
-
-For models with expression-dependent rest state, such as SMPL-X, FLAME, and GNM, pass
-both identity controls to `prepare_identity(shape, expression)`.
-
-## Supported Models
-
-- Full bodies: SMPL, SMPL-H, SMPL-X, ANNY, MHR, SOMA, GarmentMeasurements
-- Anatomicals: SKEL
-- Heads: FLAME, GNM Head
-- Hands: MANO
-
-See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)
-for setup, supported runtimes, inputs, and model-specific behavior.
-
-## Development
-
-```bash
-uv run ruff format .
-uv run ruff check .
-uv run ty check
-```
+The [documentation](https://abcamiletto.github.io/body-models/) covers model
+setup, parameters, supported runtimes, and the shared API.
 
 ## License
 
-The code is licensed under the Apache License 2.0 (see `LICENSE`). Model assets
-are licensed separately by their upstream projects — see the documentation and
-upstream model pages for model-specific terms.
+The library is licensed under Apache 2.0. Model assets retain their upstream
+licenses; see the documentation for each model.

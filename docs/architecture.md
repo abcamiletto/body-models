@@ -46,16 +46,16 @@ state, transforms, and output selection are keyword-only. Forward signatures
 order those groups as local pose options, identity, global transform, and
 selection.
 
-SMPL, SMPL-H, SMPL-X, MANO, FLAME, and GNM share one private family engine. Their
-`_core.py` modules describe the ordered pose blocks and apply model-specific
-means, while the engine owns rotation conversion, root insertion, batch
-validation, forward kinematics, bind-relative transforms, and corrective
-coefficient construction.
+SMPL, SMPL-H, SMPL-X, MANO, FLAME, and GNM share one private linear
+blendshape engine. Their `_core.py` modules describe the ordered pose blocks
+and apply model-specific means, while the engine owns rotation conversion,
+root insertion, batch validation, forward kinematics, bind-relative
+transforms, and corrective coefficient construction.
 The public methods remain explicit per model. The engine accepts arrays and
 pose blocks only; it has no model names, optional-feature flags, or knowledge of
 hands and faces.
 
-Linear identity preparation is shared within the family because each model
+Linear identity preparation is shared by these models because each model
 applies coefficients to vertex and joint bases in the same way. Shape-only and
 shape-plus-expression paths remain separate so their signatures state their
 requirements without mode flags.
@@ -122,8 +122,8 @@ reconstruction preserves both model configuration and runtime configuration.
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative
 transforms, global point transforms, and skeleton transforms. Model-specific
-pose layouts remain beside their model; the family engine composes those layouts
-with the generic kinematics and skinning operations.
+pose layouts remain beside their model; the linear blendshape engine composes
+those layouts with the generic kinematics and skinning operations.
 
 The same rule applies below the runtime boundary. `_common.deformation` owns
 linear blend shapes and dense or sparse corrective bases; `_common.kinematics`

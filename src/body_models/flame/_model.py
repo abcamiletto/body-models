@@ -11,9 +11,9 @@ from jaxtyping import Float
 
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
+from body_models._linear_blendshape import LinearBlendshapeModel
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
-from body_models._smpl_family import SmplFamilyModel
 from body_models.flame import _core as core
 from body_models.flame._constants import FLAME_JOINT_NAMES, FLAME_JOINTS
 from body_models.flame._io import get_model_path, load_model_data
@@ -28,7 +28,7 @@ class FlameConfig:
     rotation_type: RotationType
 
 
-class FLAME(SmplFamilyModel):
+class FLAME(LinearBlendshapeModel):
     """Skinned head model with shape and expression controls."""
 
     has_face = True

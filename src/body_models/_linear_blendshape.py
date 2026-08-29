@@ -1,4 +1,4 @@
-"""Shared engine for SMPL-derived linear blend skinning models."""
+"""Shared engine for linear blendshape models with articulated skinning."""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ class PoseBlock:
     axis_angle_mean: Float[Array, "..."] | None = None
 
 
-class SmplFamilyModel(SkinnedModel):
-    """Common state access and final deformation stages for the SMPL family."""
+class LinearBlendshapeModel(SkinnedModel):
+    """Common state access and deformation stages for linear blendshape models."""
 
     NUM_SHAPE_COEFFS: int
     NUM_EXPR_COEFFS = 0
@@ -66,7 +66,7 @@ class SmplFamilyModel(SkinnedModel):
         self,
         mapping: Float[Array, "K V"],
     ) -> PointRegressor:
-        """Preproject a vertex mapping and the family's linear identity bases."""
+        """Preproject a vertex mapping and the model's linear identity bases."""
         regressor = super().prepare_point_regressor(mapping)
         xp = self._runtime.xp
         regressor["template"] = point_regression.project_vertex_values(
@@ -216,7 +216,7 @@ def forward_skeleton(
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
     selection: kinematics.JointSelection | None = None,
 ) -> Float[Array, "*batch J 4 4"]:
-    """Broadcast identity state and run family forward kinematics."""
+    """Broadcast identity state and run forward kinematics."""
     xp = runtime.xp
     batch_shape = tuple(pose_matrices.shape[:-3])
     offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
@@ -240,7 +240,7 @@ def prepare_pose(
     local_joint_offsets: Float[Array, "*identity_batch J 3"],
     rest_joints: Float[Array, "*identity_batch J 3"],
 ) -> deformation.SkinningPose:
-    """Prepare transforms and pose offsets from assembled family rotations."""
+    """Prepare transforms and pose offsets from assembled rotations."""
     world_transforms = forward_skeleton(
         runtime,
         tree,
@@ -397,8 +397,8 @@ def _validate_coefficients(
 
 
 __all__ = [
+    "LinearBlendshapeModel",
     "PoseBlock",
-    "SmplFamilyModel",
     "assemble_pose_matrices",
     "forward_skeleton",
     "prepare_pose",
