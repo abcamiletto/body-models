@@ -25,6 +25,7 @@ MODEL_IDS: dict[str, str] = {
     "ANNY": "anny",
     "MHR": "mhr",
     "FLAME": "flame",
+    "GNM": "gnm",
     "GarmentMeasurements": "garment_measurements",
     "SOMA": "soma",
 }
@@ -58,6 +59,7 @@ SKEL_HEAD_POSE_DOFS = [
     ("Head rot", 2, (-0.8, 0.8)),
 ]
 FLAME_POSE_JOINTS = [("Neck", 0), ("Jaw", 1), ("L Eye", 2), ("R Eye", 3)]
+GNM_POSE_JOINTS = [("Head", 0), ("L Eye", 1), ("R Eye", 2)]
 ANNY_PHENOTYPE_PARAMS = ["Gender", "Age", "Muscle", "Weight", "Height", "Proportions"]
 ANNY_BODY_POSE_BONES = [
     ("Spine", 0),
@@ -113,6 +115,7 @@ MODEL_COLORS: dict[str, tuple[int, int, int]] = {
     "ANNY": (255, 218, 185),
     "MHR": (221, 160, 221),
     "FLAME": (255, 239, 186),
+    "GNM": (184, 224, 199),
     "GarmentMeasurements": (176, 224, 230),
     "SOMA": (250, 200, 200),
 }
@@ -462,6 +465,13 @@ def add_model_controls(server: viser.ViserServer, name: str, state: ModelState) 
                 handles += betas(server, state, key="expression", count=10, prefix="psi", lo=-2.0, hi=2.0)
             with server.gui.add_folder("Head Pose"):
                 handles += joint_xyz(server, state, key="head_pose", joints=FLAME_POSE_JOINTS, lo=-0.5, hi=0.5)
+        elif name == "GNM":
+            with server.gui.add_folder("Shape"):
+                handles += betas(server, state, key="shape", count=10)
+            with server.gui.add_folder("Expression"):
+                handles += betas(server, state, key="expression", count=15, prefix="psi", lo=-2.0, hi=2.0)
+            with server.gui.add_folder("Head Pose"):
+                handles += joint_xyz(server, state, key="head_pose", joints=GNM_POSE_JOINTS, lo=-0.5, hi=0.5)
         elif name == "GarmentMeasurements":
             with server.gui.add_folder("Shape"):
                 handles += betas(server, state, key="shape", count=state.model.NUM_SHAPE_COEFFS)

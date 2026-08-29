@@ -62,6 +62,7 @@ prompts for those credentials and stores the resulting private-cache path.
 | Model | Scope | Setup |
 | --- | --- | --- |
 | [FLAME](models/flame.md) | head and face | registration required |
+| [GNM Head](models/gnm.md) | head, face, eyes, teeth, and tongue | auto-download |
 
 ### Hands
 

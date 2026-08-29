@@ -46,7 +46,7 @@ state, transforms, and output selection are keyword-only. Forward signatures
 order those groups as local pose options, identity, global transform, and
 selection.
 
-SMPL, SMPL-H, SMPL-X, MANO, and FLAME share one private family engine. Their
+SMPL, SMPL-H, SMPL-X, MANO, FLAME, and GNM share one private family engine. Their
 `_core.py` modules describe the ordered pose blocks and apply model-specific
 means, while the engine owns rotation conversion, root insertion, batch
 validation, forward kinematics, bind-relative transforms, and corrective

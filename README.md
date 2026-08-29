@@ -61,14 +61,14 @@ vertices = model.forward_vertices(**params, identity=identity)
 skeleton = model.forward_skeleton(**params, identity=identity)
 ```
 
-For models with expression-dependent rest state, such as SMPL-X and FLAME, pass
+For models with expression-dependent rest state, such as SMPL-X, FLAME, and GNM, pass
 both identity controls to `prepare_identity(shape, expression)`.
 
 ## Supported Models
 
 - Full bodies: SMPL, SMPL-H, SMPL-X, ANNY, MHR, SOMA, GarmentMeasurements
 - Anatomicals: SKEL
-- Heads: FLAME
+- Heads: FLAME, GNM Head
 - Hands: MANO
 
 See the [model docs](https://abcamiletto.github.io/body-models/#supported-models)

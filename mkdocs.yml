@@ -71,6 +71,7 @@ nav:
           - SKEL: models/skel.md
       - Heads:
           - FLAME: models/flame.md
+          - GNM Head: models/gnm.md
       - Hands:
           - MANO: models/mano.md
 strict: true

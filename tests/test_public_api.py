@@ -56,6 +56,14 @@ EXPECTED_PARAMETER_SPECS = {
         "global_rotation": ((3,), "transform", "axis_angle"),
         "global_translation": ((3,), "transform", None),
     },
+    "gnm": {
+        "shape": ((253,), "identity", None),
+        "expression": ((383,), "identity", None),
+        "head_pose": ((3, 3), "pose", "axis_angle"),
+        "head_rotation": ((3,), "pose", "axis_angle"),
+        "global_rotation": ((3,), "transform", "axis_angle"),
+        "global_translation": ((3,), "transform", None),
+    },
     "mano": {
         "shape": ((10,), "identity", None),
         "hand_pose": ((15, 3), "pose", "axis_angle"),
