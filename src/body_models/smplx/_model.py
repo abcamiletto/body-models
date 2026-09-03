@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 from jaxtyping import Float
 from nanomanifold import SO3
 
@@ -17,7 +18,7 @@ from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
 from body_models.smplx import _core as core
 from body_models.smplx._constants import SMPLX_BODY_PRESETS, SMPLX_HAND_PRESETS, SMPLX_JOINTS
-from body_models.smplx._io import get_model_path, load_model_data
+from body_models.smplx._io import get_model_path, load_model_data, load_toeless_template
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -57,6 +58,8 @@ class SMPLX(LinearBlendshapeModel):
         model_path: Path | str | None = None,
         gender: Literal["neutral", "male", "female"] | None = None,
         flat_hand_mean: bool = False,
+        v_template: Float[np.ndarray, "V 3"] | None = None,
+        toeless: bool = False,
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
         runtime: ArrayRuntime,
@@ -68,8 +71,10 @@ class SMPLX(LinearBlendshapeModel):
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
 
+        if toeless:
+            v_template = load_toeless_template()
         resolved_path = get_model_path(model_path, gender)
-        assets = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        assets = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify, v_template=v_template)
         self._attach_runtime(runtime)
         self._config = SmplxConfig(gender=gender or "neutral", rotation_type=rotation_type)
         self._assets = runtime._materialize(assets)

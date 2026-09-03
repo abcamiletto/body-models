@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
+import trimesh
 from jaxtyping import Float, Int
 
 from body_models import _config as config
@@ -41,9 +42,21 @@ def validate_path(model_path: PathLike) -> Path:
         raise ValueError(f"Expected an SMPLX model file, got directory: {model_path}")
     if not model_path.is_file():
         raise FileNotFoundError(f"SMPLX model file not found: {model_path}")
-    if model_path.suffix not in {".npz", ".pkl"}:
-        raise ValueError(f"Expected an SMPLX .npz or .pkl file, got: {model_path}")
+    if model_path.suffix not in {".npz", ".pkl", ".obj"}:
+        raise ValueError(f"Expected an SMPLX .npz, .pkl or .obj file, got: {model_path}")
     return model_path
+
+
+def load_toeless_template() -> Float[np.ndarray, "V 3"]:
+    """Load the registered BEDLAM2 toeless vertex template."""
+    template_path = config.get_model_path("template-smplx-neutral-toeless")
+    if template_path is None:
+        raise FileNotFoundError(
+            "SMPL-X toeless template not found. Configure it with "
+            "`body-models set template-smplx-neutral-toeless /path/to/smplx_neutral-lh_vtemplate_toeless.obj`."
+        )
+    mesh = trimesh.load_mesh(template_path, process=False, maintain_order=True)
+    return np.asarray(mesh.vertices, dtype=np.float32)
 
 
 def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male", "female"] | None) -> Path:
@@ -67,13 +80,19 @@ def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male
     return validate_path(resolved_path)
 
 
-def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> SmplxAssets:
-    """Load SMPL-X model data from .pkl or .npz file."""
+def load_model_data(
+    path: Path,
+    flat_hand_mean: bool = False,
+    simplify: float = 1.0,
+    v_template: Float[np.ndarray, "V 3"] | None = None,
+) -> SmplxAssets:
+    """Load SMPL-X model data from .pkl or .npz file, optionally replacing the vertex template."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
     data = load_model_dict(path)
 
-    model_template = np.asarray(data["v_template"], dtype=np.float32)
+    template = data["v_template"] if v_template is None else v_template
+    model_template = np.asarray(template, dtype=np.float32)
     faces = np.asarray(data["f"], dtype=np.int32)
     lbs_weights = np.asarray(data["weights"], dtype=np.float32)
     model_dirs = np.asarray(data["shapedirs"], dtype=np.float32)
@@ -82,11 +101,11 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
     parents = np.asarray(data["kintree_table"][0], dtype=np.int64)
     parents[0] = -1
 
-    v_template = model_template
+    vertices = model_template
     shapedirs = model_dirs
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(model_template, faces, target_faces)
+        vertices, faces, vertex_map = simplify_mesh(model_template, faces, target_faces)
         lbs_weights = lbs_weights[vertex_map]
         shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
@@ -103,7 +122,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
     lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
 
     return SmplxAssets(
-        v_template=v_template,
+        v_template=vertices,
         faces=faces,
         lbs_weights=lbs_weights,
         compact_skinning=CompactSkinning(lbs_joint_indices, lbs_joint_weights),

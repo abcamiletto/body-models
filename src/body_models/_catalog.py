@@ -73,7 +73,9 @@ def _assets(module: str, *names: str) -> dict[str, AssetSpec]:
 ASSET_SPECS: Mapping[str, AssetSpec] = MappingProxyType(
     {
         **_assets("body_models.smpl._io", "smpl-male", "smpl-female", "smpl-neutral"),
-        **_assets("body_models.smplx._io", "smplx-male", "smplx-female", "smplx-neutral"),
+        **_assets(
+            "body_models.smplx._io", "smplx-male", "smplx-female", "smplx-neutral", "template-smplx-neutral-toeless"
+        ),
         **_assets("body_models.smplh._io", "smplh-male", "smplh-female", "smplh-neutral"),
         **_assets("body_models.mano._io", "mano-right", "mano-left"),
         **_assets("body_models.skel._io", "skel-male", "skel-female"),
