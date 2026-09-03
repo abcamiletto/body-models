@@ -133,6 +133,25 @@ without depending on the basis representation.
 Model packages export `*Identity` types only when they add fields to the shared
 identity contracts; all skinned models use the shared `SkinningPose`.
 
+## Motion dictionaries
+
+Each model has a `TypedDict` for motion parameters. Import it from
+`body_models` and unpack it into a forward method.
+
+```python
+from body_models import SmplMotion
+
+motion: SmplMotion = {
+    "body_pose": body_pose,
+    "global_translation": translation,
+}
+vertices = model.forward_vertices(**motion, shape=shape)
+```
+
+The available types are `AnnyMotion`, `FlameMotion`,
+`GarmentMeasurementsMotion`, `GnmMotion`, `ManoMotion`, `MhrMotion`,
+`SkelMotion`, `SmplMotion`, `SmplhMotion`, `SmplxMotion`, and `SomaMotion`.
+
 ::: body_models.LinearIdentity
     options:
       show_source: false
