@@ -9,15 +9,6 @@ import torch
 from torch import nn
 
 
-def _store(module: nn.Module, static: dict[str, Any], name: str, value: Any) -> None:
-    if isinstance(value, torch.Tensor):
-        module.register_buffer(name, value, persistent=True)
-    elif isinstance(value, nn.Module):
-        module.add_module(name, value)
-    else:
-        static[name] = value
-
-
 class StateMapping(nn.Module, Mapping[str, Any]):
     """Mapping whose array values participate in the module lifecycle."""
 
@@ -25,26 +16,19 @@ class StateMapping(nn.Module, Mapping[str, Any]):
 
     def __init__(self, values: Mapping[str, Any]) -> None:
         super().__init__()
-        self._keys = tuple(values)
-        self._static = {}
-        for key, value in values.items():
-            if not isinstance(key, str):
-                raise TypeError("Model state mappings must use string keys.")
-            _store(self, self._static, key, value)
+        if any(not isinstance(key, str) for key in values):
+            raise TypeError("Model state mappings must use string keys.")
+        self._indices = {key: index for index, key in enumerate(sorted(values))}
+        self._values = StateSequence([values[key] for key in self._indices])
 
     def __getitem__(self, key: str) -> Any:
-        if key in self._static:
-            return self._static[key]
-        try:
-            return getattr(self, key)
-        except AttributeError as exc:
-            raise KeyError(key) from exc
+        return self._values[self._indices[key]]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._keys)
+        return iter(self._indices)
 
     def __len__(self) -> int:
-        return len(self._keys)
+        return len(self._indices)
 
 
 class StateSequence(nn.Module, Sequence[Any]):
@@ -55,7 +39,13 @@ class StateSequence(nn.Module, Sequence[Any]):
         self._length = len(values)
         self._static = {}
         for index, value in enumerate(values):
-            _store(self, self._static, str(index), value)
+            name = str(index)
+            if isinstance(value, torch.Tensor):
+                self.register_buffer(name, value, persistent=True)
+            elif isinstance(value, nn.Module):
+                self.add_module(name, value)
+            else:
+                self._static[name] = value
 
     def __getitem__(self, index: int | slice) -> Any:
         if isinstance(index, slice):

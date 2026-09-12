@@ -78,17 +78,7 @@ def download_smpl(
     password: str | None = None,
 ) -> dict[str, Path]:
     output_dir = Path(output_dir) if output_dir else get_cache_dir() / "smpl"
-    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPL_FILES.items()}
-    if None not in paths.values():
-        return {model: path for model, path in paths.items() if path is not None}
-
-    _fetch("SMPL", SMPL_URL, output_dir, username, password)
-
-    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPL_FILES.items()}
-    if None in paths.values():
-        raise FileNotFoundError(f"Expected SMPL model files were not found in {output_dir}")
-
-    return {model: path for model, path in paths.items() if path is not None}
+    return _download_files("SMPL", SMPL_URL, SMPL_FILES, output_dir, username, password)
 
 
 def download_smplx(
@@ -97,17 +87,7 @@ def download_smplx(
     password: str | None = None,
 ) -> dict[str, Path]:
     output_dir = Path(output_dir) if output_dir else get_cache_dir() / "smplx"
-    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPLX_FILES.items()}
-    if None not in paths.values():
-        return {model: path for model, path in paths.items() if path is not None}
-
-    _fetch("SMPL-X", SMPLX_URL, output_dir, username, password)
-
-    paths = {model: next(output_dir.rglob(name), None) for model, name in SMPLX_FILES.items()}
-    if None in paths.values():
-        raise FileNotFoundError(f"Expected SMPL-X model files were not found in {output_dir}")
-
-    return {model: path for model, path in paths.items() if path is not None}
+    return _download_files("SMPL-X", SMPLX_URL, SMPLX_FILES, output_dir, username, password)
 
 
 def download_smplh(
@@ -116,17 +96,7 @@ def download_smplh(
     password: str | None = None,
 ) -> dict[str, Path]:
     output_dir = Path(output_dir) if output_dir else get_cache_dir() / "smplh"
-    paths = {model: _find_relative_path(output_dir, name) for model, name in SMPLH_FILES.items()}
-    if None not in paths.values():
-        return {model: path for model, path in paths.items() if path is not None}
-
-    _fetch("SMPL-H", SMPLH_URL, output_dir, username, password)
-
-    paths = {model: _find_relative_path(output_dir, name) for model, name in SMPLH_FILES.items()}
-    if None in paths.values():
-        raise FileNotFoundError(f"Expected SMPL-H model files were not found in {output_dir}")
-
-    return {model: path for model, path in paths.items() if path is not None}
+    return _download_files("SMPL-H", SMPLH_URL, SMPLH_FILES, output_dir, username, password)
 
 
 def download_mano(
@@ -135,17 +105,7 @@ def download_mano(
     password: str | None = None,
 ) -> dict[str, Path]:
     output_dir = Path(output_dir) if output_dir else get_cache_dir() / "mano"
-    paths = {model: next(output_dir.rglob(name), None) for model, name in MANO_FILES.items()}
-    if None not in paths.values():
-        return {model: path for model, path in paths.items() if path is not None}
-
-    _fetch("MANO", MANO_URL, output_dir, username, password)
-
-    paths = {model: next(output_dir.rglob(name), None) for model, name in MANO_FILES.items()}
-    if None in paths.values():
-        raise FileNotFoundError(f"Expected MANO model files were not found in {output_dir}")
-
-    return {model: path for model, path in paths.items() if path is not None}
+    return _download_files("MANO", MANO_URL, MANO_FILES, output_dir, username, password)
 
 
 def download_flame(
@@ -205,9 +165,31 @@ def download_skel_assets(
     }
 
 
-def _find_relative_path(cache_dir: Path, relative_path: str) -> Path | None:
-    wanted = Path(relative_path)
-    for path in cache_dir.rglob(wanted.name):
-        if len(path.parts) >= len(wanted.parts) and path.parts[-len(wanted.parts) :] == wanted.parts:
-            return path
-    return None
+def _download_files(
+    name: str,
+    url: str,
+    files: dict[str, str],
+    output_dir: Path,
+    username: str | None,
+    password: str | None,
+) -> dict[str, Path]:
+    paths = _find_model_files(name, files, output_dir)
+    if paths.keys() != files.keys():
+        _fetch(name, url, output_dir, username, password)
+        paths = _find_model_files(name, files, output_dir)
+    missing = files.keys() - paths.keys()
+    if missing:
+        missing_names = ", ".join(sorted(missing))
+        raise FileNotFoundError(f"Expected {name} model files were not found in {output_dir}: {missing_names}")
+    return paths
+
+
+def _find_model_files(name: str, files: dict[str, str], output_dir: Path) -> dict[str, Path]:
+    paths = {}
+    for model, pattern in files.items():
+        matches = sorted(path for path in output_dir.rglob(pattern) if path.is_file())
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous {name} asset {pattern!r} in {output_dir}: {matches}")
+        if matches:
+            paths[model] = matches[0]
+    return paths

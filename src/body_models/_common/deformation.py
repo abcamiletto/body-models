@@ -147,7 +147,7 @@ def prepare_linear_skeleton(
 
 
 def blend_shapes(
-    mean: Float[Array, "V D"],
+    mean: Float[Array, "*batch V D"],
     directions: Float[Array, "V D C"],
     coefficients: Float[Array, "*batch C"],
     *,

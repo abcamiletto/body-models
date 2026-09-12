@@ -46,7 +46,7 @@ def test_torch_state_registers_nested_arrays() -> None:
         )
     )
 
-    assert list(state.state_dict()) == ["leaves.low.values", "arrays.indices"]
+    assert list(state.state_dict()) == ["leaves._values.0.values", "arrays._values.0"]
     state.to(dtype=torch.float64)
     assert state.leaves["low"].values.dtype == torch.float64
     assert state.arrays["indices"].device == state.leaves["low"].values.device

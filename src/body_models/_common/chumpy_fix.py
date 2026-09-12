@@ -64,12 +64,7 @@ class _ChumpyPlaceholder:
                 data = data.reshape(tuple(state["preferred_shape"]))
             self.data = data
             return
-        if isinstance(state, dict):
-            for value in state.values():
-                if isinstance(value, np.ndarray):
-                    self.data = value
-                    return
-        self.data = state
+        raise ValueError("Unsupported chumpy state: expected an array or an indexed array.")
 
 
 class _CompatUnpickler(pickle.Unpickler):

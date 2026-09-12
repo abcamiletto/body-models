@@ -58,7 +58,8 @@ hands and faces.
 Linear identity preparation is shared by these models because each model
 applies coefficients to vertex and joint bases in the same way. Shape-only and
 shape-plus-expression paths remain separate so their signatures state their
-requirements without mode flags.
+requirements without mode flags. Shape and expression bases are evaluated
+separately, avoiding a concatenated copy of the bases on every forward pass.
 
 Each instance exposes `parameter_spec`, an ordered mapping from public parameter
 names to `ParameterSpec`. A specification records the unbatched array dims,
@@ -116,8 +117,15 @@ Torch backend models inherit `torch.nn.Module`, and their materialized state is
 registered directly as modules and persistent buffers. Source numeric model
 state is persistent, so checkpoints are complete but may be large. Derived
 backend plans move with their owning module but are rebuilt rather than
-serialized. JAX backend models implement the pytree protocol. Pytree
-reconstruction preserves both model configuration and runtime configuration.
+serialized. Mapping values live in an indexed child module, keeping user keys
+separate from Torch attributes and buffer names. This changes checkpoint paths
+for mapping entries; checkpoints written with the previous mapping layout must
+be regenerated.
+
+JAX backend models implement the pytree protocol. Dataclass state is partitioned
+at the leaf level: metadata stays static, while arrays remain children even when
+nested alongside strings or counts. Pytree reconstruction preserves both model
+configuration and runtime configuration.
 
 The shared skinning module contains only operations whose signatures are stable
 across model families: compact and dense linear blend skinning, bind-relative
