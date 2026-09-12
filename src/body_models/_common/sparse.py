@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 import numpy as np
 from jaxtyping import Float, Int
+from scipy import sparse
 
 Array = Any
 
@@ -59,15 +60,14 @@ def select_columns(
     columns: Int[np.ndarray, "output"],
 ) -> SparseMatrix:
     """Select and reorder output columns of a sparse linear map."""
-    column_map = np.full(matrix.shape[1], -1, dtype=np.int64)
-    column_map[columns] = np.arange(columns.size)
-    remapped = column_map[matrix.column_indices]
-    keep = remapped >= 0
+    indices = matrix.row_indices, matrix.column_indices
+    weights = sparse.csc_array((matrix.values, indices), shape=matrix.shape)
+    selected = weights[:, columns].tocoo()
     return SparseMatrix(
-        row_indices=matrix.row_indices[keep],
-        column_indices=remapped[keep],
-        values=matrix.values[keep],
-        shape=(matrix.shape[0], columns.size),
+        row_indices=selected.row,
+        column_indices=selected.col,
+        values=selected.data,
+        shape=selected.shape,
     )
 
 

@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import ptloader
 from jaxtyping import Float, Int
 from nanomanifold import SO3
-from ptloader import load as load_pytorch_checkpoint
 
 from body_models import _config as config
 from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
@@ -182,13 +182,13 @@ def _pose_control_joints(
 
 def _load_raw_model_data(asset_dir: Path) -> dict[str, Any]:
     """Load MHR model data from disk without requiring torch."""
-    model = _load_checkpoint_numpy(asset_dir / "mhr_model.pt")
-    character = _get_attr(model, "character_torch")
+    model = ptloader.load(asset_dir / "mhr_model.pt", weights_only=True)
+    character = model.character_torch
     skeleton = character.skeleton
     lbs = character.linear_blend_skinning
     blend_shape = character.blend_shape
 
-    skin_indices, skin_weights = _build_dense_skinning(
+    skin_indices, skin_weights = _build_compact_skinning(
         lbs.vert_indices_flattened,
         lbs.skin_indices_flattened,
         lbs.skin_weights_flattened,
@@ -224,7 +224,7 @@ def _load_lod_data(asset_dir: Path, lod: int, data: dict[str, Any]) -> dict[str,
         skin_joint_indices = np.asarray(asset["skin_joint_indices"], dtype=np.int64)
         mapped_joint_indices = np.asarray([checkpoint_joint_index[name] for name in joint_names], dtype=np.int64)
         base_vertices = np.asarray(asset["base_vertices"], dtype=np.float32)
-        skin_indices, skin_weights = _build_dense_skinning(
+        skin_indices, skin_weights = _build_compact_skinning(
             asset["skin_vertex_indices"],
             mapped_joint_indices[skin_joint_indices],
             asset["skin_weights"],
@@ -246,44 +246,25 @@ def _has_model(model_path: Path) -> bool:
     return all((model_path / name).is_file() for name in MHR_ASSETS)
 
 
-def _get_attr(obj: Any, path: str) -> Any:
-    cur = obj
-    for part in path.split("."):
-        if isinstance(cur, dict):
-            cur = cur[part]
-        else:
-            cur = getattr(cur, part)
-    return cur
-
-
-def _load_checkpoint_numpy(checkpoint_path: Path) -> Any:
-    return load_pytorch_checkpoint(checkpoint_path, weights_only=True)
-
-
-def _build_dense_skinning(
+def _build_compact_skinning(
     vert_indices: Int[np.ndarray, "N"],
     joint_indices: Int[np.ndarray, "N"],
     joint_weights: Float[np.ndarray, "N"],
     num_vertices: int,
 ) -> tuple[Int[np.ndarray, "V K"], Float[np.ndarray, "V K"]]:
-    """Build dense skinning matrices from sparse representation."""
-    vert_indices = vert_indices.astype(np.int64, copy=False)
-    joint_indices = joint_indices.astype(np.int32, copy=False)
+    """Pack unordered vertex/joint entries into per-vertex influence slots."""
     counts = np.bincount(vert_indices, minlength=num_vertices)
-    K = int(counts.max())
+    num_slots = int(counts.max(initial=0))
+    indices = np.zeros((num_vertices, num_slots), dtype=np.int32)
+    weights = np.zeros((num_vertices, num_slots), dtype=joint_weights.dtype)
 
-    dense_indices = np.zeros((num_vertices, K), dtype=np.int32)
-    dense_weights = np.zeros((num_vertices, K), dtype=joint_weights.dtype)
-
-    offsets = np.zeros(num_vertices + 1, dtype=np.int64)
-    offsets[1:] = np.cumsum(counts)
-
-    for v in range(num_vertices):
-        start, end = int(offsets[v]), int(offsets[v + 1])
-        dense_indices[v, : end - start] = joint_indices[start:end]
-        dense_weights[v, : end - start] = joint_weights[start:end]
-
-    return dense_indices, dense_weights
+    order = np.argsort(vert_indices, kind="stable")
+    starts = np.cumsum(counts) - counts
+    slots = np.arange(order.size) - np.repeat(starts, counts)
+    vertices = vert_indices[order]
+    indices[vertices, slots] = joint_indices[order]
+    weights[vertices, slots] = joint_weights[order]
+    return indices, weights
 
 
 def load_pose_correctives_weights(

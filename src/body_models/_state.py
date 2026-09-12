@@ -60,7 +60,7 @@ def torch_state(value: Any, *, kernel_backend: KernelBackend = "torch") -> Any:
             from body_models._common import warp
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError("Install body-models[warp] to use kernel_backend='warp'.") from exc
-        return warp.prepare_compact_skinning(value)
+        return warp.prepare_compact_skinning(torch_state(value))
 
     if isinstance(value, sparse.SparseMatrix):
         from body_models._common import sparse_torch
@@ -83,17 +83,11 @@ def torch_state(value: Any, *, kernel_backend: KernelBackend = "torch") -> Any:
             return StateMapping(converted)
         return converted
 
-    if isinstance(value, list):
+    if isinstance(value, list | tuple):
         converted = [torch_state(item, kernel_backend=kernel_backend) for item in value]
         if any(isinstance(item, torch.Tensor | nn.Module) for item in converted):
             return StateSequence(converted)
-        return converted
-
-    if isinstance(value, tuple):
-        converted = tuple(torch_state(item, kernel_backend=kernel_backend) for item in value)
-        if any(isinstance(item, torch.Tensor | nn.Module) for item in converted):
-            return StateSequence(converted)
-        return converted
+        return type(value)(converted)
 
     if isinstance(value, np.ndarray | torch.Tensor):
         tensor = torch.tensor(value) if isinstance(value, np.ndarray) else value
@@ -167,26 +161,22 @@ def _register_jax_dataclass(cls: type, jax: Any) -> None:
     if cls in _JAX_DATACLASSES:
         return
 
+    field_names = tuple(field.name for field in fields(cls))
+
     def flatten(obj):
-        children = []
-        child_names = []
-        static = {}
-        for field in fields(obj):
-            value = getattr(obj, field.name)
-            leaves = jax.tree_util.tree_leaves(value)
-            if leaves and all(isinstance(leaf, jax.Array) for leaf in leaves):
-                children.append(value)
-                child_names.append(field.name)
-            else:
-                static[field.name] = value
-        static_leaves, static_tree = jax.tree_util.tree_flatten(static)
-        return tuple(children), (tuple(child_names), static_tree, tuple(static_leaves))
+        values = tuple(getattr(obj, name) for name in field_names)
+        leaves, tree = jax.tree_util.tree_flatten(values)
+        static = tuple((index, leaf) for index, leaf in enumerate(leaves) if isinstance(leaf, _STATIC_LEAF_TYPES))
+        children = tuple(leaf for leaf in leaves if not isinstance(leaf, _STATIC_LEAF_TYPES))
+        return children, (tree, static)
 
     def unflatten(aux_data, children):
-        child_names, static_tree, static_leaves = aux_data
-        values = jax.tree_util.tree_unflatten(static_tree, static_leaves)
-        values.update(zip(child_names, children, strict=True))
-        return cls(**values)
+        tree, static = aux_data
+        leaves = list(children)
+        for index, value in static:
+            leaves.insert(index, value)
+        values = jax.tree_util.tree_unflatten(tree, leaves)
+        return cls(**dict(zip(field_names, values, strict=True)))
 
     jax.tree_util.register_pytree_node(cls, flatten, unflatten)
     _JAX_DATACLASSES.add(cls)

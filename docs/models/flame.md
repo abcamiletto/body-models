@@ -10,7 +10,7 @@ FLAME requires registration at [flame.is.tue.mpg.de](https://flame.is.tue.mpg.de
 body-models download flame
 ```
 
-Manual paths can also be configured:
+Or configure an existing file:
 
 ```bash
 body-models set flame /path/to/FLAME_NEUTRAL.pkl

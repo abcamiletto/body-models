@@ -1,17 +1,14 @@
 # body-models
 
-`body-models` provides a shared interface for parametric body models with
-NumPy, PyTorch, and JAX runtimes plus optional Warp acceleration.
+Parametric body models for NumPy, PyTorch, and JAX, with optional Warp kernels.
 
 ## Install
 
+Requires Python 3.11 or newer. NumPy support is included; add extras for other
+runtimes:
+
 ```bash
 uv add body-models
-```
-
-Install optional framework runtimes when needed:
-
-```bash
 uv add "body-models[torch]"
 uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
@@ -19,69 +16,40 @@ uv add "body-models[torch,warp]"
 
 ## Model assets
 
-Public assets download automatically on first use when `model_path` is omitted.
-They live in the operating system's private user cache, not beside the
-configuration file or inside the Python environment. Run `body-models` to see
-both locations.
+Public assets download on first use when no model path is configured or passed.
+Assets use the operating system's user cache. Run `body-models` to see the cache
+and configuration paths.
 
-Use the CLI to prefetch assets or choose an exact destination:
+To prefetch assets or save a custom destination:
 
 ```bash
 body-models download anny
 body-models download anny --output-dir /path/to/models/anny
 ```
 
-The custom path is saved as the model's configured override. With
-`body-models download all --output-dir /path/to/models`, each family gets its
-own subdirectory. Licensed models cannot download silently on first use because
-they require accepted licenses and account credentials; their setup command
-prompts for those credentials and stores the resulting private-cache path.
+`download all --output-dir /path/to/models` creates a subdirectory per family.
+Licensed models require registration and accepted licenses; their download
+commands prompt for credentials and save the asset path.
 
-## Supported Models
-
-### Full Bodies
+## Supported models
 
 | Model | Scope | Setup |
 | --- | --- | --- |
-| [SMPL](models/smpl.md) | body | registration required |
-| [SMPL-H](models/smplh.md) | body and hands | registration required |
-| [SMPL-X](models/smplx.md) | body, hands, face | registration required |
-| [ANNY](models/anny.md) | phenotype-driven body | auto-download |
-| [MHR](models/mhr.md) | expressive full body | auto-download |
-| [SOMA](models/soma.md) | skinned body from SOMA-X assets | auto-download |
-| [GarmentMeasurements](models/garment-measurements.md) | PCA body for garment measurements | auto-download |
+| [SMPL](models/smpl.md) | Body | Registration |
+| [SMPL-H](models/smplh.md) | Body and hands | Registration |
+| [SMPL-X](models/smplx.md) | Body, hands, face | Registration |
+| [ANNY](models/anny.md) | Phenotype-driven body | Auto-download |
+| [MHR](models/mhr.md) | Body with facial expression | Auto-download |
+| [SOMA](models/soma.md) | Body from SOMA-X assets | Auto-download |
+| [GarmentMeasurements](models/garment-measurements.md) | PCA body for measurements | Auto-download |
+| [SKEL](models/skel.md) | Body with anatomical skeleton | Registration |
+| [FLAME](models/flame.md) | Head and face | Registration |
+| [GNM Head](models/gnm.md) | Head, face, eyes, teeth, tongue | Auto-download |
+| [MANO](models/mano.md) | Hand | Registration |
 
-### Anatomicals
+## Common usage
 
-| Model | Scope | Setup |
-| --- | --- | --- |
-| [SKEL](models/skel.md) | body with anatomical skeleton | registration required |
-
-### Heads
-
-| Model | Scope | Setup |
-| --- | --- | --- |
-| [FLAME](models/flame.md) | head and face | registration required |
-| [GNM Head](models/gnm.md) | head, face, eyes, teeth, and tongue | auto-download |
-
-### Hands
-
-| Model | Scope | Setup |
-| --- | --- | --- |
-| [MANO](models/mano.md) | hand | registration required |
-
-## Common Usage
-
-Each model exposes a class from its `numpy`, `torch`, and `jax` modules. Select
-the array backend in the import path. NumPy does not require an optional
-framework dependency.
-
-Names exported from `body_models`, model packages, and backend modules are the
-stable public API.
-Underscore-prefixed modules are private implementation details and are not
-covered by compatibility guarantees. See the [API reference](api.md) for the
-shared contracts and the [architecture guide](architecture.md) for the runtime
-boundary and extension rules.
+Select the backend through the import path:
 
 ```python
 from body_models.smpl.torch import SMPL
@@ -92,47 +60,42 @@ vertices = model.forward_vertices(**params)
 skeleton = model.forward_skeleton(**params)
 ```
 
-Models imported from a `torch` module are `torch.nn.Module` instances, so
-`.to()`, `.cuda()`, and `state_dict()` work directly. Torch models accept
-`kernel_backend="warp"` when Warp operation lowerings are desired. The array
-runtime remains Torch; kernel backends only replace shared operations they
-implement.
+Torch models are `torch.nn.Module` instances supporting `.to()`, `.cuda()`, and
+`state_dict()`. `kernel_backend="warp"` selects Warp implementations of shared
+operations while keeping Torch tensors.
 
-All models derive from `SkinnedModel`. The shared contract includes `runtime`,
-`has_face`, `has_hands`, `parameter_spec`, `get_rest_pose`, `faces`,
-`num_vertices`, `num_joints`, `joint_names`, `parents`, `common_joints`,
-`joint_index`, `pose_joint_indices`, and `forward_skeleton`.
-`has_face` indicates facial-expression controls; `has_hands` indicates
-articulated hand controls. Neither describes mesh geometry. Skinned models
-additionally share `skin_weights`, `skinning_spec`, `rest_vertices`,
-`apply_pose_correctives`, and `forward_vertices`. `skin_weights` follows the
-public skeleton; `skinning_spec.skinning_weights` follows the complete render
-rig and its prepared skinning transforms.
+All models derive from `SkinnedModel`. Its [API reference](api.md) covers
+parameter defaults, geometry, joints, prepared skinning, and mapped points.
+Names exported from public packages are stable; underscore-prefixed modules
+are private. See [architecture](architecture.md) for implementation boundaries.
 
-`joint_names` and `parents` describe the complete native skeleton in joint
-index order. The `Joint` enum names anatomical joints shared across models;
-`common_joints` maps those names to the native skeleton, and
-`joint_index(Joint.LEFT_WRIST)` resolves the corresponding native index.
+### Parameters and joints
 
-Fixed public dimensions use `NUM_*` class constants:
-`NUM_JOINTS`, `NUM_BODY_CONTROLS`, `NUM_HAND_CONTROLS`, `NUM_HEAD_CONTROLS`,
-`NUM_SHAPE_COEFFS`, `NUM_EXPR_COEFFS`, and, for compact pose controls,
-`NUM_POSE_COEFFS` and `NUM_*_POSE_COEFFS`. `NUM_JOINTS` sizes the skeleton
-returned by `forward_skeleton`, while the `NUM_*_CONTROLS` constants size the
-leading axis of their pose argument: one control is one entry along that axis
-(a rotation for the rotational parameterizations), and the count need not match
-the skeleton. SMPL, for example, has 24 joints but 23 `body_pose` controls
-because the root rotation is a separate parameter. A class defines only the
-constants that apply to that model. A dimension fixed by the supported
-checkpoint schema is a class constant even when the checkpoint is loaded from a
-custom path.
-Dimensions selected by a constructor option remain instance properties; for
-example, SOMA exposes `num_shape_coeffs` because it depends on `model_type`.
+`parameter_spec` describes each parameter's dimensions, role, and default.
+`has_face` indicates facial-expression controls and `has_hands` articulated
+hand controls; these flags do not describe mesh geometry.
 
-Array shapes use arbitrary leading batch dimensions throughout. For example,
-an annotated `*batch J 4 4` skeleton can be unbatched, singly batched, or have
-several leading batch axes.
+`joint_names` and `parents` describe the complete native skeleton in index
+order. `common_joints` maps the shared `Joint` enum to native names;
+`joint_index(Joint.LEFT_WRIST)` resolves a native index. `skin_weights` follows
+this public skeleton, while `skinning_spec.skinning_weights` follows the render
+rig and its prepared transforms.
 
-Skinned model packages export model-specific identity types when their schemas
-are unique. Shared contracts are available as `LinearIdentity`,
-`SkinningIdentity`, `SkinningPose`, and `SkinningSpec` from `body_models`.
+Fixed dimensions use `NUM_*` class constants where applicable:
+
+| Constants | Meaning |
+| --- | --- |
+| `NUM_JOINTS` | Skeleton size returned by `forward_skeleton()`. |
+| `NUM_BODY_CONTROLS`, `NUM_HAND_CONTROLS`, `NUM_HEAD_CONTROLS` | Entries along each pose argument's control axis. |
+| `NUM_SHAPE_COEFFS`, `NUM_EXPR_COEFFS` | Identity and expression dimensions. |
+| `NUM_POSE_COEFFS`, `NUM_*_POSE_COEFFS` | Compact pose dimensions. |
+
+Control counts can differ from joint counts: SMPL has 24 joints and 23 body
+controls, with a separate root rotation. Dimensions fixed by the asset schema
+remain class constants for custom paths. Constructor-dependent dimensions use
+instance properties, such as SOMA's `num_shape_coeffs`.
+
+Arrays accept arbitrary leading batch dimensions: `*batch J 4 4` includes
+unbatched, single-batch, and multi-batch skeletons. Shared preparation types
+include `LinearIdentity`, `SkinningIdentity`, `SkinningPose`, and `SkinningSpec`;
+model packages export identity types when they need additional fields.

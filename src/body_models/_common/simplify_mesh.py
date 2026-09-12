@@ -15,7 +15,7 @@ def simplify_mesh(
     try:
         import pyfqmr
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("Install body-models[simplify] to use simplify < 1.0.") from exc
+        raise ModuleNotFoundError("Install body-models[simplify] to use simplify > 1.0.") from exc
     from scipy.spatial import KDTree
 
     simplifier = pyfqmr.Simplify()

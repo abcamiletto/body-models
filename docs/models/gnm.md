@@ -1,8 +1,7 @@
 # GNM Head
 
-[GNM Head](https://github.com/google/GNM) is Google's parametric statistical
-head model. It controls identity, expression, neck and head pose, and both
-eyes. The mesh also contains teeth and tongue geometry.
+[GNM Head](https://github.com/google/GNM) controls identity, expression, neck,
+head, and eyes. Its mesh includes teeth and tongue geometry.
 
 ## Setup
 
@@ -14,20 +13,15 @@ Hugging Face repository. To prefetch GNM Head v3.0:
 body-models download gnm
 ```
 
-Google releases the model and its data under the Apache License 2.0. The
-hosted archive includes Google's license. See the
-[upstream repository](https://github.com/google/GNM) and
-[technical report](https://arxiv.org/abs/2607.23687) for source details and
-citation information.
+The model and data use Apache 2.0; the hosted archive includes Google's license.
+See the [source](https://github.com/google/GNM) and
+[technical report](https://arxiv.org/abs/2607.23687) for citation details.
 
 ## API
 
-`shape` has 253 identity coefficients. `expression` has 383 coefficients.
-`head_rotation` controls the root neck joint, while the three entries in
-`head_pose` control the head, left eye, and right eye in that order. GNM's
-native geometry is already measured in meters.
-
-The `identity_names` and `expression_names` properties expose Google's name
-for every coefficient.
+`shape` has 253 coefficients and `expression` has 383, named by `identity_names`
+and `expression_names`. `head_rotation` controls the root neck joint;
+`head_pose` controls the head, left eye, and right eye, in that order.
+Geometry is in meters.
 
 ::: body_models.gnm.numpy.GNM

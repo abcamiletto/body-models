@@ -1,158 +1,112 @@
 # Architecture
 
-`body-models` has one implementation of each model and a small execution layer
-for array ownership and genuinely shared operations.
+Each model has one implementation, bound to NumPy, Torch, or JAX through a
+shared runtime layer.
 
 ## Public API boundary
 
-The stable public API is intentionally small:
-
-- names exported from `body_models`;
-- names explicitly exported from a model or backend package.
-
-All underscore-prefixed modules are private implementation details. This
-includes model programs and loaders such as `smpl._model` and `smpl._io`, and
-shared infrastructure such as `_runtime`, `_state`, and `_common`. They may
-change without a major release.
+Names exported from `body_models`, model packages, and backend modules are
+public. Underscore-prefixed modules are private and may change without a major
+release.
 
 ## Model programs
 
-Each model family follows the same file roles:
+Models live in `body_models/<name>/` and derive from `SkinnedModel`:
 
 | File | Responsibility |
 | --- | --- |
-| `_io.py` | Resolve assets and load immutable NumPy model data. |
-| `_core.py` | Model-specific mathematics with an explicit array namespace. |
-| `_model.py` | Define the model class, validation, state preparation, and forward orchestration. |
-| `numpy.py`, `torch.py`, `jax.py` | Bind the shared model class to one public array backend. |
-| `__init__.py` | Optionally export shared model-specific types and helpers. |
+| `_io.py` | Resolve assets and load immutable NumPy data. |
+| `_core.py` | Model mathematics with an explicit array namespace or runtime. |
+| `_model.py` | Validation, state preparation, and forward methods. |
+| `numpy.py`, `torch.py`, `jax.py` | Bind the model to an array backend. |
+| `__init__.py` | Export shared model-specific types and helpers. |
 
-Every model derives from the public `SkinnedModel` base. Models are self-contained in
-`body_models/<name>/`; descriptive categories do not create a second package
-tree. Thin public subclasses bind that implementation to each runtime. On skinned models,
-identity preparation returns identity-dependent vertices and joints, while
-pose preparation returns transforms and compact corrective coefficients.
-`SkinningSpec` holds model-static triangles, render-rig skinning weights, and
-the optional corrective basis. `apply_pose_correctives()` expands compact
-coefficients without exposing the dense or sparse representation;
-`forward_vertices()` then skins the surface. `PointRegressor` projects the same
-contract through arbitrary vertex mappings, while explicit model-local
-`forward_points()` methods retain each model's parameter signature. Skeleton
-forwards use distinct model-local preparation paths.
-Shared preparation and skinning contracts are exported from `body_models`;
-skeleton-only preparation types remain private.
-Required numerical inputs may be positional, while optional configuration,
-state, transforms, and output selection are keyword-only. Forward signatures
-order those groups as local pose options, identity, global transform, and
-selection.
+Identity preparation computes rest vertices and joints. Pose preparation
+computes transforms and compact corrective coefficients. `SkinningSpec` holds
+triangles, render-rig weights, and an optional corrective basis.
+`apply_pose_correctives()` expands coefficients; `forward_vertices()` skins the
+result. `PointRegressor` projects this computation through vertex mappings,
+while each model's `forward_points()` retains its explicit parameter signature.
+Skeleton forwards have separate preparation paths and private state types.
 
-SMPL, SMPL-H, SMPL-X, MANO, FLAME, and GNM share one private linear
-blendshape engine. Their `_core.py` modules describe the ordered pose blocks
-and apply model-specific means, while the engine owns rotation conversion,
-root insertion, batch validation, forward kinematics, bind-relative
-transforms, and corrective coefficient construction.
-The public methods remain explicit per model. The engine accepts arrays and
-pose blocks only; it has no model names, optional-feature flags, or knowledge of
-hands and faces.
+Required numerical inputs may be positional. Optional arguments are
+keyword-only, ordered as local pose options, identity, global transform, and
+output selection.
 
-Linear identity preparation is shared by these models because each model
-applies coefficients to vertex and joint bases in the same way. Shape-only and
-shape-plus-expression paths remain separate so their signatures state their
-requirements without mode flags.
+SMPL, SMPL-H, SMPL-X, MANO, FLAME, and GNM share a private linear blendshape
+engine. Model-local pose blocks define joint order and means; the engine handles
+rotation conversion, root insertion, batch validation, forward kinematics,
+bind-relative transforms, and corrective coefficients. It accepts arrays and
+pose blocks, with no model names or feature flags.
 
-Each instance exposes `parameter_spec`, an ordered mapping from public parameter
-names to `ParameterSpec`. A specification records the unbatched array dims,
-semantic role (`identity`, `pose`, or `transform`), numeric default, and rotation
-representation where applicable. A rotation representation determines the
-corresponding identity rotation. Parameters are ordered by role: identity, then
-pose, then transform. Dimensions derived from assets or configuration are
-therefore represented accurately. The shared base constructs `get_rest_pose()`
-from this mapping; model-local overrides only apply named presets such as flat or
-relaxed hands.
+These models also share linear identity preparation. Shape-only and
+shape-plus-expression functions have separate signatures. Shape and expression
+bases are evaluated separately to avoid copying concatenated bases on each call.
+
+`parameter_spec` maps names to `ParameterSpec`, ordered by identity, pose, then
+transform. Each entry records unbatched dimensions, role, numeric default, and
+rotation representation. Dimensions reflect assets and configuration.
+`get_rest_pose()` builds defaults from this mapping, including identity
+rotations; model overrides apply named presets such as relaxed hands.
 
 ## Runtime boundary
 
-`ArrayRuntime` owns the array namespace, device- and dtype-aware construction,
-state materialization, and lowerings of stable shared operations. These include
-compact linear blend skinning and skinned pose-tree composition.
-Materialization delegates to the recursive converters in `_state.py`, which
-accept loader data rather than model objects; models composed inside another
-model remain models. Callers therefore cannot pair a runtime with the wrong
-framework state. Materialized weights are private because their container
-types are runtime-specific; stable model properties provide public access to
-meshes, skeletons, and deformation bases. The runtime does not own model
-semantics.
+`ArrayRuntime` owns the array namespace, device/dtype-aware construction, state
+materialization, and shared operation implementations. `_state.py` converts
+loader data; nested models remain models. Runtime-specific weights stay private,
+with model properties exposing meshes, skeletons, and deformation bases.
 
-The public backend modules bind each model to one array runtime. Torch models
-can additionally select a kernel backend without changing their tensor API:
+Backend imports select the array runtime; `create_model()` selects it by name.
+Torch models can select Warp kernels while retaining the Torch tensor API:
 
 ```python
 from body_models.smpl.torch import SMPL
 
-model = SMPL(kernel_backend="warp")
+model = SMPL(gender="neutral", kernel_backend="warp")
 ```
 
-The shared model implementation still receives an internal `ArrayRuntime`.
-`create_model()` accepts a runtime name for callers that select a model and
-backend dynamically.
+Core functions that dispatch shared operations receive the runtime. Pure
+numerical helpers receive its array namespace. Model code constructs local
+transforms; the runtime composes the kinematic tree and executes skinning.
 
-Kernel dispatch follows the lifetime of the work. Operation execution is
-lowered by the runtime; reusable derived inputs are created during state
-materialization. Skinned pose programs construct local affine transforms but
-delegate their parent-tree composition to the runtime, independent of pose
-layout or rotation representation. Core entry points that execute a lowered
-operation receive the runtime; pure numerical helpers receive only its array
-namespace. Compact skinning follows the same boundary: every runtime executes
-the same call contract, while Torch/Warp materialization augments the compact
-weights with a transform-gradient plan. A vertex subset chosen during a call
-gets a short-lived subset plan instead. Sparse corrective bases similarly own
-their prepared representation as materialized state. Kernel backends are
-additive operation lowerings; a selected lowering must execute or raise for an
-unsupported input, never silently switch implementations. This keeps
-`ArrayRuntime` independent of model semantics without hiding persistent work in
-global caches.
+Reusable backend data is prepared during materialization. Torch/Warp compact
+weights own a transform-gradient plan; per-call vertex subsets get temporary
+plans. Sparse corrective bases likewise own their prepared state. A selected
+kernel must execute or raise for unsupported inputs, never silently fall back.
 
-Torch backend models inherit `torch.nn.Module`, and their materialized state is
-registered directly as modules and persistent buffers. Source numeric model
-state is persistent, so checkpoints are complete but may be large. Derived
-backend plans move with their owning module but are rebuilt rather than
-serialized. JAX backend models implement the pytree protocol. Pytree
-reconstruction preserves both model configuration and runtime configuration.
+Torch models inherit `torch.nn.Module`. Source arrays are persistent buffers,
+so checkpoints are complete but may be large. Derived plans move with the model
+and are rebuilt rather than serialized. Mapping values live in indexed child
+modules to avoid collisions with Torch attributes. This changes paths in
+exported `state_dict` snapshots containing mappings, such as SOMA's
+`_assets.lods`. Hugging Face autodownload archives contain source assets and
+upstream weights, so they need no regeneration.
 
-The shared skinning module contains only operations whose signatures are stable
-across model families: compact and dense linear blend skinning, bind-relative
-transforms, global point transforms, and skeleton transforms. Model-specific
-pose layouts remain beside their model; the linear blendshape engine composes
-those layouts with the generic kinematics and skinning operations.
+JAX models implement the pytree protocol. Dataclass metadata is static; arrays
+remain children even inside mixed containers. Reconstruction preserves model
+and runtime configuration.
 
-The same rule applies below the runtime boundary. `_common.deformation` owns
-linear blend shapes and dense or sparse corrective bases; `_common.kinematics`
-owns affine transform assembly, rigid inversion, parent-relative offsets, and
-generic forward kinematics. These functions operate on explicit arrays and do
-not know model names, parameter layouts, or asset formats.
+## Shared operations
 
-## Specialized operations
+| Module | Responsibility |
+| --- | --- |
+| `_common.skinning` | Dense/compact skinning, bind-relative transforms, global point and skeleton transforms. |
+| `_common.deformation` | Linear blend shapes and dense/sparse corrective bases. |
+| `_common.kinematics` | Affine transforms, rigid inversion, parent-relative offsets, forward kinematics. |
 
-An operation belongs in the runtime only when its contract is independent of a
-particular model. SOMA and MHR compute their corrective coefficients locally;
-their final coefficient-to-offset map uses the same public sparse-basis
-contract as every other corrective model. Hiding coefficient generation in the
-global runtime would make the runtime understand model semantics and create a
-leaky abstraction.
+Shared operations know no model names, pose layouts, or asset formats. SOMA and
+MHR compute corrective coefficients locally, then use the shared basis contract
+to turn them into offsets.
 
 ## Adding a model
 
-1. Add asset loading and validation in `_io.py`.
-2. Put model-specific numerical functions in `_core.py` and pass the array
-   namespace explicitly.
-3. Define the shared implementation class in `_model.py` using `ArrayRuntime` and the
-   appropriate model base.
-4. Bind and export the class from the NumPy, Torch, and JAX backend modules.
-5. Add its factory and asset metadata to `_catalog.py`.
-6. Add cross-runtime, arbitrary-batch, compile, gradient, and reference tests
-   in proportion to the operations it supports.
+1. Load and validate assets in `_io.py`.
+2. Implement mathematics in `_core.py` with an explicit namespace or runtime.
+3. Define the `SkinnedModel` subclass in `_model.py`.
+4. Bind and export NumPy, Torch, and JAX classes.
+5. Add factory and asset metadata to `_catalog.py`.
+6. Check cross-runtime results, batching, compilation, gradients, and reference
+   outputs for supported operations.
 
-Before promoting repeated code into `_common/`, check that the candidate has the
-same meaning, inputs, outputs, batching rules, and differentiation behavior in
-every caller. If those differ, keeping a small amount of explicit duplication
-is preferred to adding flags or model-name branches.
+Share code only when its meaning, inputs, outputs, batching, and gradients agree
+across callers. Otherwise, keep it model-local.

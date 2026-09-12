@@ -10,7 +10,7 @@ MHR downloads from the public
 Hugging Face repository on first use. The hosted assets include the original
 MHR checkpoint for LOD 1 and preprocessed FBX-derived meshes for LODs 0–6.
 
-To prefetch the assets:
+To prefetch:
 
 ```bash
 body-models download mhr

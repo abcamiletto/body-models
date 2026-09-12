@@ -185,11 +185,6 @@ class SkinnedModel(ABC):
     def parameter_spec(self) -> Mapping[str, ParameterSpec]:
         """Machine-readable parameters accepted by this model."""
 
-    @property
-    @abstractmethod
-    def _parameter_reference(self) -> Float[Array, "..."]:
-        """Array whose backend, device, and dtype parameter defaults follow."""
-
     @abstractmethod
     def forward_skeleton(self, *args, **kwargs) -> Float[Array, "*batch J 4 4"]:
         """

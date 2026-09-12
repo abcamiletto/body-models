@@ -1,6 +1,6 @@
 # SMPL-X
 
-SMPL-X extends SMPL with articulated hands, face expression, jaw, and eye controls.
+SMPL-X extends SMPL with hands, facial expression, jaw, and eye controls.
 
 ## Setup
 
@@ -11,7 +11,7 @@ SMPL-X requires registration at
 body-models download smplx
 ```
 
-Manual paths can also be configured per gender:
+Or configure files by gender:
 
 ```bash
 body-models set smplx-neutral /path/to/SMPLX_NEUTRAL.npz
@@ -19,8 +19,7 @@ body-models set smplx-male /path/to/SMPLX_MALE.npz
 body-models set smplx-female /path/to/SMPLX_FEMALE.npz
 ```
 
-Like every skinned model, SMPL-X supports arbitrary vertex mappings through
-[`prepare_point_regressor()` and `forward_points()`](../api.md#mapped-points).
+For vertex mappings, see [mapped points](../api.md#mapped-points).
 
 ## API
 

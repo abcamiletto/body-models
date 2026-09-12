@@ -361,9 +361,9 @@ class SOMA(SkinnedModel):
         shape: Float[Array, "*batch I"],
         scale_params: Float[Array, "*batch K"] | None,
     ) -> tuple[Float[Array, "*batch Vf 3"], Float[Array, "*batch Va 3"]]:
-        if self.num_scale_coeffs is None:
-            scale_params = None
-        elif scale_params is None:
+        if scale_params is not None and self.num_scale_coeffs is None:
+            raise ValueError(f"scale_params is not supported by SOMA model_type={self.model_type!r}")
+        if scale_params is None and self.num_scale_coeffs is not None:
             scale_params = self._runtime.zeros(
                 (*shape.shape[:-1], self.num_scale_coeffs),
                 like=shape,

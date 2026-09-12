@@ -1,39 +1,34 @@
 # SOMA
 
-SOMA provides a native implementation for SOMA-X assets with identity, pose,
-and corrective controls.
+SOMA implements SOMA-X identity, pose, and corrective controls without requiring
+`py-soma-x`.
 
 ## Setup
 
 SOMA downloads automatically on first use from the
 [`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models)
-Hugging Face repository, which records the original SOMA-X Apache 2.0
-provenance. To prefetch the assets:
+Hugging Face repository, which records the SOMA-X Apache 2.0 provenance.
+To prefetch:
 
 ```bash
 body-models download soma
 ```
 
-## Notes
-
-The native implementation does not require installing `py-soma-x`.
-
-`body-models` supports both the original SOMA-X NPZ rig layout and the SOMA-X
-0.2 split assets. With 0.2 assets, the implementation retains the internal
-twist-joint rig for skinning while exposing the 77-joint public pose API.
-Normalize an upstream 0.2.1 asset tree and save the resulting path with:
+The loader requires normalized assets, as provided by the hosted archive.
+To normalize upstream SOMA-X 0.2.1 assets and save their path:
 
 ```bash
 body-models preprocess-soma /path/to/upstream /path/to/processed
 ```
 
-The constructor accepts `lod="mid"`, `lod="low"`, or `lod="xlo"`. The hosted
-assets contain 18,056, 4,505, and 612 vertices respectively.
+SOMA exposes 77 public joints and uses an internal twist-joint rig for skinning.
+The `lod` options `"mid"`, `"low"`, and `"xlo"` have 18,056, 4,505, and 612
+vertices, respectively.
 
-`prepare_identity()` uses `repose=True` and `bind_pose="fit"` by default,
-matching SOMA-X bind-pose behavior. Set `repose=False` to keep the fitted rest
-shape and skeleton, `bind_pose="fit_detached"` to stop gradients through the
-fit, or `bind_pose="canonical"` to use the canonical bind pose.
+`prepare_identity()` defaults to `repose=True, bind_pose="fit"`, matching
+SOMA-X. Use `repose=False` to retain the fitted rest shape and skeleton,
+`bind_pose="fit_detached"` to stop gradients through fitting, or
+`bind_pose="canonical"` for the canonical bind pose.
 
 ## API
 

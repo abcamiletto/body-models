@@ -313,24 +313,22 @@ def prepare_shape_expression_identity(
     expression: Float[Array, "*batch E"],
 ) -> deformation.LinearIdentity:
     """Prepare vertex and joint identity state from shape and expression."""
-    coefficients, vertex_directions, joint_directions = _shape_expression_inputs(
-        shape,
-        expression,
-        shapedirs,
-        exprdirs,
-        j_shapedirs,
-        j_exprdirs,
+    skeleton = prepare_shape_expression_skeleton_identity(
         xp=xp,
-    )
-    return deformation.prepare_linear_identity(
-        vertex_template=v_template,
-        vertex_directions=vertex_directions,
-        joint_template=j_template,
-        joint_directions=joint_directions,
+        j_template=j_template,
+        j_shapedirs=j_shapedirs,
+        j_exprdirs=j_exprdirs,
         parents=parents,
-        coefficients=coefficients,
-        xp=xp,
+        shape=shape,
+        expression=expression,
     )
+    rest_vertices = deformation.blend_shapes(v_template, shapedirs[..., : shape.shape[-1]], shape, xp=xp)
+    rest_vertices = deformation.blend_shapes(rest_vertices, exprdirs[..., : expression.shape[-1]], expression, xp=xp)
+    return {
+        "rest_joints": skeleton["rest_joints"],
+        "local_joint_offsets": skeleton["local_joint_offsets"],
+        "rest_vertices": rest_vertices,
+    }
 
 
 def prepare_shape_expression_skeleton_identity(
@@ -345,45 +343,12 @@ def prepare_shape_expression_skeleton_identity(
 ) -> deformation.SkeletonIdentity:
     """Prepare joint identity state from shape and expression."""
     _validate_coefficients(shape, expression)
-    shape_dim = shape.shape[-1]
-    expression_dim = expression.shape[-1]
-    coefficients = xp.concat([shape, expression], axis=-1)
-    joint_directions = xp.concat(
-        [j_shapedirs[:, :, :shape_dim], j_exprdirs[:, :, :expression_dim]],
-        axis=-1,
-    )
-    return deformation.prepare_linear_skeleton(
-        joint_template=j_template,
-        joint_directions=joint_directions,
-        parents=parents,
-        coefficients=coefficients,
-        xp=xp,
-    )
-
-
-def _shape_expression_inputs(
-    shape: Float[Array, "*batch S"],
-    expression: Float[Array, "*batch E"],
-    shapedirs: Float[Array, "V 3 S"],
-    exprdirs: Float[Array, "V 3 E"],
-    j_shapedirs: Float[Array, "J 3 S"],
-    j_exprdirs: Float[Array, "J 3 E"],
-    *,
-    xp: Any,
-) -> tuple[Float[Array, "*batch C"], Float[Array, "V 3 C"], Float[Array, "J 3 C"]]:
-    _validate_coefficients(shape, expression)
-    shape_dim = shape.shape[-1]
-    expression_dim = expression.shape[-1]
-    coefficients = xp.concat([shape, expression], axis=-1)
-    vertex_directions = xp.concat(
-        [shapedirs[:, :, :shape_dim], exprdirs[:, :, :expression_dim]],
-        axis=-1,
-    )
-    joint_directions = xp.concat(
-        [j_shapedirs[:, :, :shape_dim], j_exprdirs[:, :, :expression_dim]],
-        axis=-1,
-    )
-    return coefficients, vertex_directions, joint_directions
+    rest_joints = deformation.blend_shapes(j_template, j_shapedirs[..., : shape.shape[-1]], shape, xp=xp)
+    rest_joints = deformation.blend_shapes(rest_joints, j_exprdirs[..., : expression.shape[-1]], expression, xp=xp)
+    return {
+        "rest_joints": rest_joints,
+        "local_joint_offsets": kinematics.local_joint_offsets(rest_joints, parents, xp=xp),
+    }
 
 
 def _validate_coefficients(

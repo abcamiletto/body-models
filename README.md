@@ -1,12 +1,10 @@
 # body-models
 
-Parametric human models for NumPy, PyTorch, and JAX behind a consistent Python
-API.
+Parametric human models with a shared NumPy, PyTorch, and JAX API.
 
 ## Installation
 
-`body-models` requires Python 3.11 or newer. NumPy support is included by
-default. Install an extra for PyTorch or JAX.
+Requires Python 3.11 or newer. NumPy is included; add extras for PyTorch or JAX.
 
 ```bash
 pip install body-models
@@ -39,10 +37,10 @@ assets require registration with their upstream project.
 | Anatomy | SKEL |
 | Measurements | GarmentMeasurements |
 
-The [documentation](https://abcamiletto.github.io/body-models/) covers model
-setup, parameters, supported runtimes, and the shared API.
+See the [documentation](https://abcamiletto.github.io/body-models/) for setup,
+parameters, and API details.
 
 ## License
 
-The library is licensed under Apache 2.0. Model assets retain their upstream
-licenses; see the documentation for each model.
+The library uses Apache 2.0. Model assets retain their upstream licenses;
+see each model's documentation.
