@@ -1,6 +1,6 @@
 # MANO
 
-MANO is a skinned hand model with shape and articulated finger pose parameters.
+MANO is a skinned hand model with shape and finger-pose controls.
 
 ## Setup
 
@@ -10,7 +10,7 @@ MANO requires registration at [mano.is.tue.mpg.de](https://mano.is.tue.mpg.de/).
 body-models download mano
 ```
 
-Manual paths can also be configured per side:
+Or configure files by side:
 
 ```bash
 body-models set mano-right /path/to/MANO_RIGHT.pkl

@@ -10,7 +10,7 @@ SMPL requires registration at [smpl.is.tue.mpg.de](https://smpl.is.tue.mpg.de/).
 body-models download smpl
 ```
 
-Manual paths can also be configured per gender:
+Or configure files by gender:
 
 ```bash
 body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl
