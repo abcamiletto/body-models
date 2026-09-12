@@ -119,31 +119,11 @@ state is persistent, so checkpoints are complete but may be large. Derived
 backend plans move with their owning module but are rebuilt rather than
 serialized. Mapping values live in an indexed child module, keeping user keys
 separate from Torch attributes and buffer names. This changes checkpoint paths
-for mapping entries. Among the built-in models, SOMA's `_assets.lods` contains
-these entries; the original downloaded model assets are unaffected.
-
-From a repository checkout, regenerate native SOMA checkpoints for all three
-LODs from the configured assets:
-
-```bash
-uv run --extra torch python scripts/regenerate_soma_checkpoints.py checkpoints
-```
-
-Use `--model-path /path/to/soma` to select another source asset directory. The
-script writes `soma-mid.pt`, `soma-low.pt`, and `soma-xlo.pt`. Each file contains
-the native model's CPU `state_dict`, using the default model configuration and
-the LOD in its filename. Before replacing a checkpoint, the script strictly
-loads it into a fresh model and verifies exact buffer and rest-vertex equality.
-Load a regenerated checkpoint with the corresponding configuration:
-
-```python
-import torch
-from body_models.soma.torch import SOMA
-
-model = SOMA(lod="low")
-state = torch.load("checkpoints/soma-low.pt", map_location="cpu", weights_only=True)
-model.load_state_dict(state, strict=True)
-```
+only in separately exported Torch model `state_dict` snapshots containing
+mapping entries, such as SOMA's `_assets.lods`. The Hugging Face autodownload
+archives contain source model data and upstream corrective weights, which the
+loaders materialize into runtime state. Those hosted assets do not use these
+checkpoint paths and require no regeneration.
 
 JAX backend models implement the pytree protocol. Dataclass state is partitioned
 at the leaf level: metadata stays static, while arrays remain children even when
