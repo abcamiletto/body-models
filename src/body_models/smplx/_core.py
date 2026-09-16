@@ -21,7 +21,8 @@ prepare_skeleton_identity = linear.prepare_shape_expression_skeleton_identity
 
 def _pose_matrices(
     runtime: ArrayRuntime,
-    hand_mean: Float[Array, "2 45"],
+    hand_mean: Float[Array, "2 45"] | None,
+    hand_half_mean_rotation: Float[Array, "2 15 3 3"] | None,
     body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
     head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
@@ -34,7 +35,12 @@ def _pose_matrices(
         [
             linear.PoseBlock(body_pose, rotation_type),
             linear.PoseBlock(head_pose, rotation_type),
-            linear.PoseBlock(hand_pose, rotation_type, axis_angle_mean=hand_mean),
+            linear.PoseBlock(
+                hand_pose,
+                rotation_type,
+                axis_angle_mean=hand_mean,
+                half_mean_rotation=hand_half_mean_rotation,
+            ),
         ],
         pelvis_rotation,
         rotation_type,
@@ -45,7 +51,8 @@ def _pose_matrices(
 def prepare_pose(
     runtime: ArrayRuntime,
     tree: common.KinematicTree,
-    hand_mean: Float[Array, "2 45"],
+    hand_mean: Float[Array, "2 45"] | None,
+    hand_half_mean_rotation: Float[Array, "2 15 3 3"] | None,
     body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
     head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
@@ -59,6 +66,7 @@ def prepare_pose(
     pose_matrices = _pose_matrices(
         runtime,
         hand_mean,
+        hand_half_mean_rotation,
         body_pose,
         head_pose,
         hand_pose,
@@ -77,7 +85,8 @@ def prepare_pose(
 def prepare_skeleton(
     runtime: ArrayRuntime,
     tree: common.KinematicTree,
-    hand_mean: Float[Array, "2 45"],
+    hand_mean: Float[Array, "2 45"] | None,
+    hand_half_mean_rotation: Float[Array, "2 15 3 3"] | None,
     body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
     head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
@@ -92,6 +101,7 @@ def prepare_skeleton(
     pose_matrices = _pose_matrices(
         runtime,
         hand_mean,
+        hand_half_mean_rotation,
         body_pose,
         head_pose,
         hand_pose,

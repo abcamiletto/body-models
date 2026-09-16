@@ -19,11 +19,12 @@ Array = Any
 
 @dataclass(frozen=True)
 class PoseBlock:
-    """One contiguous run of joint rotations and its optional axis-angle mean."""
+    """One contiguous run of joint rotations and its optional pose mean."""
 
     pose: Float[Array, "..."]
     rotation_type: RotationType
     axis_angle_mean: Float[Array, "..."] | None = None
+    half_mean_rotation: Float[Array, "... 3 3"] | None = None
 
 
 class LinearBlendshapeModel(SkinnedModel):
@@ -168,6 +169,9 @@ def assemble_pose_matrices(
 
         pose = block.pose
         mean = block.axis_angle_mean
+        half_mean_rotation = block.half_mean_rotation
+        if mean is not None and half_mean_rotation is not None:
+            raise ValueError("pose blocks cannot combine additive and rotational means")
         num_joints = pose.shape[-pose_ndim]
         if pose_positions is not None:
             block_positions = tuple(
@@ -180,6 +184,8 @@ def assemble_pose_matrices(
                 pose = pose[..., selector, :]
             if mean is not None:
                 mean = mean.reshape(-1, 3)[selector]
+            if half_mean_rotation is not None:
+                half_mean_rotation = half_mean_rotation.reshape(-1, 3, 3)[selector]
         offset += num_joints
 
         source_type = block.rotation_type
@@ -188,7 +194,11 @@ def assemble_pose_matrices(
                 pose = SO3.convert(pose, src=source_type, dst="axis_angle", xp=xp)
             pose = pose + mean.reshape(-1, 3)
             source_type = "axis_angle"
-        matrices.append(SO3.convert(pose, src=source_type, dst="rotmat", xp=xp))
+        matrix = SO3.convert(pose, src=source_type, dst="rotmat", xp=xp)
+        if half_mean_rotation is not None:
+            half_mean_rotation = half_mean_rotation.reshape(-1, 3, 3)
+            matrix = half_mean_rotation @ matrix @ half_mean_rotation
+        matrices.append(matrix)
 
     if root_rotation is None:
         root_matrices = SO3.identity_as(

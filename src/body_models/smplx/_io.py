@@ -30,7 +30,8 @@ class SmplxAssets:
     j_template: Float[Array, "55 3"]
     j_shapedirs: Float[Array, "55 3 S"]
     j_exprdirs: Float[Array, "55 3 E"]
-    hand_mean: Float[Array, "2 45"]
+    hand_mean: Float[Array, "2 45"] | None
+    hand_half_mean_rotation: Float[Array, "2 15 3 3"] | None
     kinematic_tree: kinematics.KinematicTree
     joint_names: list[str]
 
@@ -91,14 +92,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
         shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
-    hand_mean = np.stack(
-        [
-            np.asarray(data["hands_meanl"], dtype=np.float32),
-            np.asarray(data["hands_meanr"], dtype=np.float32),
-        ]
-    )
-    if flat_hand_mean:
-        hand_mean = np.zeros_like(hand_mean)
+    hand_mean, hand_half_mean_rotation = _load_hand_means(data, flat=flat_hand_mean)
 
     lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
 
@@ -114,9 +108,36 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
         j_shapedirs=np.einsum("jv,vds->jds", joint_regressor, model_dirs[:, :, :300]),
         j_exprdirs=np.einsum("jv,vde->jde", joint_regressor, model_dirs[:, :, 300:400]),
         hand_mean=hand_mean,
+        hand_half_mean_rotation=hand_half_mean_rotation,
         kinematic_tree=kinematics.KinematicTree.from_parents(parents),
         joint_names=get_joint_names(data),
     )
+
+
+def _load_hand_means(
+    data: dict[str, Any],
+    *,
+    flat: bool,
+) -> tuple[Float[Array, "2 45"] | None, Float[Array, "2 15 3 3"] | None]:
+    hand_mean = None
+    hand_half_mean_rotation = None
+    if flat:
+        hand_half_mean_rotation = np.broadcast_to(np.eye(3, dtype=np.float32), (2, 15, 3, 3)).copy()
+    elif "hands_meanl_half_rotmat" in data and "hands_meanr_half_rotmat" in data:
+        hand_half_mean_rotation = np.stack(
+            [
+                np.asarray(data["hands_meanl_half_rotmat"], dtype=np.float32).reshape(15, 3, 3),
+                np.asarray(data["hands_meanr_half_rotmat"], dtype=np.float32).reshape(15, 3, 3),
+            ]
+        )
+    else:
+        hand_mean = np.stack(
+            [
+                np.asarray(data["hands_meanl"], dtype=np.float32),
+                np.asarray(data["hands_meanr"], dtype=np.float32),
+            ]
+        )
+    return hand_mean, hand_half_mean_rotation
 
 
 def get_joint_names(model_data: dict) -> list[str]:

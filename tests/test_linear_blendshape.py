@@ -47,3 +47,56 @@ def test_pose_blocks_reject_different_batch_shapes() -> None:
             None,
             "axis_angle",
         )
+
+
+@pytest.mark.parametrize("rotation_type", VALID_ROTATION_TYPES)
+def test_pose_blocks_compose_symmetric_rotation_means_without_reparameterizing(rotation_type) -> None:
+    rng = np.random.default_rng(1)
+    pose = rng.normal(scale=0.1, size=(2, 3, 3)).astype(np.float32)
+    mean = rng.normal(scale=0.2, size=(3, 3)).astype(np.float32)
+    encoded = SO3.convert(pose, src="axis_angle", dst=rotation_type, xp=np)
+    half_mean_rotation = SO3.convert(mean / 2, src="axis_angle", dst="rotmat", xp=np)
+
+    actual = linear.assemble_pose_matrices(
+        NumpyRuntime(),
+        [linear.PoseBlock(encoded, rotation_type, half_mean_rotation=half_mean_rotation)],
+        None,
+        rotation_type,
+    )
+    expected = half_mean_rotation @ SO3.convert(pose, src="axis_angle", dst="rotmat", xp=np) @ half_mean_rotation
+
+    np.testing.assert_allclose(actual[:, 1:], expected, rtol=1e-5, atol=1e-5)
+
+
+def test_sixd_pose_blocks_apply_rotation_means_without_axis_angle_conversion(monkeypatch) -> None:
+    pose = SO3.convert(np.zeros((2, 3, 3), dtype=np.float32), src="axis_angle", dst="sixd", xp=np)
+    half_mean = np.broadcast_to(np.eye(3, dtype=np.float32), (3, 3, 3)).copy()
+    calls = []
+    convert = SO3.convert
+
+    def record(value, *, src, dst, **kwargs):
+        calls.append((src, dst))
+        return convert(value, src=src, dst=dst, **kwargs)
+
+    monkeypatch.setattr(linear.SO3, "convert", record)
+    linear.assemble_pose_matrices(
+        NumpyRuntime(),
+        [linear.PoseBlock(pose, "sixd", half_mean_rotation=half_mean)],
+        None,
+        "sixd",
+    )
+
+    assert calls == [("sixd", "rotmat")]
+
+
+def test_pose_blocks_reject_two_means() -> None:
+    pose = np.zeros((2, 3, 3), dtype=np.float32)
+    half_mean = np.broadcast_to(np.eye(3, dtype=np.float32), (3, 3, 3))
+
+    with pytest.raises(ValueError, match="cannot combine"):
+        linear.assemble_pose_matrices(
+            NumpyRuntime(),
+            [linear.PoseBlock(pose, "axis_angle", axis_angle_mean=pose[0], half_mean_rotation=half_mean)],
+            None,
+            "axis_angle",
+        )

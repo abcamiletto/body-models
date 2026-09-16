@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from body_models.mhr import _io as mhr_io
+from body_models.smplx import _io as smplx_io
 from body_models.soma._io import validate_path
 
 
@@ -56,3 +57,31 @@ def test_mhr_loading_reports_missing_selected_lod_assets(tmp_path) -> None:
         match=r"corrective_blendshapes_lod2\.npz, mhr_lod2\.npz",
     ):
         mhr_io.load_model_data(tmp_path, lod=2)
+
+
+@pytest.mark.fast
+def test_smplx_precomputed_hand_means_avoid_legacy_controls() -> None:
+    left = np.broadcast_to(np.eye(3, dtype=np.float32), (15, 3, 3)).copy()
+    right = left.copy()
+
+    legacy, half_rotations = smplx_io._load_hand_means(
+        {"hands_meanl_half_rotmat": left, "hands_meanr_half_rotmat": right},
+        flat=False,
+    )
+
+    assert legacy is None
+    np.testing.assert_array_equal(half_rotations, np.stack([left, right]))
+
+
+@pytest.mark.fast
+def test_smplx_legacy_hand_means_remain_supported() -> None:
+    left = np.arange(45, dtype=np.float32)
+    right = -left
+
+    legacy, half_rotations = smplx_io._load_hand_means(
+        {"hands_meanl": left, "hands_meanr": right},
+        flat=False,
+    )
+
+    np.testing.assert_array_equal(legacy, np.stack([left, right]))
+    assert half_rotations is None
