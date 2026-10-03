@@ -4,7 +4,7 @@ Parametric body models for NumPy, PyTorch, and JAX, with optional Warp kernels.
 
 ## Install
 
-Requires Python 3.11 or newer. NumPy support is included; add extras for other
+Requires Python 3.11 or newer. NumPy support is included; extras add other
 runtimes:
 
 ```bash
@@ -14,26 +14,29 @@ uv add "body-models[jax]"
 uv add "body-models[torch,warp]"
 ```
 
-## Model assets
+## Quickstart
 
-Public assets download on first use when no model path is configured or passed.
-Assets use the operating system's user cache. Run `body-models` to see the cache
-and configuration paths.
+The import path selects the backend:
 
-To prefetch assets or save a custom destination:
+```python
+from body_models.smpl.torch import SMPL
 
-```bash
-body-models download anny
-body-models download anny --output-dir /path/to/models/anny
+model = SMPL(gender="neutral")
+params = model.get_rest_pose(batch_dims=(1,))
+vertices = model.forward_vertices(**params)
+skeleton = model.forward_skeleton(**params)
 ```
 
-`download all --output-dir /path/to/models` creates a subdirectory per family.
-Licensed models require registration and accepted licenses; their download
-commands prompt for credentials and save the asset path.
+To select it at runtime instead, use
+`create_model("smpl", runtime="torch", gender="neutral")`.
 
-## Supported models
+Torch models are `torch.nn.Module` instances, so `.to()`, `.cuda()`, and
+`state_dict()` work as usual. Pass `kernel_backend="warp"` to run shared
+operations on Warp while keeping Torch tensors.
 
-| Model | Scope | Setup |
+## Models
+
+| Model | Scope | Assets |
 | --- | --- | --- |
 | [SMPL](models/smpl.md) | Body | Registration |
 | [SMPL-H](models/smplh.md) | Body and hands | Registration |
@@ -47,55 +50,44 @@ commands prompt for credentials and save the asset path.
 | [GNM Head](models/gnm.md) | Head, face, eyes, teeth, tongue | Auto-download |
 | [MANO](models/mano.md) | Hand | Registration |
 
-## Common usage
+## Model assets
 
-Select the backend through the import path:
+Public assets download to the user cache on first use. Licensed models need an
+account on the upstream site: `body-models download <model>` asks for its
+credentials, or reads them from `<ACCOUNT>_USERNAME` and `<ACCOUNT>_PASSWORD`
+(for example `MANO_USERNAME`). Every download saves its path to the config.
 
-```python
-from body_models.smpl.torch import SMPL
-
-model = SMPL(gender="neutral")
-params = model.get_rest_pose(batch_dims=(1,))
-vertices = model.forward_vertices(**params)
-skeleton = model.forward_skeleton(**params)
+```bash
+body-models                                                 # show cache, config, and saved paths
+body-models download anny                                   # prefetch into the cache
+body-models download anny --output-dir /path/to/models/anny # download to a chosen directory
+body-models download all --output-dir /path/to/models       # one subdirectory per model
+body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl      # use a file you already have
 ```
 
-Torch models are `torch.nn.Module` instances supporting `.to()`, `.cuda()`, and
-`state_dict()`. `kernel_backend="warp"` selects Warp implementations of shared
-operations while keeping Torch tensors.
+## Parameters and skeleton
 
-All models derive from `SkinnedModel`. Its [API reference](api.md) covers
-parameter defaults, geometry, joints, prepared skinning, and mapped points.
-Names exported from public packages are stable; underscore-prefixed modules
-are private. See [architecture](architecture.md) for implementation boundaries.
+- `parameter_spec` maps each parameter to its dimensions, role, and default;
+  `get_rest_pose()` builds the defaults.
+- Arrays accept any leading batch dimensions: `*batch J 4 4` covers unbatched,
+  single, and multi-batch inputs.
+- `joint_names` and `parents` describe the native skeleton in index order.
+  `joint_index(Joint.LEFT_WRIST)` maps the shared `Joint` enum to a native index.
+- `has_hands` and `has_face` report articulated hand and facial-expression
+  controls, not mesh geometry.
 
-### Parameters and joints
-
-`parameter_spec` describes each parameter's dimensions, role, and default.
-`has_face` indicates facial-expression controls and `has_hands` articulated
-hand controls; these flags do not describe mesh geometry.
-
-`joint_names` and `parents` describe the complete native skeleton in index
-order. `common_joints` maps the shared `Joint` enum to native names;
-`joint_index(Joint.LEFT_WRIST)` resolves a native index. `skin_weights` follows
-this public skeleton, while `skinning_spec.skinning_weights` follows the render
-rig and its prepared transforms.
-
-Fixed dimensions use `NUM_*` class constants where applicable:
+Class constants give the fixed dimensions:
 
 | Constants | Meaning |
 | --- | --- |
 | `NUM_JOINTS` | Skeleton size returned by `forward_skeleton()`. |
-| `NUM_BODY_CONTROLS`, `NUM_HAND_CONTROLS`, `NUM_HEAD_CONTROLS` | Entries along each pose argument's control axis. |
+| `NUM_BODY_CONTROLS`, `NUM_HAND_CONTROLS`, `NUM_HEAD_CONTROLS` | Length of each pose argument's control axis. |
 | `NUM_SHAPE_COEFFS`, `NUM_EXPR_COEFFS` | Identity and expression dimensions. |
 | `NUM_POSE_COEFFS`, `NUM_*_POSE_COEFFS` | Compact pose dimensions. |
 
-Control counts can differ from joint counts: SMPL has 24 joints and 23 body
-controls, with a separate root rotation. Dimensions fixed by the asset schema
-remain class constants for custom paths. Constructor-dependent dimensions use
-instance properties, such as SOMA's `num_shape_coeffs`.
+Controls and joints need not match: SMPL has 24 joints but 23 body controls,
+plus a separate root rotation. Dimensions that depend on constructor arguments
+are instance properties, such as SOMA's `num_shape_coeffs`.
 
-Arrays accept arbitrary leading batch dimensions: `*batch J 4 4` includes
-unbatched, single-batch, and multi-batch skeletons. Shared preparation types
-include `LinearIdentity`, `SkinningIdentity`, `SkinningPose`, and `SkinningSpec`;
-model packages export identity types when they need additional fields.
+The [API reference](api.md) documents the shared interface;
+[architecture](architecture.md) explains how the code is organized.

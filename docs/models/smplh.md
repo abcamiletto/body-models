@@ -5,20 +5,19 @@ SMPL-H extends SMPL with articulated MANO hands.
 ## Setup
 
 SMPL-H requires registration at [mano.is.tue.mpg.de](https://mano.is.tue.mpg.de/).
+The downloader uses the "Extended SMPL+H model (used in AMASS project)" archive.
 
 ```bash
 body-models download smplh
 ```
 
-Or configure files by gender:
+Or point to existing files, one per gender:
 
 ```bash
 body-models set smplh-neutral /path/to/smplh/neutral/model.npz
 body-models set smplh-male /path/to/smplh/male/model.npz
 body-models set smplh-female /path/to/smplh/female/model.npz
 ```
-
-The downloader uses the "Extended SMPL+H model (used in AMASS project)" archive.
 
 ## API
 

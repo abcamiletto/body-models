@@ -1,7 +1,7 @@
 # API reference
 
-Public names are exported from `body_models`, model packages, and backend
-modules. See [model pages](index.md#supported-models) for model-specific APIs.
+This page covers the interface every model shares. Model-specific options are on
+each [model page](index.md#models).
 
 ## Model creation
 
@@ -13,10 +13,10 @@ modules. See [model pages](index.md#supported-models) for model-specific APIs.
     options:
       show_source: false
 
-## Model contracts
+## Models
 
-Every model provides `get_rest_pose()`. Models with whole-body presets also
-expose `get_tpose()` and `get_apose()`.
+Every model provides `get_rest_pose()`; whole-body models also provide
+`get_tpose()` and `get_apose()`.
 
 ::: body_models.SkinnedModel
     options:
@@ -24,10 +24,9 @@ expose `get_tpose()` and `get_apose()`.
 
 ## Mapped points
 
-`forward_points()` evaluates a dense `[points, vertices]` mapping without
-producing the posed mesh. Its vertex dimension must match the model and mesh
-simplification. Prepare the regressor after moving a Torch model to its final
-device:
+`forward_points()` evaluates a dense `[points, vertices]` mapping, such as a
+marker or joint regressor, without building the posed mesh. The vertex count
+must match the model, including any mesh simplification.
 
 ```python
 import numpy as np
@@ -45,35 +44,35 @@ with torch.inference_mode():
 # points.shape == (2048, 67, 3)
 ```
 
-Mapped points contain positions; `forward_skeleton()` returns native joint
-transforms. Prepared regressors do not follow later `.to()` calls.
+A prepared regressor stays on the device it was prepared on, so prepare it after
+moving the model. Mapped points are positions; `forward_skeleton()` returns
+joint transforms.
 
 ::: body_models.PointRegressor
     options:
       show_source: false
 
-## Parameter and joint metadata
+## Parameters and joints
 
-`ParameterRole` is the literal `"identity"`, `"pose"`, or `"transform"`.
-`RotationType` accepts `"axis_angle"`, `"quat"`, `"sixd"`, `"matrix"`, or
-`"rotmat"`. `matrix` is an arbitrary 3×3 transform; `rotmat` is a proper
-SO(3) rotation.
+`ParameterRole` is `"identity"`, `"pose"`, or `"transform"`. `RotationType` is
+`"axis_angle"`, `"quat"`, `"sixd"`, `"matrix"` (any 3×3 transform), or
+`"rotmat"` (a proper SO(3) rotation).
 
-`pose_joint_indices` maps pose parameters to the distinct canonical joints whose
-local transforms they drive. Use these tuples to select skeleton outputs:
+`pose_joint_indices` maps each pose parameter to the joints whose local
+transforms it drives. Rotational controls follow the same order, so control `i`
+(`[..., i, :]`, or `[..., i, :, :]` for matrices) drives joint `indices[i]`:
 
 ```python
 hand_indices = model.pose_joint_indices["hand_pose"]
 hand_skeleton = model.forward_skeleton(**params, joint_indices=hand_indices)
 ```
 
-Indices refer to the full skeleton. Groups may overlap and omit fixed joints.
-Changing a local transform also moves descendants outside its group. Rotational
-controls map one-to-one to indices in control order: `[..., i, :]` for vectors,
-`[..., i, :, :]` for matrices.
+Indices refer to the full skeleton. Groups may overlap and omit fixed joints,
+and a control also moves its joint's descendants outside the group.
 
-`symmetric_joints` lists `(left_index, right_index)` pairs for symmetry losses
-and left/right swaps:
+`symmetric_joints` lists `(left, right)` index pairs over the whole native
+skeleton, including joints outside `Joint`; unpaired joints lie on the midline.
+Use it for symmetry losses or left/right swaps:
 
 ```python
 order = list(range(model.num_joints))
@@ -82,10 +81,8 @@ for left, right in model.symmetric_joints:
 swapped = model.forward_skeleton(**params)[..., order, :, :]
 ```
 
-Pairs cover the native skeleton, including joints outside `Joint`, such as
-SMPL's collars. Unpaired joints lie on the midline. Swapping indices does not
-mirror a pose; callers must also reflect rotations in the model's coordinate
-frame and parameterization.
+Swapping indices does not mirror a pose: the rotations must also be reflected in
+the model's frame and parameterization.
 
 ::: body_models.ParameterSpec
     options:
@@ -97,8 +94,8 @@ frame and parameterization.
 
 ## Runtimes
 
-`RuntimeName` accepts `"numpy"`, `"torch"`, or `"jax"`. `KernelBackend` selects
-`"torch"` or `"warp"` kernels for Torch models.
+`RuntimeName` is `"numpy"`, `"torch"`, or `"jax"`. For Torch models,
+`KernelBackend` selects `"torch"` or `"warp"` kernels.
 
 ::: body_models.ArrayRuntime
     options:
@@ -106,20 +103,27 @@ frame and parameterization.
 
 ## Prepared skinning
 
-Identity and pose records are `TypedDict`s. `SkinningSpec` is a dataclass.
+Each model's `prepare_identity()` and `prepare_pose()` return the intermediate
+records behind `forward_vertices()`. Pass a prepared `identity` to reuse it
+across poses. `skinning_spec` holds the static data used for skinning.
 
-| Contract | Contents |
+| Type | Contents |
 | --- | --- |
 | `SkinningIdentity` | Identity-dependent `rest_vertices`. |
 | `LinearIdentity` | Rest vertices, rest joints, and local joint offsets. |
-| `SkinningPose` | `skeleton_transforms`, `skinning_transforms`, optional compact `pose_coefficients`. |
-| `SkinningSpec` | Triangles, weights aligned with skinning transforms, optional dense/sparse corrective basis. |
+| `SkinningPose` | Skeleton and skinning transforms, and optional compact `pose_coefficients`. |
+| `SkinningSpec` | Triangles, skinning weights, and an optional dense or sparse corrective basis. |
 
-Arrays retain arbitrary leading batch dimensions. Corrective bases implement
-`pose_offsets = basis.apply(pose_coefficients)`. Coefficient meanings are
-model-specific; use `model.apply_pose_correctives(identity=identity, pose=pose)`
-to expand them without depending on the representation. Model packages export
-`*Identity` types only for additional fields; all models share `SkinningPose`.
+Identity and pose records are `TypedDict`s; `SkinningSpec` is a dataclass. All
+keep the leading batch dimensions. Model packages export their own `*Identity`
+type only when it adds fields; every model uses `SkinningPose`.
+
+Pose coefficients are model-specific. Expand them with
+`model.apply_pose_correctives(identity=identity, pose=pose)` rather than
+depending on the basis representation.
+
+`SkinningSpec.skinning_weights` follow the render rig, which can differ from
+the public skeleton that `skin_weights` follows.
 
 ::: body_models.LinearIdentity
     options:

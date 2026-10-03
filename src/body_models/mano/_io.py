@@ -66,7 +66,12 @@ def get_model_path(model_path: PathLike | None, side: Literal["right", "left"] |
     return validate_path(resolved_path)
 
 
-def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> ManoAssets:
+def load_model_data(
+    path: Path,
+    flat_hand_mean: bool = False,
+    flip_shapedirs: bool = False,
+    simplify: float = 1.0,
+) -> ManoAssets:
     """Load MANO model data from .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
@@ -81,6 +86,10 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
     faces = np.asarray(data["f"], dtype=np.int32)
     lbs_weights = np.asarray(data["weights"], dtype=np.float32)
     model_dirs = np.asarray(data["shapedirs"], dtype=np.float32)
+    if flip_shapedirs:
+        # The official left model ships the right model's shapedirs although its template
+        # is mirrored in x, so flip their x component to mirror the shape space too.
+        model_dirs = model_dirs * np.array([[-1.0], [1.0], [1.0]], dtype=np.float32)
     posedirs = np.asarray(data["posedirs"], dtype=np.float32)
     joint_regressor = np.asarray(data["J_regressor"], dtype=np.float32)
     parents = np.asarray(data["kintree_table"][0], dtype=np.int64)

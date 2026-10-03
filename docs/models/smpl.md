@@ -1,6 +1,6 @@
 # SMPL
 
-SMPL is a skinned human body model with shape coefficients and 24 articulated joints.
+SMPL is a skinned body model with shape coefficients and 24 joints.
 
 ## Setup
 
@@ -10,7 +10,7 @@ SMPL requires registration at [smpl.is.tue.mpg.de](https://smpl.is.tue.mpg.de/).
 body-models download smpl
 ```
 
-Or configure files by gender:
+Or point to existing files, one per gender:
 
 ```bash
 body-models set smpl-neutral /path/to/SMPL_NEUTRAL.pkl

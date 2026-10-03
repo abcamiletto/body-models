@@ -47,6 +47,7 @@ class MANO(LinearBlendshapeModel):
         model_path: Path | str | None = None,
         side: Literal["right", "left"] | None = None,
         flat_hand_mean: bool = False,
+        flip_shapedirs: bool = False,
         rotation_type: RotationType = "axis_angle",
         simplify: float = 1.0,
         runtime: ArrayRuntime,
@@ -57,9 +58,16 @@ class MANO(LinearBlendshapeModel):
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
+        if flip_shapedirs and side != "left":
+            raise ValueError("flip_shapedirs requires side='left'")
 
         resolved_path = get_model_path(model_path, side)
-        assets = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
+        assets = load_model_data(
+            resolved_path,
+            flat_hand_mean=flat_hand_mean,
+            flip_shapedirs=flip_shapedirs,
+            simplify=simplify,
+        )
         self._attach_runtime(runtime)
         self._config = ManoConfig(side=side or "right", rotation_type=rotation_type)
         self._assets = runtime._materialize(assets)
