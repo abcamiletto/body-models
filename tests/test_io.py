@@ -1,6 +1,10 @@
+import model_assets
 import numpy as np
 import pytest
 
+from body_models import _config as config
+from body_models.mano import _io as mano_io
+from body_models.mano.numpy import MANO
 from body_models.mhr import _io as mhr_io
 from body_models.soma._io import validate_path
 
@@ -56,3 +60,25 @@ def test_mhr_loading_reports_missing_selected_lod_assets(tmp_path) -> None:
         match=r"corrective_blendshapes_lod2\.npz, mhr_lod2\.npz",
     ):
         mhr_io.load_model_data(tmp_path, lod=2)
+
+
+def test_mano_flip_shapedirs_mirrors_shape_space() -> None:
+    path = model_assets.get_model_file("mano")
+    official = mano_io.load_model_data(path)
+    fixed = mano_io.load_model_data(path, flip_shapedirs=True)
+
+    np.testing.assert_array_equal(fixed.shapedirs[:, 0], -official.shapedirs[:, 0])
+    np.testing.assert_array_equal(fixed.shapedirs[:, 1:], official.shapedirs[:, 1:])
+    np.testing.assert_allclose(fixed.j_shapedirs[:, 0], -official.j_shapedirs[:, 0], atol=1e-6)
+    np.testing.assert_allclose(fixed.j_shapedirs[:, 1:], official.j_shapedirs[:, 1:], atol=1e-6)
+
+
+def test_mano_flip_shapedirs_requires_left_side(monkeypatch) -> None:
+    path = model_assets.get_model_file("mano")
+    monkeypatch.setattr(config, "get_model_path", lambda key: path)
+
+    assert MANO(side="left", flip_shapedirs=True).side == "left"
+    with pytest.raises(ValueError, match="flip_shapedirs requires side='left'"):
+        MANO(side="right", flip_shapedirs=True)
+    with pytest.raises(ValueError, match="flip_shapedirs requires side='left'"):
+        MANO(model_path=path, flip_shapedirs=True)

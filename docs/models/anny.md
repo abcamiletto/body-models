@@ -4,20 +4,18 @@ ANNY is a phenotype-driven body model with configurable rigs and topology.
 
 ## Setup
 
-ANNY downloads automatically on first use from the
-[`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models)
-Hugging Face repository (ANNY: Apache 2.0; MPFB2: CC0). To prefetch:
+Assets download on first use from
+[`abcamiletto/body-models`](https://huggingface.co/abcamiletto/body-models) on
+Hugging Face (ANNY: Apache 2.0; MPFB2: CC0). To prefetch:
 
 ```bash
 body-models download anny
 ```
 
-## API
+## Fitted poses
 
-### Portable fitted poses
-
-Save `rotation_type` with fitted parameters. Convert the parameters when loading
-into a model with a different representation:
+Pose values depend on `rotation_type`, so store it with fitted parameters and
+convert when loading them into a model that uses another representation:
 
 ```python
 from body_models.anny import convert_pose
@@ -27,6 +25,8 @@ model = ANNY(rotation_type="sixd")
 parameters = convert_pose(cached_parameters, src=cached_rotation_type, dst=model.rotation_type)
 vertices = model.forward_vertices(**parameters)
 ```
+
+## API
 
 ::: body_models.anny.numpy.ANNY
 

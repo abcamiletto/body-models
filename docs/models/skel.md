@@ -1,7 +1,7 @@
 # SKEL
 
-SKEL is a body model with anatomical articulation, available in `male` and
-`female` variants.
+SKEL is a body model with an anatomical skeleton, in `male` and `female`
+variants.
 
 ## Setup
 
@@ -11,7 +11,7 @@ SKEL requires registration at [skel.is.tue.mpg.de](https://skel.is.tue.mpg.de/).
 body-models download skel
 ```
 
-Or configure files by gender:
+Or point to existing files, one per gender:
 
 ```bash
 body-models set skel-male /path/to/skel_male.pkl
