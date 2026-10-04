@@ -50,7 +50,7 @@ def shape_vertices(
         height=shape[..., 4],
         proportions=shape[..., 5],
     )
-    return template_vertices + xp.einsum("...s,svd->...vd", coefficients, blendshapes)
+    return common.deformation.blend_shapes(template_vertices, xp.moveaxis(blendshapes, 0, -1), coefficients, xp=xp)
 
 
 def prepare_pose(
@@ -195,10 +195,9 @@ def prepare_identity(
         extrapolate_phenotypes=extrapolate_phenotypes,
         shape=shape,
     )
-    return {
-        "rest_skeleton_transforms": rest_skeleton,
-        "rest_vertices": template_vertices + xp.einsum("...s,svd->...vd", coefficients, blendshapes),
-    }
+    directions = xp.moveaxis(blendshapes, 0, -1)
+    rest_vertices = common.deformation.blend_shapes(template_vertices, directions, coefficients, xp=xp)
+    return {"rest_skeleton_transforms": rest_skeleton, "rest_vertices": rest_vertices}
 
 
 def prepare_skeleton_identity(

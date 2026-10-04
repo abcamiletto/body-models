@@ -157,7 +157,7 @@ def prepare_identity(
     return {
         "rest_joints": identity["rest_joints"],
         "local_joint_offsets": identity["local_joint_offsets"],
-        "rest_vertices": v_template + xp.einsum("vdi,...i->...vd", shapedirs, shape),
+        "rest_vertices": common.deformation.blend_shapes(v_template, shapedirs, shape, xp=xp),
     }
 
 
@@ -172,7 +172,7 @@ def prepare_skeleton_identity(
     """Prepare only shape-dependent SKEL joint state."""
     if shape.ndim < 1 or shape.shape[-1] != NUM_SHAPE_COEFFS:
         raise ValueError(f"shape must have shape [..., {NUM_SHAPE_COEFFS}]")
-    joints = j_template + xp.einsum("jdi,...i->...jd", j_shapedirs, shape)
+    joints = common.deformation.blend_shapes(j_template, j_shapedirs, shape, xp=xp)
     return {
         "rest_joints": joints,
         "local_joint_offsets": _compute_J_rel(xp, joints, parent),

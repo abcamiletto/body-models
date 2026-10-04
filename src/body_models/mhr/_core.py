@@ -125,9 +125,8 @@ def prepare_identity(
     if expression.ndim < 1 or expression.shape[-1] != 72:
         raise ValueError(f"expression must have shape [..., 72], got {tuple(expression.shape)}")
     coeffs = xp.concat([shape, expression], axis=-1)
-    return {
-        "rest_vertices": (base_vertices + xp.einsum("...i,ivk->...vk", coeffs, blendshape_dirs)) * 0.01,
-    }
+    rest_vertices = common.deformation.blend_shapes(base_vertices, xp.moveaxis(blendshape_dirs, 0, -1), coeffs, xp=xp)
+    return {"rest_vertices": rest_vertices * 0.01}
 
 
 def _skinning_transforms(

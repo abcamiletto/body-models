@@ -180,7 +180,7 @@ def load_model_data_numpy(
 
     return AnnyAssets(
         template_vertices=data["template_vertices"].astype(dtype),
-        blendshapes=data["blendshapes"].astype(dtype),
+        blendshapes=data["blendshapes"].astype(dtype, order="C"),
         template_bone_heads=data["template_bone_heads"].astype(dtype),
         template_bone_tails=data["template_bone_tails"].astype(dtype),
         bone_heads_blendshapes=data["bone_heads_blendshapes"].astype(dtype),

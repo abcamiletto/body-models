@@ -10,7 +10,7 @@ from body_models._common import sparse as sparse_common
 
 
 class SparseLinear(nn.Module):
-    """Sparse linear weights backed by the native sparse matrix multiply."""
+    """Sparse linear weights backed by the native CSR matrix multiply."""
 
     transpose: Tensor
 
@@ -25,7 +25,7 @@ class SparseLinear(nn.Module):
             values,
             (weights.shape[1], weights.shape[0]),
         ).coalesce()
-        self.register_buffer("transpose", transpose, persistent=True)
+        self.register_buffer("transpose", transpose.to_sparse_csr(), persistent=True)
 
     def forward(
         self,
@@ -41,11 +41,12 @@ class SparseLinear(nn.Module):
         return self.transpose.shape[1], self.transpose.shape[0]
 
     def to_coo(self) -> sparse_common.SparseMatrix:
-        indices = self.transpose.indices()
+        transpose = self.transpose.to_sparse_coo()
+        indices = transpose.indices()
         return sparse_common.SparseMatrix(
             row_indices=indices[1],
             column_indices=indices[0],
-            values=self.transpose.values(),
+            values=transpose.values(),
             shape=self.shape,
         )
 

@@ -35,7 +35,7 @@ def prepare_identity(
         xp=xp,
     )
     rest_vertices = deformation.blend_shapes(v_template, shapedirs, shape, xp=xp)
-    rest_vertices = rest_vertices + xp.einsum("...e,vde->...vd", expression, exprdirs)
+    rest_vertices = deformation.blend_shapes(rest_vertices, exprdirs, expression, xp=xp)
     return {
         "rest_joints": skeleton["rest_joints"],
         "local_joint_offsets": skeleton["local_joint_offsets"],

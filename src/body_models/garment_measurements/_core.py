@@ -101,8 +101,8 @@ def prepare_identity(
     if shape.ndim < 1 or shape.shape[-1] != eigenvalues.shape[0]:
         raise ValueError(f"shape must have shape [..., {eigenvalues.shape[0]}]")
     scaled_shape = shape * xp.sqrt(eigenvalues)
-    rest_vertices = mean_vertices + xp.einsum("...c,vdc->...vd", scaled_shape, components)
-    joint_positions = xp.einsum("vj,...vd->...jd", mvc_weights, rest_vertices)
+    rest_vertices = common.deformation.blend_shapes(mean_vertices, components, scaled_shape, xp=xp)
+    joint_positions = xp.tensordot(rest_vertices, mvc_weights, ([-2], [0])).mT
     bind_quats = xp.broadcast_to(bind_quats, (*rest_vertices.shape[:-2], *bind_quats.shape))
     bind_global_quats = _propagate_quats(bind_quats, kinematic_tree.fronts, xp=xp)
     local_translations = _local_translations_from_positions(

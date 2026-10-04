@@ -559,7 +559,7 @@ def identity_to_rest_vertices(
     identity: Float[Array, "B S"],
 ) -> Float[Array, "B V 3"]:
     coeffs = identity * xp.sqrt(eigenvalues)
-    return mean + xp.einsum("...s,svc->...vc", coeffs, shapedirs)
+    return common.deformation.blend_shapes(mean, xp.moveaxis(shapedirs, 0, -1), coeffs, xp=xp)
 
 
 def apply_rigid_transform(
@@ -587,7 +587,7 @@ def _fit_rest_shape_to_bind_pose(
     parents_full: Sequence[int],
     rest_shape: Float[Array, "B V 3"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
-    joint_positions = xp.einsum("jv,...vc->...jc", joint_regressor, rest_shape)
+    joint_positions = xp.tensordot(rest_shape, joint_regressor, ([-2], [-1])).mT
     world_bind_pose = _fit_joint_rotations(
         xp=xp,
         bind_shape=bind_shape,
