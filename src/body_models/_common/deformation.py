@@ -156,7 +156,9 @@ def blend_shapes(
     """Apply a linear blend-shape basis stored along its final axis."""
     if directions.shape[-1] != coefficients.shape[-1]:
         raise ValueError("directions and coefficients must have the same component count")
-    return mean + xp.einsum("...c,vdc->...vd", coefficients, directions)
+    flat_directions = directions.reshape(directions.shape[0] * directions.shape[1], directions.shape[-1])
+    offsets = coefficients @ flat_directions.mT
+    return mean + offsets.reshape(*coefficients.shape[:-1], *directions.shape[:-1])
 
 
 def pose_coefficients(

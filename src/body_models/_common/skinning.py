@@ -36,12 +36,10 @@ def linear_blend_skinning(
     xp: Any,
 ) -> Float[Array, "*batch V 3"]:
     """Blend joint transforms and apply them to vertices."""
-    rotations = transforms[..., :3, :3]
-    translations = transforms[..., :3, 3]
-    blended_rotations = xp.einsum("vj,...jkl->...vkl", weights, rotations)
-    blended_translations = xp.einsum("vj,...jk->...vk", weights, translations)
-    rotated = xp.squeeze(blended_rotations @ vertices[..., None], axis=-1)
-    return rotated + blended_translations
+    affine = transforms[..., :3, :].reshape(*transforms.shape[:-3], transforms.shape[-3], 12)
+    blended = (weights @ affine).reshape(*transforms.shape[:-3], weights.shape[0], 3, 4)
+    rotated = xp.squeeze(blended[..., :3] @ vertices[..., None], axis=-1)
+    return rotated + blended[..., 3]
 
 
 def compact_linear_blend_skinning(
@@ -58,14 +56,13 @@ def compact_linear_blend_skinning(
         shape=(*vertices.shape[:-1], 3, 4),
         xp=xp,
     )
-    transforms_by_joint = xp.moveaxis(transforms, -3, 0)
+    affine = transforms[..., :3, :]
     for slot in range(joint_indices.shape[1]):
         indices = joint_indices[:, slot]
         valid = indices >= 0
         safe_indices = xp.maximum(indices, xp.zeros_like(indices))
-        vertex_transforms = xp.moveaxis(transforms_by_joint[safe_indices], 0, -3)
         weights = joint_weights[:, slot] * valid
-        blended = blended + vertex_transforms[..., :3, :] * weights[:, None, None]
+        blended = blended + affine[..., safe_indices, :, :] * weights[:, None, None]
 
     rotations = blended[..., :3]
     translations = blended[..., 3]
