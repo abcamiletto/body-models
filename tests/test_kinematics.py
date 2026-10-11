@@ -102,15 +102,19 @@ def test_compute_sparse_skin_weights_reconstructs_dense_matrix() -> None:
     np.testing.assert_allclose(reconstructed, dense)
 
 
-def test_affine_transforms_broadcasts_linear_and_translation_batches() -> None:
-    linear = np.broadcast_to(np.eye(3), (3, 2, 3, 3))
-    translation = np.arange(6).reshape(1, 2, 3)
+@pytest.mark.parametrize("backend", ["numpy", "torch", "jax.numpy"])
+@pytest.mark.parametrize("batch_shape", [(3, 2), (0, 2)])
+def test_affine_transforms_broadcasts_linear_and_translation_batches(backend, batch_shape) -> None:
+    xp = pytest.importorskip(backend)
+    linear = xp.broadcast_to(xp.eye(3), (*batch_shape, 3, 3))
+    translation = xp.asarray(np.arange(6).reshape(1, 2, 3), dtype=linear.dtype)
 
-    transforms = affine_transforms(linear, translation, xp=np)
+    transforms = affine_transforms(linear, translation, xp=xp)
 
-    assert transforms.shape == (3, 2, 4, 4)
-    np.testing.assert_array_equal(transforms[..., :3, 3], np.broadcast_to(translation, (3, 2, 3)))
-    expected_bottom = np.broadcast_to(np.array([0.0, 0.0, 0.0, 1.0]), (3, 2, 4))
+    assert transforms.shape == (*batch_shape, 4, 4)
+    np.testing.assert_array_equal(transforms[..., :3, :3], linear)
+    np.testing.assert_array_equal(transforms[..., :3, 3], np.broadcast_to(translation, (*batch_shape, 3)))
+    expected_bottom = np.broadcast_to(np.array([0.0, 0.0, 0.0, 1.0]), (*batch_shape, 4))
     np.testing.assert_array_equal(transforms[..., 3, :], expected_bottom)
 
 

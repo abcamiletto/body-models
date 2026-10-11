@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 from typing import Any, TypedDict
 
-import numpy as np
 from jaxtyping import Float
 from nanomanifold import SO3
 
@@ -94,7 +93,7 @@ def prepare_skeleton(
         rest_skeleton_transforms = rest_skeleton_transforms[..., cover_indices, :, :]
         if not selection.cover_indices:
             pose_ndim = rotation_ndim(rotation_type) + 1
-            batch_shape = np.broadcast_shapes(rest_skeleton_transforms.shape[:-3], pose.shape[:-pose_ndim])
+            batch_shape = xp.broadcast_shapes(rest_skeleton_transforms.shape[:-3], pose.shape[:-pose_ndim])
             return xp.broadcast_to(rest_skeleton_transforms, (*batch_shape, 0, 4, 4))
         if rotation_ndim(rotation_type) > 1:
             pose = pose[..., cover_indices, :, :]

@@ -85,7 +85,7 @@ def affine_transforms(
     if translation is None:
         translation = ops.zeros_as(linear, shape=(*linear.shape[:-2], 3), xp=xp)
 
-    batch_shape = np.broadcast_shapes(linear.shape[:-2], translation.shape[:-1])
+    batch_shape = xp.broadcast_shapes(linear.shape[:-2], translation.shape[:-1])
     linear = xp.broadcast_to(linear, (*batch_shape, 3, 3))
     translation = xp.broadcast_to(translation, (*batch_shape, 3))
     upper = xp.concat([linear, translation[..., None]], axis=-1)

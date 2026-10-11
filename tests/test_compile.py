@@ -3,6 +3,44 @@ import numpy as np
 import pytest
 
 
+@pytest.mark.slow
+@pytest.mark.parametrize("dynamic", [False, True])
+def test_affine_transforms_reuses_aot_autograd_cache(tmp_path, monkeypatch, dynamic) -> None:
+    torch = pytest.importorskip("torch")
+    from torch._dynamo.utils import counters
+    from torch._functorch import config as autograd_config
+    from torch._inductor import config as inductor_config
+
+    from body_models._common.kinematics import affine_transforms
+
+    monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
+
+    def loss(linear, translation):
+        return affine_transforms(linear, translation, xp=torch).square().sum()
+
+    linear = torch.randn(3, 1, 3, 3, requires_grad=True)
+    translation = torch.randn(1, 2, 3, requires_grad=True)
+    expected = loss(linear, translation)
+    expected_gradients = torch.autograd.grad(expected, (linear, translation))
+
+    torch._dynamo.reset()
+    with (
+        autograd_config.patch(enable_autograd_cache=True, strict_autograd_cache=True),
+        inductor_config.patch(fx_graph_cache=True, fx_graph_remote_cache=False),
+    ):
+        hits_before = counters["aot_autograd"]["autograd_cache_hit"]
+        for _ in range(2):
+            compiled = torch.compile(loss, fullgraph=True, dynamic=dynamic)
+            actual = compiled(linear, translation)
+            gradients = torch.autograd.grad(actual, (linear, translation))
+            torch.testing.assert_close(actual, expected)
+            for gradient, expected_gradient in zip(gradients, expected_gradients, strict=True):
+                torch.testing.assert_close(gradient, expected_gradient)
+            # Discard Dynamo's in-memory graph so the next compile must load the disk cache.
+            torch._dynamo.reset()
+        assert counters["aot_autograd"]["autograd_cache_hit"] > hits_before
+
+
 def test_anny_torch_compile_on_cuda() -> None:
     torch = pytest.importorskip("torch")
     if not torch.cuda.is_available():
