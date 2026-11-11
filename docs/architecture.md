@@ -13,7 +13,7 @@ Each model lives in `body_models/<name>/` and derives from `SkinnedModel`:
 
 | File | Responsibility |
 | --- | --- |
-| `_io.py` | Find assets and load them as immutable NumPy data. |
+| `_io.py` | Validate assets (`validate_path`), fetch public ones (`download_model`), and load them as immutable NumPy data. |
 | `_core.py` | Model mathematics, given an array namespace or runtime. |
 | `_model.py` | Validation, state preparation, and forward methods. |
 | `numpy.py`, `torch.py`, `jax.py` | Bind the model to an array backend. |
@@ -33,6 +33,27 @@ add named presets such as relaxed hands.
 Required numerical inputs may be positional. Optional arguments are
 keyword-only, in this order: local pose options, identity, global transform,
 output selection.
+
+## Catalog and assets
+
+`_catalog.FAMILIES` holds one `ModelFamily` per public model name: its package,
+class name, `create_model()` defaults, and, for licensed models, a
+`LicensedArchive` with the MPI URL, credential account, and the file each asset
+config key maps to. Asset config keys, `create_model()`, `list_models()`, the
+CLI, and the cross-model tests all derive from it. Entries are plain data and
+import no model package.
+
+Models resolve assets with `_config.resolve_model_path(name, model_path,
+variant)`: an explicit path wins; otherwise `variant` picks the config key
+`<name>-<variant>`. A missing public asset is downloaded into the cache; a
+missing licensed asset raises with the exact `body-models download` and
+`body-models set` commands. Every path is checked by the package's
+`validate_path`, which single-file assets build from `_config.validate_file`.
+
+`_download.download_licensed()` fetches any licensed archive from its catalog
+entry. `download_public_assets()` fetches `<package>/assets.zip` from the
+Hugging Face repo unless the package's `validate_path` already accepts the target
+directory.
 
 ## Linear blendshape models
 
@@ -82,13 +103,17 @@ use the shared basis only to turn them into offsets.
 
 ## Adding a model
 
-1. Load and validate assets in `_io.py`.
-2. Implement the mathematics in `_core.py`.
-3. Define the `SkinnedModel` subclass in `_model.py`.
-4. Bind and export the NumPy, Torch, and JAX classes.
-5. Register the factory and asset metadata in `_catalog.py`.
-6. Test cross-runtime agreement, batching, compilation, gradients, and reference
-   outputs.
+1. Add one `ModelFamily` entry to `_catalog.py`, with a `LicensedArchive` if
+   the assets need credentials.
+2. In `_io.py`, define `validate_path`, `download_model` for public assets, and
+   the loader.
+3. Implement the mathematics in `_core.py`.
+4. Define the `SkinnedModel` subclass in `_model.py`, resolving assets with
+   `resolve_model_path`.
+5. Bind and export the NumPy, Torch, and JAX classes.
+6. Add test assets and parameter snapshots; the shared tests pick the model up
+   from the catalog and check cross-runtime agreement, batching, compilation,
+   gradients, and reference outputs.
 
 Share code only when its meaning, inputs, outputs, batching, and gradients agree
 across callers; otherwise keep it in the model.

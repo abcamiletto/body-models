@@ -5,110 +5,85 @@ import pytest
 
 from body_models import _cache
 from body_models import _download as download
+from body_models._catalog import FAMILIES
 
-FUNCS = [
-    (download.download_smpl, "smpl"),
-    (download.download_smplx, "smplx"),
-    (download.download_smplh, "smplh"),
-    (download.download_mano, "mano"),
-    (download.download_flame, "flame"),
-    (download.download_skel, "skel"),
-]
+LICENSED = [name for name, family in FAMILIES.items() if family.licensed is not None]
 
 
 @pytest.mark.fast
-@pytest.mark.parametrize(("func", "name"), FUNCS)
-def test_missing_credentials_raises_value_error(func, name, tmp_path) -> None:
+@pytest.mark.parametrize("name", LICENSED)
+def test_missing_credentials_raises_value_error(name, tmp_path) -> None:
     with pytest.raises(ValueError, match="credentials"):
-        func(output_dir=tmp_path / name)
+        download.download_licensed(name, output_dir=tmp_path / name)
 
 
 @pytest.mark.fast
-def test_download_smpl_finds_existing_without_credentials(tmp_path) -> None:
-    cache_dir = tmp_path / "smpl"
-    cache_dir.mkdir()
-    for filename in download.SMPL_FILES.values():
-        (cache_dir / filename).touch()
-
-    paths = download.download_smpl(output_dir=cache_dir)
-
-    assert set(paths) == set(download.SMPL_FILES)
-    assert all(path.exists() for path in paths.values())
-
-
-@pytest.mark.fast
-def test_download_smplx_finds_existing_without_credentials(tmp_path) -> None:
-    cache_dir = tmp_path / "smplx"
-    cache_dir.mkdir()
-    for filename in download.SMPLX_FILES.values():
-        (cache_dir / filename).touch()
-
-    paths = download.download_smplx(output_dir=cache_dir)
-
-    assert set(paths) == set(download.SMPLX_FILES)
-    assert all(path.exists() for path in paths.values())
-
-
-@pytest.mark.fast
-def test_download_smplh_finds_existing_without_credentials(tmp_path) -> None:
-    cache_dir = tmp_path / "smplh"
-    for relative_path in download.SMPLH_FILES.values():
-        file_path = cache_dir / relative_path
+@pytest.mark.parametrize("name", LICENSED)
+def test_download_licensed_finds_existing_without_credentials(name, tmp_path) -> None:
+    files = FAMILIES[name].licensed.files
+    for relative_path in files.values():
+        file_path = tmp_path / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.touch()
 
-    paths = download.download_smplh(output_dir=cache_dir)
+    paths = download.download_licensed(name, output_dir=tmp_path)
 
-    assert set(paths) == set(download.SMPLH_FILES)
-    assert all(path.exists() for path in paths.values())
-
-
-@pytest.mark.fast
-def test_download_mano_finds_existing_without_credentials(tmp_path) -> None:
-    cache_dir = tmp_path / "mano"
-    cache_dir.mkdir()
-    for filename in download.MANO_FILES.values():
-        (cache_dir / filename).touch()
-
-    paths = download.download_mano(output_dir=cache_dir)
-
-    assert set(paths) == set(download.MANO_FILES)
-    assert all(path.exists() for path in paths.values())
+    assert paths == {key: tmp_path / relative_path for key, relative_path in files.items()}
 
 
 @pytest.mark.fast
-def test_download_flame_finds_existing_without_credentials(tmp_path) -> None:
-    cache_dir = tmp_path / "flame"
-    cache_dir.mkdir()
-    expected = cache_dir / download.FLAME_FILES[0]
-    expected.touch()
-
-    path = download.download_flame(output_dir=cache_dir)
-
-    assert path == expected
-
-
-@pytest.mark.fast
-def test_download_skel_finds_existing_without_credentials(tmp_path) -> None:
-    cache_dir = tmp_path / "skel"
-    cache_dir.mkdir()
-    (cache_dir / "skel_male.pkl").touch()
-
-    result = download.download_skel(output_dir=cache_dir)
-
-    assert result == cache_dir
-
-
-@pytest.mark.fast
-def test_download_skel_finds_existing_versioned_subdir(tmp_path) -> None:
-    cache_dir = tmp_path / "skel"
-    versioned_dir = cache_dir / "skel_models_v1.1"
-    versioned_dir.mkdir(parents=True)
+def test_download_licensed_finds_existing_versioned_subdir(tmp_path) -> None:
+    versioned_dir = tmp_path / "skel_models_v1.1"
+    versioned_dir.mkdir()
     (versioned_dir / "skel_male.pkl").touch()
+    (versioned_dir / "skel_female.pkl").touch()
 
-    result = download.download_skel(output_dir=cache_dir)
+    paths = download.download_licensed("skel", output_dir=tmp_path)
 
-    assert result == versioned_dir
+    assert paths == {"skel-male": versioned_dir / "skel_male.pkl", "skel-female": versioned_dir / "skel_female.pkl"}
+
+
+@pytest.mark.fast
+def test_download_licensed_rejects_ambiguous_files(tmp_path) -> None:
+    for subdir in ("a", "b"):
+        (tmp_path / subdir).mkdir()
+        (tmp_path / subdir / "flame2023.pkl").touch()
+
+    with pytest.raises(ValueError, match="Ambiguous flame asset"):
+        download.download_licensed("flame", output_dir=tmp_path)
+
+
+@pytest.mark.fast
+def test_download_public_assets_skips_present_assets(tmp_path, monkeypatch) -> None:
+    def fail(*args, **kwargs):
+        raise AssertionError("present assets must not be downloaded")
+
+    monkeypatch.setattr(download, "hf_hub_download", fail)
+
+    assert download.download_public_assets("pkg", tmp_path, lambda path: path) == tmp_path
+
+
+@pytest.mark.fast
+def test_download_public_assets_fetches_until_valid(tmp_path, monkeypatch) -> None:
+    archive_path = tmp_path / "assets.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("model.npz", "model")
+    requested = []
+
+    def hf_hub_download(repo_id, filename, cache_dir):
+        requested.append(filename)
+        return str(archive_path)
+
+    def validate(path):
+        if not (path / "model.npz").is_file():
+            raise FileNotFoundError(path)
+        return path / "model.npz"
+
+    monkeypatch.setattr(download, "hf_hub_download", hf_hub_download)
+
+    output_dir = tmp_path / "pkg"
+    assert download.download_public_assets("pkg", output_dir, validate) == output_dir / "model.npz"
+    assert requested == ["pkg/assets.zip"]
 
 
 @pytest.mark.fast

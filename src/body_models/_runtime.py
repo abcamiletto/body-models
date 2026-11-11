@@ -15,8 +15,8 @@ from typing import Any, ClassVar, Literal, TypeAlias
 import numpy as np
 from jaxtyping import Float, Num
 
-from body_models import _common as common
 from body_models import _state as state
+from body_models._common import kinematics, ops
 from body_models._common import skinning as skinning_ops
 
 Array = Any
@@ -54,7 +54,7 @@ class ArrayRuntime(ABC):
         dtype: Any | None = None,
     ) -> Float[Array, "..."]:
         """Create zeros with the backend and device of ``like``."""
-        return common.zeros_as(like, shape=shape, dtype=dtype, xp=self.xp)
+        return ops.zeros_as(like, shape=shape, dtype=dtype, xp=self.xp)
 
     @abstractmethod
     def _materialize(self, value: Any) -> Any:
@@ -113,10 +113,10 @@ class ArrayRuntime(ABC):
     def _compose_kinematic_tree(
         self,
         local_transforms: Float[Array, "*batch J 4 4"],
-        tree: common.KinematicTree,
+        tree: kinematics.KinematicTree,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compose local transforms along a materialized kinematic tree."""
-        return common.compose_kinematic_fronts(local_transforms, tree.fronts, xp=self.xp)
+        return kinematics.compose_kinematic_fronts(local_transforms, tree.fronts, xp=self.xp)
 
 
 @dataclass(frozen=True)

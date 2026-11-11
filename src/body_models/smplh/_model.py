@@ -10,6 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from nanomanifold import SO3
 
+from body_models import _config as config
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._linear_blendshape import LinearBlendshapeModel
@@ -17,7 +18,7 @@ from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
 from body_models.smplh import _core as core
 from body_models.smplh._constants import SMPLH_BODY_PRESETS, SMPLH_HAND_PRESETS, SMPLH_JOINTS
-from body_models.smplh._io import get_model_path, load_model_data
+from body_models.smplh._io import load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -64,7 +65,9 @@ class SMPLH(LinearBlendshapeModel):
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
 
-        resolved_path = get_model_path(model_path, gender)
+        if (model_path is None) == (gender is None):
+            raise ValueError("Pass exactly one of model_path or gender.")
+        resolved_path = config.resolve_model_path("smplh", model_path, gender)
         assets = load_model_data(resolved_path, flat_hand_mean=flat_hand_mean, simplify=simplify)
         self._attach_runtime(runtime)
         self._config = SmplhConfig(gender=gender or "neutral", rotation_type=rotation_type)

@@ -6,7 +6,7 @@ from typing import Any, TypedDict
 from jaxtyping import Float
 from nanomanifold import SO3
 
-from body_models import _common as common
+from body_models._common import deformation, kinematics, ops
 from body_models._rotations import RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime
 from body_models.anny._io import PHENOTYPE_VARIATIONS
@@ -49,17 +49,17 @@ def shape_vertices(
         height=shape[..., 4],
         proportions=shape[..., 5],
     )
-    return common.deformation.blend_shapes(template_vertices, xp.moveaxis(blendshapes, 0, -1), coefficients, xp=xp)
+    return deformation.blend_shapes(template_vertices, xp.moveaxis(blendshapes, 0, -1), coefficients, xp=xp)
 
 
 def prepare_pose(
     runtime: ArrayRuntime,
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
-) -> common.deformation.SkinningPose:
+) -> deformation.SkinningPose:
     """Prepare ANNY skeleton and bind-relative skinning transforms."""
     xp = runtime.xp
     pose_transforms = _pose_to_transform(xp, pose, rotation_type)
@@ -77,7 +77,7 @@ def prepare_pose(
 
 def prepare_skeleton(
     runtime: ArrayRuntime,
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
@@ -115,24 +115,24 @@ def prepare_skeleton(
 
 def _forward_core(
     runtime: ArrayRuntime,
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     rest_skeleton_transforms: Float[Array, "*batch J 4 4"],
     pose_transforms: Float[Array, "*batch J 4 4"],
 ) -> tuple[Float[Array, "*batch J 4 4"], Float[Array, "*batch J 4 4"]]:
     xp = runtime.xp
     rest_poses = rest_skeleton_transforms
     root_rest = rest_poses[..., 0, :, :]
-    base_transform = common.invert_rigid_transforms(root_rest, xp=xp)
+    base_transform = kinematics.invert_rigid_transforms(root_rest, xp=xp)
 
     root_rotation = xp.zeros_like(root_rest)
-    root_rotation = common.at_set(
+    root_rotation = ops.at_set(
         root_rotation,
         (..., slice(None, 3), slice(None, 3)),
         root_rest[..., :3, :3],
         copy=False,
         xp=xp,
     )
-    root_rotation = common.at_set(
+    root_rotation = ops.at_set(
         root_rotation,
         (..., 3, 3),
         xp.asarray(1.0, dtype=root_rotation.dtype),
@@ -140,18 +140,18 @@ def _forward_core(
         xp=xp,
     )
     posed_root = pose_transforms[..., 0, :, :] @ root_rotation
-    delta_transforms = common.at_set(
+    delta_transforms = ops.at_set(
         pose_transforms,
         (..., 0, slice(None), slice(None)),
         posed_root,
         copy=True,
         xp=xp,
     )
-    inverse_rest = common.invert_rigid_transforms(rest_poses, xp=xp)
+    inverse_rest = kinematics.invert_rigid_transforms(rest_poses, xp=xp)
     local_skinning = rest_poses @ delta_transforms @ inverse_rest
     roots = tree.roots
     root_skinning = base_transform[..., None, :, :] @ local_skinning[..., roots, :, :]
-    local_skinning = common.at_set(
+    local_skinning = ops.at_set(
         local_skinning,
         (..., roots, slice(None), slice(None)),
         root_skinning,
@@ -195,7 +195,7 @@ def prepare_identity(
         shape=shape,
     )
     directions = xp.moveaxis(blendshapes, 0, -1)
-    rest_vertices = common.deformation.blend_shapes(template_vertices, directions, coefficients, xp=xp)
+    rest_vertices = deformation.blend_shapes(template_vertices, directions, coefficients, xp=xp)
     return {"rest_skeleton_transforms": rest_skeleton, "rest_vertices": rest_vertices}
 
 
@@ -344,7 +344,7 @@ def _skeleton_transforms_from_heads_tails(
 
     valid = (xp.abs(xp.sum(axis**2, axis=-1) - 1) < eps)[..., None, None]
     rotations = xp.where(valid, rotations, xp.broadcast_to(degenerate_rotation, rotations.shape)) @ rolls
-    return common.affine_transforms(rotations, heads, xp=xp)
+    return kinematics.affine_transforms(rotations, heads, xp=xp)
 
 
 def _pose_to_transform(
@@ -353,7 +353,7 @@ def _pose_to_transform(
     rotation_type: RotationType,
 ) -> Float[Array, "*batch J 4 4"]:
     rotations = SO3.convert(pose, src=rotation_type, dst="rotmat", xp=xp)
-    return common.affine_transforms(rotations, xp=xp)
+    return kinematics.affine_transforms(rotations, xp=xp)
 
 
 __all__ = ["AnnyIdentity", "prepare_identity", "prepare_pose", "shape_vertices"]

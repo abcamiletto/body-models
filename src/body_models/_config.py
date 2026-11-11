@@ -1,20 +1,20 @@
-"""Persistent model-asset path configuration."""
+"""Persistent model-asset path configuration and resolution."""
 
 import json
 import tomllib
-from importlib import import_module
 from pathlib import Path
 from typing import Any
 
 from platformdirs import user_config_dir
 
-from body_models._catalog import ASSET_SPECS
+from body_models._catalog import ASSET_FAMILIES, FAMILIES
 
 CONFIG_DIR = Path(user_config_dir("body-models"))
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
-ASSET_KEYS = tuple(ASSET_SPECS)
+ASSET_KEYS = tuple(ASSET_FAMILIES)
 Config = dict[str, Any]
+PathLike = Path | str
 
 
 def get_config() -> Config:
@@ -30,7 +30,7 @@ def get_model_path(model: str) -> Path | None:
     return Path(path) if path else None
 
 
-def set_model_path(model: str, path: str | Path) -> None:
+def set_model_path(model: str, path: PathLike) -> None:
     """Validate and store a model asset path."""
     path = str(validate_model_path(model, path))
     config = get_config()
@@ -48,14 +48,50 @@ def unset_model_path(model: str) -> None:
         _write_config(config)
 
 
-def validate_model_path(model: str, path: str | Path) -> Path:
+def validate_model_path(model: str, path: PathLike) -> Path:
     """Validate an asset path with its model-family loader."""
     try:
-        spec = ASSET_SPECS[model]
+        family = ASSET_FAMILIES[model]
     except KeyError as exc:
         raise ValueError(f"Unknown model asset: {model!r}") from exc
-    validate_path = import_module(spec.validation_module).validate_path
-    return validate_path(path)
+    return family.io().validate_path(path)
+
+
+def resolve_model_path(name: str, model_path: PathLike | None = None, variant: str | None = None) -> Path:
+    """
+    Return a family's validated asset path.
+
+    An explicit ``model_path`` wins. Otherwise ``variant`` selects the config key
+    ``<name>-<variant>`` (or ``<name>`` without one). Unconfigured public assets
+    are downloaded to the cache; unconfigured licensed assets raise with the CLI
+    commands that provide them.
+    """
+    family = FAMILIES[name]
+    io = family.io()
+    if model_path is None:
+        key = name if variant is None else f"{name}-{variant}"
+        model_path = get_model_path(key)
+        if model_path is None:
+            if family.licensed is None:
+                return io.download_model()
+            example = family.licensed.files[key]
+            raise FileNotFoundError(
+                f"No {key} asset is configured. Run `body-models download {name}` or configure an existing file "
+                f"with `body-models set {key} /path/to/{example}`."
+            )
+    return io.validate_path(model_path)
+
+
+def validate_file(model_path: PathLike, label: str, suffixes: tuple[str, ...]) -> Path:
+    """Validate a single-file model asset."""
+    model_path = Path(model_path)
+    if model_path.is_dir():
+        raise ValueError(f"Expected a {label} model file, got directory: {model_path}")
+    if not model_path.is_file():
+        raise FileNotFoundError(f"{label} model file not found: {model_path}")
+    if model_path.suffix not in suffixes:
+        raise ValueError(f"Expected a {label} {' or '.join(suffixes)} file, got: {model_path}")
+    return model_path
 
 
 def _write_config(config: Config) -> None:

@@ -63,7 +63,7 @@ class BenchmarkResult:
     measurements: dict[tuple[str, int], BenchmarkMeasurement]
 
 
-BENCHMARKS = {name: BenchmarkSpec(name) for name in catalog.MODEL_SPECS}
+BENCHMARKS = {name: BenchmarkSpec(name) for name in catalog.FAMILIES}
 BENCHMARKS |= {
     f"soma-{model_type}": BenchmarkSpec(
         "soma",
@@ -416,7 +416,7 @@ def write_markdown(
     if "vertices" in methods:
         lines.extend(
             [
-                "## `forward_vertices` / `forward_links` (ms)",
+                "## `forward_vertices` (ms)",
                 "",
                 format_table(results, "forward_vertices", vertices_batch_sizes, "steady_state_ms"),
                 "",

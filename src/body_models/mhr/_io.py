@@ -11,34 +11,30 @@ import ptloader
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models import _config as config
-from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
+from body_models import _download
+from body_models._cache import derived_cache_key, get_cache_dir, write_npz_atomic
 from body_models._common import kinematics, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 from body_models.mhr import _pose as pose_utils
 
 PathLike = Path | str
 SUPPORTED_LODS = tuple(range(7))
+# LOD 1 geometry comes from mhr_model.pt; every other LOD has its own mesh file.
 MHR_ASSETS = (
     "mhr_model.pt",
     "corrective_activation.npz",
-    *(f"mhr_lod{lod}.npz" for lod in SUPPORTED_LODS),
     *(f"corrective_blendshapes_lod{lod}.npz" for lod in SUPPORTED_LODS),
-)
-_MHR_DEFAULT_ASSETS = (
-    "mhr_model.pt",
-    "corrective_activation.npz",
-    "corrective_blendshapes_lod1.npz",
+    *(f"mhr_lod{lod}.npz" for lod in SUPPORTED_LODS if lod != 1),
 )
 
 __all__ = [
+    "MHR_ASSETS",
     "MhrAssets",
     "MhrCorrectives",
     "download_model",
-    "get_model_path",
     "load_model_data",
     "load_pose_correctives_weights",
-    "simplify_mesh",
+    "validate_path",
 ]
 
 
@@ -72,34 +68,15 @@ def validate_path(model_path: PathLike) -> Path:
         raise ValueError(f"Expected an MHR model directory, got file: {model_path}")
     if not model_path.is_dir():
         raise FileNotFoundError(f"MHR model path {model_path} does not exist")
-    _require_assets(model_path, _MHR_DEFAULT_ASSETS)
+    missing = [name for name in MHR_ASSETS if not (model_path / name).is_file()]
+    if missing:
+        raise FileNotFoundError(f"MHR model directory is missing required assets: {', '.join(missing)}")
     return model_path
 
 
-def get_model_path(model_path: PathLike | None = None) -> Path:
-    """Resolve MHR model path, downloading if necessary."""
-    if model_path is None:
-        model_path = config.get_model_path("mhr")
-
-    if model_path is not None:
-        return validate_path(model_path)
-
-    cache_path = get_cache_dir() / "mhr"
-    if _has_model(cache_path):
-        return cache_path
-
-    return download_model()
-
-
 def download_model(output_dir: PathLike | None = None) -> Path:
-    """Download MHR model assets."""
-    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "mhr"
-    if _has_model(output_dir):
-        return validate_path(output_dir)
-    print(f"Downloading MHR model to {output_dir}...")
-    download_hf_archive("mhr/assets.zip", output_dir)
-    print("Done")
-    return validate_path(output_dir)
+    """Download the public MHR assets unless they are already present."""
+    return _download.download_public_assets("mhr", output_dir, validate_path)
 
 
 def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrAssets:
@@ -107,12 +84,6 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
         raise ValueError("simplify must be >= 1.0")
     if lod not in SUPPORTED_LODS:
         raise ValueError(f"MHR lod must be one of {SUPPORTED_LODS}, got {lod}")
-
-    asset_dir = validate_path(asset_dir)
-    lod_assets = (f"corrective_blendshapes_lod{lod}.npz",)
-    if lod != 1:
-        lod_assets += (f"mhr_lod{lod}.npz",)
-    _require_assets(asset_dir, lod_assets)
 
     data = _load_raw_model_data(asset_dir)
     if lod != 1:
@@ -125,7 +96,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
     vertex_map = None
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        base_vertices, faces, vertex_map = simplify_mesh(base_vertices, faces.astype(int), target_faces)
+        base_vertices, faces, vertex_map = simplify_mesh.simplify_mesh(base_vertices, faces.astype(int), target_faces)
         blendshape_dirs = blendshape_dirs[:, vertex_map]
         skin_weights = skin_weights[vertex_map]
         skin_indices = skin_indices[vertex_map]
@@ -242,10 +213,6 @@ def _load_lod_data(asset_dir: Path, lod: int, data: dict[str, Any]) -> dict[str,
     }
 
 
-def _has_model(model_path: Path) -> bool:
-    return all((model_path / name).is_file() for name in MHR_ASSETS)
-
-
 def _build_compact_skinning(
     vert_indices: Int[np.ndarray, "N"],
     joint_indices: Int[np.ndarray, "N"],
@@ -325,9 +292,3 @@ def _output_weights_cache_file(asset_dir: Path, lod: int) -> Path:
     cache_dir = get_cache_dir() / "mhr" / "preprocessed"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"correctives_{key}.npz"
-
-
-def _require_assets(model_path: Path, names: tuple[str, ...]) -> None:
-    missing = [name for name in names if not (model_path / name).is_file()]
-    if missing:
-        raise FileNotFoundError(f"MHR model directory is missing required assets: {', '.join(missing)}")

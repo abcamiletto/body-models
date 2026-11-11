@@ -9,15 +9,16 @@ from typing import Any
 
 from jaxtyping import Float
 
+from body_models import _config as config
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
-from body_models._common.deformation import SkeletonIdentity
+from body_models._common import deformation
 from body_models._linear_blendshape import LinearBlendshapeModel
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
 from body_models.gnm import _core as core
 from body_models.gnm._constants import GNM_JOINTS
-from body_models.gnm._io import get_model_path, load_model_data
+from body_models.gnm._io import load_model_data
 
 Array = Any
 
@@ -54,7 +55,7 @@ class GNM(LinearBlendshapeModel):
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
 
-        assets = load_model_data(get_model_path(model_path), simplify=simplify)
+        assets = load_model_data(config.resolve_model_path("gnm", model_path), simplify=simplify)
         self._attach_runtime(runtime)
         self._config = GnmConfig(rotation_type)
         self._assets = runtime._materialize(assets)
@@ -187,7 +188,7 @@ class GNM(LinearBlendshapeModel):
         head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
         *,
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: SkeletonIdentity,
+        identity: deformation.SkeletonIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent skinning state."""
         return core.prepare_pose(
@@ -200,7 +201,7 @@ class GNM(LinearBlendshapeModel):
             rest_joints=identity["rest_joints"],
         )
 
-    def _prepare_skeleton_identity(self, shape: Float[Array, "*batch 253"]) -> SkeletonIdentity:
+    def _prepare_skeleton_identity(self, shape: Float[Array, "*batch 253"]) -> deformation.SkeletonIdentity:
         return core.prepare_skeleton_identity(
             xp=self._runtime.xp,
             j_template=self._assets.j_template,

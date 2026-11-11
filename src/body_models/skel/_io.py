@@ -1,14 +1,14 @@
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import _config as config
-from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
+from body_models._common import kinematics, simplify_mesh
 from body_models._common.skinning import CompactSkinning
 from body_models.skel._pose import JOINT_DOFS
 
@@ -28,10 +28,6 @@ class SkelAssets:
     compact_skinning: CompactSkinning
     j_template: Float[Array, "24 3"]
     j_shapedirs: Float[Array, "24 3 B"]
-    skel_v_template: Float[Array, "Vs 3"]
-    skel_faces: Int[Array, "Fs 3"]
-    skel_weights: Float[Array, "Vs 24"]
-    skel_weights_rigid: Float[Array, "Vs 24"]
     apose_R: Float[Array, "24 3 3"]
     apose_t: Float[Array, "24 3"]
     per_joint_rot: Float[Array, "24 3 3"]
@@ -39,8 +35,6 @@ class SkelAssets:
     kinematic_tree: kinematics.KinematicTree
     child: Int[Array, "24"]
     fixed_orientation_joints: Int[Array, "6"]
-    non_leaf_joints: Int[Array, "N"]
-    non_leaf_children: Int[Array, "N"]
     all_axes: Float[Array, "47 3"]
     rotation_indices: Int[Array, "24 3"]
     scapula_r_axes: Float[Array, "3 3"]
@@ -51,28 +45,7 @@ class SkelAssets:
 
 
 def validate_path(model_path: PathLike) -> Path:
-    model_path = Path(model_path)
-    if model_path.is_dir():
-        raise ValueError(f"Expected a SKEL model file, got directory: {model_path}")
-    if not model_path.is_file():
-        raise FileNotFoundError(f"SKEL model file not found: {model_path}")
-    return model_path
-
-
-def get_model_path(model_path: PathLike | None, gender: Literal["male", "female"] | None) -> Path:
-    if gender is None:
-        raise ValueError("gender must be 'male' or 'female'.")
-
-    if model_path is None:
-        model_path = config.get_model_path(f"skel-{gender.lower()}")
-
-    if model_path is None:
-        raise FileNotFoundError(
-            "SKEL model not found. Run `body-models download skel` or configure an existing file with "
-            f"`body-models set skel-{gender.lower()} /path/to/model.pkl`."
-        )
-
-    return validate_path(model_path)
+    return config.validate_file(model_path, "SKEL", (".pkl",))
 
 
 def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelAssets:
@@ -93,7 +66,7 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelAssets:
 
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(skin_template, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh.simplify_mesh(skin_template, faces, target_faces)
         shapedirs = skin_shapedirs[vertex_map]
         posedirs = posedirs_full[vertex_map]
         skin_weights = skin_weights[vertex_map]
@@ -106,9 +79,8 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelAssets:
     id_to_col = {kintree[1, i]: i for i in range(kintree.shape[1])}
     parent_list = [id_to_col[kintree[0, i]] for i in range(1, kintree.shape[1])]
     child = _compute_child(kintree)
-    non_leaf = [i for i, child_index in enumerate(child) if child_index != 0]
 
-    skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
+    skin_joint_indices, skin_joint_weights = kinematics.compute_sparse_skin_weights(skin_weights)
     return SkelAssets(
         v_template=v_template,
         faces=faces,
@@ -118,10 +90,6 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelAssets:
         compact_skinning=CompactSkinning(skin_joint_indices, skin_joint_weights),
         j_template=j_template,
         j_shapedirs=j_shapedirs,
-        skel_v_template=np.asarray(data["skel_template_v"], dtype=np.float32),
-        skel_faces=np.asarray(data["skel_template_f"], dtype=np.int32),
-        skel_weights=_sparse_to_dense(data["skel_weights"]),
-        skel_weights_rigid=_sparse_to_dense(data["skel_weights_rigid"]),
         apose_R=np.asarray(data["apose_rel_transfo"], dtype=np.float32)[:, :3, :3],
         apose_t=np.asarray(data["apose_rel_transfo"], dtype=np.float32)[:, :3, 3],
         per_joint_rot=np.asarray(data["per_joint_rot"], dtype=np.float32),
@@ -129,8 +97,6 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SkelAssets:
         kinematic_tree=kinematics.KinematicTree.from_parents([-1, *parent_list]),
         child=child,
         fixed_orientation_joints=np.asarray([0, 5, 10, 13, 18, 23], dtype=np.int64),
-        non_leaf_joints=np.asarray(non_leaf, dtype=np.int64),
-        non_leaf_children=np.asarray([child[i] for i in non_leaf], dtype=np.int64),
         all_axes=_compute_joint_axes(),
         rotation_indices=_compute_rotation_indices(),
         scapula_r_axes=np.asarray([[0, 1, 0], [0, 0, -1], [-1, 0, 0]], dtype=np.float32),

@@ -1,4 +1,4 @@
-from body_models._common.pose_assets import load_npz
+from body_models._common import pose_assets
 from body_models._constants import Joint
 
 ANNY_JOINTS = {
@@ -51,7 +51,7 @@ ANNY_JOINTS = {
     Joint.RIGHT_FOOT: "toe2-1.R",
 }
 
-_POSES = load_npz("body_models.anny")
+_POSES = pose_assets.load_npz("body_models.anny")
 
 ANNY_BODY_PRESETS = _POSES["body"]
 ANNY_HAND_PRESETS = _POSES["hand"]

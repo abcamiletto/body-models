@@ -28,38 +28,16 @@ def test_soma_upstream_021_asset_layout_requires_preprocessing(tmp_path) -> None
 
 
 @pytest.mark.fast
-def test_mhr_has_model_requires_all_hosted_lods(tmp_path) -> None:
+def test_mhr_validation_requires_every_lod(tmp_path) -> None:
     for name in mhr_io.MHR_ASSETS[:-1]:
         (tmp_path / name).touch()
 
-    assert not mhr_io._has_model(tmp_path)
+    with pytest.raises(FileNotFoundError, match=mhr_io.MHR_ASSETS[-1]):
+        mhr_io.validate_path(tmp_path)
 
     (tmp_path / mhr_io.MHR_ASSETS[-1]).touch()
 
-    assert mhr_io._has_model(tmp_path)
-
-
-@pytest.mark.fast
-def test_mhr_validation_reports_missing_default_assets(tmp_path) -> None:
-    (tmp_path / "mhr_model.pt").touch()
-
-    with pytest.raises(
-        FileNotFoundError,
-        match=r"corrective_activation\.npz, corrective_blendshapes_lod1\.npz",
-    ):
-        mhr_io.validate_path(tmp_path)
-
-
-@pytest.mark.fast
-def test_mhr_loading_reports_missing_selected_lod_assets(tmp_path) -> None:
-    for name in mhr_io._MHR_DEFAULT_ASSETS:
-        (tmp_path / name).touch()
-
-    with pytest.raises(
-        FileNotFoundError,
-        match=r"corrective_blendshapes_lod2\.npz, mhr_lod2\.npz",
-    ):
-        mhr_io.load_model_data(tmp_path, lod=2)
+    assert mhr_io.validate_path(tmp_path) == tmp_path
 
 
 def test_mano_flip_shapedirs_mirrors_shape_space() -> None:
@@ -82,3 +60,44 @@ def test_mano_flip_shapedirs_requires_left_side(monkeypatch) -> None:
         MANO(side="right", flip_shapedirs=True)
     with pytest.raises(ValueError, match="flip_shapedirs requires side='left'"):
         MANO(model_path=path, flip_shapedirs=True)
+
+
+@pytest.mark.fast
+def test_unconfigured_licensed_asset_names_the_cli_commands(monkeypatch) -> None:
+    monkeypatch.setattr(config, "get_model_path", lambda key: None)
+
+    with pytest.raises(FileNotFoundError, match=r"body-models download mano.*body-models set mano-left"):
+        config.resolve_model_path("mano", variant="left")
+
+
+@pytest.mark.fast
+def test_unconfigured_public_asset_downloads(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "get_model_path", lambda key: None)
+    monkeypatch.setattr(mhr_io, "download_model", lambda: tmp_path)
+
+    assert config.resolve_model_path("mhr") == tmp_path
+
+
+@pytest.mark.fast
+def test_explicit_path_wins_over_config_and_is_validated(tmp_path, monkeypatch) -> None:
+    configured = tmp_path / "configured.pkl"
+    explicit = tmp_path / "explicit.npz"
+    wrong_suffix = tmp_path / "model.txt"
+    for path in (configured, explicit, wrong_suffix):
+        path.touch()
+    monkeypatch.setattr(config, "get_model_path", lambda key: configured)
+
+    assert config.resolve_model_path("smpl", explicit) == explicit
+    assert config.resolve_model_path("smpl", variant="male") == configured
+    with pytest.raises(ValueError, match=r"Expected a SMPL \.pkl or \.npz file"):
+        config.resolve_model_path("smpl", wrong_suffix)
+    with pytest.raises(ValueError, match="got directory"):
+        config.validate_model_path("smpl-neutral", tmp_path)
+
+
+@pytest.mark.fast
+def test_variant_models_require_exactly_one_of_path_or_variant(tmp_path) -> None:
+    with pytest.raises(ValueError, match="exactly one of model_path or side"):
+        MANO()
+    with pytest.raises(ValueError, match="exactly one of model_path or side"):
+        MANO(model_path=tmp_path / "model.pkl", side="left")

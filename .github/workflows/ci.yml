@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     env:
       UV_PYTHON: ${{ matrix.python-version }}
     steps:
@@ -65,12 +65,5 @@ jobs:
             --local-dir tests/assets \
             --token "$HF_TOKEN"
       - run: uv sync --group dev --all-extras --frozen
-      - name: Run cross-runtime functional tests
-        run: |
-          uv run pytest -q -m "not slow" \
-            tests/test_point_regression.py \
-            tests/test_runtime.py \
-            tests/test_backend_consistency.py \
-            tests/test_reference_outputs.py \
-            tests/test_gradients.py \
-            tests/test_public_api.py
+      - name: Run functional tests
+        run: uv run pytest -q -m "not slow"

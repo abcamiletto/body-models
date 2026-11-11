@@ -16,7 +16,7 @@ def setup_model_paths(monkeypatch):
         if model_path is not None:
             return model_path
 
-        if model in model_assets.CONFIG_KEYS.values():
+        if model in model_assets.TEST_MODEL_FILES_BY_CONFIG_KEY:
             return model_assets.get_test_model_file_for_config_key(model)
 
         return None

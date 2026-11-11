@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from importlib import import_module
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from body_models import _config as config
+from body_models import _download
 from body_models._cache import get_cache_dir
-from body_models._catalog import DOWNLOAD_SPECS
+from body_models._catalog import FAMILIES
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 
-DOWNLOAD_NAMES = tuple(DOWNLOAD_SPECS)
+DOWNLOAD_NAMES = tuple(FAMILIES)
 
 
 @app.callback(invoke_without_command=True)
@@ -60,7 +60,7 @@ def download(
     names = DOWNLOAD_NAMES if model == "all" else (model,)
     for name in names:
         destination = output_dir / name if output_dir is not None and model == "all" else output_dir
-        _download(name, destination)
+        _download_family(name, destination)
 
 
 @app.command("preprocess-soma")
@@ -72,22 +72,13 @@ def preprocess_soma(upstream_dir: Path, output_dir: Path) -> None:
     _save_paths({"soma": path})
 
 
-def _download(name: str, output_dir: Path | None = None) -> None:
-    spec = DOWNLOAD_SPECS[name]
-    downloader = getattr(import_module(spec.module), spec.function)
-    kwargs = {}
-    if spec.credentials is not None:
-        username, password = _credentials(spec.credentials.account, spec.credentials.url)
-        kwargs = {"username": username, "password": password}
-    if output_dir is not None:
-        kwargs["output_dir"] = output_dir
-    result = downloader(**kwargs)
-    if spec.output_key is not None:
-        _save_paths({spec.output_key: result})
-    elif isinstance(result, Mapping):
-        _save_paths(result)
-    else:
-        raise TypeError(f"{spec.module}.{spec.function} must return a mapping")
+def _download_family(name: str, output_dir: Path | None) -> None:
+    family = FAMILIES[name]
+    if family.licensed is None:
+        _save_paths({name: family.io().download_model(output_dir=output_dir)})
+        return
+    username, password = _credentials(family.licensed.account, family.licensed.site)
+    _save_paths(_download.download_licensed(name, output_dir, username, password))
 
 
 def _credentials(account: str, url: str) -> tuple[str, str]:

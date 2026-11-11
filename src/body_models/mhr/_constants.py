@@ -1,4 +1,4 @@
-from body_models._common.pose_assets import load_npz
+from body_models._common import pose_assets
 from body_models._constants import Joint
 
 MHR_BODY_POSE_COEFFS = 94
@@ -55,7 +55,7 @@ MHR_JOINTS = {
     Joint.RIGHT_FOOT: "r_ball",
 }
 
-_POSES = load_npz("body_models.mhr")
+_POSES = pose_assets.load_npz("body_models.mhr")
 
 MHR_BODY_PRESETS = _POSES["body"]
 MHR_HAND_PRESETS = _POSES["hand"]

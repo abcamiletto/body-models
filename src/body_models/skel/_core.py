@@ -7,8 +7,7 @@ from typing import Any, TypedDict
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models import _common as common
-from body_models._common import skinning
+from body_models._common import deformation, kinematics, ops, skinning
 from body_models._runtime import ArrayRuntime
 
 Array = Any  # Generic array type (numpy, torch, jax)
@@ -47,13 +46,13 @@ def prepare_pose(
     scapula_r_axes: Float[Array, "3 3"],
     scapula_l_axes: Float[Array, "3 3"],
     spine_axes: Float[Array, "3 3"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     num_joints_smpl: int,
     pose: Float[Array, "*batch 46"],
     *,
     local_joint_offsets: Float[Array, "*batch 24 3"],
     rest_joints: Float[Array, "*batch 24 3"],
-) -> common.deformation.SkinningPose:
+) -> deformation.SkinningPose:
     """Precompute pose-dependent SKEL state for repeated forward passes."""
     if pose.ndim < 1 or pose.shape[-1] != NUM_POSE_PARAMS:
         raise ValueError(f"pose must have shape [..., {NUM_POSE_PARAMS}]")
@@ -77,9 +76,9 @@ def prepare_pose(
     )
     G = runtime._compose_kinematic_tree(G_local, tree)
 
-    eye3 = common.eye_as(G_local[..., :3, :3], batch_dims=(*batch_shape, 1), xp=xp)
+    eye3 = ops.eye_as(G_local[..., :3, :3], batch_dims=(*batch_shape, 1), xp=xp)
     R_smpl = xp.broadcast_to(eye3, (*batch_shape, num_joints_smpl, 3, 3))
-    R_smpl = common.at_set(
+    R_smpl = ops.at_set(
         R_smpl, (..., SMPL_JOINT_MAP, slice(None), slice(None)), G_local[..., :, :3, :3], copy=True, xp=xp
     )
     pose_feat = (R_smpl[..., 1:, :, :] - eye3).reshape(*batch_shape, -1)
@@ -102,7 +101,7 @@ def prepare_skeleton(
     scapula_r_axes: Float[Array, "3 3"],
     scapula_l_axes: Float[Array, "3 3"],
     spine_axes: Float[Array, "3 3"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     pose: Float[Array, "*batch 46"],
     *,
     local_joint_offsets: Float[Array, "*batch 24 3"],
@@ -157,7 +156,7 @@ def prepare_identity(
     return {
         "rest_joints": identity["rest_joints"],
         "local_joint_offsets": identity["local_joint_offsets"],
-        "rest_vertices": common.deformation.blend_shapes(v_template, shapedirs, shape, xp=xp),
+        "rest_vertices": deformation.blend_shapes(v_template, shapedirs, shape, xp=xp),
     }
 
 
@@ -172,7 +171,7 @@ def prepare_skeleton_identity(
     """Prepare only shape-dependent SKEL joint state."""
     if shape.ndim < 1 or shape.shape[-1] != NUM_SHAPE_COEFFS:
         raise ValueError(f"shape must have shape [..., {NUM_SHAPE_COEFFS}]")
-    joints = common.deformation.blend_shapes(j_template, j_shapedirs, shape, xp=xp)
+    joints = deformation.blend_shapes(j_template, j_shapedirs, shape, xp=xp)
     return {
         "rest_joints": joints,
         "local_joint_offsets": _compute_J_rel(xp, joints, parent),
@@ -222,7 +221,7 @@ def _compute_local_transforms(
 
     # Batched joint rotations: convert all axis-angles to matrices at once
     # Pad pose with zero for identity rotation (used by joints with < 3 DOFs)
-    zero_pad = common.zeros_as(pose, shape=(*batch_shape, 1), xp=xp)
+    zero_pad = ops.zeros_as(pose, shape=(*batch_shape, 1), xp=xp)
     pose_padded = xp.concat([pose, zero_pad], axis=-1)
     axis_angles = pose_padded[..., None] * all_axes
     all_R = SO3.conversions.from_axis_angle_to_rotmat(axis_angles, xp=xp)  # [B, 47, 3, 3]
@@ -255,7 +254,7 @@ def _compute_local_transforms(
     offset_13 = _spine_offset(xp, pose[..., 23], pose[..., 24], xp.abs(J[..., 13, 1] - J[..., 12, 1]), spine_axes)
 
     # Build offset tensor
-    zero = common.zeros_as(pose, shape=(*batch_shape, 3, 1), xp=xp)
+    zero = ops.zeros_as(pose, shape=(*batch_shape, 3, 1), xp=xp)
     offsets = [zero for _ in range(NUM_JOINTS)]
     offsets[14] = offset_r[..., :, None]
     offsets[19] = offset_l[..., :, None]
@@ -308,14 +307,14 @@ def _compute_bone_orientation(
     Gk_learned = xp.broadcast_to(per_joint_rot, (*batch_shape, NUM_JOINTS, 3, 3))
     apose_corrected = xp.squeeze(Gk_learned @ apose_vec[..., None], axis=-1)
 
-    Gk = common.rotation_between_vectors(apose_corrected, bone_vec, xp=xp)
+    Gk = kinematics.rotation_between_vectors(apose_corrected, bone_vec, xp=xp)
 
     # Set identity for fixed orientation joints
-    eye3 = common.eye_as(per_joint_rot, batch_dims=(*batch_shape, NUM_JOINTS), xp=xp)
+    eye3 = ops.eye_as(per_joint_rot, batch_dims=(*batch_shape, NUM_JOINTS), xp=xp)
     fixed = xp.broadcast_to(eye3, (*batch_shape, NUM_JOINTS, 3, 3))
-    mask = common.zeros_as(fixed, shape=(NUM_JOINTS,), xp=xp)
+    mask = ops.zeros_as(fixed, shape=(NUM_JOINTS,), xp=xp)
     mask = xp.asarray(mask, dtype=xp.bool)
-    mask = common.at_set(mask, (fixed_orientation_joints,), xp.asarray(True), xp=xp)
+    mask = ops.at_set(mask, (fixed_orientation_joints,), xp.asarray(True), xp=xp)
     mask = xp.broadcast_to(mask[..., None, None], Gk.shape)
     Gk = xp.where(mask, fixed, Gk)
 
@@ -403,8 +402,8 @@ def _homog_matrix(
     batch_shape = R.shape[:-3]
     J = R.shape[-3]
     dtype = R.dtype
-    pad = common.zeros_as(R, shape=(*batch_shape, J, 1, 4), xp=xp)
-    pad = common.at_set(pad, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
+    pad = ops.zeros_as(R, shape=(*batch_shape, J, 1, 4), xp=xp)
+    pad = ops.at_set(pad, (..., 0, 3), xp.asarray(1.0, dtype=dtype), xp=xp)
     return xp.concat([xp.concat([R, t], axis=-1), pad], axis=-2)
 
 

@@ -11,12 +11,12 @@ def test_affine_transforms_reuses_aot_autograd_cache(tmp_path, monkeypatch, dyna
     from torch._functorch import config as autograd_config
     from torch._inductor import config as inductor_config
 
-    from body_models._common.kinematics import affine_transforms
+    from body_models._common import kinematics
 
     monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
 
     def loss(linear, translation):
-        return affine_transforms(linear, translation, xp=torch).square().sum()
+        return kinematics.affine_transforms(linear, translation, xp=torch).square().sum()
 
     linear = torch.randn(3, 1, 3, 3, requires_grad=True)
     translation = torch.randn(1, 2, 3, requires_grad=True)

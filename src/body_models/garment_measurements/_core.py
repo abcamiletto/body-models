@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 from jaxtyping import Float
 from nanomanifold import SE3, SO3
 
-from body_models import _common as common
+from body_models._common import deformation, kinematics, ops
 from body_models._rotations import RotationType, rotation_ndim
 from body_models._runtime import ArrayRuntime
 
@@ -26,13 +26,13 @@ class GarmentMeasurementsIdentity(TypedDict):
 def prepare_pose(
     runtime: ArrayRuntime,
     bind_quats: Float[Array, "J 4"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
     bind_skeleton: Float[Array, "*batch J 7"],
     local_bind_translations: Float[Array, "*batch J 3"],
-) -> common.deformation.SkinningPose:
+) -> deformation.SkinningPose:
     """Prepare posed skeleton and bind-relative skinning transforms."""
     xp = runtime.xp
     num_rot_dims = rotation_ndim(rotation_type)
@@ -51,7 +51,7 @@ def prepare_pose(
         runtime=runtime,
     )
     bind_matrices = SE3.to_matrix(bind_skeleton, xp=xp)
-    skinning_transforms = skeleton @ common.invert_rigid_transforms(bind_matrices, xp=xp)
+    skinning_transforms = skeleton @ kinematics.invert_rigid_transforms(bind_matrices, xp=xp)
     return {
         "skeleton_transforms": skeleton,
         "skinning_transforms": skinning_transforms,
@@ -61,7 +61,7 @@ def prepare_pose(
 def prepare_skeleton(
     runtime: ArrayRuntime,
     bind_quats: Float[Array, "J 4"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     *,
@@ -94,14 +94,14 @@ def prepare_identity(
     eigenvalues: Float[Array, "C"],
     bind_quats: Float[Array, "J 4"],
     mvc_weights: Float[Array, "V J"],
-    kinematic_tree: common.KinematicTree,
+    kinematic_tree: kinematics.KinematicTree,
     shape: Float[Array, "*batch C"],
 ) -> GarmentMeasurementsIdentity:
     """Prepare shape-dependent surface and bind skeleton."""
     if shape.ndim < 1 or shape.shape[-1] != eigenvalues.shape[0]:
         raise ValueError(f"shape must have shape [..., {eigenvalues.shape[0]}]")
     scaled_shape = shape * xp.sqrt(eigenvalues)
-    rest_vertices = common.deformation.blend_shapes(mean_vertices, components, scaled_shape, xp=xp)
+    rest_vertices = deformation.blend_shapes(mean_vertices, components, scaled_shape, xp=xp)
     joint_positions = xp.tensordot(rest_vertices, mvc_weights, ([-2], [0])).mT
     bind_quats = xp.broadcast_to(bind_quats, (*rest_vertices.shape[:-2], *bind_quats.shape))
     bind_global_quats = _propagate_quats(bind_quats, kinematic_tree.fronts, xp=xp)
@@ -123,7 +123,7 @@ def _forward_skeleton(
     *,
     bind_quats: Float[Array, "J 4"],
     local_bind_translations: Float[Array, "*batch J 3"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     pose: Float[Array, "*batch J N"] | Float[Array, "*batch J 3 3"],
     rotation_type: RotationType,
     joint_indices: Sequence[int] | None = None,
@@ -145,7 +145,7 @@ def _forward_skeleton(
     pose_quats = SO3.convert(pose, src=rotation_type, dst="quat", xp=xp)
     posed_quats = SO3.multiply(bind_quats, pose_quats, xp=xp)
     local_rotations = SO3.convert(posed_quats, src="quat", dst="rotmat", xp=xp)
-    local_transforms = common.affine_transforms(local_rotations, local_bind_translations, xp=xp)
+    local_transforms = kinematics.affine_transforms(local_rotations, local_bind_translations, xp=xp)
     skeleton = runtime._compose_kinematic_tree(local_transforms, tree)
     if selection is None:
         return skeleton
@@ -156,7 +156,7 @@ def _forward_skeleton(
 def _local_translations_from_positions(
     positions: Float[Array, "*batch J 3"],
     bind_global_quats: Float[Array, "*batch J 4"],
-    fronts: Sequence[common.Front],
+    fronts: Sequence[kinematics.Front],
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 3"]:
@@ -168,7 +168,7 @@ def _local_translations_from_positions(
             offsets = positions[..., joints, :] - positions[..., parents, :]
             parent_inverse = SO3.inverse(bind_global_quats[..., parents, :], xp=xp)
             front = SO3.rotate_points(parent_inverse, offsets[..., None, :], xp=xp).squeeze(-2)
-        translations = common.at_set(
+        translations = ops.at_set(
             translations,
             (..., joints, slice(None)),
             front,
@@ -180,7 +180,7 @@ def _local_translations_from_positions(
 
 def _propagate_quats(
     quaternions: Float[Array, "*batch J 4"],
-    fronts: Sequence[common.Front],
+    fronts: Sequence[kinematics.Front],
     *,
     xp: Any,
 ) -> Float[Array, "*batch J 4"]:
@@ -194,7 +194,7 @@ def _propagate_quats(
                 quaternions[..., joints, :],
                 xp=xp,
             )
-        global_quaternions = common.at_set(
+        global_quaternions = ops.at_set(
             global_quaternions,
             (..., joints, slice(None)),
             front,

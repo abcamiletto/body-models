@@ -7,8 +7,7 @@ from typing import Any
 from jaxtyping import Float
 from nanomanifold import SO3
 
-from body_models import _common as common
-from body_models._common import deformation
+from body_models._common import deformation, kinematics, ops
 from body_models._runtime import ArrayRuntime
 
 Array = Any  # Generic array type (numpy, torch, jax)
@@ -27,8 +26,8 @@ def _pose_coefficients(
     euler = joint_params[..., 2:, 3:6]
     rot = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz", xp=xp)
     feat = xp.concat([rot[..., 0], rot[..., 1]], axis=-1)
-    feat = common.at_set(feat, (..., 0), feat[..., 0] - 1.0, copy=False, xp=xp)
-    feat = common.at_set(feat, (..., 4), feat[..., 4] - 1.0, copy=False, xp=xp)
+    feat = ops.at_set(feat, (..., 0), feat[..., 0] - 1.0, copy=False, xp=xp)
+    feat = ops.at_set(feat, (..., 4), feat[..., 4] - 1.0, copy=False, xp=xp)
 
     batch_shape = feat.shape[:-2]
     feat_flat = feat.reshape(*batch_shape, -1)
@@ -42,7 +41,7 @@ def prepare_pose(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     num_joints: int,
     shape_dim: int,
     bind_inv_linear: Float[Array, "J 3 3"],
@@ -86,7 +85,7 @@ def prepare_skeleton(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     num_joints: int,
     shape_dim: int,
     pose: Float[Array, "B 204"],
@@ -125,7 +124,7 @@ def prepare_identity(
     if expression.ndim < 1 or expression.shape[-1] != 72:
         raise ValueError(f"expression must have shape [..., 72], got {tuple(expression.shape)}")
     coeffs = xp.concat([shape, expression], axis=-1)
-    rest_vertices = common.deformation.blend_shapes(base_vertices, xp.moveaxis(blendshape_dirs, 0, -1), coeffs, xp=xp)
+    rest_vertices = deformation.blend_shapes(base_vertices, xp.moveaxis(blendshape_dirs, 0, -1), coeffs, xp=xp)
     return {"rest_vertices": rest_vertices * 0.01}
 
 
@@ -149,10 +148,10 @@ def _forward_skeleton_core(
     joint_offsets: Float[Array, "J 3"],
     joint_pre_rotations: Float[Array, "J 4"],
     parameter_transform: Float[Array, "D N"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     num_joints: int,
     shape_dim: int,
-    selection: common.JointSelection | None = None,
+    selection: kinematics.JointSelection | None = None,
 ) -> tuple[Float[Array, "B J 4 4"], Float[Array, "B J 7"]]:
     xp = runtime.xp
     j_p = _pose_to_joint_params(xp, pose, parameter_transform, num_joints, shape_dim)
@@ -178,7 +177,7 @@ def _forward_skeleton_core(
 
     local_scale = xp.exp(_LN2 * j_p[..., 6:7])
     local_rotation = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)
-    local_transforms = common.affine_transforms(local_rotation * local_scale[..., None], t_l, xp=xp)
+    local_transforms = kinematics.affine_transforms(local_rotation * local_scale[..., None], t_l, xp=xp)
     world = runtime._compose_kinematic_tree(local_transforms, tree)
     return world, j_p
 
@@ -192,13 +191,13 @@ def _pose_to_joint_params(
 ) -> Float[Array, "B J 7"]:
     """Convert pose vector to per-joint parameters [B, J, 7]."""
     batch_shape = pose.shape[:-1]
-    pad = common.zeros_as(pose, shape=(*batch_shape, shape_dim), xp=xp)
+    pad = ops.zeros_as(pose, shape=(*batch_shape, shape_dim), xp=xp)
     j_p = xp.einsum("dn,...n->...d", parameter_transform, xp.concat([pose, pad], axis=-1))
     return j_p.reshape(*batch_shape, num_joints, 7)
 
 
 def _scale_transform_translations(xp, transforms: Float[Array, "B J 4 4"]) -> Float[Array, "B J 4 4"]:
-    return common.at_set(
+    return ops.at_set(
         transforms,
         (..., slice(None, 3), 3),
         transforms[..., :3, 3] * 0.01,
@@ -211,4 +210,4 @@ def _transforms_from_linear_translation(
     linear: Float[Array, "B J 3 3"],
     translation: Float[Array, "B J 3"],
 ) -> Float[Array, "B J 4 4"]:
-    return common.affine_transforms(linear, translation, xp=xp)
+    return kinematics.affine_transforms(linear, translation, xp=xp)

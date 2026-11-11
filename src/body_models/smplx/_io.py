@@ -2,14 +2,13 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
-from body_models._common.chumpy_fix import load_model_dict
+from body_models._common import chumpy_fix, kinematics, simplify_mesh
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -36,42 +35,14 @@ class SmplxAssets:
 
 
 def validate_path(model_path: PathLike) -> Path:
-    model_path = Path(model_path)
-    if model_path.is_dir():
-        raise ValueError(f"Expected an SMPLX model file, got directory: {model_path}")
-    if not model_path.is_file():
-        raise FileNotFoundError(f"SMPLX model file not found: {model_path}")
-    if model_path.suffix not in {".npz", ".pkl"}:
-        raise ValueError(f"Expected an SMPLX .npz or .pkl file, got: {model_path}")
-    return model_path
-
-
-def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male", "female"] | None) -> Path:
-    if model_path is not None:
-        if gender is not None:
-            raise ValueError("gender is only supported when model_path is not provided.")
-        return validate_path(model_path)
-
-    if gender is None:
-        raise ValueError("Either model_path or gender must be provided.")
-
-    config_key = f"smplx-{gender}"
-    resolved_path = config.get_model_path(config_key)
-
-    if resolved_path is None:
-        raise FileNotFoundError(
-            "SMPL-X model not found. Run `body-models download smplx` or configure an existing file with "
-            f"`body-models set smplx-{gender} /path/to/SMPLX_{gender.upper()}.npz`."
-        )
-
-    return validate_path(resolved_path)
+    return config.validate_file(model_path, "SMPL-X", (".npz", ".pkl"))
 
 
 def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 1.0) -> SmplxAssets:
     """Load SMPL-X model data from .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
-    data = load_model_dict(path)
+    data = chumpy_fix.load_model_dict(path)
 
     model_template = np.asarray(data["v_template"], dtype=np.float32)
     faces = np.asarray(data["f"], dtype=np.int32)
@@ -86,7 +57,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
     shapedirs = model_dirs
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(model_template, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh.simplify_mesh(model_template, faces, target_faces)
         lbs_weights = lbs_weights[vertex_map]
         shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
@@ -100,7 +71,7 @@ def load_model_data(path: Path, flat_hand_mean: bool = False, simplify: float = 
     if flat_hand_mean:
         hand_mean = np.zeros_like(hand_mean)
 
-    lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
+    lbs_joint_indices, lbs_joint_weights = kinematics.compute_sparse_skin_weights(lbs_weights)
 
     return SmplxAssets(
         v_template=v_template,

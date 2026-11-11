@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from jaxtyping import Float, Int
 
+from body_models import _config as config
 from body_models._base import (
     CorrectiveBasis,
     DenseCorrectiveBasis,
@@ -22,7 +23,7 @@ from body_models._runtime import ArrayRuntime
 from body_models.skel import _core as core
 from body_models.skel import _pose as pose_utils
 from body_models.skel._constants import SKEL_BODY_PRESETS, SKEL_JOINTS
-from body_models.skel._io import get_model_path, load_model_data
+from body_models.skel._io import load_model_data
 
 Array = Any
 SkelIdentity = core.SkelIdentity
@@ -60,7 +61,7 @@ class SKEL(SkinnedModel):
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
 
-        assets = load_model_data(get_model_path(model_path, gender), simplify=simplify)
+        assets = load_model_data(config.resolve_model_path("skel", model_path, gender), simplify=simplify)
         self._attach_runtime(runtime)
         self._config = SkelConfig(gender=gender)
         self._assets = runtime._materialize(assets)
@@ -72,10 +73,6 @@ class SKEL(SkinnedModel):
     @property
     def faces(self) -> Int[Array, "F 3"]:
         return self._assets.faces
-
-    @property
-    def skeleton_faces(self) -> Int[Array, "Fs 3"]:
-        return self._assets.skel_faces
 
     @property
     def joint_names(self) -> list[str]:
@@ -206,26 +203,6 @@ class SKEL(SkinnedModel):
 
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
-
-    def forward_links(
-        self,
-        body_pose: Float[Array, "*batch 43"],
-        head_pose: Float[Array, "*batch 3"],
-        *,
-        shape: Float[Array, "*batch 10"] | None = None,
-        identity: SkelIdentity | None = None,
-        global_rotation: Float[Array, "*batch 3"] | None = None,
-        global_translation: Float[Array, "*batch 3"] | None = None,
-    ) -> Float[Array, "*batch 24 4 4"]:
-        """Alias the SKEL joint transforms as anatomical link transforms."""
-        return self.forward_skeleton(
-            body_pose,
-            head_pose,
-            global_rotation=global_rotation,
-            global_translation=global_translation,
-            shape=shape,
-            identity=identity,
-        )
 
     def prepare_identity(
         self,
