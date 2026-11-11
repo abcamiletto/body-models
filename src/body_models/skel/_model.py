@@ -121,10 +121,7 @@ class SKEL(SkinnedModel):
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed SKEL vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            identity = self.prepare_identity(*self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape))
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape)
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
             self.apply_pose_correctives(identity=identity, pose=pose),
@@ -152,13 +149,7 @@ class SKEL(SkinnedModel):
     ) -> Float[Array, "*batch 24 4 4"]:
         """Compute posed SKEL joint transforms."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            resolved = self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape)
-            skeleton_identity = self._prepare_skeleton_identity(*resolved)
-        else:
-            skeleton_identity = identity
-
+        skeleton_identity = self._identity_from(identity, self._prepare_skeleton_identity, shape=shape)
         packed_pose = pose_utils.pack_pose(xp, body_pose, head_pose)
         skeleton = core.prepare_skeleton(
             runtime=self._runtime,
@@ -197,10 +188,7 @@ class SKEL(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            identity = self.prepare_identity(*self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape))
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape)
         pose = self.prepare_pose(body_pose, head_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 

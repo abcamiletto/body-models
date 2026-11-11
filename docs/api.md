@@ -110,7 +110,7 @@ across poses. `skinning_spec` holds the static data used for skinning.
 | Type | Contents |
 | --- | --- |
 | `SkinningIdentity` | Identity-dependent `rest_vertices`. |
-| `LinearIdentity` | Rest vertices, rest joints, and local joint offsets. |
+| `LinearIdentity` | Identity coefficients, and the rest vertices, rest joints, and local joint offsets they produce. |
 | `SkinningPose` | Skeleton and skinning transforms, and optional compact `pose_coefficients`. |
 | `SkinningSpec` | Triangles, skinning weights, and an optional dense or sparse corrective basis. |
 

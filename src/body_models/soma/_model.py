@@ -199,14 +199,7 @@ class SOMA(SkinnedModel):
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices in meters."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
-        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-        if identity is None:
-            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
-            if scale_params is not None:
-                scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            identity = self.prepare_identity(*resolved, scale_params=scale_params)
-
+        identity = self._identity_from(identity, self.prepare_identity, **self._raw_identity(shape, scale_params))
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
             self.apply_pose_correctives(identity=identity, pose=pose),
@@ -237,15 +230,9 @@ class SOMA(SkinnedModel):
     ) -> Float[Array, "*batch 77 4 4"]:
         """Compute posed public-joint transforms in meters."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
+        raw = self._raw_identity(shape, scale_params)
+        skeleton_identity = self._identity_from(identity, self._prepare_skeleton_identity, **raw)
         batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-        if identity is None:
-            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
-            if scale_params is not None:
-                scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            skeleton_identity = self._prepare_skeleton_identity(*resolved, scale_params=scale_params)
-        else:
-            skeleton_identity = identity
 
         root_rotation = SO3.identity_as(
             body_pose,
@@ -284,23 +271,15 @@ class SOMA(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch P 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape, scale_params=scale_params)
-        batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-        if identity is None:
-            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
-            if scale_params is not None:
-                scale_params = xp.broadcast_to(scale_params, (*batch_shape, scale_params.shape[-1]))
-            identity = self.prepare_identity(*resolved, scale_params=scale_params)
-
+        identity = self._identity_from(identity, self.prepare_identity, **self._raw_identity(shape, scale_params))
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 
     def prepare_identity(
         self,
         shape: Float[Array, "*batch I"],
-        *,
         scale_params: Float[Array, "*batch K"] | None = None,
+        *,
         repose: bool = True,
         bind_pose: core.BindPoseMode = "fit",
     ) -> SomaIdentity:
@@ -345,8 +324,7 @@ class SOMA(SkinnedModel):
     def _prepare_skeleton_identity(
         self,
         shape: Float[Array, "*batch I"],
-        *,
-        scale_params: Float[Array, "*batch K"] | None,
+        scale_params: Float[Array, "*batch K"] | None = None,
     ) -> core.SomaSkeletonIdentity:
         rest_shape_full, rest_shape_active = self._rest_shapes(shape, scale_params)
         return core.prepare_skeleton_identity_from_rest_shape(
@@ -356,18 +334,26 @@ class SOMA(SkinnedModel):
             rest_shape_active=rest_shape_active,
         )
 
+    def _raw_identity(
+        self,
+        shape: Float[Array, "*batch I"] | None,
+        scale_params: Float[Array, "*batch K"] | None,
+    ) -> dict[str, Float[Array, "*batch C"] | None]:
+        """Raw identity parameters this model type accepts, in ``prepare_identity`` order."""
+        if self.num_scale_coeffs is None:
+            if scale_params is not None:
+                raise ValueError(f"scale_params is not supported by SOMA model_type={self.model_type!r}")
+            return {"shape": shape}
+        return {"shape": shape, "scale_params": scale_params}
+
     def _rest_shapes(
         self,
         shape: Float[Array, "*batch I"],
         scale_params: Float[Array, "*batch K"] | None,
     ) -> tuple[Float[Array, "*batch Vf 3"], Float[Array, "*batch Va 3"]]:
-        if scale_params is not None and self.num_scale_coeffs is None:
-            raise ValueError(f"scale_params is not supported by SOMA model_type={self.model_type!r}")
-        if scale_params is None and self.num_scale_coeffs is not None:
-            scale_params = self._runtime.zeros(
-                (*shape.shape[:-1], self.num_scale_coeffs),
-                like=shape,
-            )
+        if (scale_params is None) != (self.num_scale_coeffs is None):
+            expected = "required" if self.num_scale_coeffs is not None else "not supported"
+            raise ValueError(f"scale_params is {expected} for SOMA model_type={self.model_type!r}")
         return identities.rest_shapes(
             data=self._assets,
             model_type=self.model_type,

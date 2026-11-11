@@ -14,7 +14,7 @@ Each model lives in `body_models/<name>/` and derives from `SkinnedModel`:
 | File | Responsibility |
 | --- | --- |
 | `_io.py` | Validate assets (`validate_path`), fetch public ones (`download_model`), and load them as immutable NumPy data. |
-| `_core.py` | Model mathematics, given an array namespace or runtime. |
+| `_core.py` | Model mathematics, given an array namespace or runtime. Linear blendshape models have none. |
 | `_model.py` | Validation, state preparation, and forward methods. |
 | `numpy.py`, `torch.py`, `jax.py` | Bind the model to an array backend. |
 | `__init__.py` | Export model-specific types and helpers. |
@@ -24,6 +24,11 @@ and joints; pose preparation computes transforms and corrective coefficients;
 `apply_pose_correctives()` turns those coefficients into offsets; skinning
 produces the posed mesh. `forward_points()` runs the same stages through a
 vertex mapping. Skeleton forwards have their own preparation path.
+
+Every forward takes either the raw identity parameters or a prepared
+`identity`, never both. `SkinnedModel._identity_from()` makes that choice in
+one place, and raw parameters broadcast against the pose batch rather than
+being expanded to it.
 
 `parameter_spec` lists parameters in identity, pose, transform order, each with
 its unbatched dimensions, role, default, and rotation representation.
@@ -57,14 +62,19 @@ directory.
 
 ## Linear blendshape models
 
-SMPL, SMPL-H, SMPL-X, MANO, FLAME, and GNM share a private engine. Each model
-defines its pose blocks (joint order and means); the engine handles rotation
-conversion, root insertion, batch validation, forward kinematics, bind-relative
-transforms, and corrective coefficients. It sees only arrays and pose blocks,
-never model names or feature flags.
+SMPL, SMPL-H, SMPL-X, MANO, FLAME, and GNM share `LinearBlendshapeModel`. Each
+model supplies two things: its pose blocks (joint order and means), and its
+`IdentityBasis` list, one per identity parameter, with vertex directions and,
+when the parameter moves the skeleton, joint directions. The engine does the
+rest: identity preparation, rotation conversion, root insertion, forward
+kinematics, bind-relative transforms, corrective coefficients, skinning, and
+point regression. It sees only arrays, bases, and pose blocks, never model
+names or feature flags.
 
-These models also share identity preparation. Shape and expression bases are
-applied separately, which avoids concatenating them on every call.
+A prepared linear identity keeps its coefficients, so skeleton and point
+forwards never need rest vertices: points come from bases projected through the
+vertex mapping. Each basis is applied separately, which avoids concatenating
+shape and expression on every call.
 
 ## Runtimes
 
@@ -107,7 +117,8 @@ use the shared basis only to turn them into offsets.
    the assets need credentials.
 2. In `_io.py`, define `validate_path`, `download_model` for public assets, and
    the loader.
-3. Implement the mathematics in `_core.py`.
+3. Implement the mathematics in `_core.py`, or, for a linear blendshape model,
+   define its pose blocks and identity bases on `LinearBlendshapeModel`.
 4. Define the `SkinnedModel` subclass in `_model.py`, resolving assets with
    `resolve_model_path`.
 5. Bind and export the NumPy, Torch, and JAX classes.

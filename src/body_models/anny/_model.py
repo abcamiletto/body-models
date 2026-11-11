@@ -151,11 +151,7 @@ class ANNY(SkinnedModel):
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed ANNY vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
             identity["rest_vertices"],
@@ -185,13 +181,8 @@ class ANNY(SkinnedModel):
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed ANNY joint transforms."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
+        skeleton_identity = self._identity_from(identity, self._prepare_skeleton_identity, shape=shape)
         batch_shape = tuple(body_pose.shape[: -(self._num_rot_dims + 1)])
-        if identity is None:
-            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape)
-            skeleton_identity = self._prepare_skeleton_identity(*resolved)
-        else:
-            skeleton_identity = identity
 
         root_rotation = SO3.identity_as(
             body_pose,
@@ -229,11 +220,7 @@ class ANNY(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 

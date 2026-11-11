@@ -12,10 +12,11 @@ from jaxtyping import Float
 from body_models import _config as config
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
-from body_models._linear_blendshape import LinearBlendshapeModel
+from body_models._common.deformation import LinearSkeletonIdentity
+from body_models._common.kinematics import JointSelection
+from body_models._linear_blendshape import IdentityBasis, LinearBlendshapeModel, PoseBlock
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
-from body_models.flame import _core as core
 from body_models.flame._constants import FLAME_JOINT_NAMES, FLAME_JOINTS
 from body_models.flame._io import load_model_data
 
@@ -92,21 +93,10 @@ class FLAME(LinearBlendshapeModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
         vertex_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch V 3"]:
-        """Compute posed head vertices."""
-        self._validate_identity_arguments(identity, shape=shape, expression=expression)
-        if identity is None:
-            batch_shape = head_pose.shape[: -(self._num_rot_dims + 1)]
-            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape, expression=expression)
-            identity = self.prepare_identity(*resolved)
-
+        """Compute posed mesh vertices."""
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape, expression=expression)
         pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=identity)
-        return self._deform_vertices(
-            identity,
-            pose,
-            global_rotation,
-            global_translation,
-            vertex_indices,
-        )
+        return self._deform_vertices(identity, pose, global_rotation, global_translation, vertex_indices)
 
     def forward_skeleton(
         self,
@@ -115,34 +105,17 @@ class FLAME(LinearBlendshapeModel):
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
-        identity: LinearIdentity | None = None,
+        identity: LinearSkeletonIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
         joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch 5 4 4"]:
-        """Compute posed head joint transforms."""
-        self._validate_identity_arguments(identity, shape=shape, expression=expression)
-        if identity is None:
-            batch_shape = head_pose.shape[: -(self._num_rot_dims + 1)]
-            resolved = self._resolve_identity_coefficients(batch_shape, shape=shape, expression=expression)
-            skeleton_identity = self._prepare_skeleton_identity(*resolved)
-        else:
-            skeleton_identity = identity
-
-        skeleton = core.prepare_skeleton(
-            self._runtime,
-            self._assets.kinematic_tree,
-            head_pose,
-            head_rotation,
-            self.rotation_type,
-            local_joint_offsets=skeleton_identity["local_joint_offsets"],
-            joint_indices=joint_indices,
-        )
-        return self._transform_skeleton(
-            skeleton,
-            global_rotation,
-            global_translation,
-        )
+        """Compute posed joint transforms."""
+        identity = self._identity_from(identity, self._prepare_skeleton_identity, shape=shape, expression=expression)
+        selection = self._joint_selection(joint_indices)
+        pose_matrices = self._pose_matrices(head_pose, head_rotation, selection)
+        skeleton = self._posed_joints(pose_matrices, identity, selection)
+        return self._transform_skeleton(skeleton, global_rotation, global_translation)
 
     def forward_points(
         self,
@@ -152,79 +125,51 @@ class FLAME(LinearBlendshapeModel):
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         shape: Float[Array, "*batch S"] | None = None,
         expression: Float[Array, "*batch E"] | None = None,
-        identity: LinearIdentity | None = None,
+        identity: LinearSkeletonIdentity | None = None,
         global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        self._validate_identity_arguments(identity, shape=shape, expression=expression)
-        if identity is not None:
-            pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=identity)
-            return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
-
-        batch_shape = head_pose.shape[: -(self._num_rot_dims + 1)]
-        resolved = self._resolve_identity_coefficients(batch_shape, shape=shape, expression=expression)
-        skeleton_identity = self._prepare_skeleton_identity(*resolved)
-        pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=skeleton_identity)
-        return self._deform_linear_points(
-            point_regressor,
-            resolved,
-            pose,
-            global_rotation,
-            global_translation,
-        )
+        identity = self._identity_from(identity, self._prepare_skeleton_identity, shape=shape, expression=expression)
+        pose = self.prepare_pose(head_pose, head_rotation=head_rotation, identity=identity)
+        return self._deform_linear_points(point_regressor, identity, pose, global_rotation, global_translation)
 
     def prepare_identity(
         self,
         shape: Float[Array, "*batch S"],
         expression: Float[Array, "*batch E"],
     ) -> LinearIdentity:
-        """Precompute shape- and expression-dependent state."""
-        return core.prepare_identity(
-            xp=self._runtime.xp,
-            v_template=self._assets.v_template,
-            shapedirs=self._assets.shapedirs,
-            exprdirs=self._assets.exprdirs,
-            j_template=self._assets.j_template,
-            j_shapedirs=self._assets.j_shapedirs,
-            j_exprdirs=self._assets.j_exprdirs,
-            parents=self._assets.kinematic_tree.parents,
-            shape=shape,
-            expression=expression,
-        )
+        """Precompute identity-dependent state for repeated forward passes."""
+        return self._prepare_linear_identity(shape, expression)
 
     def prepare_pose(
         self,
         head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
         *,
         head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None = None,
-        identity: core.FlameSkeletonIdentity,
+        identity: LinearSkeletonIdentity,
     ) -> SkinningPose:
         """Precompute pose-dependent state for repeated forward passes."""
-        return core.prepare_pose(
-            self._runtime,
-            self._assets.kinematic_tree,
-            head_pose=head_pose,
-            head_rotation=head_rotation,
-            rotation_type=self.rotation_type,
-            local_joint_offsets=identity["local_joint_offsets"],
-            rest_joints=identity["rest_joints"],
+        pose_matrices = self._pose_matrices(head_pose, head_rotation)
+        return self._prepare_linear_pose(pose_matrices, identity)
+
+    @property
+    def _identity_bases(self) -> tuple[IdentityBasis, ...]:
+        return (
+            IdentityBasis(self._assets.shapedirs, self._assets.j_shapedirs),
+            IdentityBasis(self._assets.exprdirs, self._assets.j_exprdirs),
         )
 
-    def _prepare_skeleton_identity(
+    def _pose_matrices(
         self,
-        shape: Float[Array, "*batch S"],
-        expression: Float[Array, "*batch E"],
-    ) -> core.FlameSkeletonIdentity:
-        return core.prepare_skeleton_identity(
-            xp=self._runtime.xp,
-            j_template=self._assets.j_template,
-            j_shapedirs=self._assets.j_shapedirs,
-            j_exprdirs=self._assets.j_exprdirs,
-            parents=self._assets.kinematic_tree.parents,
-            shape=shape,
-            expression=expression,
-        )
+        head_pose: Float[Array, "*batch 4 N"] | Float[Array, "*batch 4 3 3"],
+        head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+        selection: JointSelection | None = None,
+    ) -> Float[Array, "*batch 5 3 3"]:
+        blocks = [
+            PoseBlock(head_pose, self.rotation_type),
+        ]
+        return self._assemble_pose_matrices(blocks, head_rotation, selection)
 
 
 __all__ = ["FLAME", "FlameConfig"]
