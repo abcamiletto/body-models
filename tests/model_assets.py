@@ -1,8 +1,9 @@
-"""Shared test asset paths and public model class names."""
+"""Shared test asset paths."""
 
 from pathlib import Path
 
 from body_models import _config as config
+from body_models._catalog import FAMILIES
 
 ASSET_DIR = Path(__file__).parent / "assets" / "models_hub"
 
@@ -21,7 +22,6 @@ TEST_ASSET_PATHS = {
 
 TEST_MODEL_FILES = TEST_ASSET_PATHS | {
     "flame": TEST_ASSET_PATHS["flame"] / "model.pkl",
-    "garment_measurements": TEST_ASSET_PATHS["garment_measurements"] / "garment_measurements.npz",
     "mano": TEST_ASSET_PATHS["mano"] / "model.pkl",
     "skel": TEST_ASSET_PATHS["skel"] / "model.pkl",
     "smpl": TEST_ASSET_PATHS["smpl"] / "model.npz",
@@ -29,35 +29,14 @@ TEST_MODEL_FILES = TEST_ASSET_PATHS | {
     "smplx": TEST_ASSET_PATHS["smplx"] / "model.npz",
 }
 
-CONFIG_KEYS = {
-    "anny": "anny",
-    "flame": "flame",
-    "garment_measurements": "garment-measurements",
-    "mano": "mano-right",
-    "mhr": "mhr",
-    "skel": "skel-male",
-    "smpl": "smpl-neutral",
-    "smplh": "smplh-neutral",
-    "smplx": "smplx-neutral",
-    "soma": "soma",
-}
+CONFIG_KEYS = {family.package: family.asset_keys[0] for family in FAMILIES.values()}
+"""Default asset config key by package name."""
 
-TEST_MODEL_FILES_BY_CONFIG_KEY = {key: TEST_MODEL_FILES[name] for name, key in CONFIG_KEYS.items()}
+TEST_MODEL_FILES_BY_CONFIG_KEY = {
+    key: TEST_MODEL_FILES[name] for name, key in CONFIG_KEYS.items() if name in TEST_MODEL_FILES
+}
 
 SOMA_NESTED_MODEL_TYPES = {"anny", "mhr", "smpl", "smplx"}
-
-CLASS_NAMES = {
-    "anny": "ANNY",
-    "flame": "FLAME",
-    "garment_measurements": "GarmentMeasurements",
-    "mano": "MANO",
-    "mhr": "MHR",
-    "skel": "SKEL",
-    "smpl": "SMPL",
-    "smplh": "SMPLH",
-    "smplx": "SMPLX",
-    "soma": "SOMA",
-}
 
 
 def get_test_asset_path(model_name: str) -> Path:

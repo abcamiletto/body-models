@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from jaxtyping import Float, Int
 
-from body_models import _common as common
+from body_models import _config as config
 from body_models import _pose_layout as pose_layout
 from body_models._base import (
     CorrectiveBasis,
@@ -19,7 +19,7 @@ from body_models._base import (
     SkinningPose,
     SparseCorrectiveBasis,
 )
-from body_models._common import skinning
+from body_models._common import ops, skinning
 from body_models._runtime import ArrayRuntime
 from body_models.mhr import _core as core
 from body_models.mhr import _pose as pose_utils
@@ -31,7 +31,7 @@ from body_models.mhr._constants import (
     MHR_HEAD_POSE_COEFFS,
     MHR_JOINTS,
 )
-from body_models.mhr._io import get_model_path, load_model_data
+from body_models.mhr._io import load_model_data
 
 Array = Any
 
@@ -59,7 +59,7 @@ class MHR(SkinnedModel):
         simplify: float = 1.0,
         runtime: ArrayRuntime,
     ) -> None:
-        assets = load_model_data(get_model_path(model_path), lod=lod, simplify=simplify)
+        assets = load_model_data(config.resolve_model_path("mhr", model_path), lod=lod, simplify=simplify)
         self._attach_runtime(runtime)
         self._config = None
         self._assets = runtime._materialize(assets)
@@ -278,7 +278,7 @@ class MHR(SkinnedModel):
             like=pose,
             dtype=pose.dtype,
         )
-        pose = common.at_set(pose, (..., slice(None, 100)), preset, xp=self._runtime.xp)
+        pose = ops.at_set(pose, (..., slice(None, 100)), preset, xp=self._runtime.xp)
         params["body_pose"], params["head_pose"], _ = pose_utils.unpack_pose(self._runtime.xp, pose)
         return params
 

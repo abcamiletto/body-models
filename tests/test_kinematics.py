@@ -1,14 +1,8 @@
 import numpy as np
 import pytest
 
-from body_models._common.kinematics import (
-    KinematicTree,
-    affine_transforms,
-    compute_sparse_skin_weights,
-    invert_rigid_transforms,
-    local_joint_offsets,
-    rotation_between_vectors,
-)
+from body_models._common import kinematics
+from body_models._common.kinematics import KinematicTree
 
 pytestmark = pytest.mark.fast
 
@@ -91,7 +85,7 @@ def test_compute_sparse_skin_weights_reconstructs_dense_matrix() -> None:
         dtype=np.float32,
     )
 
-    indices, weights = compute_sparse_skin_weights(dense)
+    indices, weights = kinematics.compute_sparse_skin_weights(dense)
 
     assert np.all(indices[weights == 0] == -1)
     reconstructed = np.zeros_like(dense)
@@ -109,7 +103,7 @@ def test_affine_transforms_broadcasts_linear_and_translation_batches(backend, ba
     linear = xp.broadcast_to(xp.eye(3), (*batch_shape, 3, 3))
     translation = xp.asarray(np.arange(6).reshape(1, 2, 3), dtype=linear.dtype)
 
-    transforms = affine_transforms(linear, translation, xp=xp)
+    transforms = kinematics.affine_transforms(linear, translation, xp=xp)
 
     assert transforms.shape == (*batch_shape, 4, 4)
     np.testing.assert_array_equal(transforms[..., :3, :3], linear)
@@ -120,9 +114,9 @@ def test_affine_transforms_broadcasts_linear_and_translation_batches(backend, ba
 
 def test_invert_rigid_transforms() -> None:
     rotations = np.array([[[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]])
-    transforms = affine_transforms(rotations, np.array([[1.0, 2.0, 3.0]]), xp=np)
+    transforms = kinematics.affine_transforms(rotations, np.array([[1.0, 2.0, 3.0]]), xp=np)
 
-    inverse = invert_rigid_transforms(transforms, xp=np)
+    inverse = kinematics.invert_rigid_transforms(transforms, xp=np)
 
     np.testing.assert_allclose(transforms @ inverse, np.eye(4)[None])
 
@@ -130,7 +124,7 @@ def test_invert_rigid_transforms() -> None:
 def test_local_joint_offsets_preserves_each_root_position() -> None:
     joints = np.array([[1.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 4.0, 0.0]])
 
-    offsets = local_joint_offsets(joints, [-1, 0, 2], xp=np)
+    offsets = kinematics.local_joint_offsets(joints, [-1, 0, 2], xp=np)
 
     expected = np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 4.0, 0.0]])
     np.testing.assert_array_equal(offsets, expected)
@@ -155,7 +149,7 @@ def test_rotation_between_vectors_maps_source_onto_target() -> None:
     source = _unit(rng.normal(size=(16, 3)))
     target = _unit(rng.normal(size=(16, 3)))
 
-    rotations = rotation_between_vectors(source, target, xp=np)
+    rotations = kinematics.rotation_between_vectors(source, target, xp=np)
 
     _assert_is_rotation(rotations)
     np.testing.assert_allclose(_rotate(rotations, source), target, atol=1e-6)
@@ -164,7 +158,7 @@ def test_rotation_between_vectors_maps_source_onto_target() -> None:
 def test_rotation_between_parallel_vectors_is_identity() -> None:
     source = _unit(np.array([[0.0, 1.0, 0.0], [1.0, 2.0, 3.0]]))
 
-    rotations = rotation_between_vectors(source, 2.0 * source, xp=np)
+    rotations = kinematics.rotation_between_vectors(source, 2.0 * source, xp=np)
 
     np.testing.assert_allclose(rotations, np.broadcast_to(np.eye(3), (2, 3, 3)), atol=1e-6)
 
@@ -172,7 +166,7 @@ def test_rotation_between_parallel_vectors_is_identity() -> None:
 def test_rotation_between_antiparallel_vectors_is_a_half_turn() -> None:
     source = _unit(np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 1.0, 1.0]]))
 
-    rotations = rotation_between_vectors(source, -source, xp=np)
+    rotations = kinematics.rotation_between_vectors(source, -source, xp=np)
 
     _assert_is_rotation(rotations)
     np.testing.assert_allclose(np.trace(rotations, axis1=-2, axis2=-1), -1.0, atol=1e-6)
@@ -184,7 +178,7 @@ def test_rotation_between_near_antiparallel_vectors_stays_a_rotation() -> None:
     source = np.array([[1.0, 0.0, 0.0]])
     target = np.array([[np.cos(angle), np.sin(angle), 0.0]])
 
-    rotations = rotation_between_vectors(source, target, xp=np)
+    rotations = kinematics.rotation_between_vectors(source, target, xp=np)
 
     _assert_is_rotation(rotations)
     # Within 1e-4 rad of the pole the half-turn branch may pick any perpendicular
@@ -197,7 +191,7 @@ def test_rotation_between_vectors_supports_extra_batch_dims() -> None:
     source = _unit(rng.normal(size=(2, 5, 3)))
     target = _unit(rng.normal(size=(2, 5, 3)))
 
-    rotations = rotation_between_vectors(source, target, xp=np)
+    rotations = kinematics.rotation_between_vectors(source, target, xp=np)
 
     assert rotations.shape == (2, 5, 3, 3)
     _assert_is_rotation(rotations)

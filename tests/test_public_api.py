@@ -136,9 +136,9 @@ def test_root_exports_match_snapshot() -> None:
 def test_backend_modules_export_model_class(backend) -> None:
     if backend != "numpy":
         pytest.importorskip(backend)
-    for spec in catalog.MODEL_SPECS.values():
-        module = import_module(f"{spec.module}.{backend}")
-        assert spec.class_name in module.__all__
+    for family in catalog.FAMILIES.values():
+        module = import_module(f"{family.module}.{backend}")
+        assert family.class_name in module.__all__
 
 
 @pytest.mark.parametrize(("name", "model_class", "kwargs"), model_cases.MODELS)

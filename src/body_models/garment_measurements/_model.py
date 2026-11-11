@@ -11,6 +11,7 @@ import numpy as np
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
+from body_models import _config as config
 from body_models._base import ParameterSpec, PointRegressor, SkinnedModel, SkinningPose
 from body_models._common import skinning
 from body_models._rotations import VALID_ROTATION_TYPES, RotationType, rotation_ndim
@@ -22,7 +23,7 @@ from body_models.garment_measurements._constants import (
     GARMENT_HAND_PRESETS,
     GARMENT_JOINTS,
 )
-from body_models.garment_measurements._io import get_model_path, load_model_data
+from body_models.garment_measurements._io import load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -59,7 +60,7 @@ class GarmentMeasurements(SkinnedModel):
         if rotation_type not in VALID_ROTATION_TYPES:
             raise ValueError(f"Invalid rotation_type: {rotation_type!r}")
 
-        assets = load_model_data(get_model_path(model_path), dtype=np.float32)
+        assets = load_model_data(config.resolve_model_path("garment-measurements", model_path), dtype=np.float32)
         self._attach_runtime(runtime)
         self._config = GarmentMeasurementsConfig(rotation_type=rotation_type)
         self._assets = runtime._materialize(assets)

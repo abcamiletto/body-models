@@ -6,8 +6,7 @@ from typing import Any, Protocol
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models._common import ops
-from body_models._common.kinematics import affine_transforms
+from body_models._common import kinematics, ops
 from body_models._rotations import RotationType
 
 Array = Any
@@ -132,4 +131,4 @@ def transform_skeleton(
     if translation is not None:
         positions = positions + translation[..., None, :]
 
-    return affine_transforms(rotations, positions, xp=xp)
+    return kinematics.affine_transforms(rotations, positions, xp=xp)

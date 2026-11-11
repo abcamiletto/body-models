@@ -3,32 +3,13 @@
 from importlib import import_module
 from pathlib import Path
 
-from body_models.anny.numpy import ANNY
-from body_models.flame.numpy import FLAME
-from body_models.garment_measurements.numpy import GarmentMeasurements
-from body_models.gnm.numpy import GNM
-from body_models.mano.numpy import MANO
-from body_models.mhr.numpy import MHR
-from body_models.skel.numpy import SKEL
-from body_models.smpl.numpy import SMPL
-from body_models.smplh.numpy import SMPLH
-from body_models.smplx.numpy import SMPLX
-from body_models.soma.numpy import SOMA
+from body_models._catalog import FAMILIES
 
 ASSETS = Path(__file__).parent / "assets"
 
 MODELS = [
-    ("anny", ANNY, {}),
-    ("flame", FLAME, {}),
-    ("garment_measurements", GarmentMeasurements, {}),
-    ("gnm", GNM, {}),
-    ("mano", MANO, {"side": "right"}),
-    ("mhr", MHR, {}),
-    ("skel", SKEL, {}),
-    ("smpl", SMPL, {"gender": "neutral"}),
-    ("smplh", SMPLH, {"gender": "neutral"}),
-    ("smplx", SMPLX, {"gender": "neutral"}),
-    ("soma", SOMA, {}),
+    (family.package, getattr(import_module(f"{family.module}.numpy"), family.class_name), dict(family.defaults))
+    for family in FAMILIES.values()
 ]
 
 REFERENCE_MODELS = [model for model in MODELS if (ASSETS / model[0] / "inputs" / "0.json").exists()]

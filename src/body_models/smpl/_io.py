@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
-from body_models._common.chumpy_fix import load_model_dict
+from body_models._common import chumpy_fix, kinematics, simplify_mesh
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -30,42 +29,14 @@ class SmplAssets:
 
 
 def validate_path(model_path: PathLike) -> Path:
-    model_path = Path(model_path)
-    if model_path.is_dir():
-        raise ValueError(f"Expected an SMPL model file, got directory: {model_path}")
-    if not model_path.is_file():
-        raise FileNotFoundError(f"SMPL model file not found: {model_path}")
-    if model_path.suffix not in {".pkl", ".npz"}:
-        raise ValueError(f"Expected an SMPL .pkl or .npz file, got: {model_path}")
-    return model_path
-
-
-def get_model_path(model_path: PathLike | None, gender: Literal["neutral", "male", "female"] | None) -> Path:
-    if model_path is not None:
-        if gender is not None:
-            raise ValueError("gender is only supported when model_path is not provided.")
-        return validate_path(model_path)
-
-    if gender is None:
-        raise ValueError("Either model_path or gender must be provided.")
-
-    config_key = f"smpl-{gender}"
-    resolved_path = config.get_model_path(config_key)
-
-    if resolved_path is None:
-        raise FileNotFoundError(
-            f"SMPL model not found. Run `body-models download smpl` or configure an existing file with "
-            f"`body-models set smpl-{gender} /path/to/SMPL_{gender.upper()}.pkl`."
-        )
-
-    return validate_path(resolved_path)
+    return config.validate_file(model_path, "SMPL", (".pkl", ".npz"))
 
 
 def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplAssets:
     """Load SMPL model data from a .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
-    model_data = load_model_dict(model_path)
+    model_data = chumpy_fix.load_model_dict(model_path)
 
     parents = np.asarray(model_data["kintree_table"][0], dtype=np.int64)
     parents[0] = -1
@@ -82,12 +53,12 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> SmplAssets:
 
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(v_template, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh.simplify_mesh(v_template, faces, target_faces)
         lbs_weights = lbs_weights[vertex_map]
         shapedirs = shapedirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
-    lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
+    lbs_joint_indices, lbs_joint_weights = kinematics.compute_sparse_skin_weights(lbs_weights)
 
     return SmplAssets(
         v_template=v_template,

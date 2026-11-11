@@ -1,4 +1,4 @@
-from body_models._common.pose_assets import load_npz
+from body_models._common import pose_assets
 from body_models._constants import Joint
 
 SMPLX_JOINTS = {
@@ -51,7 +51,7 @@ SMPLX_JOINTS = {
     Joint.RIGHT_FOOT: "R_Foot",
 }
 
-_POSES = load_npz("body_models.smplx")
+_POSES = pose_assets.load_npz("body_models.smplx")
 
 SMPLX_BODY_PRESETS = _POSES["body"]
 SMPLX_HAND_PRESETS = _POSES["hand"]

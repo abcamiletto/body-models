@@ -10,7 +10,8 @@ from jaxtyping import Float, Int
 from nanomanifold import SO3
 
 from body_models import _config as config
-from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
+from body_models import _download
+from body_models._cache import derived_cache_key, get_cache_dir, write_npz_atomic
 from body_models._common import kinematics
 from body_models._common.skinning import CompactSkinning
 
@@ -63,28 +64,9 @@ def validate_path(model_path: PathLike) -> Path:
     return model_path
 
 
-def get_model_path(model_path: PathLike | None = None) -> Path:
-    if model_path is None:
-        model_path = config.get_model_path("anny")
-
-    if model_path is not None:
-        return validate_path(model_path)
-
-    cache_path = get_cache_dir() / "anny"
-    if (cache_path / "data" / "mpfb2").exists():
-        return cache_path
-
-    return download_model()
-
-
 def download_model(output_dir: PathLike | None = None) -> Path:
-    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "anny"
-    if (output_dir / "data" / "mpfb2").is_dir():
-        return validate_path(output_dir)
-    print(f"Downloading ANNY model to {output_dir}...")
-    download_hf_archive("anny/assets.zip", output_dir)
-    print("Done")
-    return validate_path(output_dir)
+    """Download the public ANNY assets unless they are already present."""
+    return _download.download_public_assets("anny", output_dir, validate_path)
 
 
 @dataclass(frozen=True)
@@ -130,7 +112,7 @@ def load_model_data_numpy(
     dtype: Any = np.float32,
 ) -> AnnyAssets:
     """Load ANNY model data as numpy arrays."""
-    resolved_path = get_model_path(model_path)
+    resolved_path = config.resolve_model_path("anny", model_path)
     cache_dir = get_cache_dir() / "anny" / "preprocessed"
     data = _load_data_numpy(resolved_path, cache_dir, rig=rig, eyes=True, tongue=True, dtype=dtype)
 

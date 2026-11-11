@@ -11,11 +11,11 @@ from body_models import _catalog as catalog
 
 @pytest.mark.fast
 def test_backend_model_signatures() -> None:
-    for spec in catalog.MODEL_SPECS.values():
-        package = spec.module
-        base_class = getattr(importlib.import_module(f"{package}._model"), spec.class_name)
+    for family in catalog.FAMILIES.values():
+        package = family.module
+        base_class = getattr(importlib.import_module(f"{package}._model"), family.class_name)
         for backend in ("numpy", "torch", "jax"):
-            model_class = getattr(importlib.import_module(f"{package}.{backend}"), spec.class_name)
+            model_class = getattr(importlib.import_module(f"{package}.{backend}"), family.class_name)
             parameters = inspect.signature(model_class).parameters
 
             assert issubclass(model_class, base_class)

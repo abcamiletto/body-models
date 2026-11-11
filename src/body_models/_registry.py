@@ -7,7 +7,7 @@ from importlib import import_module
 from typing import Any
 
 from body_models._base import SkinnedModel
-from body_models._catalog import MODEL_SPECS
+from body_models._catalog import FAMILIES
 from body_models._runtime import RuntimeName
 
 
@@ -36,13 +36,12 @@ def create_model(
     if runtime not in ("numpy", "torch", "jax"):
         raise ValueError(f"Unknown runtime {runtime!r}. Expected numpy, torch, or jax.")
     try:
-        spec = MODEL_SPECS[name]
+        family = FAMILIES[name]
     except KeyError as exc:
         available = ", ".join(list_models())
         raise ValueError(f"Unknown model {model_name!r}. Available models: {available}") from exc
-    module = import_module(f"{spec.module}.{runtime}")
-    model_class = getattr(module, spec.class_name)
-    return model_class(**(dict(spec.defaults) | kwargs))
+    model_class = getattr(import_module(f"{family.module}.{runtime}"), family.class_name)
+    return model_class(**(dict(family.defaults) | kwargs))
 
 
 def list_models(*, pattern: str | None = None) -> list[str]:
@@ -55,7 +54,7 @@ def list_models(*, pattern: str | None = None) -> list[str]:
     Returns:
         Sorted matching model names.
     """
-    names = sorted(MODEL_SPECS)
+    names = sorted(FAMILIES)
     if pattern is None:
         return names
     pattern = _normalize_name(pattern)

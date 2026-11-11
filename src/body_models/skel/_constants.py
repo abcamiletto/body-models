@@ -1,4 +1,4 @@
-from body_models._common.pose_assets import load_npz
+from body_models._common import pose_assets
 from body_models._constants import Joint
 
 SKEL_JOINTS = {
@@ -21,7 +21,7 @@ SKEL_JOINTS = {
 }
 
 
-_POSES = load_npz("body_models.skel")
+_POSES = pose_assets.load_npz("body_models.skel")
 
 SKEL_BODY_PRESETS = _POSES["body"]
 

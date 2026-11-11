@@ -9,6 +9,7 @@ from typing import Any
 
 from jaxtyping import Float
 
+from body_models import _config as config
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._linear_blendshape import LinearBlendshapeModel
@@ -16,7 +17,7 @@ from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
 from body_models.flame import _core as core
 from body_models.flame._constants import FLAME_JOINT_NAMES, FLAME_JOINTS
-from body_models.flame._io import get_model_path, load_model_data
+from body_models.flame._io import load_model_data
 
 Array = Any
 
@@ -53,7 +54,7 @@ class FLAME(LinearBlendshapeModel):
         if simplify < 1.0:
             raise ValueError("simplify must be >= 1.0")
 
-        resolved_path = get_model_path(model_path)
+        resolved_path = config.resolve_model_path("flame", model_path)
         assets = load_model_data(resolved_path, simplify=simplify)
         self._attach_runtime(runtime)
         self._config = FlameConfig(rotation_type=rotation_type)

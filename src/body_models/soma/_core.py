@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models import _common as common
-from body_models._common import skinning
+from body_models._common import deformation, kinematics, ops, skinning
 from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
 
@@ -129,8 +128,8 @@ def _prepare_identity_state(
     parents_full: Sequence[int],
 ) -> SomaIdentity:
     identity = _prepare_skeleton_identity_state(xp, world_bind_pose, parents_full)
-    inverse_bind_transforms = common.invert_rigid_transforms(world_bind_pose, xp=xp)
-    inverse_bind_transforms = common.at_set(
+    inverse_bind_transforms = kinematics.invert_rigid_transforms(world_bind_pose, xp=xp)
+    inverse_bind_transforms = ops.at_set(
         inverse_bind_transforms,
         (..., slice(None, 3), 3),
         inverse_bind_transforms[..., :3, 3] * 0.01,
@@ -150,12 +149,12 @@ def _prepare_skeleton_identity_state(
 ) -> SomaSkeletonIdentity:
     bind_local = _joint_world_to_local(xp, world_bind_pose, parents_full)
     local_joint_translations = bind_local[..., :3, 3]
-    zeros = common.zeros_as(
+    zeros = ops.zeros_as(
         local_joint_translations,
         shape=(*local_joint_translations.shape[:-2], 3),
         xp=xp,
     )
-    local_joint_translations = common.at_set(
+    local_joint_translations = ops.at_set(
         local_joint_translations,
         (..., 1, slice(None)),
         zeros,
@@ -170,8 +169,8 @@ def _pin_root_transform(
     xp: Any,
     transforms: Float[Array, "*batch J 4 4"],
 ) -> Float[Array, "*batch J 4 4"]:
-    eye = common.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
-    return common.at_set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
+    eye = ops.eye_as(transforms, batch_dims=transforms.shape[:-3], xp=xp)
+    return ops.at_set(transforms, (..., 0, slice(None), slice(None)), eye, xp=xp)
 
 
 def _bind_pose_for_rest_shape(
@@ -185,7 +184,7 @@ def _bind_pose_for_rest_shape(
     joint_children_indices_full: Int[Array, "J C"],
     skinned_vertex_indices_full: list[list[int]],
     skinned_vertex_indices_full_index: Int[Array, "J K"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     rest_shape: Float[Array, "B V 3"],
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     xp = runtime.xp
@@ -224,9 +223,9 @@ def _expand_control_bind_pose(
     batch_shape = control_world_bind_pose.shape[:-3]
     internal_bind_pose = xp.asarray(data.bind_pose_world, dtype=control_world_bind_pose.dtype)
     target = xp.broadcast_to(internal_bind_pose, (*batch_shape, *internal_bind_pose.shape))
-    target = common.at_set(target, (..., control_indices, slice(None), slice(None)), control_world_bind_pose, xp=xp)
+    target = ops.at_set(target, (..., control_indices, slice(None), slice(None)), control_world_bind_pose, xp=xp)
     translations = xp.asarray(data.control_rig.procedural.translation_matrix, dtype=target.dtype) @ target[..., :3, 3]
-    return common.at_set(target, (..., slice(None), slice(None, 3), 3), translations, xp=xp)
+    return ops.at_set(target, (..., slice(None), slice(None, 3), 3), translations, xp=xp)
 
 
 def prepare_pose(
@@ -237,7 +236,7 @@ def prepare_pose(
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
     inverse_bind_transforms: Float[Array, "*batch Jf 4 4"],
-) -> common.deformation.SkinningPose:
+) -> deformation.SkinningPose:
     """Precompute pose-dependent SOMA state for repeated forward passes."""
     xp = runtime.xp
     correctives_pose_rot, skeleton_transforms_full = _prepare_skeleton_state(
@@ -272,8 +271,8 @@ def _corrective_hidden_activations(
     batch_shape = pose_rotations.shape[:-3]
     relative = bindpose.mT @ pose_rotations
     features = relative[..., :, :, :2]
-    features = common.at_set(features, (..., slice(None), 0, 0), features[..., :, 0, 0] - 1, xp=xp)
-    features = common.at_set(features, (..., slice(None), 1, 1), features[..., :, 1, 1] - 1, xp=xp)
+    features = ops.at_set(features, (..., slice(None), 0, 0), features[..., :, 0, 0] - 1, xp=xp)
+    features = ops.at_set(features, (..., slice(None), 1, 1), features[..., :, 1, 1] - 1, xp=xp)
     features = features.reshape(*batch_shape, -1)
     hidden = features @ weights
     return xp.maximum(hidden, xp.zeros_like(hidden))
@@ -318,7 +317,7 @@ def _prepare_skeleton_state(
     rotation_type: RotationType,
     *,
     local_joint_translations: Float[Array, "*batch Jf 3"],
-    selection: common.JointSelection | None = None,
+    selection: kinematics.JointSelection | None = None,
 ) -> tuple[
     Float[Array, "*batch Jp 3 3"],
     Float[Array, "*batch Jf 4 4"],
@@ -357,7 +356,7 @@ def _expand_control_pose_rotations(
     procedural = control_rig.procedural
     control_joint_indices = procedural.control_joint_indices_full
     batch_shape = pose_rot.shape[:-3]
-    root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
+    root_identity = ops.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
     pose_rot_control = xp.concat([root_identity, pose_rot], axis=-3)
     control_local_rotations = _orient_pose_rot_full(
         xp,
@@ -374,8 +373,8 @@ def _expand_control_pose_rotations(
     )
 
     internal_joint_count = len(data.kinematics.kinematic_tree.parents)
-    pose_rot_internal = common.eye_as(pose_rot, batch_dims=(*batch_shape, internal_joint_count), xp=xp)
-    pose_rot_internal = common.at_set(
+    pose_rot_internal = ops.eye_as(pose_rot, batch_dims=(*batch_shape, internal_joint_count), xp=xp)
+    pose_rot_internal = ops.at_set(
         pose_rot_internal,
         (..., xp.asarray(control_joint_indices), slice(None), slice(None)),
         pose_rot_control,
@@ -403,7 +402,7 @@ def _expand_control_pose_rotations(
     )
     twist_indices = xp.asarray(procedural.twist_joint_indices)
     current_twist_rot = pose_rot_internal[..., twist_indices, :, :]
-    pose_rot_internal = common.at_set(
+    pose_rot_internal = ops.at_set(
         pose_rot_internal,
         (..., twist_indices, slice(None), slice(None)),
         current_twist_rot @ twist_rot,
@@ -458,16 +457,16 @@ def _aligned_twist_channels_from_world(
     local_twist = _x_swing_twist_angles(xp, start_virtual.mT @ end_virtual)
     inherited_twist = _x_swing_twist_angles(xp, parent_virtual.mT @ start_virtual)
 
-    twist_values = common.zeros_as(
+    twist_values = ops.zeros_as(
         control_world_rotations,
         shape=(*control_world_rotations.shape[:-3], control_world_rotations.shape[-3]),
         xp=xp,
     )
-    twist_values = common.at_set(twist_values, (..., end_ids), local_twist, xp=xp)
+    twist_values = ops.at_set(twist_values, (..., end_ids), local_twist, xp=xp)
     reverse_indices = xp.asarray(procedural.segment_reverse_indices)
     reverse_start_ids = start_ids[reverse_indices]
     reverse_twist = inherited_twist[..., reverse_indices]
-    return common.at_set(twist_values, (..., reverse_start_ids), reverse_twist, xp=xp)
+    return ops.at_set(twist_values, (..., reverse_start_ids), reverse_twist, xp=xp)
 
 
 def _single_axis_rotation_matrices(
@@ -508,7 +507,7 @@ def _single_axis_rotation_matrices(
     matrices = xp.stack([rx, ry, rz], axis=-3)
     gather = axis_ids.reshape(*((1,) * (matrices.ndim - 4)), -1, 1, 1, 1)
     gather = xp.broadcast_to(gather, (*matrices.shape[:-4], matrices.shape[-4], 1, 3, 3))
-    return common.take_along_axis(matrices, gather, axis=-3, xp=xp)[..., 0, :, :]
+    return ops.take_along_axis(matrices, gather, axis=-3, xp=xp)[..., 0, :, :]
 
 
 def fit_rigid_transform(
@@ -523,9 +522,9 @@ def fit_rigid_transform(
     target_centered = target_points - target_center
     covariance = source_centered.mT @ target_centered
     U, _S, Vh = xp.linalg.svd(covariance)
-    reflection = common.eye_as(covariance, batch_dims=(), xp=xp)
+    reflection = ops.eye_as(covariance, batch_dims=(), xp=xp)
     det = xp.linalg.det(Vh.mT @ U.mT)
-    reflection = common.at_set(reflection, (-1, -1), xp.where(det < 0, -1.0, 1.0), xp=xp)
+    reflection = ops.at_set(reflection, (-1, -1), xp.where(det < 0, -1.0, 1.0), xp=xp)
     rotation = Vh.mT @ reflection @ U.mT
     translation = target_center - source_center @ rotation.mT
     return rotation, translation
@@ -537,7 +536,7 @@ def repose_to_bind_pose(
     skin_weights: Float[Array, "V J"],
     world_bind_pose_fit: Float[Array, "B J 4 4"],
     bind_pose_local: Float[Array, "J 4 4"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
 ) -> tuple[Float[Array, "B V 3"], Float[Array, "B J 4 4"]]:
     xp = runtime.xp
     T_world = _repose_skeleton_to_bind_pose(
@@ -546,7 +545,7 @@ def repose_to_bind_pose(
         bind_pose_local=bind_pose_local,
         tree=tree,
     )
-    bone = T_world @ common.invert_rigid_transforms(world_bind_pose_fit, xp=xp)
+    bone = T_world @ kinematics.invert_rigid_transforms(world_bind_pose_fit, xp=xp)
     verts = skinning.linear_blend_skinning(rest_shape, bone, skin_weights, xp=xp)
     return verts, T_world
 
@@ -559,7 +558,7 @@ def identity_to_rest_vertices(
     identity: Float[Array, "B S"],
 ) -> Float[Array, "B V 3"]:
     coeffs = identity * xp.sqrt(eigenvalues)
-    return common.deformation.blend_shapes(mean, xp.moveaxis(shapedirs, 0, -1), coeffs, xp=xp)
+    return deformation.blend_shapes(mean, xp.moveaxis(shapedirs, 0, -1), coeffs, xp=xp)
 
 
 def apply_rigid_transform(
@@ -607,7 +606,7 @@ def _repose_skeleton_to_bind_pose(
     runtime: ArrayRuntime,
     world_bind_pose_fit: Float[Array, "B J 4 4"],
     bind_pose_local: Float[Array, "J 4 4"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
 ) -> Float[Array, "B J 4 4"]:
     xp = runtime.xp
     batch_shape = world_bind_pose_fit.shape[:-3]
@@ -615,15 +614,15 @@ def _repose_skeleton_to_bind_pose(
     local_t = bind_local_fit[..., :3, 3]
 
     zeros = xp.asarray(0.0, dtype=local_t.dtype)
-    local_t = common.at_set(local_t, (..., 1, 0), zeros, copy=False, xp=xp)
-    local_t = common.at_set(local_t, (..., 1, 2), zeros, copy=False, xp=xp)
+    local_t = ops.at_set(local_t, (..., 1, 0), zeros, copy=False, xp=xp)
+    local_t = ops.at_set(local_t, (..., 1, 2), zeros, copy=False, xp=xp)
 
     bind_rot = xp.broadcast_to(bind_pose_local[:, :3, :3], (*batch_shape, bind_pose_local.shape[0], 3, 3))
-    T_local = common.affine_transforms(bind_rot, local_t, xp=xp)
+    T_local = kinematics.affine_transforms(bind_rot, local_t, xp=xp)
     T_world = runtime._compose_kinematic_tree(T_local, tree)
 
     y_shift = xp.amin(T_world[..., :, 1, 3], axis=-1)
-    return common.at_set(
+    return ops.at_set(
         T_world,
         (..., slice(None), 1, 3),
         T_world[..., :, 1, 3] - y_shift[..., None],
@@ -638,7 +637,7 @@ def _orient_pose_rot_full(
     orientation_parent_indices: Int[Array, "Jf"],
 ) -> Float[Array, "B Jf 3 3"]:
     batch_shape = pose_rot.shape[:-3]
-    root_identity = common.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
+    root_identity = ops.eye_as(pose_rot, batch_dims=(*batch_shape, 1), xp=xp)
     pose_rot_full = xp.concat([root_identity, pose_rot], axis=-3)
     orient = t_pose_world[:, :3, :3]
     orient_parent_T = orient[orientation_parent_indices].mT
@@ -648,11 +647,11 @@ def _orient_pose_rot_full(
 def _pose_skeleton(
     runtime: ArrayRuntime,
     local_joint_translations: Float[Array, "B Jf 3"],
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     pose_rot_full: Float[Array, "B Jf 3 3"],
 ) -> Float[Array, "B Jf 4 4"]:
     xp = runtime.xp
-    T_local = common.affine_transforms(pose_rot_full, local_joint_translations, xp=xp)
+    T_local = kinematics.affine_transforms(pose_rot_full, local_joint_translations, xp=xp)
     return runtime._compose_kinematic_tree(T_local, tree)
 
 
@@ -692,7 +691,7 @@ def _fit_joint_rotations(
                 skinned_orig,
             )
         else:
-            R_init = common.eye_as(bind_rot, batch_dims=batch_shape, xp=xp)
+            R_init = ops.eye_as(bind_rot, batch_dims=batch_shape, xp=xp)
 
         child_idx = joint_children_indices_full[joint_index, : len(children)]
         pos_children_orig = bind_pos[child_idx] - bind_pos[joint_index : joint_index + 1]
@@ -707,7 +706,7 @@ def _fit_joint_rotations(
         rotations.append(R_joint)
 
     R = xp.stack(rotations, axis=-3)
-    return common.affine_transforms(R, joint_positions, xp=xp)
+    return kinematics.affine_transforms(R, joint_positions, xp=xp)
 
 
 def _align_vectors(
@@ -716,7 +715,7 @@ def _align_vectors(
     source: Float[Array, "B N 3"],
 ) -> Float[Array, "B 3 3"]:
     if target.shape[-2] == 1:
-        return common.rotation_between_vectors(source[..., 0, :], target[..., 0, :], xp=xp)
+        return kinematics.rotation_between_vectors(source[..., 0, :], target[..., 0, :], xp=xp)
 
     covariance = xp.einsum("...ni,...nj->...ij", target, source)
     return _kabsch(xp, covariance)
@@ -726,8 +725,8 @@ def _kabsch(xp, H: Float[Array, "B 3 3"]) -> Float[Array, "B 3 3"]:
     U, _, Vh = xp.linalg.svd(H)
     UVt = U @ Vh.mT
     det_sign = xp.where(_det3(UVt) < 0, xp.asarray(-1.0, dtype=H.dtype), xp.asarray(1.0, dtype=H.dtype))
-    D = common.eye_as(H, batch_dims=H.shape[:-2], xp=xp)
-    D = common.at_set(D, (..., 2, 2), det_sign, xp=xp)
+    D = ops.eye_as(H, batch_dims=H.shape[:-2], xp=xp)
+    D = ops.at_set(D, (..., 2, 2), det_sign, xp=xp)
     return U @ D @ Vh
 
 
@@ -744,9 +743,9 @@ def _joint_world_to_local(
     world: Float[Array, "B J 4 4"],
     parents_full: Sequence[int],
 ) -> Float[Array, "B J 4 4"]:
-    inv = common.invert_rigid_transforms(world, xp=xp)
+    inv = kinematics.invert_rigid_transforms(world, xp=xp)
     local = inv[..., xp.asarray(parents_full), :, :] @ world
     for joint, parent in enumerate(parents_full):
         if joint == parent:
-            local = common.at_set(local, (..., joint, slice(None), slice(None)), world[..., joint, :, :], xp=xp)
+            local = ops.at_set(local, (..., joint, slice(None), slice(None)), world[..., joint, :, :], xp=xp)
     return local

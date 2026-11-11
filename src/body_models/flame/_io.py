@@ -6,8 +6,7 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
-from body_models._common.chumpy_fix import load_model_dict
+from body_models._common import chumpy_fix, kinematics, simplify_mesh
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
@@ -32,34 +31,14 @@ class FlameAssets:
 
 
 def validate_path(model_path: PathLike) -> Path:
-    model_path = Path(model_path)
-    if model_path.is_dir():
-        raise ValueError(f"Expected a FLAME model file, got directory: {model_path}")
-    if not model_path.is_file():
-        raise FileNotFoundError(f"FLAME model file not found: {model_path}")
-    if model_path.suffix not in {".pkl", ".npz"}:
-        raise ValueError(f"Expected a FLAME .pkl or .npz file, got: {model_path}")
-    return model_path
-
-
-def get_model_path(model_path: PathLike | None) -> Path:
-    if model_path is None:
-        model_path = config.get_model_path("flame")
-
-    if model_path is None:
-        raise FileNotFoundError(
-            "FLAME model not found. Run `body-models download flame` or configure an existing file with "
-            "`body-models set flame /path/to/FLAME_NEUTRAL.pkl`."
-        )
-
-    return validate_path(model_path)
+    return config.validate_file(model_path, "FLAME", (".pkl", ".npz"))
 
 
 def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameAssets:
     """Load FLAME model data from a .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
-    model_data = load_model_dict(model_path)
+    model_data = chumpy_fix.load_model_dict(model_path)
 
     model_template = np.asarray(model_data["v_template"], dtype=np.float32)
     faces = np.asarray(model_data["f"], dtype=np.int32)
@@ -78,12 +57,12 @@ def load_model_data(model_path: Path, simplify: float = 1.0) -> FlameAssets:
     shapedirs = model_dirs
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(model_template, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh.simplify_mesh(model_template, faces, target_faces)
         lbs_weights = lbs_weights[vertex_map]
         shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
 
-    lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
+    lbs_joint_indices, lbs_joint_weights = kinematics.compute_sparse_skin_weights(lbs_weights)
 
     return FlameAssets(
         v_template=v_template,

@@ -11,8 +11,8 @@ import ptloader
 from jaxtyping import Float, Int
 from nanomanifold import SO3
 
-from body_models import _config as config
-from body_models._cache import derived_cache_key, download_hf_archive, get_cache_dir, write_npz_atomic
+from body_models import _download
+from body_models._cache import derived_cache_key, get_cache_dir, write_npz_atomic
 from body_models._common import kinematics, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 from body_models.mhr import _pose as pose_utils
@@ -35,10 +35,8 @@ __all__ = [
     "MhrAssets",
     "MhrCorrectives",
     "download_model",
-    "get_model_path",
     "load_model_data",
     "load_pose_correctives_weights",
-    "simplify_mesh",
 ]
 
 
@@ -76,30 +74,14 @@ def validate_path(model_path: PathLike) -> Path:
     return model_path
 
 
-def get_model_path(model_path: PathLike | None = None) -> Path:
-    """Resolve MHR model path, downloading if necessary."""
-    if model_path is None:
-        model_path = config.get_model_path("mhr")
-
-    if model_path is not None:
-        return validate_path(model_path)
-
-    cache_path = get_cache_dir() / "mhr"
-    if _has_model(cache_path):
-        return cache_path
-
-    return download_model()
-
-
 def download_model(output_dir: PathLike | None = None) -> Path:
-    """Download MHR model assets."""
-    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "mhr"
-    if _has_model(output_dir):
-        return validate_path(output_dir)
-    print(f"Downloading MHR model to {output_dir}...")
-    download_hf_archive("mhr/assets.zip", output_dir)
-    print("Done")
-    return validate_path(output_dir)
+    """Download the public MHR assets unless every hosted LOD is already present."""
+    return _download.download_public_assets("mhr", output_dir, _validate_hosted)
+
+
+def _validate_hosted(model_path: Path) -> Path:
+    _require_assets(model_path, MHR_ASSETS)
+    return validate_path(model_path)
 
 
 def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrAssets:
@@ -125,7 +107,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
     vertex_map = None
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        base_vertices, faces, vertex_map = simplify_mesh(base_vertices, faces.astype(int), target_faces)
+        base_vertices, faces, vertex_map = simplify_mesh.simplify_mesh(base_vertices, faces.astype(int), target_faces)
         blendshape_dirs = blendshape_dirs[:, vertex_map]
         skin_weights = skin_weights[vertex_map]
         skin_indices = skin_indices[vertex_map]
@@ -240,10 +222,6 @@ def _load_lod_data(asset_dir: Path, lod: int, data: dict[str, Any]) -> dict[str,
         "skin_indices": skin_indices,
         "faces": faces,
     }
-
-
-def _has_model(model_path: Path) -> bool:
-    return all((model_path / name).is_file() for name in MHR_ASSETS)
 
 
 def _build_compact_skinning(

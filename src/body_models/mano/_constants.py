@@ -1,4 +1,4 @@
-from body_models._common.pose_assets import load_npz
+from body_models._common import pose_assets
 from body_models._constants import Joint
 
 MANO_JOINT_NAMES = [
@@ -58,7 +58,7 @@ RIGHT_MANO_JOINTS = {
     Joint.RIGHT_PINKY_DIP: "pinky3",
 }
 
-_POSES = load_npz("body_models.mano")
+_POSES = pose_assets.load_npz("body_models.mano")
 
 MANO_HAND_PRESETS = {
     "left": _POSES["left"],

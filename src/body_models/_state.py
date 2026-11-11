@@ -6,12 +6,13 @@ execution is lowered by ``ArrayRuntime`` instead.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields, is_dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from body_models._common import kinematics
+from body_models._common import kinematics, sparse
 
 if TYPE_CHECKING:
     from body_models._runtime import KernelBackend
@@ -20,29 +21,49 @@ _JAX_DATACLASSES: set[type] = set()
 _STATIC_LEAF_TYPES = (type(None), bool, int, float, str, bytes, np.generic, kinematics.KinematicTree)
 
 
+def _rebuild(
+    value: Any,
+    *,
+    array: Callable[[Any], Any],
+    sparse_matrix: Callable[[sparse.SparseMatrix], Any],
+    dataclass: Callable[[Any, dict[str, Any]], Any],
+    container: Callable[[Any], Any] = lambda converted: converted,
+) -> Any:
+    """Rebuild a state tree bottom-up, converting each node with a backend hook.
+
+    Static leaves are kept as-is. Dataclasses and containers are rebuilt from their
+    converted children; anything else is an array leaf.
+    """
+
+    def walk(value: Any) -> Any:
+        if isinstance(value, _STATIC_LEAF_TYPES):
+            return value
+        if isinstance(value, sparse.SparseMatrix):
+            return sparse_matrix(value)
+        if is_dataclass(value):
+            return dataclass(value, {field.name: walk(getattr(value, field.name)) for field in fields(value)})
+        if isinstance(value, dict):
+            return container({key: walk(item) for key, item in value.items()})
+        if isinstance(value, list | tuple):
+            return container(type(value)(walk(item) for item in value))
+        return array(value)
+
+    return walk(value)
+
+
 def numpy_state(value: Any) -> Any:
     """Materialize model data for NumPy."""
-    from body_models._common import sparse
+    from body_models._common import sparse_numpy
 
-    if isinstance(value, _STATIC_LEAF_TYPES):
-        return value
-    if isinstance(value, sparse.SparseMatrix):
-        from body_models._common import sparse_numpy
+    def array(value: Any) -> np.ndarray:
+        return value.copy() if isinstance(value, np.ndarray) else _unsupported_leaf(value)
 
-        return sparse_numpy.SparseLinear(value)
-
-    if isinstance(value, np.ndarray):
-        return value.copy()
-    if is_dataclass(value):
-        cls = type(value)
-        return cls(**{field.name: numpy_state(getattr(value, field.name)) for field in fields(value)})
-    if isinstance(value, list):
-        return [numpy_state(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(numpy_state(item) for item in value)
-    if isinstance(value, dict):
-        return {key: numpy_state(item) for key, item in value.items()}
-    return _static_leaf(value)
+    return _rebuild(
+        value,
+        array=array,
+        sparse_matrix=sparse_numpy.SparseLinear,
+        dataclass=lambda value, children: type(value)(**children),
+    )
 
 
 def torch_state(value: Any, *, kernel_backend: KernelBackend = "torch") -> Any:
@@ -50,50 +71,35 @@ def torch_state(value: Any, *, kernel_backend: KernelBackend = "torch") -> Any:
     import torch
     from torch import nn
 
-    from body_models._common import skinning, sparse
+    from body_models._common import skinning, sparse_torch
     from body_models._torch_state import StateMapping, StateSequence
 
-    if isinstance(value, _STATIC_LEAF_TYPES):
-        return value
-    if isinstance(value, skinning.CompactSkinning) and kernel_backend == "warp":
-        try:
-            from body_models._common import warp
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError("Install body-models[warp] to use kernel_backend='warp'.") from exc
-        return warp.prepare_compact_skinning(torch_state(value))
+    def array(value: Any) -> nn.Buffer:
+        if isinstance(value, np.ndarray):
+            value = torch.tensor(value)
+        return nn.Buffer(value, persistent=True) if isinstance(value, torch.Tensor) else _unsupported_leaf(value)
 
-    if isinstance(value, sparse.SparseMatrix):
-        from body_models._common import sparse_torch
-
-        return sparse_torch.SparseLinear(value)
-
-    if is_dataclass(value):
+    def dataclass(value: Any, children: dict[str, Any]) -> Any:
         module = nn.Module()
-        for field in fields(value):
-            converted = torch_state(
-                getattr(value, field.name),
-                kernel_backend=kernel_backend,
-            )
-            setattr(module, field.name, converted)
+        for name, child in children.items():
+            setattr(module, name, child)
+        if isinstance(value, skinning.CompactSkinning) and kernel_backend == "warp":
+            try:
+                from body_models._common import warp
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError("Install body-models[warp] to use kernel_backend='warp'.") from exc
+            return warp.prepare_compact_skinning(module)
         return module
 
-    if isinstance(value, dict):
-        converted = {key: torch_state(item, kernel_backend=kernel_backend) for key, item in value.items()}
-        if any(isinstance(item, torch.Tensor | nn.Module) for item in converted.values()):
-            return StateMapping(converted)
-        return converted
+    def container(converted: Any) -> Any:
+        items = converted.values() if isinstance(converted, dict) else converted
+        if not any(isinstance(item, torch.Tensor | nn.Module) for item in items):
+            return converted
+        return StateMapping(converted) if isinstance(converted, dict) else StateSequence(converted)
 
-    if isinstance(value, list | tuple):
-        converted = [torch_state(item, kernel_backend=kernel_backend) for item in value]
-        if any(isinstance(item, torch.Tensor | nn.Module) for item in converted):
-            return StateSequence(converted)
-        return type(value)(converted)
-
-    if isinstance(value, np.ndarray | torch.Tensor):
-        tensor = torch.tensor(value) if isinstance(value, np.ndarray) else value
-        return nn.Buffer(tensor, persistent=True)
-
-    return _static_leaf(value)
+    return _rebuild(
+        value, array=array, sparse_matrix=sparse_torch.SparseLinear, dataclass=dataclass, container=container
+    )
 
 
 def jax_state(value: Any) -> Any:
@@ -101,60 +107,38 @@ def jax_state(value: Any) -> Any:
     import jax
     import jax.numpy as jnp
 
-    from body_models._common import sparse
+    from body_models._common import sparse_jax
 
-    if isinstance(value, _STATIC_LEAF_TYPES):
-        return value
-    if isinstance(value, sparse.SparseMatrix):
-        from body_models._common import sparse_jax
+    def array(value: Any) -> jax.Array:
+        if isinstance(value, np.ndarray):
+            return jnp.asarray(value)
+        return value if isinstance(value, jax.Array) else _unsupported_leaf(value)
 
-        materialized = sparse_jax.SparseLinear.from_matrix(value)
-        _register_jax_dataclass(type(materialized), jax)
-        return materialized
+    def sparse_matrix(value: sparse.SparseMatrix) -> sparse_jax.SparseLinear:
+        _register_jax_dataclass(sparse_jax.SparseLinear, jax)
+        return sparse_jax.SparseLinear.from_matrix(value)
 
-    if is_dataclass(value):
-        cls = type(value)
-        _register_jax_dataclass(cls, jax)
-        return cls(**{field.name: jax_state(getattr(value, field.name)) for field in fields(value)})
+    def dataclass(value: Any, children: dict[str, Any]) -> Any:
+        _register_jax_dataclass(type(value), jax)
+        return type(value)(**children)
 
-    if isinstance(value, list):
-        return [jax_state(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(jax_state(item) for item in value)
-    if isinstance(value, dict):
-        return {key: jax_state(item) for key, item in value.items()}
-    if isinstance(value, np.ndarray):
-        return jnp.asarray(value)
-    if isinstance(value, jax.Array):
-        return value
-    return _static_leaf(value)
-
-
-def _static_leaf(value: Any) -> Any:
-    value_type = type(value)
-    raise TypeError(f"Unsupported model state leaf: {value_type.__module__}.{value_type.__qualname__}")
+    return _rebuild(value, array=array, sparse_matrix=sparse_matrix, dataclass=dataclass)
 
 
 def register_jax_state(value: Any) -> None:
     """Restore pytree registrations for already-materialized JAX state."""
     import jax
 
-    _register_jax_state(value, jax)
-
-
-def _register_jax_state(value: Any, jax: Any) -> None:
-    if isinstance(value, _STATIC_LEAF_TYPES):
-        return
-    if is_dataclass(value):
+    def dataclass(value: Any, children: dict[str, Any]) -> Any:
         _register_jax_dataclass(type(value), jax)
-        for field in fields(value):
-            _register_jax_state(getattr(value, field.name), jax)
-    elif isinstance(value, list | tuple):
-        for item in value:
-            _register_jax_state(item, jax)
-    elif isinstance(value, dict):
-        for item in value.values():
-            _register_jax_state(item, jax)
+        return value
+
+    _rebuild(value, array=lambda value: value, sparse_matrix=lambda value: value, dataclass=dataclass)
+
+
+def _unsupported_leaf(value: Any) -> Any:
+    value_type = type(value)
+    raise TypeError(f"Unsupported model state leaf: {value_type.__module__}.{value_type.__qualname__}")
 
 
 def _register_jax_dataclass(cls: type, jax: Any) -> None:

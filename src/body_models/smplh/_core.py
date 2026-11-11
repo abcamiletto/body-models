@@ -5,9 +5,8 @@ from typing import Any
 
 from jaxtyping import Float
 
-from body_models import _common as common
 from body_models import _linear_blendshape as linear
-from body_models._common import deformation
+from body_models._common import deformation, kinematics
 from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
 
@@ -26,7 +25,7 @@ def _pose_matrices(
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
     pelvis_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     rotation_type: RotationType,
-    selection: common.JointSelection | None = None,
+    selection: kinematics.JointSelection | None = None,
 ) -> Float[Array, "*batch 52 3 3"]:
     return linear.assemble_pose_matrices(
         runtime,
@@ -42,7 +41,7 @@ def _pose_matrices(
 
 def prepare_pose(
     runtime: ArrayRuntime,
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     hand_mean: Float[Array, "2 45"],
     body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],
@@ -72,7 +71,7 @@ def prepare_pose(
 
 def prepare_skeleton(
     runtime: ArrayRuntime,
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     hand_mean: Float[Array, "2 45"],
     body_pose: Float[Array, "*batch 21 N"] | Float[Array, "*batch 21 3 3"],
     hand_pose: Float[Array, "*batch 30 N"] | Float[Array, "*batch 30 3 3"],

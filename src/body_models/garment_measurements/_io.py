@@ -9,15 +9,15 @@ from typing import Any
 import numpy as np
 from jaxtyping import Float, Int
 
-from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir
-from body_models._common import compute_sparse_skin_weights, kinematics
+from body_models import _download
+from body_models._common import kinematics
 from body_models._common.skinning import CompactSkinning
 
 PathLike = Path | str
 Array = Any
 
 PREPROCESSED_FILENAME = "garment_measurements.npz"
+_FLOAT_ARRAYS = ("mean_vertices", "components", "eigenvalues", "bind_quats", "skin_weights", "mvc_weights")
 
 
 @dataclass(frozen=True)
@@ -34,128 +34,46 @@ class GarmentMeasurementsAssets:
     mvc_weights: Float[Array, "V J"]
 
 
-def get_model_path(model_path: PathLike | None = None) -> Path:
-    """Resolve a GarmentMeasurements data directory, downloading if needed."""
-    if model_path is None:
-        model_path = config.get_model_path("garment-measurements")
-
-    if model_path is not None:
-        return validate_path(model_path)
-
-    cache_path = get_cache_dir() / "garment_measurements"
-    if _find_preprocessed_file(cache_path) is not None or _find_upstream_data_dir(cache_path) is not None:
-        return cache_path
-    return download_model()
-
-
 def validate_path(model_path: PathLike) -> Path:
+    """Validate a directory containing the preprocessed ``garment_measurements.npz``."""
     model_path = Path(model_path)
-    if _find_preprocessed_file(model_path) is not None or _find_upstream_data_dir(model_path) is not None:
+    if (model_path / PREPROCESSED_FILENAME).is_file():
         return model_path
+    upstream_data = _find_upstream_data_dir(model_path)
+    if upstream_data is not None:
+        raise FileNotFoundError(_preprocess_message(upstream_data))
     raise FileNotFoundError(
-        f"GarmentMeasurements model path {model_path} does not contain {PREPROCESSED_FILENAME} "
-        "or upstream pca/point.pca, pca/mean.obj, and template/male.fbx"
+        f"GarmentMeasurements model directory {model_path} does not contain {PREPROCESSED_FILENAME}"
     )
 
 
 def download_model(output_dir: PathLike | None = None) -> Path:
-    """Download preprocessed GarmentMeasurements data assets."""
-    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "garment_measurements"
-    if _find_preprocessed_file(output_dir) is not None:
-        return validate_path(output_dir)
-    print(f"Downloading GarmentMeasurements model to {output_dir}...")
-    download_hf_archive("garment_measurements/assets.zip", output_dir)
-    print("Done")
-    return validate_path(output_dir)
+    """Download the preprocessed public GarmentMeasurements assets unless they are already present."""
+    return _download.download_public_assets("garment_measurements", output_dir, validate_path)
 
 
-def load_model_data(model_path: PathLike | None = None, dtype: Any = np.float32) -> GarmentMeasurementsAssets:
-    """Load preprocessed model data as NumPy arrays."""
-    resolved_path = get_model_path(model_path)
-    model_file = _find_preprocessed_file(resolved_path)
-    if model_file is not None:
-        return load_preprocessed_model(model_file, dtype=dtype)
+def load_model_data(model_dir: Path, dtype: Any = np.float32) -> GarmentMeasurementsAssets:
+    """Load the preprocessed ``garment_measurements.npz`` from a validated model directory."""
+    path = model_dir / PREPROCESSED_FILENAME
+    with np.load(path, allow_pickle=False) as npz:
+        data = {key: np.asarray(npz[key], dtype=dtype) for key in _FLOAT_ARRAYS}
+        data["faces"] = np.asarray(npz["faces"], dtype=np.int64)
+        data["parents"] = np.asarray(npz["parents"], dtype=np.int64)
+        joint_names = [str(name) for name in npz["joint_names"].tolist()]
+    _validate_shapes(path, data, num_joints=len(joint_names))
 
-    upstream_data = _find_upstream_data_dir(resolved_path)
-    if upstream_data is not None:
-        raise RuntimeError(_preprocess_message(upstream_data))
-
-    raise FileNotFoundError(
-        f"Missing {PREPROCESSED_FILENAME} under {resolved_path}. Provide either a preprocessed model file "
-        "or an upstream GarmentMeasurements data directory with pca/point.pca, pca/mean.obj, and template/male.fbx."
-    )
-
-
-def preprocess_model(upstream_data: PathLike, output_dir: PathLike) -> Path:
-    """Raise instructions for generating ``garment_measurements.npz`` from upstream data."""
-    resolved_upstream = _find_upstream_data_dir(Path(upstream_data))
-    if resolved_upstream is None:
-        raise FileNotFoundError(
-            "Expected an upstream GarmentMeasurements data directory containing "
-            "pca/point.pca, pca/mean.obj, and template/male.fbx"
-        )
-
-    output_dir = Path(output_dir)
-    output_file = output_dir / PREPROCESSED_FILENAME
-    if output_file.is_file():
-        return output_file
-
-    raise RuntimeError(_preprocess_message(resolved_upstream, output_dir))
-
-
-def load_preprocessed_model(model_path: PathLike, dtype: Any = np.float32) -> GarmentMeasurementsAssets:
-    """Load a preprocessed dependency-free GarmentMeasurements ``.npz`` asset."""
-    path = Path(model_path)
-    with np.load(path, allow_pickle=False) as data:
-        required = {
-            "mean_vertices",
-            "components",
-            "eigenvalues",
-            "faces",
-            "joint_names",
-            "parents",
-            "bind_quats",
-            "skin_weights",
-            "mvc_weights",
-        }
-        missing = sorted(required - set(data.files))
-        if missing:
-            raise ValueError(f"{path} is missing required arrays: {missing}")
-
-        mean_vertices = np.asarray(data["mean_vertices"], dtype=dtype)
-        components = np.asarray(data["components"], dtype=dtype)
-        eigenvalues = np.asarray(data["eigenvalues"], dtype=dtype)
-        faces = np.asarray(data["faces"], dtype=np.int64)
-        joint_names = [str(name) for name in data["joint_names"].tolist()]
-        parents = np.asarray(data["parents"], dtype=np.int64)
-        bind_quats = np.asarray(data["bind_quats"], dtype=dtype)
-        skin_weights = np.asarray(data["skin_weights"], dtype=dtype)
-        mvc_weights = np.asarray(data["mvc_weights"], dtype=dtype)
-
-    data_dict = {
-        "mean_vertices": mean_vertices,
-        "components": components,
-        "eigenvalues": eigenvalues,
-        "faces": faces,
-        "joint_names": joint_names,
-        "parents": parents,
-        "bind_quats": bind_quats,
-        "skin_weights": skin_weights,
-        "mvc_weights": mvc_weights,
-    }
-    _validate_preprocessed_model(path, data_dict)
-    skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
+    skin_joint_indices, skin_joint_weights = kinematics.compute_sparse_skin_weights(data["skin_weights"])
     return GarmentMeasurementsAssets(
-        mean_vertices=mean_vertices,
-        components=components,
-        eigenvalues=eigenvalues,
-        faces=faces,
+        mean_vertices=data["mean_vertices"],
+        components=data["components"],
+        eigenvalues=data["eigenvalues"],
+        faces=data["faces"],
         joint_names=joint_names,
-        kinematic_tree=kinematics.KinematicTree.from_parents(parents),
-        bind_quats=bind_quats,
-        skin_weights=skin_weights,
+        kinematic_tree=kinematics.KinematicTree.from_parents(data["parents"]),
+        bind_quats=data["bind_quats"],
+        skin_weights=data["skin_weights"],
         compact_skinning=CompactSkinning(skin_joint_indices, skin_joint_weights),
-        mvc_weights=mvc_weights,
+        mvc_weights=data["mvc_weights"],
     )
 
 
@@ -169,37 +87,19 @@ def _find_upstream_data_dir(model_path: Path) -> Path | None:
     return None
 
 
-def _find_preprocessed_file(model_path: Path) -> Path | None:
-    if model_path.is_file() and model_path.name == PREPROCESSED_FILENAME:
-        return model_path
-    for base in (model_path, model_path / "data"):
-        path = base / PREPROCESSED_FILENAME
-        if path.is_file():
-            return path
-    return None
-
-
-def _preprocess_message(upstream_data: Path, output_dir: Path | None = None) -> str:
-    script = Path(__file__).with_name("tools") / "generate_asset.py"
-    if output_dir is None:
-        return (
-            f"GarmentMeasurements requires a preprocessed {PREPROCESSED_FILENAME} asset. "
-            "Generate it from the upstream files with:\n"
-            f"uv run --python 3.11 --no-project {script} {upstream_data} /path/to/output-dir\n"
-            "Then run `body-models set garment-measurements /path/to/output-dir`."
-        )
+def _preprocess_message(upstream_data: Path) -> str:
+    script = Path(__file__).with_name("_tools") / "generate_asset.py"
     return (
-        f"GarmentMeasurements preprocessed asset not found: {output_dir / PREPROCESSED_FILENAME}\n"
-        "Generate it with:\n"
-        f"uv run --python 3.11 --no-project {script} {upstream_data} {output_dir}"
+        f"GarmentMeasurements requires a preprocessed {PREPROCESSED_FILENAME} asset. "
+        "Generate it from the upstream files with:\n"
+        f"uv run --python 3.11 --no-project {script} {upstream_data} /path/to/output-dir\n"
+        "Then run `body-models set garment-measurements /path/to/output-dir`."
     )
 
 
-def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
+def _validate_shapes(path: Path, data: dict[str, np.ndarray], num_joints: int) -> None:
     num_vertices = data["mean_vertices"].shape[0]
-    num_joints = len(data["joint_names"])
     num_components = data["eigenvalues"].shape[0]
-
     expected = {
         "mean_vertices": (num_vertices, 3),
         "components": (num_vertices, 3, num_components),
@@ -212,7 +112,6 @@ def _validate_preprocessed_model(path: Path, data: dict[str, Any]) -> None:
     for key, shape in expected.items():
         if data[key].shape != shape:
             raise ValueError(f"{path} array {key} has shape {data[key].shape}, expected {shape}")
-
     if data["parents"][0] != -1:
         raise ValueError(f"{path} parents[0] must be -1")
 
@@ -221,8 +120,6 @@ __all__ = [
     "PREPROCESSED_FILENAME",
     "GarmentMeasurementsAssets",
     "download_model",
-    "get_model_path",
     "load_model_data",
-    "load_preprocessed_model",
-    "preprocess_model",
+    "validate_path",
 ]

@@ -2,14 +2,13 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh
-from body_models._common.chumpy_fix import load_model_dict
+from body_models._common import chumpy_fix, kinematics, simplify_mesh
 from body_models._common.skinning import CompactSkinning
 from body_models.mano._constants import MANO_JOINT_NAMES
 
@@ -35,35 +34,7 @@ class ManoAssets:
 
 
 def validate_path(model_path: PathLike) -> Path:
-    model_path = Path(model_path)
-    if model_path.is_dir():
-        raise ValueError(f"Expected a MANO model file, got directory: {model_path}")
-    if not model_path.is_file():
-        raise FileNotFoundError(f"MANO model file not found: {model_path}")
-    if model_path.suffix not in {".npz", ".pkl"}:
-        raise ValueError(f"Expected a MANO .npz or .pkl file, got: {model_path}")
-    return model_path
-
-
-def get_model_path(model_path: PathLike | None, side: Literal["right", "left"] | None) -> Path:
-    if model_path is not None:
-        if side is not None:
-            raise ValueError("side is only supported when model_path is not provided.")
-        return validate_path(model_path)
-
-    if side is None:
-        raise ValueError("Either model_path or side must be provided.")
-
-    config_key = f"mano-{side}"
-    resolved_path = config.get_model_path(config_key)
-
-    if resolved_path is None:
-        raise FileNotFoundError(
-            "MANO model not found. Run `body-models download mano` or configure an existing file with "
-            f"`body-models set mano-{side} /path/to/MANO_{side.upper()}.pkl`."
-        )
-
-    return validate_path(resolved_path)
+    return config.validate_file(model_path, "MANO", (".npz", ".pkl"))
 
 
 def load_model_data(
@@ -75,7 +46,7 @@ def load_model_data(
     """Load MANO model data from .pkl or .npz file."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
-    data = load_model_dict(path)
+    data = chumpy_fix.load_model_dict(path)
     v_template = np.asarray(data["v_template"])
     if np.asarray(data["shapedirs"]).ndim == 1:
         data["shapedirs"] = np.asarray(data["shapedirs"]).reshape(v_template.shape[0], 3, -1)
@@ -99,7 +70,7 @@ def load_model_data(
     shapedirs = model_dirs
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(model_template, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh.simplify_mesh(model_template, faces, target_faces)
         lbs_weights = lbs_weights[vertex_map]
         shapedirs = model_dirs[vertex_map]
         posedirs = posedirs[vertex_map]
@@ -108,7 +79,7 @@ def load_model_data(
     if flat_hand_mean:
         hand_mean = np.zeros_like(hand_mean)
 
-    lbs_joint_indices, lbs_joint_weights = compute_sparse_skin_weights(lbs_weights)
+    lbs_joint_indices, lbs_joint_weights = kinematics.compute_sparse_skin_weights(lbs_weights)
 
     return ManoAssets(
         v_template=v_template,

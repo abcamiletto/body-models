@@ -9,10 +9,8 @@ import numpy as np
 from jaxtyping import Float, Int
 
 from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir
-from body_models._common import kinematics, simplify_mesh
-from body_models._common.kinematics import compute_sparse_skin_weights
-from body_models._common.skinning import CompactSkinning
+from body_models import _download
+from body_models._common import kinematics, simplify_mesh, skinning
 
 PathLike = Path | str
 MODEL_FILENAME = "gnm_head.npz"
@@ -26,7 +24,7 @@ class GnmAssets:
     j_template: Float[np.ndarray, "4 3"]
     j_shapedirs: Float[np.ndarray, "4 3 253"]
     lbs_weights: Float[np.ndarray, "V 4"]
-    compact_skinning: CompactSkinning
+    compact_skinning: skinning.CompactSkinning
     posedirs: Float[np.ndarray, "36 V*3"]
     faces: Int[np.ndarray, "F 3"]
     kinematic_tree: kinematics.KinematicTree
@@ -36,40 +34,14 @@ class GnmAssets:
 
 
 def validate_path(model_path: PathLike) -> Path:
-    """Validate and return a GNM model file."""
-    model_path = Path(model_path)
-    if model_path.is_dir():
-        model_path = model_path / MODEL_FILENAME
-    if not model_path.is_file():
-        raise FileNotFoundError(f"GNM model file not found: {model_path}")
-    if model_path.suffix != ".npz":
-        raise ValueError(f"Expected a GNM .npz file, got: {model_path}")
-    return model_path
-
-
-def get_model_path(model_path: PathLike | None = None) -> Path:
-    """Resolve the GNM model path, downloading it when needed."""
-    if model_path is None:
-        model_path = config.get_model_path("gnm")
-    if model_path is not None:
-        return validate_path(model_path)
-
-    cache_path = get_cache_dir() / "gnm" / MODEL_FILENAME
-    if cache_path.is_file():
-        return cache_path
-    return download_model()
+    return config.validate_file(model_path, "GNM", (".npz",))
 
 
 def download_model(output_dir: PathLike | None = None) -> Path:
-    """Download the GNM Head v3.0 model assets."""
-    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "gnm"
-    model_path = output_dir / MODEL_FILENAME
-    if model_path.is_file():
-        return validate_path(model_path)
-    print(f"Downloading GNM Head model to {output_dir}...")
-    download_hf_archive("gnm/assets.zip", output_dir)
-    print("Done")
-    return validate_path(model_path)
+    """Download the public GNM Head v3.0 assets unless they are already present."""
+    return _download.download_public_assets(
+        "gnm", output_dir, lambda directory: validate_path(directory / MODEL_FILENAME)
+    )
 
 
 def load_model_data(model_path: PathLike, *, simplify: float = 1.0) -> GnmAssets:
@@ -77,7 +49,7 @@ def load_model_data(model_path: PathLike, *, simplify: float = 1.0) -> GnmAssets
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0")
 
-    with np.load(validate_path(model_path), allow_pickle=False) as data:
+    with np.load(model_path, allow_pickle=False) as data:
         version = str(data["version"])
         variant = str(data["variant"])
         if version != "3.0" or variant != "head":
@@ -98,13 +70,13 @@ def load_model_data(model_path: PathLike, *, simplify: float = 1.0) -> GnmAssets
 
     if simplify > 1.0:
         target_faces = int(len(faces) / simplify)
-        v_template, faces, vertex_map = simplify_mesh(v_template, faces, target_faces)
+        v_template, faces, vertex_map = simplify_mesh.simplify_mesh(v_template, faces, target_faces)
         shapedirs = shapedirs[vertex_map]
         exprdirs = exprdirs[vertex_map]
         lbs_weights = lbs_weights[vertex_map]
         posedirs = posedirs.reshape(36, -1, 3)[:, vertex_map].reshape(36, -1)
 
-    joint_indices, joint_weights = compute_sparse_skin_weights(lbs_weights)
+    joint_indices, joint_weights = kinematics.compute_sparse_skin_weights(lbs_weights)
     return GnmAssets(
         v_template=v_template,
         shapedirs=shapedirs,
@@ -112,7 +84,7 @@ def load_model_data(model_path: PathLike, *, simplify: float = 1.0) -> GnmAssets
         j_template=j_template,
         j_shapedirs=j_shapedirs,
         lbs_weights=lbs_weights,
-        compact_skinning=CompactSkinning(joint_indices, joint_weights),
+        compact_skinning=skinning.CompactSkinning(joint_indices, joint_weights),
         posedirs=posedirs,
         faces=faces,
         kinematic_tree=kinematics.KinematicTree.from_parents(parents),
@@ -122,4 +94,4 @@ def load_model_data(model_path: PathLike, *, simplify: float = 1.0) -> GnmAssets
     )
 
 
-__all__ = ["GnmAssets", "download_model", "get_model_path", "load_model_data", "validate_path"]
+__all__ = ["GnmAssets", "download_model", "load_model_data", "validate_path"]

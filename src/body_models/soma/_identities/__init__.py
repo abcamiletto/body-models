@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from jaxtyping import Float, Int
 
-from body_models import _common as common
+from body_models._common import ops
 from body_models._runtime import ArrayRuntime
 
 from ...mhr import _pose as mhr_pose
@@ -105,7 +105,7 @@ def source_shape(
         return cast("SMPL", model).prepare_identity(identity)["rest_vertices"]
     if model_type == "smplx":
         smplx = cast("SMPLX", model)
-        expression = common.zeros_as(
+        expression = ops.zeros_as(
             identity,
             shape=(*identity.shape[:-1], smplx.NUM_EXPR_COEFFS),
             xp=xp,
@@ -124,11 +124,11 @@ def mhr_identity_shape(
 ) -> Float[Any, "B V 3"]:
     batch_shape = identity.shape[:-1]
     if scale_params is None:
-        scale_params = common.zeros_as(identity, shape=(*batch_shape, num_scale_coeffs), xp=xp)
-    zero_pose = common.zeros_as(identity, shape=(*batch_shape, model.NUM_POSE_COEFFS), xp=xp)
-    zero_pose = common.at_set(zero_pose, (..., slice(-num_scale_coeffs, None)), scale_params, xp=xp)
+        scale_params = ops.zeros_as(identity, shape=(*batch_shape, num_scale_coeffs), xp=xp)
+    zero_pose = ops.zeros_as(identity, shape=(*batch_shape, model.NUM_POSE_COEFFS), xp=xp)
+    zero_pose = ops.at_set(zero_pose, (..., slice(-num_scale_coeffs, None)), scale_params, xp=xp)
     body_pose, head_pose, hand_pose = mhr_pose.unpack_pose(xp, zero_pose)
-    expression = common.zeros_as(identity, shape=(*batch_shape, model.NUM_EXPR_COEFFS), xp=xp)
+    expression = ops.zeros_as(identity, shape=(*batch_shape, model.NUM_EXPR_COEFFS), xp=xp)
     return model.forward_vertices(
         shape=identity,
         body_pose=body_pose,
@@ -172,7 +172,7 @@ def transfer_identity_rest_shape(
     anchor_vertices = target_shape[..., anchor_ids, :]
     rhs = rhs_base - xp.einsum("ua,...ac->...uc", anchor_matrix, anchor_vertices)
     unknown_vertices = xp.linalg.solve(solve_matrix, rhs)
-    return common.at_set(target_shape, (..., unknown_ids, slice(None)), unknown_vertices, xp=xp)
+    return ops.at_set(target_shape, (..., unknown_ids, slice(None)), unknown_vertices, xp=xp)
 
 
 def transfer_shape(

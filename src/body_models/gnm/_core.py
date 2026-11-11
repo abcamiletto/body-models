@@ -5,9 +5,8 @@ from typing import Any
 
 from jaxtyping import Float
 
-from body_models import _common as common
 from body_models import _linear_blendshape as linear
-from body_models._common import deformation
+from body_models._common import deformation, kinematics, ops
 from body_models._rotations import RotationType
 from body_models._runtime import ArrayRuntime
 
@@ -66,7 +65,7 @@ def pose_matrices(
     head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
     head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     rotation_type: RotationType,
-    selection: common.JointSelection | None = None,
+    selection: kinematics.JointSelection | None = None,
 ) -> Float[Array, "*batch 4 3 3"]:
     """Convert GNM's ordered joint controls to rotation matrices."""
     return linear.assemble_pose_matrices(
@@ -80,7 +79,7 @@ def pose_matrices(
 
 def prepare_pose(
     runtime: ArrayRuntime,
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
     head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     rotation_type: RotationType,
@@ -99,14 +98,14 @@ def prepare_pose(
     )
     xp = runtime.xp
     batch_shape = rotations.shape[:-3]
-    identity = common.ops.eye_as(rotations, batch_dims=(*batch_shape, 1), xp=xp)
+    identity = ops.eye_as(rotations, batch_dims=(*batch_shape, 1), xp=xp)
     pose["pose_coefficients"] = (rotations - identity).reshape(*batch_shape, -1)
     return pose
 
 
 def prepare_skeleton(
     runtime: ArrayRuntime,
-    tree: common.KinematicTree,
+    tree: kinematics.KinematicTree,
     head_pose: Float[Array, "*batch 3 N"] | Float[Array, "*batch 3 3 3"],
     head_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
     rotation_type: RotationType,

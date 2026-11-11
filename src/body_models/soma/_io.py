@@ -14,8 +14,8 @@ from jaxtyping import Float, Int
 from scipy.sparse import csc_matrix
 
 from body_models import _config as config
-from body_models._cache import download_hf_archive, get_cache_dir
-from body_models._common import compute_sparse_skin_weights, kinematics, simplify_mesh, sparse
+from body_models import _download
+from body_models._common import kinematics, simplify_mesh, sparse
 from body_models._common.skinning import CompactSkinning
 from body_models.soma._derive import (
     _get_joint_children_ids,
@@ -49,12 +49,10 @@ __all__ = [
     "SomaIdentityTransfer",
     "SomaProceduralRig",
     "download_model",
-    "get_model_path",
     "load_identity_transfer_data",
     "load_model_data",
     "load_model_data_for_lod",
     "preprocess_model",
-    "simplify_mesh",
     "with_active_mesh",
     "with_lod_mesh",
 ]
@@ -75,30 +73,9 @@ def validate_path(model_path: PathLike) -> Path:
     return model_path
 
 
-def get_model_path(model_path: PathLike | None = None) -> Path:
-    """Resolve SOMA model directory, downloading if necessary."""
-    if model_path is None:
-        model_path = config.get_model_path("soma")
-
-    if model_path is not None:
-        return validate_path(model_path)
-
-    cache_path = get_cache_dir() / "soma"
-    if not _missing_assets(cache_path):
-        return validate_path(cache_path)
-
-    return download_model()
-
-
 def download_model(output_dir: PathLike | None = None) -> Path:
-    """Download SOMA assets from Hugging Face."""
-    output_dir = Path(output_dir) if output_dir is not None else get_cache_dir() / "soma"
-    missing = [name for name in SOMA_ASSETS if not (output_dir / name).exists()]
-    if missing:
-        print(f"Downloading SOMA model to {output_dir}...")
-        download_hf_archive("soma/assets.zip", output_dir)
-        print("Done")
-    return validate_path(output_dir)
+    """Download the public SOMA assets unless they are already present."""
+    return _download.download_public_assets("soma", output_dir, validate_path)
 
 
 def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
@@ -194,7 +171,7 @@ def with_active_mesh(
     active_vertex_indices: Int[np.ndarray, "Va"] | None,
 ) -> SomaAssets:
     """Replace the active mesh using indices into the full and current meshes."""
-    skin_joint_indices_active, skin_joint_weights_active = compute_sparse_skin_weights(skin_weights_active)
+    skin_joint_indices_active, skin_joint_weights_active = kinematics.compute_sparse_skin_weights(skin_weights_active)
     skin_joint_indices_active = np.maximum(skin_joint_indices_active - 1, -1)
     control_skin_weights_active = _active_control_skin_weights(data, full_vertex_indices)
     control_rig = replace(data.control_rig, skin_weights_active=control_skin_weights_active)
@@ -358,7 +335,7 @@ def _load_model_data_cached(model_dir: str) -> SomaAssets:
     )
 
     parents_full = joint_parents_full.astype(np.int64).tolist()
-    skin_joint_indices, skin_joint_weights = compute_sparse_skin_weights(skin_weights)
+    skin_joint_indices, skin_joint_weights = kinematics.compute_sparse_skin_weights(skin_weights)
     skin_joint_indices = np.maximum(skin_joint_indices - 1, -1)
     return SomaAssets(
         mean_full=mean,
@@ -431,12 +408,14 @@ def load_model_data_for_lod(model_path: PathLike | None, lod: str, *, simplify: 
     """Resolve and load SOMA data for a requested LOD and simplification level."""
     if simplify < 1.0:
         raise ValueError("simplify must be >= 1.0 (1.0 = original mesh)")
-    resolved_path = get_model_path(model_path)
+    resolved_path = config.resolve_model_path("soma", model_path)
     data = with_lod_mesh(load_model_data(resolved_path), lod)
     if simplify == 1.0:
         return resolved_path, data
     target_faces = int(len(data.faces) / simplify)
-    mean_active, faces, simplify_map = simplify_mesh(data.mean_active, data.faces.astype(int), target_faces)
+    mean_active, faces, simplify_map = simplify_mesh.simplify_mesh(
+        data.mean_active, data.faces.astype(int), target_faces
+    )
     simplify_map = np.asarray(simplify_map, dtype=np.int64)
     vertex_map = simplify_map if data.vertex_map is None else data.vertex_map[simplify_map]
     weights = with_active_mesh(

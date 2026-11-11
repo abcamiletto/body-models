@@ -11,7 +11,7 @@
 
 Run this as a self-contained PEP 723 script:
 
-    uv run --python 3.11 --no-project src/body_models/garment_measurements/tools/generate_asset.py \
+    uv run --python 3.11 --no-project src/body_models/garment_measurements/_tools/generate_asset.py \
         /path/to/GarmentMeasurements/data /path/to/output/model
 
 The generated ``garment_measurements.npz`` is the only asset loaded by the runtime

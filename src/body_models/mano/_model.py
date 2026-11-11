@@ -10,6 +10,7 @@ from typing import Any, Literal
 from jaxtyping import Float
 from nanomanifold import SO3
 
+from body_models import _config as config
 from body_models import _pose_layout as pose_layout
 from body_models._base import LinearIdentity, ParameterSpec, PointRegressor, SkinningPose
 from body_models._constants import Joint
@@ -18,7 +19,7 @@ from body_models._rotations import VALID_ROTATION_TYPES, RotationType
 from body_models._runtime import ArrayRuntime
 from body_models.mano import _core as core
 from body_models.mano._constants import LEFT_MANO_JOINTS, MANO_HAND_PRESETS, RIGHT_MANO_JOINTS
-from body_models.mano._io import get_model_path, load_model_data
+from body_models.mano._io import load_model_data
 
 Array = Any
 HandPreset = Literal["default", "flat", "rest"]
@@ -61,7 +62,9 @@ class MANO(LinearBlendshapeModel):
         if flip_shapedirs and side != "left":
             raise ValueError("flip_shapedirs requires side='left'")
 
-        resolved_path = get_model_path(model_path, side)
+        if (model_path is None) == (side is None):
+            raise ValueError("Pass exactly one of model_path or side.")
+        resolved_path = config.resolve_model_path("mano", model_path, side)
         assets = load_model_data(
             resolved_path,
             flat_hand_mean=flat_hand_mean,
