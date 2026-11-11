@@ -52,8 +52,8 @@ missing licensed asset raises with the exact `body-models download` and
 
 `_download.download_licensed()` fetches any licensed archive from its catalog
 entry. `download_public_assets()` fetches `<package>/assets.zip` from the
-Hugging Face repo unless the validator already accepts the target directory;
-MHR passes a stricter validator so incomplete LOD sets are refreshed.
+Hugging Face repo unless the package's `validate_path` already accepts the target
+directory.
 
 ## Linear blendshape models
 

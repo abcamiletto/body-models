@@ -19,24 +19,22 @@ from body_models.mhr import _pose as pose_utils
 
 PathLike = Path | str
 SUPPORTED_LODS = tuple(range(7))
+# LOD 1 geometry comes from mhr_model.pt; every other LOD has its own mesh file.
 MHR_ASSETS = (
     "mhr_model.pt",
     "corrective_activation.npz",
-    *(f"mhr_lod{lod}.npz" for lod in SUPPORTED_LODS),
     *(f"corrective_blendshapes_lod{lod}.npz" for lod in SUPPORTED_LODS),
-)
-_MHR_DEFAULT_ASSETS = (
-    "mhr_model.pt",
-    "corrective_activation.npz",
-    "corrective_blendshapes_lod1.npz",
+    *(f"mhr_lod{lod}.npz" for lod in SUPPORTED_LODS if lod != 1),
 )
 
 __all__ = [
+    "MHR_ASSETS",
     "MhrAssets",
     "MhrCorrectives",
     "download_model",
     "load_model_data",
     "load_pose_correctives_weights",
+    "validate_path",
 ]
 
 
@@ -70,18 +68,15 @@ def validate_path(model_path: PathLike) -> Path:
         raise ValueError(f"Expected an MHR model directory, got file: {model_path}")
     if not model_path.is_dir():
         raise FileNotFoundError(f"MHR model path {model_path} does not exist")
-    _require_assets(model_path, _MHR_DEFAULT_ASSETS)
+    missing = [name for name in MHR_ASSETS if not (model_path / name).is_file()]
+    if missing:
+        raise FileNotFoundError(f"MHR model directory is missing required assets: {', '.join(missing)}")
     return model_path
 
 
 def download_model(output_dir: PathLike | None = None) -> Path:
-    """Download the public MHR assets unless every hosted LOD is already present."""
-    return _download.download_public_assets("mhr", output_dir, _validate_hosted)
-
-
-def _validate_hosted(model_path: Path) -> Path:
-    _require_assets(model_path, MHR_ASSETS)
-    return validate_path(model_path)
+    """Download the public MHR assets unless they are already present."""
+    return _download.download_public_assets("mhr", output_dir, validate_path)
 
 
 def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> MhrAssets:
@@ -89,12 +84,6 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
         raise ValueError("simplify must be >= 1.0")
     if lod not in SUPPORTED_LODS:
         raise ValueError(f"MHR lod must be one of {SUPPORTED_LODS}, got {lod}")
-
-    asset_dir = validate_path(asset_dir)
-    lod_assets = (f"corrective_blendshapes_lod{lod}.npz",)
-    if lod != 1:
-        lod_assets += (f"mhr_lod{lod}.npz",)
-    _require_assets(asset_dir, lod_assets)
 
     data = _load_raw_model_data(asset_dir)
     if lod != 1:
@@ -303,9 +292,3 @@ def _output_weights_cache_file(asset_dir: Path, lod: int) -> Path:
     cache_dir = get_cache_dir() / "mhr" / "preprocessed"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"correctives_{key}.npz"
-
-
-def _require_assets(model_path: Path, names: tuple[str, ...]) -> None:
-    missing = [name for name in names if not (model_path / name).is_file()]
-    if missing:
-        raise FileNotFoundError(f"MHR model directory is missing required assets: {', '.join(missing)}")

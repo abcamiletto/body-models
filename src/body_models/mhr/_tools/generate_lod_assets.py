@@ -11,7 +11,7 @@
 
 Run this as a self-contained PEP 723 script:
 
-    uv run --python 3.11 --no-project src/body_models/mhr/tools/generate_lod_assets.py \
+    uv run --python 3.11 --no-project src/body_models/mhr/_tools/generate_lod_assets.py \
         /path/to/mhr/assets /path/to/output
 """
 
