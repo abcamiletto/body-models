@@ -26,17 +26,20 @@ class PoseBlock:
     axis_angle_mean: Float[Array, "..."] | None = None
 
 
+@dataclass(frozen=True)
+class IdentityBasis:
+    """Directions driven by one identity coefficient vector, such as ``shape``."""
+
+    vertices: Float[Array, "V 3 C"]
+    joints: Float[Array, "J 3 C"] | None
+    """Joint directions, or None when the coefficients do not move the skeleton."""
+
+
 class LinearBlendshapeModel(SkinnedModel):
     """Common state access and deformation stages for linear blendshape models."""
 
-    NUM_SHAPE_COEFFS: int
-    NUM_EXPR_COEFFS = 0
     _assets: Any
     rotation_type: RotationType
-
-    @property
-    def _num_rot_dims(self) -> int:
-        return rotation_ndim(self.rotation_type)
 
     @property
     def faces(self) -> Int[Array, "F 3"]:
@@ -62,6 +65,11 @@ class LinearBlendshapeModel(SkinnedModel):
     def _corrective_basis(self) -> CorrectiveBasis:
         return DenseCorrectiveBasis(self._assets.posedirs)
 
+    @property
+    def _identity_bases(self) -> tuple[IdentityBasis, ...]:
+        """Bases in the order of the model's identity parameters."""
+        return (IdentityBasis(self._assets.shapedirs, self._assets.j_shapedirs),)
+
     def prepare_point_regressor(
         self,
         mapping: Float[Array, "K V"],
@@ -69,42 +77,90 @@ class LinearBlendshapeModel(SkinnedModel):
         """Preproject a vertex mapping and the model's linear identity bases."""
         regressor = super().prepare_point_regressor(mapping)
         xp = self._runtime.xp
-        regressor["template"] = point_regression.project_vertex_values(
-            regressor,
-            self.rest_vertices,
-            xp=xp,
-        )
+        regressor["template"] = point_regression.project_vertex_values(regressor, self.rest_vertices, xp=xp)
         regressor["identity_bases"] = tuple(
-            point_regression.project_vertex_values(regressor, basis, xp=xp) for basis in self._point_identity_bases
+            point_regression.project_vertex_values(regressor, basis.vertices, xp=xp) for basis in self._identity_bases
         )
         return regressor
 
-    @property
-    def _point_identity_bases(self) -> tuple[Float[Array, "V 3 C"], ...]:
-        bases = (self._assets.shapedirs,)
-        return bases if self.NUM_EXPR_COEFFS == 0 else (*bases, self._assets.exprdirs)
+    def _prepare_linear_identity(self, *coefficients: Float[Array, "*batch C"]) -> deformation.LinearIdentity:
+        skeleton = self._prepare_skeleton_identity(*coefficients)
+        rest_vertices = self._assets.v_template
+        for basis, values in zip(self._identity_bases, coefficients, strict=True):
+            directions = basis.vertices[..., : values.shape[-1]]
+            rest_vertices = deformation.blend_shapes(rest_vertices, directions, values, xp=self._runtime.xp)
+        return {
+            "coefficients": skeleton["coefficients"],
+            "rest_joints": skeleton["rest_joints"],
+            "local_joint_offsets": skeleton["local_joint_offsets"],
+            "rest_vertices": rest_vertices,
+        }
 
-    def _deform_linear_points(
-        self,
-        point_regressor: PointRegressor,
-        identity_coefficients: Sequence[Float[Array, "*batch C"]],
-        pose: deformation.SkinningPose,
-        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
-        global_translation: Float[Array, "*batch 3"] | None,
-    ) -> Float[Array, "*batch K 3"]:
+    def _prepare_skeleton_identity(self, *coefficients: Float[Array, "*batch C"]) -> deformation.LinearSkeletonIdentity:
         xp = self._runtime.xp
-        rest_points = point_regressor["template"]
-        for coefficients, basis in zip(identity_coefficients, point_regressor["identity_bases"], strict=True):
-            coefficient_dim = coefficients.shape[-1]
-            if coefficient_dim > basis.shape[-1]:
-                raise ValueError(f"identity coefficients exceed the model basis width of {basis.shape[-1]}")
-            rest_points = rest_points + xp.einsum(
-                "...c,kjdc->...kjd",
-                coefficients,
-                basis[..., :coefficient_dim],
-            )
-        points = point_regression.regress_points(point_regressor, rest_points, pose, xp=xp)
-        return self._transform_points(points, point_regressor, global_rotation, global_translation)
+        rest_joints = self._assets.j_template
+        for basis, values in zip(self._identity_bases, coefficients, strict=True):
+            if basis.joints is not None:
+                rest_joints = deformation.blend_shapes(
+                    rest_joints, basis.joints[..., : values.shape[-1]], values, xp=xp
+                )
+        parents = self._assets.kinematic_tree.parents
+        return {
+            "coefficients": coefficients,
+            "rest_joints": rest_joints,
+            "local_joint_offsets": kinematics.local_joint_offsets(rest_joints, parents, xp=xp),
+        }
+
+    def _assemble_pose_matrices(
+        self,
+        blocks: Sequence[PoseBlock],
+        root_rotation: Float[Array, "..."] | None,
+        selection: kinematics.JointSelection | None,
+    ) -> Float[Array, "*batch J 3 3"]:
+        return assemble_pose_matrices(self._runtime, blocks, root_rotation, self.rotation_type, selection)
+
+    def _prepare_linear_pose(
+        self,
+        pose_matrices: Float[Array, "*batch J 3 3"],
+        identity: deformation.LinearSkeletonIdentity,
+    ) -> deformation.SkinningPose:
+        """Prepare transforms and pose-corrective coefficients from assembled rotations."""
+        xp = self._runtime.xp
+        world_transforms = self._posed_joints(pose_matrices, identity, None)
+        batch_shape = tuple(pose_matrices.shape[:-3])
+        rest_joints = xp.broadcast_to(identity["rest_joints"], (*batch_shape, *identity["rest_joints"].shape[-2:]))
+        return {
+            "skeleton_transforms": world_transforms,
+            "skinning_transforms": skinning.bind_relative_transforms(world_transforms, rest_joints, xp=xp),
+            "pose_coefficients": deformation.pose_coefficients(pose_matrices, xp=xp),
+        }
+
+    def _joint_selection(self, joint_indices: Sequence[int] | None) -> kinematics.JointSelection | None:
+        return None if joint_indices is None else self._assets.kinematic_tree.select(joint_indices)
+
+    def _posed_joints(
+        self,
+        pose_matrices: Float[Array, "*batch J 3 3"],
+        identity: deformation.LinearSkeletonIdentity,
+        selection: kinematics.JointSelection | None,
+    ) -> Float[Array, "*batch J 4 4"]:
+        """Run forward kinematics, restricted to ``selection`` when given."""
+        xp = self._runtime.xp
+        runtime = self._runtime
+        batch_shape = tuple(pose_matrices.shape[:-3])
+        offsets = identity["local_joint_offsets"]
+        offsets = xp.broadcast_to(offsets, (*batch_shape, *offsets.shape[-2:]))
+        tree = self._assets.kinematic_tree
+        if selection is not None:
+            offsets = offsets[..., runtime.asarray(selection.cover_indices, like=offsets, dtype=xp.int32), :]
+            tree = selection.tree
+        world_transforms = runtime._compose_kinematic_tree(
+            kinematics.affine_transforms(pose_matrices, offsets, xp=xp), tree
+        )
+        if selection is None:
+            return world_transforms
+        output_indices = runtime.asarray(selection.output_indices, like=world_transforms, dtype=xp.int32)
+        return world_transforms[..., output_indices, :, :]
 
     def _deform_vertices(
         self,
@@ -127,6 +183,22 @@ class LinearBlendshapeModel(SkinnedModel):
             self.rotation_type,
             xp=self._runtime.xp,
         )
+
+    def _deform_linear_points(
+        self,
+        point_regressor: PointRegressor,
+        identity: deformation.LinearSkeletonIdentity,
+        pose: deformation.SkinningPose,
+        global_rotation: Float[Array, "*batch N"] | Float[Array, "*batch 3 3"] | None,
+        global_translation: Float[Array, "*batch 3"] | None,
+    ) -> Float[Array, "*batch K 3"]:
+        """Regress points from projected identity bases, without building rest vertices."""
+        xp = self._runtime.xp
+        rest_points = point_regressor["template"]
+        for values, basis in zip(identity["coefficients"], point_regressor["identity_bases"], strict=True):
+            rest_points = rest_points + xp.einsum("...c,kjdc->...kjd", values, basis[..., : values.shape[-1]])
+        points = point_regression.regress_points(point_regressor, rest_points, pose, xp=xp)
+        return self._transform_points(points, point_regressor, global_rotation, global_translation)
 
     def _transform_skeleton(
         self,
@@ -209,166 +281,4 @@ def assemble_pose_matrices(
     return xp.concat([root_matrices, *matrices], axis=-3)
 
 
-def forward_skeleton(
-    runtime: runtime_ops.ArrayRuntime,
-    tree: kinematics.KinematicTree,
-    pose_matrices: Float[Array, "*batch J 3 3"],
-    local_joint_offsets: Float[Array, "*identity_batch J 3"],
-    selection: kinematics.JointSelection | None = None,
-) -> Float[Array, "*batch J 4 4"]:
-    """Broadcast identity state and run forward kinematics."""
-    xp = runtime.xp
-    batch_shape = tuple(pose_matrices.shape[:-3])
-    offsets = xp.broadcast_to(local_joint_offsets, (*batch_shape, *local_joint_offsets.shape[-2:]))
-    if selection is not None:
-        cover_indices = runtime.asarray(selection.cover_indices, like=offsets, dtype=xp.int32)
-        offsets = offsets[..., cover_indices, :]
-        tree = selection.tree
-    local_transforms = kinematics.affine_transforms(pose_matrices, offsets, xp=xp)
-    world_transforms = runtime._compose_kinematic_tree(local_transforms, tree)
-    if selection is None:
-        return world_transforms
-    output_indices = runtime.asarray(selection.output_indices, like=world_transforms, dtype=xp.int32)
-    return world_transforms[..., output_indices, :, :]
-
-
-def prepare_pose(
-    runtime: runtime_ops.ArrayRuntime,
-    tree: kinematics.KinematicTree,
-    pose_matrices: Float[Array, "*batch J 3 3"],
-    *,
-    local_joint_offsets: Float[Array, "*identity_batch J 3"],
-    rest_joints: Float[Array, "*identity_batch J 3"],
-) -> deformation.SkinningPose:
-    """Prepare transforms and pose offsets from assembled rotations."""
-    world_transforms = forward_skeleton(
-        runtime,
-        tree,
-        pose_matrices,
-        local_joint_offsets,
-    )
-    xp = runtime.xp
-    batch_shape = tuple(pose_matrices.shape[:-3])
-    rest_joints = xp.broadcast_to(rest_joints, (*batch_shape, *rest_joints.shape[-2:]))
-    return {
-        "skeleton_transforms": world_transforms,
-        "skinning_transforms": skinning.bind_relative_transforms(world_transforms, rest_joints, xp=xp),
-        "pose_coefficients": deformation.pose_coefficients(pose_matrices, xp=xp),
-    }
-
-
-def prepare_shape_identity(
-    *,
-    xp: Any,
-    v_template: Float[Array, "V 3"],
-    shapedirs: Float[Array, "V 3 S"],
-    j_template: Float[Array, "J 3"],
-    j_shapedirs: Float[Array, "J 3 S"],
-    parents: Sequence[int],
-    shape: Float[Array, "*batch S"],
-) -> deformation.LinearIdentity:
-    """Prepare vertex and joint identity state from shape coefficients."""
-    shape_dim = shape.shape[-1]
-    return deformation.prepare_linear_identity(
-        vertex_template=v_template,
-        vertex_directions=shapedirs[:, :, :shape_dim],
-        joint_template=j_template,
-        joint_directions=j_shapedirs[:, :, :shape_dim],
-        parents=parents,
-        coefficients=shape,
-        xp=xp,
-    )
-
-
-def prepare_shape_skeleton_identity(
-    *,
-    xp: Any,
-    j_template: Float[Array, "J 3"],
-    j_shapedirs: Float[Array, "J 3 S"],
-    parents: Sequence[int],
-    shape: Float[Array, "*batch S"],
-) -> deformation.SkeletonIdentity:
-    """Prepare joint identity state from shape coefficients."""
-    shape_dim = shape.shape[-1]
-    return deformation.prepare_linear_skeleton(
-        joint_template=j_template,
-        joint_directions=j_shapedirs[:, :, :shape_dim],
-        parents=parents,
-        coefficients=shape,
-        xp=xp,
-    )
-
-
-def prepare_shape_expression_identity(
-    *,
-    xp: Any,
-    v_template: Float[Array, "V 3"],
-    shapedirs: Float[Array, "V 3 S"],
-    exprdirs: Float[Array, "V 3 E"],
-    j_template: Float[Array, "J 3"],
-    j_shapedirs: Float[Array, "J 3 S"],
-    j_exprdirs: Float[Array, "J 3 E"],
-    parents: Sequence[int],
-    shape: Float[Array, "*batch S"],
-    expression: Float[Array, "*batch E"],
-) -> deformation.LinearIdentity:
-    """Prepare vertex and joint identity state from shape and expression."""
-    skeleton = prepare_shape_expression_skeleton_identity(
-        xp=xp,
-        j_template=j_template,
-        j_shapedirs=j_shapedirs,
-        j_exprdirs=j_exprdirs,
-        parents=parents,
-        shape=shape,
-        expression=expression,
-    )
-    rest_vertices = deformation.blend_shapes(v_template, shapedirs[..., : shape.shape[-1]], shape, xp=xp)
-    rest_vertices = deformation.blend_shapes(rest_vertices, exprdirs[..., : expression.shape[-1]], expression, xp=xp)
-    return {
-        "rest_joints": skeleton["rest_joints"],
-        "local_joint_offsets": skeleton["local_joint_offsets"],
-        "rest_vertices": rest_vertices,
-    }
-
-
-def prepare_shape_expression_skeleton_identity(
-    *,
-    xp: Any,
-    j_template: Float[Array, "J 3"],
-    j_shapedirs: Float[Array, "J 3 S"],
-    j_exprdirs: Float[Array, "J 3 E"],
-    parents: Sequence[int],
-    shape: Float[Array, "*batch S"],
-    expression: Float[Array, "*batch E"],
-) -> deformation.SkeletonIdentity:
-    """Prepare joint identity state from shape and expression."""
-    _validate_coefficients(shape, expression)
-    rest_joints = deformation.blend_shapes(j_template, j_shapedirs[..., : shape.shape[-1]], shape, xp=xp)
-    rest_joints = deformation.blend_shapes(rest_joints, j_exprdirs[..., : expression.shape[-1]], expression, xp=xp)
-    return {
-        "rest_joints": rest_joints,
-        "local_joint_offsets": kinematics.local_joint_offsets(rest_joints, parents, xp=xp),
-    }
-
-
-def _validate_coefficients(
-    shape: Float[Array, "*batch S"],
-    expression: Float[Array, "*batch E"],
-) -> None:
-    if shape.ndim < 1 or shape.shape[-1] < 1:
-        raise ValueError("shape must have shape [..., S] with S >= 1")
-    if expression.ndim < 1 or expression.shape[-1] < 1:
-        raise ValueError("expression must have shape [..., E] with E >= 1")
-
-
-__all__ = [
-    "LinearBlendshapeModel",
-    "PoseBlock",
-    "assemble_pose_matrices",
-    "forward_skeleton",
-    "prepare_pose",
-    "prepare_shape_expression_identity",
-    "prepare_shape_expression_skeleton_identity",
-    "prepare_shape_identity",
-    "prepare_shape_skeleton_identity",
-]
+__all__ = ["IdentityBasis", "LinearBlendshapeModel", "PoseBlock", "assemble_pose_matrices"]

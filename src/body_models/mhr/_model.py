@@ -123,11 +123,7 @@ class MHR(SkinnedModel):
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed mesh vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape, expression=expression)
-        if identity is None:
-            resolved = self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape, expression=expression)
-            identity = self.prepare_identity(*resolved)
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape, expression=expression)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         vertices = self._runtime._skin_vertices(
             self.apply_pose_correctives(identity=identity, pose=pose),
@@ -156,7 +152,6 @@ class MHR(SkinnedModel):
         joint_indices: Sequence[int] | None = None,
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed joint transforms, which are independent of identity."""
-        self._validate_identity_arguments(identity, shape=shape, expression=expression)
         xp = self._runtime.xp
         pose = pose_utils.pack_pose(xp, body_pose, head_pose, hand_pose)
         skeleton = core.prepare_skeleton(
@@ -192,11 +187,7 @@ class MHR(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        self._validate_identity_arguments(identity, shape=shape, expression=expression)
-        if identity is None:
-            resolved = self._resolve_identity_coefficients(body_pose.shape[:-1], shape=shape, expression=expression)
-            identity = self.prepare_identity(*resolved)
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape, expression=expression)
         pose = self.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
         return self._deform_points(point_regressor, identity, pose, global_rotation, global_translation)
 

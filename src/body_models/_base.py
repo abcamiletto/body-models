@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, ClassVar, Literal
@@ -366,29 +366,18 @@ class SkinnedModel(ABC):
             points = points + global_translation[..., None, :] * point_regressor["weight_sums"][..., None]
         return points
 
-    def _resolve_identity_coefficients(
-        self,
-        batch_shape: tuple[int, ...],
-        /,
-        **coefficients: Any | None,
-    ) -> tuple[Float[Array, "*batch C"], ...]:
-        """Require raw identity coefficients and broadcast them to the pose batch shape."""
-        values = [value for value in coefficients.values() if value is not None]
-        if len(values) != len(coefficients):
-            names = " and ".join(coefficients)
-            verb = "is" if len(coefficients) == 1 else "are"
-            raise ValueError(f"{names} {verb} required when identity is not provided")
-        xp = self._runtime.xp
-        return tuple(xp.broadcast_to(value, (*batch_shape, value.shape[-1])) for value in values)
-
     @staticmethod
-    def _validate_identity_arguments(identity: Any | None, **raw_parameters: Any | None) -> None:
-        if identity is None:
-            return
-        conflicts = [name for name, value in raw_parameters.items() if value is not None]
-        if conflicts:
-            names = ", ".join(conflicts)
-            raise ValueError(f"identity cannot be combined with raw identity parameters: {names}")
+    def _identity_from(identity: Any | None, prepare: Callable[..., Any], /, **raw: Any | None) -> Any:
+        """Return the prepared ``identity``, or ``prepare(*raw)`` when none is given; never both."""
+        given = [name for name, value in raw.items() if value is not None]
+        if identity is not None:
+            if given:
+                raise ValueError(f"identity cannot be combined with raw identity parameters: {', '.join(given)}")
+            return identity
+        if len(given) != len(raw):
+            verb = "is" if len(raw) == 1 else "are"
+            raise ValueError(f"{' and '.join(raw)} {verb} required when identity is not provided")
+        return prepare(*raw.values())
 
 
 _JAX_MODELS: set[type] = set()

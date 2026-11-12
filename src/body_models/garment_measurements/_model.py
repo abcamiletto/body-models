@@ -125,11 +125,7 @@ class GarmentMeasurements(SkinnedModel):
     ) -> Float[Array, "*batch V 3"]:
         """Compute posed GarmentMeasurements vertices."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape)
         pose = self.prepare_pose(
             body_pose,
             head_pose,
@@ -166,11 +162,7 @@ class GarmentMeasurements(SkinnedModel):
     ) -> Float[Array, "*batch J 4 4"]:
         """Compute posed GarmentMeasurements joint transforms."""
         xp = self._runtime.xp
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape)
         packed_pose = pose_utils.pack_pose(
             xp,
             self._resolve_pelvis_rotation(body_pose, pelvis_rotation),
@@ -209,11 +201,7 @@ class GarmentMeasurements(SkinnedModel):
         global_translation: Float[Array, "*batch 3"] | None = None,
     ) -> Float[Array, "*batch K 3"]:
         """Compute positions defined by a prepared vertex mapping."""
-        self._validate_identity_arguments(identity, shape=shape)
-        if identity is None:
-            batch_shape = body_pose.shape[: -(self._num_rot_dims + 1)]
-            identity = self.prepare_identity(*self._resolve_identity_coefficients(batch_shape, shape=shape))
-
+        identity = self._identity_from(identity, self.prepare_identity, shape=shape)
         pose = self.prepare_pose(
             body_pose,
             head_pose,
