@@ -31,8 +31,6 @@ from body_models.soma._schema import (
     SOMA_NORMALIZED_NPZ_FIELDS,
     SOMA_PROCEDURAL_RIG_FIELDS,
     SOMA_RIG_FIELDS,
-    SOMA_UPSTREAM_02_ASSETS,
-    SOMA_XLO_FIELDS,
     SomaAssets,
     SomaControlRig,
     SomaIdentityTransfer,
@@ -69,7 +67,10 @@ def validate_path(model_path: PathLike) -> Path:
         raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
     missing_fields = _missing_normalized_npz_fields(model_path)
     if missing_fields:
-        raise _missing_rig_fields_error(model_path, missing_fields)
+        raise FileNotFoundError(
+            f"SOMA model path {model_path} is not a normalized SOMA-X 0.3.6 asset; {SOMA_CORE_ASSET} is missing "
+            f"{', '.join(missing_fields)}. Run `body-models preprocess-soma` on the upstream SOMA-X 0.3.6 assets."
+        )
     return model_path
 
 
@@ -96,7 +97,7 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
 
 
 def preprocess_model(upstream_dir: PathLike, output_dir: PathLike) -> Path:
-    """Generate normalized SOMA assets from upstream SOMA-X 0.2.1 assets."""
+    """Generate normalized SOMA assets from upstream SOMA-X 0.3.6 assets."""
     upstream_dir = Path(upstream_dir)
     output_dir = Path(output_dir)
     uv = shutil.which("uv")
@@ -105,7 +106,7 @@ def preprocess_model(upstream_dir: PathLike, output_dir: PathLike) -> Path:
 
     script = Path(__file__).parent / "_tools" / "generate_asset.py"
     command = [uv, "run", "--no-project", str(script), str(upstream_dir), str(output_dir)]
-    print("SOMA: preprocessing upstream 0.2.1 assets with usd-core via uv.")
+    print("SOMA: preprocessing upstream SOMA-X 0.3.6 assets with usd-core via uv.")
     print(f"SOMA: running {' '.join(command)}")
     subprocess.run(command, check=True)
     output_file = output_dir / SOMA_CORE_ASSET
@@ -201,11 +202,6 @@ def with_lod_mesh(data: SomaAssets, lod: str) -> SomaAssets:
         raise ValueError(f"SOMA lod must be one of {SOMA_LODS}, got {lod!r}")
     if normalized == "mid":
         return data
-    if data.lods is None or normalized not in data.lods:
-        raise ValueError(
-            f"SOMA lod={normalized!r} requires preprocessed LOD arrays in {SOMA_CORE_ASSET}. "
-            "Regenerate the hosted SOMA assets with `body-models preprocess-soma` from SOMA-X v0.2 assets."
-        )
     lod_mesh = data.lods[normalized]
     skin_weights = lod_mesh.skin_weights
     if skin_weights is None:
@@ -250,25 +246,6 @@ def _missing_normalized_npz_fields(model_dir: Path) -> list[str]:
         return []
     with np.load(core_asset, allow_pickle=False) as data:
         return [name for name in SOMA_NORMALIZED_NPZ_FIELDS if name not in data]
-
-
-def _preprocess_required_message(model_path: Path, missing_fields: list[str]) -> str:
-    output_dir = model_path / "preprocessed"
-    return (
-        f"SOMA model path {model_path} has upstream 0.2.1 assets but {SOMA_CORE_ASSET} is missing normalized "
-        f"rig fields: {', '.join(missing_fields)}. Run "
-        f"`body-models preprocess-soma {model_path} {output_dir}`."
-    )
-
-
-def _missing_rig_fields_error(asset_dir: Path, missing_fields: list[str]) -> FileNotFoundError:
-    missing_sidecars = [name for name in SOMA_UPSTREAM_02_ASSETS if not (asset_dir / name).exists()]
-    if not missing_sidecars:
-        return FileNotFoundError(_preprocess_required_message(asset_dir, missing_fields))
-    return FileNotFoundError(
-        f"SOMA model path {asset_dir} is missing required NPZ fields: {', '.join(missing_fields)}. "
-        f"Missing upstream 0.2.1 sidecars: {', '.join(missing_sidecars)}."
-    )
 
 
 @cache
@@ -372,20 +349,18 @@ def _pad_indices(indices: list[list[int]]) -> Int[np.ndarray, "J K"]:
     return out
 
 
-def _load_lod_meshes(data: Any) -> dict[str, SomaLodMesh] | None:
-    lods: dict[str, SomaLodMesh] = {}
-    if "lod_mid_to_low" in data and "triangles_low" in data:
-        lods["low"] = SomaLodMesh(
+def _load_lod_meshes(data: Any) -> dict[str, SomaLodMesh]:
+    return {
+        "low": SomaLodMesh(
             vertex_map=np.asarray(data["lod_mid_to_low"], dtype=np.int64),
             faces=np.asarray(data["triangles_low"], dtype=np.int64),
-        )
-    if all(name in data for name in SOMA_XLO_FIELDS):
-        lods["xlo"] = SomaLodMesh(
+        ),
+        "xlo": SomaLodMesh(
             vertex_map=np.asarray(data["lod_mid_to_xlo"], dtype=np.int64),
             faces=np.asarray(data["triangles_xlo"], dtype=np.int64),
             skin_weights=_load_xlo_skin_weights(data),
-        )
-    return lods or None
+        ),
+    }
 
 
 def _load_xlo_skin_weights(data: Any) -> Float[np.ndarray, "Va Jf"]:

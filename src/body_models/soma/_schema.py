@@ -16,7 +16,6 @@ SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
 SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
 SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
-SOMA_UPSTREAM_02_ASSETS = (SOMA_TEMPLATE_RIG_ASSET, SOMA_PROCEDURAL_TRANSFORMS_ASSET)
 SOMA_LODS = ("mid", "low", "xlo")
 SOMA_XLO_FIELDS = (
     "lod_mid_to_xlo",
@@ -54,10 +53,13 @@ SOMA_PROCEDURAL_RIG_FIELDS = (
     "segment_alignment_rotations",
 )
 SOMA_PROCEDURAL_NPZ_FIELDS = tuple(f"procedural_{name}" for name in SOMA_PROCEDURAL_RIG_FIELDS)
+SOMA_LOW_FIELDS = ("lod_mid_to_low", "triangles_low")
 SOMA_NORMALIZED_NPZ_FIELDS = (
     *SOMA_RIG_FIELDS,
     *(f"public_{name}" for name in SOMA_RIG_FIELDS),
     *SOMA_PROCEDURAL_NPZ_FIELDS,
+    *SOMA_LOW_FIELDS,
+    *SOMA_XLO_FIELDS,
 )
 
 
@@ -145,7 +147,7 @@ class SomaAssets:
     kinematics: SomaKinematics
     correctives: SomaCorrectives
     control_rig: SomaControlRig
-    lods: dict[str, SomaLodMesh] | None = None
+    lods: dict[str, SomaLodMesh]
 
 
 @dataclass(frozen=True)

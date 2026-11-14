@@ -7,7 +7,7 @@
 #   "usd-core>=26.5",
 # ]
 # ///
-"""Generate normalized SOMA runtime assets from upstream SOMA-X 0.2.1 assets."""
+"""Generate normalized SOMA runtime assets from upstream SOMA-X 0.3.6 assets."""
 
 from __future__ import annotations
 
@@ -69,10 +69,11 @@ def main() -> None:
 def generate_asset(upstream_dir: Path, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    rig_data = _load_soma_02_rig_data(upstream_dir)
+    rig_data = _load_rig_data(upstream_dir)
     output_npz = output_dir / SOMA_CORE_ASSET
     with np.load(upstream_dir / SOMA_CORE_ASSET, allow_pickle=False) as data:
-        arrays = {name: data[name] for name in data.files}
+        # Drop the reference T-poses of earlier SOMA-X releases.
+        arrays = {name: data[name] for name in data.files if not name.startswith(("t_pose_world__", "reference_pose_"))}
 
     for name in SOMA_RIG_FIELDS:
         arrays[name] = rig_data[name]
@@ -137,7 +138,7 @@ def _find_soma_skin_mesh(stage: Any, lod: str = "mid") -> Any:
     )
 
 
-def _load_soma_02_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
+def _load_rig_from_usd(asset_dir: Path) -> dict[str, Any]:
     from pxr import Usd as _Usd
     from pxr import UsdGeom as _UsdGeom
     from pxr import UsdSkel as _UsdSkel
@@ -340,7 +341,7 @@ def _bind_alignment_rotations(
 def _load_procedural_data(
     asset_dir: Path,
     joint_names: list[str],
-    t_pose_world: np.ndarray,
+    bind_pose_world: np.ndarray,
     joint_parent_ids: np.ndarray,
 ) -> tuple[list[str], dict[str, Shaped[np.ndarray, "..."]]]:
     with (asset_dir / SOMA_PROCEDURAL_TRANSFORMS_ASSET).open() as file:
@@ -397,7 +398,7 @@ def _load_procedural_data(
 
     segment_start_indices_array = np.asarray(segment_start_indices, dtype=np.int64)
     segment_end_indices_array = np.asarray(segment_end_indices, dtype=np.int64)
-    public_t_pose_world = t_pose_world[[joint_index[name] for name in public_names]]
+    public_bind_pose_world = bind_pose_world[[joint_index[name] for name in public_names]]
 
     return public_names, {
         "public_joint_indices_full": np.asarray([joint_index[name] for name in public_names], dtype=np.int64),
@@ -411,7 +412,7 @@ def _load_procedural_data(
         "segment_parent_joint_indices": np.asarray(segment_parent_indices, dtype=np.int64),
         "segment_reverse_indices": np.asarray(reverse_segment_indices, dtype=np.int64),
         "segment_alignment_rotations": _bind_alignment_rotations(
-            public_t_pose_world,
+            public_bind_pose_world,
             segment_start_indices_array,
             segment_end_indices_array,
         ).astype(np.float32),
@@ -466,12 +467,12 @@ def _derive_public_rig(rig_data: dict[str, Any], public_joint_names: list[str]) 
     return out
 
 
-def _load_soma_02_rig_data(asset_dir: Path) -> dict[str, Any]:
-    expanded_rig = _load_soma_02_rig_from_usd(asset_dir)
+def _load_rig_data(asset_dir: Path) -> dict[str, Any]:
+    expanded_rig = _load_rig_from_usd(asset_dir)
     public_joint_names, procedural = _load_procedural_data(
         asset_dir,
         [str(name) for name in expanded_rig["joint_names"]],
-        np.asarray(expanded_rig["t_pose_world"], dtype=np.float32),
+        np.asarray(expanded_rig["bind_pose_world"], dtype=np.float32),
         np.asarray(expanded_rig["joint_parent_ids"], dtype=np.int64),
     )
     expanded_rig["procedural"] = procedural

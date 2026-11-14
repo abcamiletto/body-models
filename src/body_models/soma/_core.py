@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
-from jaxtyping import Float, Int
+from jaxtyping import Bool, Float, Int
 from nanomanifold import SO3
 
 from body_models._common import deformation, kinematics, ops, skinning
@@ -443,7 +443,7 @@ def _aligned_twist_channels_from_world(
         dtype=control_world_rotations.dtype,
     )
     bind_rotations = xp.asarray(
-        control_rig.t_pose_world[..., :3, :3],
+        control_rig.bind_pose_world[..., :3, :3],
         dtype=control_world_rotations.dtype,
     )
 
@@ -717,8 +717,26 @@ def _align_vectors(
     if target.shape[-2] == 1:
         return kinematics.rotation_between_vectors(source[..., 0, :], target[..., 0, :], xp=xp)
 
+    # As SOMA-X: add the normals of the first two correspondences, and a weak identity prior when degenerate.
+    target_normal, target_valid = _first_normal(xp, target)
+    source_normal, source_valid = _first_normal(xp, source)
+    normal_covariance = target_normal[..., :, None] * source_normal[..., None, :]
     covariance = xp.einsum("...ni,...nj->...ij", target, source)
+    covariance = covariance + xp.where((target_valid & source_valid)[..., None], normal_covariance, 0.0)
+    scale = xp.amax(xp.sum(xp.abs(covariance), axis=-1), axis=-1)
+    degeneracy = xp.clip(1.0 - xp.abs(_det3(covariance)) / scale**3 / 1e-6, 0.0, 1.0)
+    covariance = covariance + (0.05 * degeneracy * scale)[..., None, None] * ops.eye_as(
+        covariance, batch_dims=covariance.shape[:-2], xp=xp
+    )
     return _kabsch(xp, covariance)
+
+
+def _first_normal(xp, vectors: Float[Array, "B N 3"]) -> tuple[Float[Array, "B 3"], Bool[Array, "B 1"]]:
+    """Normal of the first two vectors, as long as the first one, and whether they span a plane."""
+    normal = xp.linalg.cross(vectors[..., 0, :], vectors[..., 1, :])
+    length = xp.linalg.vector_norm(normal, axis=-1, keepdims=True)
+    first_length = xp.linalg.vector_norm(vectors[..., 0, :], axis=-1, keepdims=True)
+    return normal * first_length / (length + 1e-8), length > 1e-9
 
 
 def _kabsch(xp, H: Float[Array, "B 3 3"]) -> Float[Array, "B 3 3"]:
