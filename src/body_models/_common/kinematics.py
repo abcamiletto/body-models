@@ -136,7 +136,7 @@ def rotation_between_vectors(
         xp.asarray(np.pi, dtype=source.dtype),
         xp.atan2(cross_norm[..., 0], dot[..., 0]),
     )
-    return SO3.conversions.from_axis_angle_to_rotmat(angle[..., None] * axis, xp=xp)
+    return SO3.convert(angle[..., None] * axis, src="axis_angle", dst="rotmat", xp=xp)
 
 
 def _normalize(vectors: Float[Array, "*batch 3"], *, xp: Any) -> Float[Array, "*batch 3"]:

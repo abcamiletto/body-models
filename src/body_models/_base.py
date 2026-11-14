@@ -230,7 +230,7 @@ class SkinnedModel(ABC):
             return SO3.identity_as(
                 like,
                 batch_dims=(*batch_dims, *rotation_batch),
-                rotation_type=spec.rotation_type,
+                rep=spec.rotation_type,
                 xp=runtime.xp,
             )
 

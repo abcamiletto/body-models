@@ -224,9 +224,11 @@ def _load_data_numpy(
 
     world_T = (
         0.1
-        * SO3.conversions.from_euler_to_rotmat(
+        * SO3.convert(
             np.array([[np.pi / 2, 0, 0]], dtype=dtype),
-            convention="xyz",
+            src="euler",
+            dst="rotmat",
+            src_kwargs={"convention": "xyz"},
         )[0]
     )
 
@@ -488,7 +490,7 @@ def _compute_bone_data(
 
     euler = np.zeros((len(rolls), 3), dtype=dtype)
     euler[:, 1] = np.asarray(rolls, dtype=dtype)
-    rolls_mat = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz", xp=np)
+    rolls_mat = SO3.convert(euler, src="euler", dst="rotmat", src_kwargs={"convention": "xyz"}, xp=np)
 
     return (
         np.stack(heads),

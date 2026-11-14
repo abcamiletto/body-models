@@ -180,7 +180,7 @@ def reference_inputs(name: str) -> dict[str, np.ndarray]:
     if name == "anny":
         phenotype = {key: np.asarray([value], dtype=np.float32) for key, value in data["phenotype"].items()}
         rotation = np.asarray(data["pose"], dtype=np.float32)[None, :, :3, :3]
-        pose = SO3.conversions.from_rotmat_to_axis_angle(rotation, xp=np)
+        pose = SO3.convert(rotation, src="rotmat", dst="axis_angle", xp=np)
         global_rotation, body_pose, head_pose, hand_pose = anny_pose.unpack_pose(np, pose)
         return {
             "shape": np.stack(
@@ -206,7 +206,7 @@ def mhr_native_skeleton(skeleton: np.ndarray) -> np.ndarray:
     translation = skeleton[..., :3, 3] * 100
     rotation = skeleton[..., :3, :3]
     scale = np.linalg.vector_norm(rotation[..., :, 0], axis=-1, keepdims=True)
-    quat = SO3.conversions.from_rotmat_to_quat(rotation / scale[..., None], convention="xyzw", xp=np)
+    quat = SO3.from_rotmat(rotation / scale[..., None], convention="xyzw", xp=np)
     return np.concatenate([translation, quat, scale], axis=-1)
 
 

@@ -237,7 +237,7 @@ class SOMA(SkinnedModel):
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
-            rotation_type=self.rotation_type,
+            rep=self.rotation_type,
             xp=xp,
         )
         pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)
@@ -308,7 +308,7 @@ class SOMA(SkinnedModel):
         root_rotation = SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
-            rotation_type=self.rotation_type,
+            rep=self.rotation_type,
             xp=xp,
         )
         pose = pose_utils.pack_pose(xp, root_rotation, body_pose, head_pose, hand_pose)

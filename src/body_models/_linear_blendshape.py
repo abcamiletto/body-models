@@ -266,7 +266,7 @@ def assemble_pose_matrices(
         root_matrices = SO3.identity_as(
             matrices[0],
             batch_dims=(*batch_shape, 1),
-            rotation_type="rotmat",
+            rep="rotmat",
             xp=xp,
         )
     else:
