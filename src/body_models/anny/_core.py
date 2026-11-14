@@ -340,7 +340,7 @@ def _skeleton_transforms_from_heads_tails(
     cross_norm = xp.linalg.vector_norm(cross, axis=-1)
     axis = cross / xp.where(cross_norm > 0, cross_norm, xp.ones_like(cross_norm))[..., None]
     angle = xp.atan2(cross_norm, dot)
-    rotations = SO3.conversions.from_axis_angle_to_rotmat(-angle[..., None] * axis, xp=xp)
+    rotations = SO3.convert(-angle[..., None] * axis, src="axis_angle", dst="rotmat", xp=xp)
 
     valid = (xp.abs(xp.sum(axis**2, axis=-1) - 1) < eps)[..., None, None]
     rotations = xp.where(valid, rotations, xp.broadcast_to(degenerate_rotation, rotations.shape)) @ rolls

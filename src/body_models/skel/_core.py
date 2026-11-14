@@ -224,7 +224,7 @@ def _compute_local_transforms(
     zero_pad = ops.zeros_as(pose, shape=(*batch_shape, 1), xp=xp)
     pose_padded = xp.concat([pose, zero_pad], axis=-1)
     axis_angles = pose_padded[..., None] * all_axes
-    all_R = SO3.conversions.from_axis_angle_to_rotmat(axis_angles, xp=xp)  # [B, 47, 3, 3]
+    all_R = SO3.convert(axis_angles, src="axis_angle", dst="rotmat", xp=xp)  # [B, 47, 3, 3]
 
     # Compose rotations: Rp = R2 @ R1 @ R0 (identity-padded for joints with fewer DOFs)
     R0 = all_R[..., rotation_indices[:, 0], :, :]

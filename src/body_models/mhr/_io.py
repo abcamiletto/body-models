@@ -120,7 +120,7 @@ def load_model_data(asset_dir: Path, *, lod: int = 1, simplify: float = 1.0) -> 
         joint_pre_rotations=np.array(data["joint_pre_rotations"], copy=True),
         parameter_transform=np.array(data["parameter_transform"], copy=True),
         pose_control_joints=_pose_control_joints(data["parameter_transform"], len(joint_parents)),
-        bind_inv_linear=np.array(SO3.conversions.from_quat_to_rotmat(q, convention="xyzw") * s[..., None], copy=True),
+        bind_inv_linear=np.array(SO3.to_rotmat(q, convention="xyzw") * s[..., None], copy=True),
         bind_inv_translation=np.array(t, copy=True),
         correctives=correctives,
         kinematic_tree=kinematics.KinematicTree.from_parents(joint_parents),

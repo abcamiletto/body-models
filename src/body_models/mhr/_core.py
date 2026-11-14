@@ -24,7 +24,7 @@ def _pose_coefficients(
     dtype = joint_params.dtype
 
     euler = joint_params[..., 2:, 3:6]
-    rot = SO3.conversions.from_euler_to_rotmat(euler, convention="xyz", xp=xp)
+    rot = SO3.convert(euler, src="euler", dst="rotmat", src_kwargs={"convention": "xyz"}, xp=xp)
     feat = xp.concat([rot[..., 0], rot[..., 1]], axis=-1)
     feat = ops.at_set(feat, (..., 0), feat[..., 0] - 1.0, copy=False, xp=xp)
     feat = ops.at_set(feat, (..., 4), feat[..., 4] - 1.0, copy=False, xp=xp)
@@ -167,7 +167,7 @@ def _forward_skeleton_core(
     euler = j_p[..., 3:6]
 
     q_local = SO3.canonicalize(
-        SO3.conversions.from_euler_to_quat(euler, euler_convention="xyz", quat_convention="xyzw", xp=xp),
+        SO3.from_euler(euler, convention="xyz", quat_convention="xyzw", xp=xp),
         convention="xyzw",
         xp=xp,
     )
@@ -176,7 +176,7 @@ def _forward_skeleton_core(
     )
 
     local_scale = xp.exp(_LN2 * j_p[..., 6:7])
-    local_rotation = SO3.conversions.from_quat_to_rotmat(q_l, convention="xyzw", xp=xp)
+    local_rotation = SO3.to_rotmat(q_l, convention="xyzw", xp=xp)
     local_transforms = kinematics.affine_transforms(local_rotation * local_scale[..., None], t_l, xp=xp)
     world = runtime._compose_kinematic_tree(local_transforms, tree)
     return world, j_p

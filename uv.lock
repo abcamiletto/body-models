@@ -64,7 +64,7 @@ wheels = [
 
 [[package]]
 name = "body-models"
-version = "0.27.0"
+version = "0.27.1"
 source = { editable = "." }
 dependencies = [
     { name = "huggingface-hub" },
@@ -118,7 +118,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=1.11.0" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.33" },
     { name = "jaxtyping", specifier = ">=0.2.28" },
-    { name = "nanomanifold", specifier = ">=0.8.0" },
+    { name = "nanomanifold", specifier = ">=0.10.1" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "platformdirs", specifier = ">=4.6" },
     { name = "ptloader", specifier = "==0.3.0" },
@@ -809,15 +809,15 @@ wheels = [
 
 [[package]]
 name = "nanomanifold"
-version = "0.8.0"
+version = "0.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jaxtyping" },
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/f9/38e91bf7df790149e78b3317948bb4a3908988866ca83a75f479610f3289/nanomanifold-0.8.0.tar.gz", hash = "sha256:16d42edf80f673d07d0c3ca3b8fd6ccb060ba295c0676127d71bdf6c4a2d67f9", size = 124242, upload-time = "2026-04-24T15:14:53.617Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/04/74b6e1a8edb316a9c1aaa988ceddd40d5d317fbc481c1586221b1ad4922e/nanomanifold-0.10.1.tar.gz", hash = "sha256:f16e19afae20da273a1eff5dd3dd04902b133677414b1bd463a6f97b96587bd0", size = 111336, upload-time = "2026-11-11T16:07:35.359Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/9a/8a2f669f5de785c9f1a38c1b39897bf60d37efc7a9e985a135a2bf38b356/nanomanifold-0.8.0-py3-none-any.whl", hash = "sha256:853537e0806e47b2fde100a507f64fd673a62b2ea1fefae602f02b3a7674fd89", size = 45752, upload-time = "2026-04-24T15:14:54.601Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/35/863913ea8323d2bb5b84bebfad49717b3a26261a9d02e69305437bb01a38/nanomanifold-0.10.1-py3-none-any.whl", hash = "sha256:88321a3134365e26d3dccaa4751b52766d94890f368a6c4d54ea78d3421d7fcb", size = 34660, upload-time = "2026-11-11T16:07:33.836Z" },
 ]
 
 [[package]]

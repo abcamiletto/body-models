@@ -168,7 +168,7 @@ def _compute_rotation_indices() -> Int[np.ndarray, "24 3"]:
 
 def _pin_axis_from_euler(euler_xyz: list[float]) -> list[float]:
     euler = np.asarray(euler_xyz, dtype=np.float32)
-    rotation = SO3.conversions.from_euler_to_rotmat(euler, convention="XYZ")
+    rotation = SO3.convert(euler, src="euler", dst="rotmat", src_kwargs={"convention": "XYZ"})
     axis = rotation @ np.asarray([0.0, 0.0, 1.0], dtype=np.float32)
     return axis.tolist()
 

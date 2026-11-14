@@ -265,7 +265,7 @@ class GarmentMeasurements(SkinnedModel):
         return SO3.identity_as(
             body_pose,
             batch_dims=batch_shape,
-            rotation_type=self.rotation_type,
+            rep=self.rotation_type,
             xp=self._runtime.xp,
         )
 
