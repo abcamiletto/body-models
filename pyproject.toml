@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.27.1"
+version = "0.28.0"
 description = "Parametric and articulated body models for NumPy, PyTorch, and JAX with optional Warp acceleration"
 readme = "README.md"
 authors = [
@@ -16,6 +16,7 @@ dependencies = [
     "numpy>=2.0.0",
     "platformdirs>=4.6",
     "ptloader==0.3.0",
+    "rtree>=1.4.0",
     "scipy>=1.13.0",
     "trimesh>=4.0.0",
     "typer>=0.9.0",
@@ -52,7 +53,7 @@ dev = [
     "jax>=0.4.33",
     "warp-lang>=1.12.0",
     "pyfqmr>=0.3.0",
-    "py-soma-x>=0.2.1",
+    "py-soma-x>=0.3.6",
     "anny>=0.3.1",
     "smplx>=0.1.28",
 ]

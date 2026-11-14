@@ -64,7 +64,7 @@ wheels = [
 
 [[package]]
 name = "body-models"
-version = "0.27.1"
+version = "0.28.0"
 source = { editable = "." }
 dependencies = [
     { name = "huggingface-hub" },
@@ -73,6 +73,7 @@ dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
     { name = "ptloader" },
+    { name = "rtree" },
     { name = "scipy" },
     { name = "trimesh" },
     { name = "typer" },
@@ -123,6 +124,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.6" },
     { name = "ptloader", specifier = "==0.3.0" },
     { name = "pyfqmr", marker = "extra == 'simplify'", specifier = ">=0.3.0" },
+    { name = "rtree", specifier = ">=1.4.0" },
     { name = "scipy", specifier = ">=1.13.0" },
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'torch') or (sys_platform == 'win32' and extra == 'torch')", specifier = ">=2.5.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.5.0" },
@@ -136,7 +138,7 @@ provides-extras = ["torch", "jax", "warp", "simplify"]
 dev = [
     { name = "anny", specifier = ">=0.3.1" },
     { name = "jax", specifier = ">=0.4.33" },
-    { name = "py-soma-x", specifier = ">=0.2.1" },
+    { name = "py-soma-x", specifier = ">=0.3.6" },
     { name = "pyfqmr", specifier = ">=0.3.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.16.0" },
@@ -1139,7 +1141,7 @@ wheels = [
 
 [[package]]
 name = "py-soma-x"
-version = "0.2.1"
+version = "0.3.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cholespy" },
@@ -1153,9 +1155,9 @@ dependencies = [
     { name = "usd-core" },
     { name = "warp-lang" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/3b/0726c8794e92068ffcfa075fc5e9cc2f1a16c187c932145ce268e32e60c9/py_soma_x-0.2.1.tar.gz", hash = "sha256:6bc562b781cb281053db01a7ed997871669cd3f476080c89a41ff75021ed4972", size = 155701, upload-time = "2026-06-05T20:13:12.435Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/d9/d4a7e87d6a533577d685108f5da78189cc93b0f3af908f262a2a715a07e0/py_soma_x-0.3.6.tar.gz", hash = "sha256:2692d34d334167be5219ab3952b6162b2fe82ef2c54800879b710fa659131c39", size = 188769, upload-time = "2026-11-06T18:10:23.338Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/89/c5/39936331988fa040732eea27a7a8fac7df97e24c9270733202af025a396e/py_soma_x-0.2.1-py3-none-any.whl", hash = "sha256:922fb1adfa5055f1b69b65b15d8375e8f74a0744b900ba121da5d8ec97068d74", size = 167809, upload-time = "2026-06-05T20:13:11.11Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/92/2f88b4348c80a93f590c133650adcf0e3e4b8b20e5d353a8aed6e5edc827/py_soma_x-0.3.6-py3-none-any.whl", hash = "sha256:401ca64514f2dee843032bfdd4e94ee9ca59bf822568a486b320db209c22b147", size = 206817, upload-time = "2026-11-06T18:10:21.51Z" },
 ]
 
 [[package]]

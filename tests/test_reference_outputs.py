@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 from nanomanifold import SO3
 
-from body_models._common import skinning
 from body_models.anny import _pose as anny_pose
 from body_models.mhr import _pose as mhr_pose
 from body_models.skel import _pose as skel_pose
@@ -50,82 +49,31 @@ def test_numpy_reference_skeleton(name, model_class, kwargs) -> None:
         np.testing.assert_allclose(skeleton[0, ..., :3, 3], expected, rtol=1e-4, atol=1e-4)
 
 
-def test_soma_021_matches_upstream_pure_lbs(tmp_path) -> None:
+def test_soma_matches_upstream(tmp_path) -> None:
     torch = pytest.importorskip("torch")
     upstream_soma = pytest.importorskip("soma")
 
-    model_path = model_assets.get_model_file("soma")
-    upstream_model_path = tmp_path / "soma-upstream"
-    upstream_model_path.mkdir()
-    upstream_npz = model_path / "SOMA_neutral.upstream-0.2.1.npz"
-    required_assets = [
-        upstream_npz,
-        model_path / "SOMA_template_rig.usda",
-        model_path / "SOMA_procedural_transforms.json",
-    ]
-    package_assets = [model_path / "correctives_model.pt"]
-    if not all(path.exists() for path in [*required_assets, *package_assets]):
-        pytest.skip("SOMA 0.2.1 assets are not available")
-    (upstream_model_path / "SOMA_neutral.npz").symlink_to(upstream_npz)
-    for asset in [*required_assets[1:], *package_assets]:
-        (upstream_model_path / asset.name).symlink_to(asset)
+    upstream_path = model_assets.get_model_file("soma") / "upstream"
+    if not upstream_path.is_dir():
+        pytest.skip("SOMA-X assets are not available")
+    upstream = upstream_soma.SOMALayer(data_root=upstream_path, device="cpu", identity_model_type="soma", mode="dense")
+    model = SOMA(model_path=generate_soma_asset(upstream_path, tmp_path), model_type="soma", rotation_type="axis_angle")
 
-    upstream = upstream_soma.SOMALayer(
-        data_root=upstream_model_path,
-        device="cpu",
-        identity_model_type="soma",
-        mode="dense",
-        lod="mid",
-        correctives_model_path=None,
-    )
-    normalized_model_path = tmp_path / "soma-normalized"
-    generate_soma_asset(upstream_model_path, normalized_model_path)
-    model = SOMA(model_path=normalized_model_path, model_type="soma", rotation_type="axis_angle")
+    rng = np.random.default_rng(0)
+    pose = rng.normal(scale=0.35, size=(2, 77, 3)).astype(np.float32)
+    shape = rng.normal(scale=0.8, size=(2, 128)).astype(np.float32)
+    with torch.no_grad():
+        expected = upstream(poses=torch.from_numpy(pose), identity_coeffs=torch.from_numpy(shape))["vertices"].numpy()
 
-    shape = np.zeros((1, 128), dtype=np.float32)
-    poses = np.zeros((3, 1, 77, 3), dtype=np.float32)
-    poses[1, 0, 0, 0] = 0.4
-    poses[2, 0, 38, 0] = 0.8
+    global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
+    vertices = model.forward_vertices(body_pose, head_pose, hand_pose, shape=shape, global_rotation=global_rotation)
 
-    for pose in poses:
-        with torch.no_grad():
-            expected = (
-                upstream(
-                    poses=torch.as_tensor(pose),
-                    identity_coeffs=torch.zeros(1, 128),
-                    apply_correctives=False,
-                )["vertices"]
-                .detach()
-                .numpy()
-            )
-
-        global_rotation, body_pose, head_pose, hand_pose = soma_pose.unpack_pose(np, pose)
-        identity = model.prepare_identity(shape)
-        prepared_pose = model.prepare_pose(body_pose, head_pose, hand_pose, identity=identity)
-        vertices = skinning.linear_blend_skinning(
-            identity["rest_vertices"],
-            prepared_pose["skinning_transforms"],
-            model.skinning_spec.skinning_weights,
-            xp=np,
-        )
-        vertices = skinning.apply_global_transform(vertices, global_rotation, None, xp=np)
-
-        np.testing.assert_allclose(vertices, expected, rtol=2e-3, atol=2e-3)
+    np.testing.assert_allclose(vertices, expected, atol=1e-4)
 
 
 def test_soma_lod_vertex_counts() -> None:
-    model_path = model_assets.get_model_file("soma")
-    required_assets = [model_path / "SOMA_neutral.npz", model_path / "correctives_model.pt"]
-    if not all(path.exists() for path in required_assets):
-        pytest.skip("SOMA assets are not available")
-
-    expected = {"mid": 18056, "low": 4505}
-    with np.load(model_path / "SOMA_neutral.npz", allow_pickle=False) as data:
-        if "lod_mid_to_xlo" in data:
-            expected["xlo"] = 612
-
-    for lod, num_vertices in expected.items():
-        model = SOMA(model_path=model_path, model_type="soma", rotation_type="axis_angle", lod=lod)
+    for lod, num_vertices in {"mid": 18056, "low": 4505, "xlo": 612}.items():
+        model = SOMA(model_type="soma", rotation_type="axis_angle", lod=lod)
         assert model.num_vertices == num_vertices
 
 

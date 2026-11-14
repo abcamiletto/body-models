@@ -13,7 +13,7 @@ Hugging Face (SOMA-X: Apache 2.0). To prefetch:
 body-models download soma
 ```
 
-The loader expects normalized assets. To normalize upstream SOMA-X 0.2.1 files
+The loader expects normalized assets. To normalize upstream SOMA-X 0.3.6 files
 and save their path:
 
 ```bash
