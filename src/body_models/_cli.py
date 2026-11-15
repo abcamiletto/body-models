@@ -65,8 +65,8 @@ def download(
 
 @app.command("preprocess-soma")
 def preprocess_soma(upstream_dir: Path, output_dir: Path) -> None:
-    """Convert upstream SOMA-X 0.2.1 files into body-models assets."""
-    from body_models.soma._io import preprocess_model
+    """Normalize a SOMA-X 0.3.6 Hugging Face snapshot (nvidia/soma-x) into body-models assets. Needs usd-core."""
+    from body_models.soma._preprocess import preprocess_model
 
     path = preprocess_model(upstream_dir, output_dir)
     _save_paths({"soma": path})

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 from dataclasses import replace
 from functools import cache
 from pathlib import Path
@@ -28,9 +26,9 @@ from body_models.soma._schema import (
     SOMA_ASSETS,
     SOMA_CORE_ASSET,
     SOMA_LODS,
-    SOMA_NORMALIZED_NPZ_FIELDS,
     SOMA_PROCEDURAL_RIG_FIELDS,
     SOMA_RIG_FIELDS,
+    SOMA_X_VERSION,
     SomaAssets,
     SomaControlRig,
     SomaIdentityTransfer,
@@ -50,7 +48,6 @@ __all__ = [
     "load_identity_transfer_data",
     "load_model_data",
     "load_model_data_for_lod",
-    "preprocess_model",
     "with_active_mesh",
     "with_lod_mesh",
 ]
@@ -65,11 +62,13 @@ def validate_path(model_path: PathLike) -> Path:
     missing = _missing_assets(model_path)
     if missing:
         raise FileNotFoundError(f"SOMA model path {model_path} is missing required assets: {', '.join(missing)}.")
-    missing_fields = _missing_normalized_npz_fields(model_path)
-    if missing_fields:
+    with np.load(model_path / SOMA_CORE_ASSET, allow_pickle=False) as data:
+        version = str(data["soma_x_version"]) if "soma_x_version" in data else "an older SOMA-X release"
+    # FileNotFoundError lets download_model replace stale cached assets; configured paths fail here.
+    if version != SOMA_X_VERSION:
         raise FileNotFoundError(
-            f"SOMA model path {model_path} is not a normalized SOMA-X 0.3.6 asset; {SOMA_CORE_ASSET} is missing "
-            f"{', '.join(missing_fields)}. Run `body-models preprocess-soma` on the upstream SOMA-X 0.3.6 assets."
+            f"SOMA assets in {model_path} are from {version}; body-models needs SOMA-X {SOMA_X_VERSION}. "
+            "Run `body-models download soma`, or `body-models preprocess-soma` on a SOMA-X snapshot."
         )
     return model_path
 
@@ -94,25 +93,6 @@ def ensure_identity_assets(model_dir: Path, model_type: str) -> None:
     missing = [name for name in asset_names if not (asset_dir / name).exists()]
     if missing:
         raise FileNotFoundError(f"SOMA {normalized} identity assets are missing from {asset_dir}: {', '.join(missing)}")
-
-
-def preprocess_model(upstream_dir: PathLike, output_dir: PathLike) -> Path:
-    """Generate normalized SOMA assets from upstream SOMA-X 0.3.6 assets."""
-    upstream_dir = Path(upstream_dir)
-    output_dir = Path(output_dir)
-    uv = shutil.which("uv")
-    if uv is None:
-        raise RuntimeError("SOMA preprocessing requires `uv` on PATH.")
-
-    script = Path(__file__).parent / "_tools" / "generate_asset.py"
-    command = [uv, "run", "--no-project", str(script), str(upstream_dir), str(output_dir)]
-    print("SOMA: preprocessing upstream SOMA-X 0.3.6 assets with usd-core via uv.")
-    print(f"SOMA: running {' '.join(command)}")
-    subprocess.run(command, check=True)
-    output_file = output_dir / SOMA_CORE_ASSET
-    if not output_file.is_file():
-        raise RuntimeError(f"SOMA preprocessing did not produce {output_file}")
-    return output_dir
 
 
 def _dense_skin_weights(rig_data: dict[str, Any]) -> Float[np.ndarray, "V J"]:
@@ -238,14 +218,6 @@ def _active_corrective_basis(
 
 def _missing_assets(model_dir: Path) -> list[str]:
     return [name for name in SOMA_ASSETS if not (model_dir / name).exists()]
-
-
-def _missing_normalized_npz_fields(model_dir: Path) -> list[str]:
-    core_asset = model_dir / SOMA_CORE_ASSET
-    if not core_asset.exists():
-        return []
-    with np.load(core_asset, allow_pickle=False) as data:
-        return [name for name in SOMA_NORMALIZED_NPZ_FIELDS if name not in data]
 
 
 @cache
