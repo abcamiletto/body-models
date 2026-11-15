@@ -63,15 +63,6 @@ def download(
         _download_family(name, destination)
 
 
-@app.command("preprocess-soma")
-def preprocess_soma(upstream_dir: Path, output_dir: Path) -> None:
-    """Normalize a SOMA-X 0.3.6 Hugging Face snapshot (nvidia/soma-x) into body-models assets. Needs usd-core."""
-    from body_models.soma._preprocess import preprocess_model
-
-    path = preprocess_model(upstream_dir, output_dir)
-    _save_paths({"soma": path})
-
-
 def _download_family(name: str, output_dir: Path | None) -> None:
     family = FAMILIES[name]
     if family.licensed is None:
