@@ -64,7 +64,7 @@ wheels = [
 
 [[package]]
 name = "body-models"
-version = "0.28.1"
+version = "0.28.2"
 source = { editable = "." }
 dependencies = [
     { name = "huggingface-hub" },
@@ -90,9 +90,6 @@ torch = [
     { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.10.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-usd = [
-    { name = "usd-core" },
-]
 warp = [
     { name = "warp-lang" },
 ]
@@ -109,7 +106,6 @@ dev = [
     { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.10.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "ty" },
-    { name = "usd-core" },
     { name = "warp-lang" },
 ]
 docs = [
@@ -134,10 +130,9 @@ requires-dist = [
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'torch'", specifier = ">=2.5.0" },
     { name = "trimesh", specifier = ">=4.0.0" },
     { name = "typer", specifier = ">=0.9.0" },
-    { name = "usd-core", marker = "extra == 'usd'", specifier = ">=26.5" },
     { name = "warp-lang", marker = "extra == 'warp'", specifier = ">=1.12.0" },
 ]
-provides-extras = ["torch", "jax", "warp", "simplify", "usd"]
+provides-extras = ["torch", "jax", "warp", "simplify"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -151,7 +146,6 @@ dev = [
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = ">=2.5.0" },
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = ">=2.5.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "ty", specifier = ">=0.0.1a13" },
-    { name = "usd-core", specifier = ">=26.5" },
     { name = "warp-lang", specifier = ">=1.12.0" },
 ]
 docs = [

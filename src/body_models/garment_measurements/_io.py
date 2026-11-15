@@ -37,14 +37,12 @@ class GarmentMeasurementsAssets:
 def validate_path(model_path: PathLike) -> Path:
     """Validate a directory containing the preprocessed ``garment_measurements.npz``."""
     model_path = Path(model_path)
-    if (model_path / PREPROCESSED_FILENAME).is_file():
-        return model_path
-    upstream_data = _find_upstream_data_dir(model_path)
-    if upstream_data is not None:
-        raise FileNotFoundError(_preprocess_message(upstream_data))
-    raise FileNotFoundError(
-        f"GarmentMeasurements model directory {model_path} does not contain {PREPROCESSED_FILENAME}"
-    )
+    if not (model_path / PREPROCESSED_FILENAME).is_file():
+        raise FileNotFoundError(
+            f"GarmentMeasurements model directory {model_path} does not contain {PREPROCESSED_FILENAME}. "
+            "Run `body-models download garment-measurements`."
+        )
+    return model_path
 
 
 def download_model(output_dir: PathLike | None = None) -> Path:
@@ -74,26 +72,6 @@ def load_model_data(model_dir: Path, dtype: Any = np.float32) -> GarmentMeasurem
         skin_weights=data["skin_weights"],
         compact_skinning=CompactSkinning(skin_joint_indices, skin_joint_weights),
         mvc_weights=data["mvc_weights"],
-    )
-
-
-def _find_upstream_data_dir(model_path: Path) -> Path | None:
-    for base in (model_path, model_path / "data"):
-        pca_path = base / "pca" / "point.pca"
-        obj_path = base / "pca" / "mean.obj"
-        fbx_path = base / "template" / "male.fbx"
-        if pca_path.is_file() and obj_path.is_file() and fbx_path.is_file():
-            return base
-    return None
-
-
-def _preprocess_message(upstream_data: Path) -> str:
-    script = Path(__file__).with_name("_tools") / "generate_asset.py"
-    return (
-        f"GarmentMeasurements requires a preprocessed {PREPROCESSED_FILENAME} asset. "
-        "Generate it from the upstream files with:\n"
-        f"uv run --python 3.11 --no-project {script} {upstream_data} /path/to/output-dir\n"
-        "Then run `body-models set garment-measurements /path/to/output-dir`."
     )
 
 

@@ -9,22 +9,20 @@
 # ///
 """Generate a GarmentMeasurements runtime asset from upstream data.
 
-Run this as a self-contained PEP 723 script:
+Usage:
 
-    uv run --python 3.11 --no-project src/body_models/garment_measurements/_tools/generate_asset.py \
-        /path/to/GarmentMeasurements/data /path/to/output/model
+    uv run scripts/preprocess/garment_measurements.py /path/to/GarmentMeasurements/data /path/to/output
 
-The generated ``garment_measurements.npz`` is the only asset loaded by the runtime
-model. The ``bpy`` dependency is isolated to this asset-generation script.
+The generated ``garment_measurements.npz`` is the only asset loaded by the runtime model.
 """
 
 from __future__ import annotations
 
-import importlib
 import struct
 from pathlib import Path
 from typing import Annotated, TypedDict
 
+import bpy
 import numpy as np
 import typer
 from jaxtyping import Bool, Float, Int
@@ -98,8 +96,6 @@ def _load_obj(path: Path) -> tuple[Float[np.ndarray, "V 3"], Int[np.ndarray, "F 
 
 
 def _load_fbx_rig(path: Path, num_vertices: int) -> RigData:
-    bpy = importlib.import_module("bpy")
-
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
     bpy.ops.import_scene.fbx(

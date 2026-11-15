@@ -14,13 +14,7 @@ body-models download soma
 ```
 
 The loader expects normalized SOMA-X 0.3.6 assets and rejects assets from other
-releases. To normalize a SOMA-X snapshot yourself and save its path:
-
-```bash
-pip install "body-models[usd]"
-hf download nvidia/soma-x --revision v0.3.6 --local-dir /path/to/upstream
-body-models preprocess-soma /path/to/upstream /path/to/processed
-```
+releases.
 
 ## Rig and resolution
 

@@ -68,7 +68,7 @@ def validate_path(model_path: PathLike) -> Path:
     if version != SOMA_X_VERSION:
         raise FileNotFoundError(
             f"SOMA assets in {model_path} are from {version}; body-models needs SOMA-X {SOMA_X_VERSION}. "
-            "Run `body-models download soma`, or `body-models preprocess-soma` on a SOMA-X snapshot."
+            "Run `body-models download soma`."
         )
     return model_path
 

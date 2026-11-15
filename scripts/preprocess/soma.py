@@ -1,26 +1,46 @@
-"""Normalize a SOMA-X 0.3.6 Hugging Face snapshot into the body-models SOMA asset. Requires ``usd-core``."""
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "body-models",
+#   "usd-core>=26.5",
+# ]
+# [tool.uv.sources]
+# body-models = { path = "../.." }
+# ///
+"""Generate the body-models SOMA assets from a SOMA-X Hugging Face snapshot.
+
+Usage:
+
+    hf download nvidia/SOMA-X --revision v0.3.6 --local-dir /path/to/upstream
+    uv run scripts/preprocess/soma.py /path/to/upstream /path/to/output
+
+The output folder is what ``soma/assets.zip`` holds on Hugging Face.
+"""
 
 from __future__ import annotations
 
 import json
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import numpy as np
+import typer
 from jaxtyping import Float, Int
 from pxr import Usd, UsdGeom, UsdSkel
 from scipy.sparse import csc_matrix
 
-from body_models.soma._schema import SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET, SOMA_X_VERSION
+from body_models.soma._schema import MODEL_TYPE_SPECS, SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET, SOMA_X_VERSION
 
 SOMA_X_MANIFEST = "SOMA-X-HF-MANIFEST.json"
 SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
 SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 
 
-def preprocess_model(upstream_dir: Path, output_dir: Path) -> Path:
-    """Write the normalized SOMA asset and correctives for a SOMA-X snapshot to ``output_dir``."""
+def main(
+    upstream_dir: Annotated[Path, typer.Argument()],
+    output_dir: Annotated[Path, typer.Argument()],
+) -> None:
     release = json.loads((upstream_dir / SOMA_X_MANIFEST).read_text())["release_tag"]
     if release != f"v{SOMA_X_VERSION}":
         raise ValueError(f"{upstream_dir} holds SOMA-X {release}; body-models needs SOMA-X v{SOMA_X_VERSION}.")
@@ -46,7 +66,13 @@ def preprocess_model(upstream_dir: Path, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     np.savez(output_dir / SOMA_CORE_ASSET, **arrays)
     shutil.copy2(upstream_dir / SOMA_CORRECTIVES_ASSET, output_dir / SOMA_CORRECTIVES_ASSET)
-    return output_dir
+    # The upstream meshes that map MHR, Anny, SMPL and SMPL-X bodies onto SOMA, copied unchanged.
+    for spec in MODEL_TYPE_SPECS.values():
+        if spec.asset_dir is None:
+            continue
+        (output_dir / spec.asset_dir).mkdir(exist_ok=True)
+        for name in (spec.source_mesh_name, spec.target_mesh_name):
+            shutil.copy2(upstream_dir / spec.asset_dir / name, output_dir / spec.asset_dir / name)
 
 
 def _load_rig(stage: Any) -> dict[str, Any]:
@@ -231,3 +257,7 @@ def _world_to_local(world: Float[np.ndarray, "J 4 4"], parents: Int[np.ndarray, 
 
 def _normalize(vectors: np.ndarray) -> np.ndarray:
     return vectors / np.linalg.norm(vectors, axis=-1, keepdims=True)
+
+
+if __name__ == "__main__":
+    typer.run(main)

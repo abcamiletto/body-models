@@ -1,6 +1,6 @@
 [project]
 name = "body-models"
-version = "0.28.1"
+version = "0.28.2"
 description = "Parametric and articulated body models for NumPy, PyTorch, and JAX with optional Warp acceleration"
 readme = "README.md"
 authors = [
@@ -38,9 +38,6 @@ warp = [
 simplify = [
     "pyfqmr>=0.3.0",
 ]
-usd = [
-    "usd-core>=26.5",
-]
 
 [build-system]
 requires = ["uv_build>=0.11.11,<0.13.0"]
@@ -57,7 +54,6 @@ dev = [
     "warp-lang>=1.12.0",
     "pyfqmr>=0.3.0",
     "py-soma-x>=0.3.6",
-    "usd-core>=26.5",
     "anny>=0.3.1",
     "smplx>=0.1.28",
 ]
@@ -81,14 +77,9 @@ explicit = true
 exclude = [
     "bench/",
     "tests/",
-    "scripts/render_teaser.py",
-    "scripts/visualize_bodies.py",
+    # Standalone scripts with their own dependencies.
+    "scripts/",
 ]
-
-[[tool.ty.overrides]]
-# usd-core's pxr modules have no type stubs.
-include = ["src/body_models/soma/_preprocess.py"]
-rules = { unresolved-attribute = "ignore" }
 
 [tool.ruff]
 line-length = 120

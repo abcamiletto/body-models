@@ -9,18 +9,17 @@
 # ///
 """Generate MHR LOD mesh assets from the upstream FBX files.
 
-Run this as a self-contained PEP 723 script:
+Usage:
 
-    uv run --python 3.11 --no-project src/body_models/mhr/_tools/generate_lod_assets.py \
-        /path/to/mhr/assets /path/to/output
+    uv run scripts/preprocess/mhr.py /path/to/mhr/assets /path/to/output
 """
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from typing import Annotated
 
+import bpy
 import numpy as np
 import typer
 from jaxtyping import Float, Int
@@ -44,7 +43,6 @@ def main(
 
 
 def save_lod_asset(fbx_path: Path, output_path: Path) -> None:
-    bpy = importlib.import_module("bpy")
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
     bpy.ops.import_scene.fbx(filepath=str(fbx_path))
