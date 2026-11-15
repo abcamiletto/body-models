@@ -11,20 +11,11 @@ from jaxtyping import Float, Int
 from body_models._common import kinematics, sparse
 from body_models._common.skinning import CompactSkinning
 
+SOMA_X_VERSION = "0.3.6"
 SOMA_CORE_ASSET = "SOMA_neutral.npz"
 SOMA_CORRECTIVES_ASSET = "correctives_model.pt"
-SOMA_TEMPLATE_RIG_ASSET = "SOMA_template_rig.usda"
-SOMA_PROCEDURAL_TRANSFORMS_ASSET = "SOMA_procedural_transforms.json"
 SOMA_ASSETS = (SOMA_CORE_ASSET, SOMA_CORRECTIVES_ASSET)
 SOMA_LODS = ("mid", "low", "xlo")
-SOMA_XLO_FIELDS = (
-    "lod_mid_to_xlo",
-    "triangles_xlo",
-    "skinning_weights_xlo_data",
-    "skinning_weights_xlo_indices",
-    "skinning_weights_xlo_indptr",
-    "skinning_weights_xlo_shape",
-)
 SOMA_RIG_FIELDS = (
     "bind_shape",
     "bind_pose_world",
@@ -51,15 +42,6 @@ SOMA_PROCEDURAL_RIG_FIELDS = (
     "segment_parent_joint_indices",
     "segment_reverse_indices",
     "segment_alignment_rotations",
-)
-SOMA_PROCEDURAL_NPZ_FIELDS = tuple(f"procedural_{name}" for name in SOMA_PROCEDURAL_RIG_FIELDS)
-SOMA_LOW_FIELDS = ("lod_mid_to_low", "triangles_low")
-SOMA_NORMALIZED_NPZ_FIELDS = (
-    *SOMA_RIG_FIELDS,
-    *(f"public_{name}" for name in SOMA_RIG_FIELDS),
-    *SOMA_PROCEDURAL_NPZ_FIELDS,
-    *SOMA_LOW_FIELDS,
-    *SOMA_XLO_FIELDS,
 )
 
 

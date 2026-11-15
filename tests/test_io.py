@@ -9,11 +9,13 @@ from body_models.mhr import _io as mhr_io
 from body_models.soma._io import validate_path
 
 
-def test_soma_requires_normalized_asset(tmp_path) -> None:
-    np.savez(tmp_path / "SOMA_neutral.npz", mean=np.zeros((1, 3), dtype=np.float32))
+@pytest.mark.parametrize("version", [None, "0.2.1"])
+def test_soma_rejects_assets_from_other_releases(tmp_path, version) -> None:
+    stamp = {} if version is None else {"soma_x_version": np.asarray(version)}
+    np.savez(tmp_path / "SOMA_neutral.npz", mean=np.zeros((1, 3), dtype=np.float32), **stamp)
     (tmp_path / "correctives_model.pt").touch()
 
-    with pytest.raises(FileNotFoundError, match="body-models preprocess-soma"):
+    with pytest.raises(FileNotFoundError, match="needs SOMA-X 0.3.6"):
         validate_path(tmp_path)
 
 

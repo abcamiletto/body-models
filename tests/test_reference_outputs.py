@@ -10,7 +10,7 @@ from body_models.anny import _pose as anny_pose
 from body_models.mhr import _pose as mhr_pose
 from body_models.skel import _pose as skel_pose
 from body_models.soma import _pose as soma_pose
-from body_models.soma._tools.generate_asset import generate_asset as generate_soma_asset
+from body_models.soma._preprocess import preprocess_model as preprocess_soma
 from body_models.soma.numpy import SOMA
 
 
@@ -57,7 +57,7 @@ def test_soma_matches_upstream(tmp_path) -> None:
     if not upstream_path.is_dir():
         pytest.skip("SOMA-X assets are not available")
     upstream = upstream_soma.SOMALayer(data_root=upstream_path, device="cpu", identity_model_type="soma", mode="dense")
-    model = SOMA(model_path=generate_soma_asset(upstream_path, tmp_path), model_type="soma", rotation_type="axis_angle")
+    model = SOMA(model_path=preprocess_soma(upstream_path, tmp_path), model_type="soma", rotation_type="axis_angle")
 
     rng = np.random.default_rng(0)
     pose = rng.normal(scale=0.35, size=(2, 77, 3)).astype(np.float32)
